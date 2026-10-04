@@ -120,12 +120,8 @@ export function* createSessionRegistry<T>(
         }
       },
       {
-        ...(owner?.scope || config.ownerScope
-          ? { ownerScope: owner?.scope ?? config.ownerScope }
-          : {}),
-        ...(owner?.register || config.registerWriter
-          ? { register: owner?.register ?? config.registerWriter }
-          : {}),
+        ownerScope: owner?.scope ?? config.ownerScope,
+        register: owner?.register ?? config.registerWriter,
       },
     );
     log.debug({ sessionId, taskName }, "writer task started");
@@ -200,8 +196,8 @@ export function* createSessionRegistry<T>(
         }
       },
       {
-        ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
-        ...(config.registerWriter ? { register: config.registerWriter } : {}),
+        ownerScope: config.ownerScope,
+        register: config.registerWriter,
       },
     );
 
@@ -460,8 +456,8 @@ export function* createSessionRegistry<T>(
               }
             },
             {
-              ...(config.ownerScope ? { ownerScope: config.ownerScope } : {}),
-              ...(config.registerWriter ? { register: config.registerWriter } : {}),
+              ownerScope: config.ownerScope,
+              register: config.registerWriter,
             },
           );
         }

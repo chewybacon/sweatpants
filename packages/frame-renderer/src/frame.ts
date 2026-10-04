@@ -95,8 +95,8 @@ export const createBlock = (options: CreateBlockOptions): Block => ({
   rendered: options.rendered ?? "",
   status: options.status ?? "streaming",
   renderPass: options.renderPass ?? "none",
-  ...(options.language !== undefined && { language: options.language }),
-  ...(options.meta !== undefined && { meta: options.meta }),
+  language: options.language,
+  meta: options.meta,
 });
 
 /**

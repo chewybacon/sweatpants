@@ -3,10 +3,8 @@ export type {
   AgentCoreTaskPlacement,
 } from "./placement/placement-types.ts";
 export {
-  createAgentCoreToolExecutionStrategy,
   createAgentCoreToolRuntimeDriver,
   installAgentCoreToolRuntime,
-  type AgentCoreToolExecutionStrategyOptions,
   type AgentCoreToolRuntimeDriverOptions,
 } from "./driver.ts";
 
@@ -35,6 +33,7 @@ export { AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION } from "./agentcore/agentcore-t
 
 export {
   createAgentCoreToolInvocationRuntime,
+  createAgentCoreToolInvocationResourceFactory,
   type AgentCoreToolInvocationPersistence,
   type AgentCoreToolInvocationRuntimeOptions,
 } from "./invocation-runtime.ts";
@@ -169,3 +168,5 @@ export {
   type AgentCoreActivationCoordinatorOptions,
   type CoordinatedActivationResult,
 } from "./durable/durable-activation-coordinator.ts";
+
+export { agentCore, type AgentCoreExecutionOptions } from "./execution.ts";

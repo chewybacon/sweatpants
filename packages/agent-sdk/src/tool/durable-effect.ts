@@ -1,4 +1,9 @@
-import { defineDurableEffect } from "@sweatpants/durable-effects/authoring";
+import type { Operation } from "effection";
+import type { DurableEffectContext, DurableEffectRegistration } from "@sweatpants/durable-effects";
+import {
+  createDurableEffectRegistration,
+  defineDurableEffect,
+} from "@sweatpants/durable-effects/authoring";
 import { type EffectDefinition, type RetrySafety } from "@sweatpants/durable-effects";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -72,18 +77,14 @@ export function defineEffect<
     identity: `${identity}/input`,
     role: "effect_input",
     version: options.version,
-    ...(options.projections?.inputProjection !== undefined
-      ? { inputProjection: options.projections.inputProjection }
-      : {}),
+    inputProjection: options.projections?.inputProjection,
   });
   catalog.push(input.entry);
   const output = toPortableSchema(options.output, {
     identity: `${identity}/output`,
     role: "effect_output",
     version: options.version,
-    ...(options.projections?.outputProjection !== undefined
-      ? { outputProjection: options.projections.outputProjection }
-      : {}),
+    outputProjection: options.projections?.outputProjection,
   });
   catalog.push(output.entry);
   let cancellation;
@@ -93,9 +94,7 @@ export function defineEffect<
       identity: `${identity}/cancellation-partial`,
       role: "effect_cancellation_partial",
       version: options.version,
-      ...(options.projections?.cancellationPartialProjection !== undefined
-        ? { outputProjection: options.projections.cancellationPartialProjection }
-        : {}),
+      outputProjection: options.projections?.cancellationPartialProjection,
     });
     catalog.push(partial.entry);
     cancellation = { partialSchema: partial.descriptor };
@@ -113,7 +112,7 @@ export function defineEffect<
   effectValidators.set(definition, {
     input: options.input,
     output: options.output,
-    ...(partialValidator ? { cancellationPartial: partialValidator } : {}),
+    cancellationPartial: partialValidator,
   });
   // SAFETY: JsonOutput type witnesses are pinned by the authored Standard Schema validators
   // whose validators are registered under the descriptor digests.
@@ -136,4 +135,19 @@ export function effectRuntimeValidators(
   definition: EffectDefinition<Json, Json, Json>,
 ): DurableEffectRuntimeValidators | undefined {
   return effectValidators.get(definition);
+}
+
+/** Bind a successful host implementation using the declaration's validators and retry contract. */
+export function implementEffect<I extends Json, O extends Json, P extends Json = never>(
+  definition: EffectDefinition<I, O, P>,
+  handler: (input: I, context: DurableEffectContext) => Operation<O>,
+): DurableEffectRegistration {
+  return createDurableEffectRegistration(
+    definition,
+    definition.retrySafety,
+    function* (input, context) {
+      return { status: "ok", value: yield* handler(input, context) };
+    },
+    effectRuntimeValidators(definition),
+  );
 }

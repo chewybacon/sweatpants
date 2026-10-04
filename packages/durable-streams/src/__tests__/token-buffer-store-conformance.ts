@@ -10,6 +10,15 @@ export function defineTokenBufferStoreConformance(
   beforeTest: (skip: (note?: string) => never) => void = () => {},
 ): void {
   describe(`${name} TokenBufferStore conformance`, () => {
+    it("bounds batches while preserving the tail and reconnect offset", async ({ skip }) => {
+      beforeTest(skip);
+      const buffer = await run(() => createStore().create(`${name}-bounded-read`));
+      await run(() => appendTestTokens(buffer, ["a", "b", "c", "d", "e"]));
+      expect(await run(() => buffer.read(1, 2))).toEqual({ tokens: ["b", "c"], lsn: 5 });
+      expect(await run(() => buffer.read(3, 2))).toEqual({ tokens: ["d", "e"], lsn: 5 });
+      expect(await run(() => buffer.read(5, 2))).toEqual({ tokens: [], lsn: 5 });
+    });
+
     it("uses 1-indexed total-length tail semantics for append/read", async ({ skip }) => {
       beforeTest(skip);
       const store = createStore();

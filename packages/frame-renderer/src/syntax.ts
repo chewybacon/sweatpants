@@ -7,8 +7,8 @@ export function defineNodeSyntax<T>(definition: NodeSyntax<T>): NodeSyntax<T> {
   }
   return Object.freeze({
     name: definition.name,
-    ...(definition.inline && { inline: Object.freeze({ ...definition.inline }) }),
-    ...(definition.block && { block: Object.freeze({ ...definition.block }) }),
+    inline: definition.inline && Object.freeze({ ...definition.inline }),
+    block: definition.block && Object.freeze({ ...definition.block }),
   });
 }
 

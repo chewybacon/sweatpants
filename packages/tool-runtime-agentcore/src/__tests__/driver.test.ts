@@ -20,10 +20,10 @@ import {
 } from "@sweatpants/tool-session";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolExecutionStrategy,
   installAgentCoreToolRuntime,
   type AgentCoreToolRuntimeProfile,
 } from "../index.ts";
+import { createInvocationToolExecutionStrategy } from "@sweatpants/tool-session/execution";
 import {
   createAgentCoreToolInvocationResources,
   type AgentCoreToolInvocationResources,
@@ -190,7 +190,7 @@ function createTestDriver(tools: AnyToolContract[], provider = samplingProvider)
   return createStrategyToolRuntime({
     id: "agentcore",
     strategies: [
-      createAgentCoreToolExecutionStrategy({
+      createInvocationToolExecutionStrategy({
         id: "agentcore",
         tools,
         samplingProvider: provider,
@@ -474,7 +474,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
   it("exports an executable AgentCore strategy object", async () => {
     await run(function* () {
       yield* installResourceHost(createFakeResources());
-      const strategy = createAgentCoreToolExecutionStrategy({
+      const strategy = createInvocationToolExecutionStrategy({
         samplingProvider,
         tools: [remoteTool],
       });

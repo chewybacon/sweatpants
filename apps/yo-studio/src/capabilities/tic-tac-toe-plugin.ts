@@ -13,10 +13,10 @@ export const playTttPlugin = makePlugin(playTttTool)
         moveHistory: game.moveHistory,
         modelSymbol: game.modelSymbol,
         userSymbol: game.userSymbol,
-        ...(game.lastMove ? { lastMove: game.lastMove } : {}),
-        ...(game.winningLine ? { winningLine: game.winningLine } : {}),
-        ...(game.gameOver !== undefined ? { gameOver: game.gameOver } : {}),
-        ...(game.resultMessage ? { resultMessage: game.resultMessage } : {}),
+        lastMove: game.lastMove,
+        winningLine: game.winningLine,
+        gameOver: game.gameOver,
+        resultMessage: game.resultMessage || undefined,
       });
       return { action: "accept" as const, content: response };
     },

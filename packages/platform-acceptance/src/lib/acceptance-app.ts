@@ -49,9 +49,9 @@ import {
 import {
   createLocalToolInvocationRuntime,
   createLocalWorkerDurableProgramDriver,
-  installLocalToolRuntimeComposition,
   type LocalToolInvocationRuntime,
 } from "@sweatpants/tool-runtime-local";
+import { installInvocationToolRuntimeComposition } from "@sweatpants/tool-session/execution";
 import {
   routeNativeChatTestApplication,
   type TestApplication,
@@ -307,7 +307,8 @@ export function createAcceptanceApplication(
         },
       });
 
-      yield* installLocalToolRuntimeComposition({
+      yield* installInvocationToolRuntimeComposition({
+        id: "local",
         tools: [acceptanceBookingTool, acceptanceImmediateTool],
         samplingProvider,
         installEphemeralEffects: function* (registrations) {

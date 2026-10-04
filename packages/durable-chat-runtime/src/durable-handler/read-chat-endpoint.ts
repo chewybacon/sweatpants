@@ -52,10 +52,8 @@ export function createReadChatEndpoint(
         head: selectedHead,
         checkpoint: storedConversationCheckpoint,
         keyring: projectionTokens,
-        ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
-        ...(config.projectionTokenTtlMs === undefined
-          ? {}
-          : { tokenTtlMs: config.projectionTokenTtlMs }),
+        knownWindowToken: body.knownWindowToken || undefined,
+        tokenTtlMs: config.projectionTokenTtlMs,
       });
       return yield* createStoredConversationCheckpointResponse({
         conversationId: requestedConversationId,

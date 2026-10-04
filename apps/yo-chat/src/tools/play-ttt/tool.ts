@@ -2,6 +2,7 @@
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
+import type { Operation } from "effection";
 
 import {
   type Board,
@@ -95,7 +96,7 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
     },
   })
   .samples()
-  .execute(function* (_input, context) {
+  .execute(function* (_input, context): Operation<PlayTttResult> {
     const coinFlip = yield* context.record(
       {
         key: "play-ttt-symbol-coin-flip",

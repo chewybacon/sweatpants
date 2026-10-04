@@ -13,9 +13,8 @@ import {
   samplingToolCalls,
 } from "@sweatpants/model-sampling";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
-import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import type { ModelContext } from "@sweatpants/model-provider";
-import { defaultYoChatModel } from "./default-model.ts";
+import { ModelProviderPort, useModel, useStreamOptions } from "@sweatpants/model-provider";
+import type { ModelContext, ChatModel } from "@sweatpants/model-provider";
 
 interface SamplingOptions {
   systemPrompt?: string;
@@ -41,33 +40,26 @@ function modelContext(messages: ChatMessage[], options: SamplingOptions | undefi
   };
 }
 
-export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
-  const piProvider = createPiAiModelProvider();
-  const driver = piProvider.driver;
-  const model = piProvider.resolveModel(defaultYoChatModel());
-
+export function createModelSamplingProvider(config?: ChatModel): ToolSessionSamplingProvider {
   return {
     *sample(
       messages: ChatMessage[],
       options: SamplingOptions | undefined,
     ): Operation<SampleExchangeCompletion> {
+      const model = config?.model ?? (yield* useModel());
+      const streamOptions = config?.streamOptions ?? (yield* useStreamOptions());
       const modelMessages = messages;
 
-      const assistant = yield* driver.sample({
+      const assistant = yield* (config?.driver ?? ModelProviderPort.api.operations).sample({
         model,
         context: modelContext(modelMessages, options),
         options: {
-          ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
-          ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
-          ...(options?.schema
-            ? {
-                responseFormat: {
-                  type: "json_schema",
-                  name: "plugin_sample",
-                  schema: options.schema,
-                },
-              }
-            : {}),
+          ...streamOptions,
+          maxTokens: options?.maxTokens ?? streamOptions?.maxTokens,
+          toolChoice: options?.toolChoice ?? streamOptions?.toolChoice,
+          responseFormat: options?.schema
+            ? { type: "json_schema", name: "plugin_sample", schema: options.schema }
+            : streamOptions?.responseFormat,
         },
       });
 

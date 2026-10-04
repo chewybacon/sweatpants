@@ -328,13 +328,9 @@ export function createProgramWorkflowHost(
           driverKind: "workflow",
           effectRegistrations: [...options.effects.values()],
           routeResolver: route,
-          ...(options.modelContextSourceResolver
-            ? { modelContextSourceResolver: options.modelContextSourceResolver }
-            : {}),
-          ...(options.modelContextSourceStager
-            ? { modelContextSourceStager: options.modelContextSourceStager }
-            : {}),
-          ...(options.setup ? { setup: options.setup } : {}),
+          modelContextSourceResolver: options.modelContextSourceResolver,
+          modelContextSourceStager: options.modelContextSourceStager,
+          setup: options.setup,
         },
         function* (authority) {
           return yield* driveActivation({

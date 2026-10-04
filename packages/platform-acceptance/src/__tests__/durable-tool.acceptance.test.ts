@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { race } from "effection";
 import { describe, expect, it } from "vitest";
 import {
@@ -137,6 +138,21 @@ async function runDurableToolScenario(
       const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toBe(DURABLE_TERMINAL_TEXT);
+      const suspended = transcript.events.find(
+        (event) => event.type === EventType.RUN_FINISHED && event.outcome?.type === "interrupt",
+      );
+      if (suspended?.type !== EventType.RUN_FINISHED || suspended.outcome?.type !== "interrupt")
+        throw new Error("Expected durable child interrupt");
+      const interrupt = suspended.outcome.interrupts[0];
+      expect(interrupt.subagentRunId).toMatch(/^[a-f0-9]{64}$/);
+      const childActivity = transcript.events.filter(
+        (event) =>
+          (event.type === EventType.ACTIVITY_SNAPSHOT || event.type === EventType.ACTIVITY_DELTA) &&
+          event.messageId === `elicit:${interrupt.id}`,
+      );
+      expect(childActivity.length).toBeGreaterThanOrEqual(2);
+      for (const event of childActivity)
+        expect(event).toMatchObject({ subagentRunId: interrupt.subagentRunId });
 
       const opened = yield* inspection.journalStore.open(conversation.conversationId);
       const journal = yield* opened.readJournal(conversation.conversationId);

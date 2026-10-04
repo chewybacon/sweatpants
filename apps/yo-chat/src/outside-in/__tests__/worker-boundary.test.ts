@@ -13,10 +13,8 @@ import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import {
-  createLocalToolInvocationRuntime,
-  createToolInvocationEphemeralEffectRegistrations,
-} from "@sweatpants/tool-runtime-local";
+import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import { calculator } from "@/tools/calculator";
 import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";

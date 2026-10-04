@@ -34,8 +34,8 @@ import {
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
   createLocalToolInvocationRuntime,
-  createToolInvocationEphemeralEffectRegistrations,
 } from "../index.ts";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 
 /**
  * Authored parent invoking an authored child through the facade's workflow

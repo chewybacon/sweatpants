@@ -1,4 +1,4 @@
-import { EventType } from "@ag-ui/core";
+import { EventType, PROTOCOL_VERSION } from "@ag-ui/core";
 import {
   type ConversationStreamEvent as StreamEvent,
   HistoryPolicyContext,
@@ -327,6 +327,7 @@ export function* executeChatTurn(
       : null;
     const runStartedEvent: StreamEvent = {
       type: EventType.RUN_STARTED,
+      protocolVersion: PROTOCOL_VERSION,
       ...agUiRun,
       input: {
         ...agUiRun,
@@ -375,7 +376,7 @@ export function* executeChatTurn(
           logicalTurnId: selectedHead?.activeLogicalTurnId ?? agUiRunId,
           executionId:
             selectedHead?.activeExecutionId ?? `chat-turn:${requestedConversationId}:${agUiRunId}`,
-          ...(checkpointTargets ? { targets: checkpointTargets } : {}),
+          targets: checkpointTargets,
           expectedRevision: body.command?.basisRevision ?? selectedHead?.revision ?? null,
           ...(selectedHead?.ownerEpoch ? { expectedOwnerEpoch: selectedHead.ownerEpoch } : {}),
           expectedExecutionId: selectedHead?.activeExecutionId ?? null,
@@ -417,10 +418,8 @@ export function* executeChatTurn(
               head: retryHead,
               checkpoint: retryCheckpoint,
               keyring: projectionTokens,
-              ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
-              ...(config.projectionTokenTtlMs === undefined
-                ? {}
-                : { tokenTtlMs: config.projectionTokenTtlMs }),
+              knownWindowToken: body.knownWindowToken || undefined,
+              tokenTtlMs: config.projectionTokenTtlMs,
             });
             return yield* createStoredConversationCheckpointResponse({
               conversationId: requestedConversationId,
@@ -568,7 +567,7 @@ export function* executeChatTurn(
             logicalTurnId: authorityTurn.turnId,
           },
           roots: admissionFacts,
-          ...(checkpointTargets ? { targets: checkpointTargets } : {}),
+          targets: checkpointTargets,
           expectedRevision: runningHead.revision,
           expectedOwnerEpoch: runningHead.ownerEpoch,
           expectedExecutionId: authorityTurn.executionId,
@@ -613,14 +612,14 @@ export function* executeChatTurn(
             },
           }
         : {}),
-      ...(systemPrompt !== undefined && { systemPrompt }),
+      systemPrompt,
       toolSchemas,
       model,
-      ...(streamOptions ? { streamOptions } : {}),
-      ...(plan.initialToolChoice ? { initialToolChoice: plan.initialToolChoice } : {}),
+      streamOptions,
+      initialToolChoice: plan.initialToolChoice,
       toolInventoryEntries: inventoryEntries,
-      ...(activeToolRuntime ? { toolRuntime: activeToolRuntime } : {}),
-      ...(historyPolicy ? { historyPolicy } : {}),
+      toolRuntime: activeToolRuntime,
+      historyPolicy,
       maxIterations,
       conversationId: requestedConversationId,
       conversationStore: stores.conversation,
@@ -670,10 +669,8 @@ export function* executeChatTurn(
               ...engineParams,
               journalStore: programDriverJournalStore,
               liveEvent,
-              ...(programDriverEphemeralEffects
-                ? { ephemeralEffects: programDriverEphemeralEffects }
-                : {}),
-              ...(programDriverNativeTools ? { nativeTools: programDriverNativeTools } : {}),
+              ephemeralEffects: programDriverEphemeralEffects,
+              nativeTools: programDriverNativeTools,
             });
     log.debug({ sessionId }, "new session path: chat engine created");
 
@@ -698,10 +695,8 @@ export function* executeChatTurn(
         head: authorityHead,
         checkpoint: authorityCheckpoint,
         keyring: projectionTokens,
-        ...(body.knownWindowToken ? { knownWindowToken: body.knownWindowToken } : {}),
-        ...(config.projectionTokenTtlMs === undefined
-          ? {}
-          : { tokenTtlMs: config.projectionTokenTtlMs }),
+        knownWindowToken: body.knownWindowToken || undefined,
+        tokenTtlMs: config.projectionTokenTtlMs,
       }),
     );
     initialEvents.push(conversationAuthorityFrame(requestedConversationId, authorityHead));

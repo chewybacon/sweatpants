@@ -61,7 +61,7 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
       return createUnifiedToolBuilder({
         ...state,
         parameters: schema,
-        ...(projections ? { parametersProjections: projections } : {}),
+        parametersProjections: projections ?? state.parametersProjections,
       });
     },
     output(schema: StandardSchemaV1, projections?: SchemaProjectionOptions) {
@@ -72,7 +72,7 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
       return createUnifiedToolBuilder({
         ...state,
         output: schema,
-        ...(projections ? { outputProjections: projections } : {}),
+        outputProjections: projections ?? state.outputProjections,
       });
     },
     elicits(elicits: ElicitsMap) {
@@ -118,11 +118,9 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
         name: state.name,
         description: state.description!,
         parameters: state.parameters!,
-        ...(state.parametersProjections
-          ? { parametersProjections: state.parametersProjections }
-          : {}),
-        ...(state.output ? { output: state.output } : {}),
-        ...(state.outputProjections ? { outputProjections: state.outputProjections } : {}),
+        parametersProjections: state.parametersProjections,
+        output: state.output,
+        outputProjections: state.outputProjections,
         elicits: state.elicits ?? {},
         samples: state.samples,
         annotations: state.annotations,
@@ -166,11 +164,9 @@ function finalizeCoreUnifiedTool(options: {
     identity: `tool:${options.name}`,
     version: schemaVersionAnnotation(options.annotations),
     parameters: options.parameters,
-    ...(options.parametersProjections
-      ? { parametersProjections: options.parametersProjections }
-      : {}),
+    parametersProjections: options.parametersProjections,
     output: options.output,
-    ...(options.outputProjections ? { outputProjections: options.outputProjections } : {}),
+    outputProjections: options.outputProjections,
     elicits: normalizedElicits as Record<
       string,
       ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>

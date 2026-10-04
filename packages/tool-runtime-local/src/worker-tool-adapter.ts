@@ -100,8 +100,8 @@ function createCanonicalWorkerContext(
         }
         const namedResult: NamedSampleResult = {
           text: result.text,
-          ...(result.model !== undefined ? { model: result.model } : {}),
-          ...(result.stopReason !== undefined ? { stopReason: result.stopReason } : {}),
+          model: result.model,
+          stopReason: result.stopReason,
           exchange: result.exchange,
           content: result.text,
           ...("parsed" in result ? { parsed: result.parsed } : {}),

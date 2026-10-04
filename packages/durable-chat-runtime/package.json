@@ -178,7 +178,7 @@
         "zod": "catalog:"
     },
     "devDependencies": {
-        "@ag-ui/core": "0.0.57",
+        "@ag-ui/core": "1.0.1",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/better-sqlite3": "catalog:",
@@ -188,6 +188,6 @@
         "vitest": "catalog:"
     },
     "peerDependencies": {
-        "@ag-ui/core": "0.0.57"
+        "@ag-ui/core": "1.0.1"
     }
 }

@@ -78,7 +78,7 @@ export function createRedisTokenBufferStore<T>(
       }
 
       const initId = yield* call(() =>
-        client.xAdd(key, "*", { token: serializeToken("__init__" as unknown as T) }),
+        client.xAdd(key, "0-1", { token: serializeToken("__init__" as unknown as T) }),
       );
       yield* call(() => client.xDel(key, initId));
 
@@ -90,6 +90,7 @@ export function createRedisTokenBufferStore<T>(
           error: "",
           refCount: "0",
           flushedUpTo: "0",
+          format: "lsn-v1",
         }),
       );
 
@@ -111,6 +112,10 @@ export function createRedisTokenBufferStore<T>(
       const exists = yield* call(() => client.exists(key));
       if (!exists) {
         return null;
+      }
+      const format = yield* call(() => client.hGet(metaKey(id), "format"));
+      if (format !== "lsn-v1") {
+        throw new Error(`Unsupported response buffer format. Reset Redis keys ${keyPrefix}${id}:*`);
       }
       return createRedisBuffer(
         id,
@@ -205,7 +210,11 @@ function createRedisBuffer<T>(
           client.eval(
             `${luaFencedWriterGuard(2, -1)}
              if redis.call('HGET', KEYS[2], 'completed') == 'true' then return -2 end
-             for i = 3, #ARGV do redis.call('XADD', KEYS[1], '*', 'token', ARGV[i]) end
+             local lsn = redis.call('XLEN', KEYS[1])
+             for i = 3, #ARGV do
+               lsn = lsn + 1
+               redis.call('XADD', KEYS[1], tostring(lsn) .. '-0', 'token', ARGV[i])
+             end
              return redis.call('XLEN', KEYS[1])`,
             {
               keys: [streamKey(id), metaKey(id)],
@@ -280,19 +289,22 @@ function createRedisBuffer<T>(
       };
     },
 
-    *read(afterLSN = 0) {
+    *read(afterLSN = 0, limit?: number) {
       const key = streamKey(id);
-      const entries = yield* call(() => client.xRange(key, "-", "+"));
-
-      const allTokens: T[] = [];
-      for (const entry of entries) {
-        const parsed = parseEntry({ id: entry.id, message: entry.message });
-        if (parsed !== "__init__") {
-          allTokens.push(parsed);
-        }
-      }
-
-      const tokens = allTokens.slice(afterLSN);
+      // Snapshot the tail first: the returned batch and tail describe the same prefix.
+      const lsn = Number(yield* call(() => client.xLen(key)));
+      const entries =
+        afterLSN >= lsn
+          ? []
+          : yield* call(() =>
+              client.xRange(
+                key,
+                `(${afterLSN}-0`,
+                `${lsn}-0`,
+                limit === undefined ? undefined : { COUNT: limit },
+              ),
+            );
+      const tokens = entries.map(parseEntry);
 
       if (flushOnRead && tokens.length > 0) {
         yield* call(() =>
@@ -300,7 +312,7 @@ function createRedisBuffer<T>(
         );
       }
 
-      return { tokens, lsn: allTokens.length };
+      return { tokens, lsn };
     },
 
     *isComplete() {

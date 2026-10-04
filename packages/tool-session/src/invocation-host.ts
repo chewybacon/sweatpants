@@ -279,12 +279,12 @@ function sampleAsk(
     kind: "sample",
     requestId: event.sampleId,
     messages: event.messages,
-    ...(event.systemPrompt === undefined ? {} : { systemPrompt: event.systemPrompt }),
-    ...(event.maxTokens === undefined ? {} : { maxTokens: event.maxTokens }),
-    ...(event.modelPreferences === undefined ? {} : { modelPreferences: event.modelPreferences }),
-    ...(event.tools === undefined ? {} : { tools: event.tools }),
-    ...(event.toolChoice === undefined ? {} : { toolChoice: event.toolChoice }),
-    ...(event.schema === undefined ? {} : { schema: event.schema }),
+    systemPrompt: event.systemPrompt,
+    maxTokens: event.maxTokens,
+    modelPreferences: event.modelPreferences,
+    tools: event.tools,
+    toolChoice: event.toolChoice,
+    schema: event.schema,
   };
 }
 

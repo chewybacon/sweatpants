@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    "execution/index": "src/execution/index.ts",
     contract: "src/contract.ts",
     "event-log": "src/event-log.ts",
     ephemeral: "src/ephemeral.ts",

@@ -66,6 +66,7 @@ export {
   defineDurableContextExtension,
   assertDurableExtensionDeclarations,
   defineEffect,
+  implementEffect,
   effectCatalogEntries,
   effectRuntimeValidators,
   buildToolSchemaArtifacts,

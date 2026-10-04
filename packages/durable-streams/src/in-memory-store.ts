@@ -90,9 +90,9 @@ export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
         },
       };
     },
-    *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
+    *read(afterLSN = 0, limit?: number): Operation<{ tokens: T[]; lsn: number }> {
       return {
-        tokens: tokens.slice(afterLSN),
+        tokens: tokens.slice(afterLSN, limit === undefined ? undefined : afterLSN + limit),
         lsn: tokens.length,
       };
     },

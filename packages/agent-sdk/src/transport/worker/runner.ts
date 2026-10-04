@@ -122,14 +122,12 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
             id,
             type: "sample",
             messages: options.messages,
-            ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
-            ...(options.maxTokens !== undefined && { maxTokens: options.maxTokens }),
-            ...(options.modelPreferences !== undefined && {
-              modelPreferences: options.modelPreferences,
-            }),
-            ...(options.tools !== undefined && { tools: options.tools }),
-            ...(options.toolChoice !== undefined && { toolChoice: options.toolChoice }),
-            ...(options.schema !== undefined && { schema: options.schema }),
+            systemPrompt: options.systemPrompt,
+            maxTokens: options.maxTokens,
+            modelPreferences: options.modelPreferences,
+            tools: options.tools,
+            toolChoice: options.toolChoice,
+            schema: options.schema,
           };
 
           return yield* sendRequestToHost<WorkerSampleRequest, WorkerSampleResponse>(request);

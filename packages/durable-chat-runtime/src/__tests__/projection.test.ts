@@ -45,6 +45,21 @@ describe("conversation replay projection", () => {
     });
   });
 
+  it("preserves activity ownership through checkpoint reconstruction", async () => {
+    const input = frames({ ...activitySnapshot, subagentRunId: "child" });
+    const checkpoint = await run(() => buildCheckpointSnapshotEventsFromFrames(input));
+    expect(checkpoint).toContainEqual(
+      expect.objectContaining({
+        type: EventType.ACTIVITY_SNAPSHOT,
+        messageId: "activity-1",
+        subagentRunId: "child",
+      }),
+    );
+    expect(replayConversationViews(frames(...checkpoint)).activitySnapshots).toEqual(
+      replayConversationViews(input).activitySnapshots,
+    );
+  });
+
   it("exposes semantic replay and materialization stages", () => {
     const input = frames(messageSnapshot, activitySnapshot);
     const outcome = collectProjectionProgram(

@@ -1,3 +1,4 @@
+import { SubagentValidator } from "./subagent-validator.ts";
 import { EventType, type AGUIEvent } from "@ag-ui/core";
 import {
   isConversationAuthorityFrame,
@@ -32,6 +33,7 @@ function terminalOutcome(event: AGUIEvent): { readonly type?: unknown } | null |
  * Call `finish()` when the transport reaches EOF.
  */
 export class ConversationSegmentValidator {
+  private readonly subagents = new SubagentValidator(invalid);
   private eventCount = 0;
   private runStarted = false;
   private initialAuthority = false;
@@ -50,6 +52,13 @@ export class ConversationSegmentValidator {
 
     if (isConversationWindowFrame(event)) {
       this.pushWindow();
+      for (const root of [...event.sealedCatchupRoots, ...event.hotRoots]) {
+        if (root.kind === "message") {
+          this.subagents.push({ type: EventType.MESSAGES_SNAPSHOT, messages: [root.message] });
+        } else {
+          for (const node of root.nodes) this.subagents.push(node.event);
+        }
+      }
       this.eventCount += 1;
       return;
     }
@@ -60,6 +69,7 @@ export class ConversationSegmentValidator {
     }
 
     this.pushAGUI(event);
+    this.subagents.push(event);
     this.eventCount += 1;
   }
 

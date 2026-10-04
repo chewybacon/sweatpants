@@ -1,3 +1,4 @@
+import { publicSubagentRunId } from "./program-driver-chat-attribution.ts";
 import { EventType } from "@ag-ui/core";
 import { CrankError } from "@sweatpants/durable-execution";
 import { stableTupleHash, type Json, type JsonObject } from "@sweatpants/foundation";
@@ -50,6 +51,7 @@ export function projectInterrupt(
   const { responseContract, contextContract } = inventoryElicit;
   const binding = bindingForPending(pending);
   const placement = placementForPending(index, pending, correlation);
+  const subagentRunId = publicSubagentRunId(index, pending.taskId);
   return {
     type: EventType.RUN_FINISHED,
     ...policy.agUiRun,
@@ -58,6 +60,7 @@ export function projectInterrupt(
       interrupts: [
         {
           id: pending.pullId,
+          ...(subagentRunId === undefined ? {} : { subagentRunId }),
           reason: "input_required",
           message: encoded.message,
           responseSchema: encoded.schema,

@@ -157,7 +157,7 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
 } {
   return {
     name: tool.name,
-    ...(tool.description !== undefined && { description: tool.description }),
+    description: tool.description,
     inputSchema: toToolParameterJsonSchema(tool.inputSchema),
   };
 }
@@ -270,9 +270,9 @@ function createMcpWorkerContext(
     // Build core sample options
     const coreOptions: Parameters<typeof coreCtx.sample>[0] = {
       messages,
-      ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-      ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-      ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+      systemPrompt: config.systemPrompt,
+      maxTokens: config.maxTokens,
+      modelPreferences: config.modelPreferences,
     };
 
     // Handle schema (convert Zod to JSON schema marker)
@@ -343,26 +343,22 @@ function createMcpWorkerContext(
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with tools
         const sampleConfig: SampleConfigToolsPrompt | SampleConfigToolsMessages<ChatMessage> =
-          "prompt" in config
+          config.prompt !== undefined
             ? {
                 prompt: config.prompt,
                 tools: config.tools,
                 toolChoice: config.toolChoice ?? "required",
-                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-                ...(config.modelPreferences !== undefined && {
-                  modelPreferences: config.modelPreferences,
-                }),
+                systemPrompt: config.systemPrompt,
+                maxTokens: config.maxTokens,
+                modelPreferences: config.modelPreferences,
               }
             : {
                 messages: config.messages,
                 tools: config.tools,
                 toolChoice: config.toolChoice ?? "required",
-                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-                ...(config.modelPreferences !== undefined && {
-                  modelPreferences: config.modelPreferences,
-                }),
+                systemPrompt: config.systemPrompt,
+                maxTokens: config.maxTokens,
+                modelPreferences: config.modelPreferences,
               };
 
         const result = yield* sampleImpl(sampleConfig);
@@ -372,7 +368,7 @@ function createMcpWorkerContext(
         if ("toolCalls" in result && isNonEmpty(result.toolCalls)) {
           return {
             text: result.text,
-            ...(result.model !== undefined && { model: result.model }),
+            model: result.model,
             stopReason: "toolUse",
             toolCalls: result.toolCalls,
             exchange: result.exchange,
@@ -400,24 +396,20 @@ function createMcpWorkerContext(
         const sampleConfig:
           | SampleConfigSchemaPrompt<T>
           | SampleConfigSchemaMessages<T, ChatMessage> =
-          "prompt" in config
+          config.prompt !== undefined
             ? {
                 prompt: config.prompt,
                 schema: config.schema,
-                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-                ...(config.modelPreferences !== undefined && {
-                  modelPreferences: config.modelPreferences,
-                }),
+                systemPrompt: config.systemPrompt,
+                maxTokens: config.maxTokens,
+                modelPreferences: config.modelPreferences,
               }
             : {
                 messages: config.messages,
                 schema: config.schema,
-                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-                ...(config.modelPreferences !== undefined && {
-                  modelPreferences: config.modelPreferences,
-                }),
+                systemPrompt: config.systemPrompt,
+                maxTokens: config.maxTokens,
+                modelPreferences: config.modelPreferences,
               };
 
         const result = yield* sampleTyped(sampleConfig);
@@ -427,8 +419,8 @@ function createMcpWorkerContext(
         if (result.parsed !== null) {
           return {
             text: result.text,
-            ...(result.model !== undefined && { model: result.model }),
-            ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
+            model: result.model,
+            stopReason: result.stopReason,
             parsed: result.parsed,
             // Rebuild with the narrowed parsed value (SampleExchange<T | null> → SampleExchange<T>)
             exchange: { ...result.exchange, parsed: result.parsed },

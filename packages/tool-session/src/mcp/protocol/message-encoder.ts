@@ -105,7 +105,7 @@ export function encodeLogNotification(
     method: "notifications/message",
     params: {
       level: mapLogLevel(event.level),
-      ...(logger !== undefined && { logger }),
+      logger,
       data: event.message,
     },
   };
@@ -408,7 +408,7 @@ export function createEncoderContext(
       return `req_${++requestCounter}`;
     },
     progressToken: progressToken ?? `progress_${toolCallRequestId}`,
-    ...(logger !== undefined && { logger }),
+    logger,
     toolCallRequestId,
   };
 }

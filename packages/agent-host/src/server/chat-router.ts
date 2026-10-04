@@ -14,7 +14,7 @@ export function normalizeChatBasePath(value: string): string {
 }
 
 function routeError(status: number, error: string, allow?: string): Response {
-  return Response.json({ error }, { status, ...(allow ? { headers: { Allow: allow } } : {}) });
+  return Response.json({ error }, { status, headers: allow ? { Allow: allow } : undefined });
 }
 
 /** HTTP route dispatch only; endpoint implementations own request semantics. */
@@ -53,7 +53,7 @@ export function createChatRouter(basePath: string, endpoints: BoundChatEndpoints
     return endpoints.readChat({
       request,
       conversationId,
-      ...(knownWindowToken ? { knownWindowToken } : {}),
+      knownWindowToken: knownWindowToken || undefined,
     });
   };
 }

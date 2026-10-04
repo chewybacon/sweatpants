@@ -192,15 +192,15 @@ function fromPiAiModel(model: PiAi.Model<string>): Model {
     name: model.name,
     api: model.api,
     provider: model.provider,
-    ...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
-    ...(model.headers ? { headers: model.headers } : {}),
+    baseUrl: model.baseUrl || undefined,
+    headers: model.headers,
     reasoning: model.reasoning,
-    ...(thinkingLevelMap !== undefined ? { thinkingLevelMap } : {}),
+    thinkingLevelMap,
     input: model.input,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     cost: model.cost,
-    ...(model.compat ? { compat: model.compat as Record<string, unknown> } : {}),
+    compat: model.compat as Record<string, unknown> | undefined,
     metadata: { source: "pi-ai-registry" },
   };
 }
@@ -231,11 +231,7 @@ function createPiAiModelProviderDriver(runtime: Runtime): ModelProviderDriver {
         request.context,
         {
           ...request.options,
-          ...(request.options?.toolChoice !== undefined
-            ? { toolChoice: request.options.toolChoice }
-            : hasTools
-              ? { toolChoice: "none" as const }
-              : {}),
+          toolChoice: request.options?.toolChoice ?? (hasTools ? "none" : undefined),
         },
       );
       while (true) {
@@ -291,5 +287,21 @@ export function createPiAiModelProvider(
         yield* ModelProviderStreamOptionsContext.set(installation.streamOptions);
       }
     },
+  };
+}
+
+/** Select a Pi model for createChatApp without exposing provider installation. */
+export function pi(
+  options: CreatePiAiModelProviderOptions & {
+    readonly provider: string;
+    readonly model: string;
+    readonly streamOptions?: StreamOptions;
+  },
+): import("@sweatpants/model-provider").ChatModel {
+  const provider = createPiAiModelProvider({ models: options.models });
+  return {
+    model: provider.resolveModel({ provider: options.provider, id: options.model }),
+    driver: provider.driver,
+    streamOptions: options.streamOptions,
   };
 }

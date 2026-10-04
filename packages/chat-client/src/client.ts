@@ -393,9 +393,9 @@ function normalizeQueueOption(option: ChatQueueOption | undefined): ResolvedQueu
   }
   return {
     ...base,
-    ...(option.whenBusy !== undefined ? { whenBusy: option.whenBusy } : {}),
-    ...(option.maxSize !== undefined ? { maxSize: option.maxSize } : {}),
-    ...(option.onOverflow !== undefined ? { onOverflow: option.onOverflow } : {}),
+    whenBusy: option.whenBusy ?? base.whenBusy,
+    maxSize: option.maxSize ?? base.maxSize,
+    onOverflow: option.onOverflow ?? base.onOverflow,
   };
 }
 
@@ -746,8 +746,8 @@ class ChatClientController<
         this.options.transport?.http ??
         (this.options.api !== undefined || this.options.fetcher !== undefined
           ? {
-              ...(this.options.api !== undefined ? { api: this.options.api } : {}),
-              ...(this.options.fetcher !== undefined ? { fetch: this.options.fetcher } : {}),
+              api: this.options.api,
+              fetch: this.options.fetcher,
             }
           : undefined);
       yield* ChatTransportPort.installDriver(createHttpTransport(http));
@@ -1701,18 +1701,12 @@ class ChatClientController<
       // that response task before opening the resume transport.
       yield* active;
     }
-    const resume =
+    const payload: Json | undefined =
       completion.action === "cancel"
-        ? [{ interruptId: request.elicitId, status: "cancelled" as const }]
-        : [
-            {
-              interruptId: request.elicitId,
-              status: "resolved" as const,
-              ...(completion.action === "accept"
-                ? { payload: { action: "accept" as const, content: completion.content } }
-                : { payload: { action: "decline" as const } }),
-            },
-          ];
+        ? undefined
+        : completion.action === "accept"
+          ? { action: "accept", content: completion.content }
+          : { action: "decline" };
     const authority = this.snapshot.authority;
     if (authority?.state !== "parked") {
       throw new ChatClientError(
@@ -1720,7 +1714,6 @@ class ChatClientController<
         "Elicitation response requires parked conversation authority",
       );
     }
-    const response = resume[0]!;
     const runId = crypto.randomUUID();
     const transportRequest: ChatTransportRequest = {
       command: {
@@ -1730,9 +1723,9 @@ class ChatClientController<
         basisRevision: authority.revision,
         logicalTurnId: authority.activeLogicalTurnId,
         executionId: authority.activeExecutionId,
-        interruptId: response.interruptId,
-        status: response.status,
-        ...("payload" in response ? { payload: response.payload } : {}),
+        interruptId: request.elicitId,
+        status: completion.action === "cancel" ? "cancelled" : "resolved",
+        ...(payload !== undefined ? { payload } : {}),
       },
       ...this.transportIdentity(),
       runId,

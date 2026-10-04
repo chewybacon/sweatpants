@@ -1,4 +1,5 @@
-import { EventSchemas, EventType, type AGUIEvent } from "@ag-ui/core";
+import { EventType, type AGUIEvent } from "@ag-ui/core";
+import { EventSchemas } from "@ag-ui/core/schemas";
 
 export type AgUiEvent = AGUIEvent;
 

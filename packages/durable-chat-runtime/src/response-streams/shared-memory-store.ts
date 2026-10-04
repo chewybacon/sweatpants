@@ -233,9 +233,9 @@ function createSharedBuffer<T>(id: string, state: SharedBufferState<T>): TokenBu
       };
     },
 
-    *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
+    *read(afterLSN = 0, limit?: number): Operation<{ tokens: T[]; lsn: number }> {
       return {
-        tokens: state.tokens.slice(afterLSN),
+        tokens: state.tokens.slice(afterLSN, limit === undefined ? undefined : afterLSN + limit),
         lsn: state.tokens.length,
       };
     },

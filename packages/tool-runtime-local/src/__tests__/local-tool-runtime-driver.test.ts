@@ -1,3 +1,4 @@
+import { ToolInvocationHostPort, type StartToolInvocation } from "@sweatpants/tool-session";
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { describe, expect, it } from "vitest";
 import { action, createQueue, run, spawn } from "effection";
@@ -8,12 +9,12 @@ import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import { ToolRuntimeApi, createToolInventory } from "@sweatpants/tool-runtime";
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
+import { createLocalToolInvocationRuntime } from "../index.ts";
 import {
-  createLocalToolInvocationRuntime,
-  createLocalToolRuntimeDriver,
-  installLocalToolRuntimeComposition,
-  installLocalToolRuntime,
-} from "../index.ts";
+  createInvocationToolRuntimeDriver,
+  installInvocationToolRuntimeComposition,
+  installInvocationToolRuntime,
+} from "@sweatpants/tool-session/execution";
 
 const workerFixtureCandidates = [
   resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
@@ -45,6 +46,33 @@ const echoTool = createTool("echo")
   });
 
 describe("local ToolRuntimeDriver", () => {
+  it("forwards explicit model selection through the shared invocation host", async () => {
+    const starts: StartToolInvocation[] = [];
+    await run(function* () {
+      yield* ToolInvocationHostPort.installDriver({
+        *start(request) {
+          starts.push(request);
+        },
+        *turn() {
+          return { type: "completed", result: "done" };
+        },
+        *dispose() {},
+      });
+      const driver = yield* createInvocationToolRuntimeDriver({ id: "local", tools: [echoTool] });
+      yield* driver.execute({
+        entry: createToolInventoryEntry(echoTool),
+        call: {
+          id: "model-call",
+          name: "echo",
+          input: { message: "hello" },
+          thoughtSignature: null,
+        },
+        metadata: { model: { provider: " selected-provider ", id: " selected-model " } },
+      });
+    });
+    expect(starts[0].model).toEqual({ provider: "selected-provider", id: "selected-model" });
+  });
+
   it("aborts active computation when the caller signal is cancelled", async () => {
     const started = createQueue<void, void>();
     const stopped = createQueue<void, void>();
@@ -59,7 +87,8 @@ describe("local ToolRuntimeDriver", () => {
 
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [activeTool],
         samplingProvider: {
           *sample() {
@@ -97,7 +126,8 @@ describe("local ToolRuntimeDriver", () => {
   it("fails closed when no invocation runtime is installed in scope", async () => {
     await expect(
       run(function* () {
-        const driver = yield* createLocalToolRuntimeDriver({
+        const driver = yield* createInvocationToolRuntimeDriver({
+          id: "local",
           tools: [echoTool],
           samplingProvider: {
             *sample() {
@@ -121,7 +151,8 @@ describe("local ToolRuntimeDriver", () => {
   it("rejects duplicate configured tool names deterministically", async () => {
     await expect(
       run(function* () {
-        yield* createLocalToolRuntimeDriver({
+        yield* createInvocationToolRuntimeDriver({
+          id: "local",
           tools: [echoTool, echoTool],
           samplingProvider: {
             *sample() {
@@ -139,7 +170,8 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [echoTool],
         samplingProvider: {
           *sample() {
@@ -173,7 +205,8 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [echoTool],
         samplingProvider: {
           *sample() {
@@ -219,7 +252,8 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      const driver = yield* createLocalToolRuntimeDriver({
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
         tools: [strictTool],
         samplingProvider: {
           *sample() {
@@ -270,7 +304,8 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      yield* installLocalToolRuntimeComposition({
+      yield* installInvocationToolRuntimeComposition({
+        id: "local",
         tools: [echoTool],
         installEphemeralEffects: function* (registrations) {
           yield* ProgramDriverEphemeralEffectsContext.set(registrations);
@@ -296,7 +331,8 @@ describe("local ToolRuntimeDriver", () => {
         worker: localRuntimeWorkerConfig,
       });
 
-      yield* installLocalToolRuntime({
+      yield* installInvocationToolRuntime({
+        id: "local",
         tools: [echoTool],
         samplingProvider: {
           *sample() {

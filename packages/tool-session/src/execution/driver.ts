@@ -1,7 +1,4 @@
-import {
-  parseRuntimeToolParameters,
-  requireToolParameterResult,
-} from "@sweatpants/tool-session/tool-parameters";
+import { parseRuntimeToolParameters, requireToolParameterResult } from "../tool-parameters.ts";
 import type { Json } from "@sweatpants/foundation";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import type { ChatToolCall } from "@sweatpants/chat-contract";
@@ -18,14 +15,15 @@ import {
 } from "@sweatpants/tool-runtime";
 import {
   ToolInvocationHostError,
+  modelSelectionFromMetadata,
   ToolInvocationHostPort,
   type ToolInvocationHost,
   type ToolInvocationTurn,
   type ToolSessionSamplingProvider,
   type TurnToolInvocation,
-} from "@sweatpants/tool-session";
+} from "../index.ts";
 
-export interface LocalToolRuntimeDriverOptions {
+export interface InvocationToolRuntimeDriverOptions {
   id?: string;
   tools: AnyToolContract[];
   samplingProvider?: ToolSessionSamplingProvider;
@@ -133,11 +131,11 @@ function* runInvocationTurnLoop(
       if (currentTurn.ask.kind === "sample") {
         const ask = currentTurn.ask;
         const result = yield* samplingProvider.sample([...ask.messages], {
-          ...(ask.systemPrompt !== undefined ? { systemPrompt: ask.systemPrompt } : {}),
-          ...(ask.maxTokens !== undefined ? { maxTokens: ask.maxTokens } : {}),
-          ...(ask.tools !== undefined ? { tools: [...ask.tools] } : {}),
-          ...(ask.toolChoice !== undefined ? { toolChoice: ask.toolChoice } : {}),
-          ...(ask.schema !== undefined ? { schema: ask.schema } : {}),
+          systemPrompt: ask.systemPrompt,
+          maxTokens: ask.maxTokens,
+          tools: ask.tools?.slice(),
+          toolChoice: ask.toolChoice,
+          schema: ask.schema,
         });
         currentTurn = yield* host.turn({
           invocationId: call.id,
@@ -155,16 +153,16 @@ function* runInvocationTurnLoop(
   }
 }
 
-export interface LocalSessionToolExecutionStrategyOptions {
+export interface InvocationToolExecutionStrategyOptions {
   id?: string;
   samplingProvider: ToolSessionSamplingProvider;
   tools: AnyToolContract[];
 }
 
-export function createLocalSessionToolExecutionStrategy(
-  options: LocalSessionToolExecutionStrategyOptions,
+export function createInvocationToolExecutionStrategy(
+  options: InvocationToolExecutionStrategyOptions,
 ): ToolExecutionStrategy {
-  const strategyId = options.id ?? "local-session";
+  const strategyId = options.id ?? "tool-session";
   const toolsByName = toolsByCanonicalName(options.tools, strategyId);
   return {
     id: strategyId,
@@ -183,7 +181,7 @@ export function createLocalSessionToolExecutionStrategy(
       if (!tool) {
         throw new ToolRuntimeError(
           "NO_MATCHING_TOOL_STRATEGY",
-          `Local session strategy cannot execute tool: ${entry.definition.name}`,
+          `Invocation strategy cannot execute tool: ${entry.definition.name}`,
         );
       }
       const params = requireToolParameterResult(
@@ -196,6 +194,7 @@ export function createLocalSessionToolExecutionStrategy(
         invocationId: call.id,
         tool,
         input: params,
+        model: modelSelectionFromMetadata(ctx.metadata),
       });
 
       const initialTurn = yield* turnWithActiveAbort(
@@ -221,7 +220,7 @@ export function createLocalSessionToolExecutionStrategy(
       if (!toolsByName.has(ref.toolName)) {
         throw new ToolRuntimeError(
           "EXECUTION_NOT_FOUND",
-          `Local tool invocation not found: ${invocationId}`,
+          `Tool invocation not found: ${invocationId}`,
         );
       }
       if (!input.elicitId) {
@@ -281,20 +280,20 @@ export function createLocalSessionToolExecutionStrategy(
   };
 }
 
-export function* createLocalToolRuntimeDriver(
-  options: LocalToolRuntimeDriverOptions,
+export function* createInvocationToolRuntimeDriver(
+  options: InvocationToolRuntimeDriverOptions,
 ): Operation<ToolRuntime> {
-  const runtimeId = options.id ?? "local";
+  const runtimeId = options.id ?? "tool-session";
   const samplingProvider = options.samplingProvider ?? {
     *sample() {
-      throw new Error("Local tool runtime sampling provider not configured");
+      throw new Error("Tool invocation sampling provider not configured");
     },
   };
 
   return createStrategyToolRuntime({
     id: runtimeId,
     strategies: [
-      createLocalSessionToolExecutionStrategy({
+      createInvocationToolExecutionStrategy({
         id: runtimeId,
         samplingProvider,
         tools: options.tools,
@@ -303,10 +302,10 @@ export function* createLocalToolRuntimeDriver(
   });
 }
 
-export function* installLocalToolRuntime(
-  options: LocalToolRuntimeDriverOptions,
+export function* installInvocationToolRuntime(
+  options: InvocationToolRuntimeDriverOptions,
 ): Operation<ToolRuntime> {
-  const driver = yield* createLocalToolRuntimeDriver(options);
+  const driver = yield* createInvocationToolRuntimeDriver(options);
   yield* installToolRuntime(driver);
   return driver;
 }

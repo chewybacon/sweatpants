@@ -105,7 +105,7 @@ export function* setupDurableStreams<T>(
     );
   }
   const registry = yield* createSessionRegistry(bufferStore, registryStore, {
-    ...(retentionPolicy ? { retentionPolicy } : {}),
+    retentionPolicy,
     ownerScope: owner.scope,
     registerWriter: owner.register,
   });
@@ -160,7 +160,7 @@ export function* setupInMemoryDurableStreams<T>(
   return yield* setupDurableStreams({
     bufferStore,
     registryStore,
-    ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
-    ...(options.owner ? { owner: options.owner } : {}),
+    retentionPolicy: options.retentionPolicy,
+    owner: options.owner,
   });
 }

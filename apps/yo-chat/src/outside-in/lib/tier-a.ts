@@ -23,19 +23,22 @@
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { Operation } from "effection";
-import { createChatApplication } from "@sweatpants/agent-host/server";
+import { createChatApplication, installChatTools } from "@sweatpants/agent-host/server";
+import { local } from "@sweatpants/tool-runtime-local";
 import { setupLogger } from "@sweatpants/agent-host/logging";
-import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 
 import { setupYoChatDurableStreams } from "@/server/durable-streams";
 import { setupYoChatBaseContexts, allTools } from "@/server/tools";
 import { createYoChatEndpoints } from "@/server/chat-handler";
-import { installYoChatToolRuntime } from "@/server/tool-runtime-installation";
+import { createDrawPickCardsRegistration } from "@/tools/pick-card/durable-effects";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
-import { createPluginSamplingProvider } from "@/server/plugin-sampling-provider";
+import { createModelSamplingProvider } from "@sweatpants/agent-host/server";
+import { pi } from "@sweatpants/model-provider-pi-ai";
+import { defaultYoChatModel } from "@/server/default-model";
 import {
   YO_CHAT_TOOL_WORKER_ENTRY_URL,
   yoChatToolSessionWorkerConfig,
+  yoChatDurableProgramWorkerUrl,
 } from "@/server/tool-worker-config";
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
@@ -46,14 +49,21 @@ function* setupTierAWorkerRuntime(): Operation<void> {
     throw new Error(`[outside-in:tier-a] worker entry not found at ${workerEntryPath}.`);
   }
 
-  const samplingProvider = createPluginSamplingProvider();
-  yield* createLocalToolInvocationRuntime({
-    worker: yoChatToolSessionWorkerConfig,
-  });
-  yield* installYoChatToolRuntime({
-    mode: "local",
+  const selection = defaultYoChatModel();
+  const samplingProvider = createModelSamplingProvider(
+    pi({ provider: selection.provider, model: selection.id }),
+  );
+  yield* installChatTools({
+    tools: allTools,
+    effects: [createDrawPickCardsRegistration()],
     samplingProvider,
-    tools: [...allTools],
+    execution: local({
+      profile: "yo-chat-durable-tools",
+      worker: yoChatToolSessionWorkerConfig.workerUrl,
+      execArgv: yoChatToolSessionWorkerConfig.execArgv,
+      isDev: false,
+      durableWorker: yoChatDurableProgramWorkerUrl,
+    }),
   });
 }
 

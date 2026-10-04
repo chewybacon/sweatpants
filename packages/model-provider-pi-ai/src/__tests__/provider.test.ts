@@ -11,7 +11,7 @@ import {
 import { run } from "effection";
 import { describe, expect, it, vi } from "vitest";
 import { ModelProviderApi, useModel, useStreamOptions } from "@sweatpants/model-provider";
-import { createPiAiModelProvider, ModelResolutionError } from "../index.ts";
+import { pi, createPiAiModelProvider, ModelResolutionError } from "../index.ts";
 
 const customModel: Model<string> = {
   id: "private-model",
@@ -50,6 +50,33 @@ function completedStream() {
 }
 
 describe("configured Pi model provider", () => {
+  it("selects a model configuration through the same custom registry", () => {
+    const models = createModels();
+    models.setProvider(
+      createProvider({
+        id: customModel.provider,
+        models: [customModel],
+        auth: {},
+        api: { stream: completedStream, streamSimple: completedStream },
+      }),
+    );
+    const configured = pi({
+      models,
+      provider: customModel.provider,
+      model: customModel.id,
+      streamOptions: { maxTokens: 123 },
+    });
+    expect(configured.model).toMatchObject({
+      id: customModel.id,
+      provider: customModel.provider,
+      baseUrl: customModel.baseUrl,
+    });
+    expect(configured.streamOptions).toEqual({ maxTokens: 123 });
+    expect(() => pi({ models, provider: customModel.provider, model: "unknown" })).toThrow(
+      ModelResolutionError,
+    );
+  });
+
   it("resolves and executes a custom model through one collection, including scoped installation", async () => {
     const stream = vi.fn<ProviderStreams["stream"]>(completedStream);
     const streamSimple = vi.fn<ProviderStreams["streamSimple"]>(completedStream);

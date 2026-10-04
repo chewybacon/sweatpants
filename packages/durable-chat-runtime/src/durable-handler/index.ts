@@ -64,7 +64,6 @@ export { createHostModelSamplingService } from "./model-sampling/service.ts";
 export {
   ProgramDriverNativeToolsContext,
   nativeProgramIdentities,
-  type ProgramDriverNativeToolBinding,
   type ProgramDriverNativeToolComposition,
 } from "../program-driver/native-tools.ts";
 /** Workflow journal composition contracts. */

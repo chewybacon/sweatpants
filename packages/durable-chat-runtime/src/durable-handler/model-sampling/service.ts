@@ -401,9 +401,9 @@ export function createHostModelSamplingService(options: {
         request,
         attempt,
         model: options.model,
-        ...(options.streamOptions ? { streamOptions: options.streamOptions } : {}),
-        ...(options.catalog ? { catalog: options.catalog } : {}),
-        ...(options.historyPolicy ? { historyPolicy: options.historyPolicy } : {}),
+        streamOptions: options.streamOptions,
+        catalog: options.catalog,
+        historyPolicy: options.historyPolicy,
       });
       const existingPreparation = options.journal
         ? yield* options.journal.pullPreparation(attempt.sessionId, attempt.taskId, attempt.pullId)

@@ -44,10 +44,8 @@ import {
   ephemeralToolSchemaEntries,
 } from "@sweatpants/tool-session/ephemeral";
 
-import {
-  createLocalToolInvocationRuntime,
-  createToolInvocationEphemeralEffectRegistrations,
-} from "../index.ts";
+import { createLocalToolInvocationRuntime } from "../index.ts";
+import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 import { withModelSampleTestBoundary } from "./model-sample-test-boundary.ts";
 
 const label = z.object({ label: z.string() });

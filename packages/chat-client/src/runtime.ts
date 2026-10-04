@@ -97,8 +97,8 @@ export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime
             options.transport?.http ??
               (options.api !== undefined || options.fetcher !== undefined
                 ? {
-                    ...(options.api !== undefined ? { api: options.api } : {}),
-                    ...(options.fetcher !== undefined ? { fetch: options.fetcher } : {}),
+                    api: options.api,
+                    fetch: options.fetcher,
                   }
                 : undefined),
           ),

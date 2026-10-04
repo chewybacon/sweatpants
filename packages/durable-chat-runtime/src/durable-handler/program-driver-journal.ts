@@ -130,11 +130,9 @@ export function createProgramDriverJournalStore(
         journalId: `${options.journalPrefix ?? "program-driver"}:${conversationId}`,
         journalIncarnation: "1",
         keyring: options.keyring,
-        ...(options.now ? { now: options.now } : {}),
-        ...(options.privateSegmentTarget
-          ? { privateSegmentTarget: options.privateSegmentTarget }
-          : {}),
-        ...(options.dataDirectory ? { dataDirectory: options.dataDirectory } : {}),
+        now: options.now,
+        privateSegmentTarget: options.privateSegmentTarget,
+        dataDirectory: options.dataDirectory || undefined,
         schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
       };
 

@@ -3,7 +3,6 @@ import type { JsonObject } from "@sweatpants/foundation";
 export type ChatConversionErrorCode =
   | "unsupported-role"
   | "unsupported-content"
-  | "unsupported-binary-content"
   | "invalid-tool-arguments"
   | "missing-tool-identity"
   | "invalid-external-message"

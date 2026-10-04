@@ -330,12 +330,8 @@ export function createStoredShellDrivers(
         journalHeadDigest: canonicalSnapshot(sessionRecords).sha,
         keyring: options.keyring,
         schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
-        ...(options.maxOutcomeBytes === undefined
-          ? {}
-          : { maxOutcomeBytes: options.maxOutcomeBytes }),
-        ...(options.decisionDiagnostics === undefined
-          ? {}
-          : { decisionDiagnostics: options.decisionDiagnostics }),
+        maxOutcomeBytes: options.maxOutcomeBytes,
+        decisionDiagnostics: options.decisionDiagnostics,
         liveEffectTargets: liveEffectTargets(loaded.snapshot),
       };
       const loadedState = authorityStateFromSnapshot(loaded.snapshot);
@@ -457,12 +453,8 @@ export function createStoredShellDrivers(
       journalHeadDigest: "",
       keyring: options.keyring,
       schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
-      ...(options.maxOutcomeBytes === undefined
-        ? {}
-        : { maxOutcomeBytes: options.maxOutcomeBytes }),
-      ...(options.decisionDiagnostics === undefined
-        ? {}
-        : { decisionDiagnostics: options.decisionDiagnostics }),
+      maxOutcomeBytes: options.maxOutcomeBytes,
+      decisionDiagnostics: options.decisionDiagnostics,
     };
   }
 

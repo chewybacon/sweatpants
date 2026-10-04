@@ -1,9 +1,3 @@
-import { installModelProvider, ModelProviderModelContext } from "@sweatpants/model-provider";
-import {
-  createToolInventory,
-  createToolInventoryEntry,
-  installToolInventory,
-} from "@sweatpants/tool-runtime";
 import { resource, type Operation, type Stream } from "effection";
 import type { ChatAssistantMessage } from "@sweatpants/chat-contract";
 import type {
@@ -17,8 +11,12 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { createChatApp, type ChatApp, type ChatStorageConfig } from "@sweatpants/agent-host/server";
-import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/program-driver/native-tools";
+import {
+  createChatApp,
+  inProcess,
+  type ChatApp,
+  type ChatStorageConfig,
+} from "@sweatpants/agent-host/server";
 import {
   installLocalWorkspaceFilesProvider,
   installRemoteWorkspaceFilesProvider,
@@ -99,37 +97,15 @@ export function createStudioDurableChatApplication(options: {
     name: "yo-studio",
     secret: "yo-studio-durable-chat-development-key",
     storage: options.storage ?? createYoStudioStorageConfig(),
-    programs: definitions,
+    tools: definitions,
+    model: modelProvider,
+    execution: inProcess({ setup: installWorkspace }),
     maxToolIterations: 8,
     setup: {
-      chat: function* () {
-        yield* installModelProvider(modelProvider.driver);
-        yield* ModelProviderModelContext.set(modelProvider.model);
-      },
       application: function* () {
         yield* setupDurableStreams({
           bufferStore: createInMemoryBufferStore<string>(),
           registryStore: createInMemoryRegistryStore(),
-        });
-        yield* installToolInventory(
-          createToolInventory(
-            definitions.map((definition) => createToolInventoryEntry(definition)),
-          ),
-        );
-        yield* ProgramDriverNativeToolsContext.set({
-          bindings: new Map(
-            definitions.map((definition) => [
-              definition.name,
-              {
-                publicName: definition.name,
-                tool: definition,
-                route: { driverKind: "program" as const },
-              },
-            ]),
-          ),
-          drivers: [],
-          effects: [],
-          setup: installWorkspace,
         });
       },
     },

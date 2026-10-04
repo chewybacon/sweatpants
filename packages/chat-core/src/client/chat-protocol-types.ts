@@ -16,9 +16,7 @@ export type StructuredOutputCompleteEvent = CustomEvent & {
   };
 };
 
-export type JsonPatchOperation = {
-  readonly op: "add" | "remove" | "replace" | "move" | "copy" | "test";
-  readonly path: string;
-  readonly from?: string;
-  readonly value?: Json;
-};
+export type JsonPatchOperation =
+  | { readonly op: "add" | "replace" | "test"; readonly path: string; readonly value: Json }
+  | { readonly op: "remove"; readonly path: string }
+  | { readonly op: "move" | "copy"; readonly path: string; readonly from: string };

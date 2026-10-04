@@ -9,20 +9,24 @@ endpoints, with an explicit authority storage choice.
 
 ```ts
 import { chatStorageFromEnv, createChatApp } from "@sweatpants/agent-host/server";
-import { myDurableTool } from "./tools/my-durable-tool";
-import { installMyModelProvider } from "./model-provider";
-import { installApplicationServices } from "./application-services";
+import { local } from "@sweatpants/tool-runtime-local";
+import { pi } from "@sweatpants/model-provider-pi-ai";
+import { tools } from "./tools";
+import { effects } from "./effects";
+import worker from "./tools.worker.ts?modulePath";
+import durableWorker from "./programs.worker.ts?modulePath";
 
 export const app = createChatApp({
   name: "my-app",
-  secret: process.env.MY_APP_SECRET!, // 32+ characters
-  storage: chatStorageFromEnv({
-    defaultPath: new URL("../.data/my-app.sqlite", import.meta.url),
-  }),
-  programs: [myDurableTool],
+  secret: process.env.MY_APP_SECRET!,
+  storage: chatStorageFromEnv({ defaultPath: new URL("../.data/app.sqlite", import.meta.url) }),
+  model: pi({ provider: "github-copilot", model: "claude-sonnet-4.6" }),
+  tools,
+  effects,
+  execution: local({ worker, durableWorker, isDev: true }),
   setup: {
-    application: installApplicationServices, // streams, tool inventory, logging
-    chat: installMyModelProvider,
+    application: installApplicationServices,
+    chat: installChatServices,
   },
 });
 ```
@@ -93,9 +97,133 @@ and throw `ChatApiError` with `status`, `body`, and `headers` on failure.
 `asResponse: true` returns the original history response, including error statuses.
 All calls after close reject with `ChatApplicationClosedError`.
 
-That is the entire required surface. `name` and `secret` derive every signing
-key; `programs` registers your durable tools' journal schemas; `storage`
-selects the one authority store.
+`name` and `secret` derive signing keys; `tools` derives the inventory, durable
+program registration, and journal schemas. `storage` selects authority storage.
+
+## Tools and execution
+
+Use one list containing both `createTool()` and `createDurableTool()` definitions.
+Ordinary tools remain ordinary; durable tools retain their pinned program identity,
+replay, effects, and explicit nested tool capabilities. Registration does not grant
+nested agents access to every tool. Their authored capability declarations still apply.
+
+`local({ worker, durableWorker })` uses the existing worker-backed invocation host
+and durable worker driver. Supply `worker` when there are ordinary tools and
+`durableWorker` when there are durable tools. URLs are explicit: the library does
+not serialize closures or silently execute tools in process. Vite's
+`nodeWorkerPlugin()` supports `?modulePath`; other builds can supply built file URLs.
+`isDev` and `execArgv` configure the ordinary worker loader.
+
+Opt into retaining durable workers with `local({ worker, durableWorker,
+idleTimeoutMs: 60_000 })`. The default is `0` (no retention). At a durable park,
+the generator attachment still closes. An idle worker can accept a fresh
+attachment and replay its journal; the live generator is never cached across
+parks. Idle expiry and application shutdown terminate retained workers. Active
+attachments are not subject to the idle timeout, concurrent attachments use
+separate workers, and terminal or failed attachments discard their worker.
+This setting does not change ordinary tool-session lifetimes.
+
+Custom hosts acquire the resource with `yield* useLocalWorkerDurableProgramDriver`
+in their application scope. Its optional `onWorkerError` callback observes worker
+failures (otherwise logged); failures reach active callers and failed workers are
+removed from the pool. This does not automatically retry an interrupted activation.
+
+Both worker entries derive their definitions from the same list:
+
+```ts
+// tools.worker.ts
+import { runToolWorkerEntry } from "@sweatpants/tool-runtime-local/worker";
+import { tools } from "./tools";
+await runToolWorkerEntry(tools.filter(tool => tool.execution !== "crank_native"));
+
+// programs.worker.ts
+import { createDurableToolRegistry } from "@sweatpants/durable-execution";
+import { runDurableProgramWorker } from "@sweatpants/tool-runtime-local/worker";
+import { tools } from "./tools";
+await runDurableProgramWorker(createDurableToolRegistry(
+  tools.filter(tool => tool.execution === "crank_native"),
+));
+```
+
+Missing worker entries, duplicate tool names, missing durable bindings, missing
+handlers, and mismatched effect contracts fail during app construction. Resource
+startup remains lazy and belongs to the application scope. Closing the app cancels
+its workers. Existing lower-level endpoint APIs remain available for custom hosts.
+
+## Model defaults and scoped overrides
+
+`pi({ provider, model, models?, streamOptions? })` returns a provider-neutral
+`ChatModel`: `{ model, driver, streamOptions? }`. It uses the same Pi collection
+for resolution and execution; existing credential-store behavior is unchanged.
+Custom providers can supply `ChatModel` directly.
+
+The model is installed in the application scope, before `setup.application`.
+Both chat and ordinary tool sampling inherit it. `setup.chat` runs in a child scope
+and may install a request-specific provider/model. Duplicate driver installations
+within one scope still fail. Only explicitly supplied sampling options override
+model defaults. Advanced `installChatTools` callers can supply a sampling provider.
+
+## Effect implementations
+
+Declare effects with `defineEffect()` beside a durable tool. Bind their host
+implementations using `implementEffect` from `@sweatpants/agent-sdk`:
+
+```ts
+const effects = [
+  implementEffect(drawCards, function* (input, ctx) {
+    return yield* drawFromDeck(input, ctx.pullId);
+  }),
+];
+```
+
+This retains the declaration's runtime validators and retry-safety contract and
+wraps the result as a successful effect disposition. The implementation must honor
+that retry contract. For cancellation, partial results, or explicit failure
+outcomes, use `createDurableEffectRegistration` directly.
+
+## Routing and custom execution adapters
+
+```ts
+import { local } from "@sweatpants/tool-runtime-local";
+import { routeTools } from "@sweatpants/tool-session/execution";
+import { agentCore } from "@sweatpants/tool-runtime-agentcore";
+
+execution: routeTools({
+  default: local({ worker, durableWorker }),
+  routes: [{ name: "remote-tools", tools: [remoteTool], runtime: agentCore({ runtime: remoteRuntimeOptions }) }],
+})
+```
+
+`inProcess({ setup })` retains the host crank's durable-program execution for
+advanced scoped capabilities such as yo-studio workspace operations. It accepts
+durable programs only; it does not run ordinary tools inline.
+
+Routes reference definitions from the app's `tools` list. Give a route a stable
+`name` when its membership can change across deployments; otherwise its identity
+is derived from the sorted tool names, independently of route ordering. Overlaps, unknown tools,
+and uncovered tools without a default are configuration errors. Each runtime owns
+its invocation resources; the shared host handles turns, elicitation, and sampling.
+Recovery opens persisted resources through the configured adapters, without a
+host-local routing cache. A resource belonging to another route fails closed.
+
+AgentCore's `runtime` accepts invocation-runtime options or an operation that
+resolves them during application setup. Remote durable tools additionally require
+`durable: { journalId, release, driver, availablePrograms, availableEffects,
+availableSchemaDigests }`. Readiness checks use exact program identities and
+schema/effect keys; remote bindings preserve fenced activation. An optional `route`
+function supplies development-collection placement fields. AWS-specific code lives
+in the separate `server/agentcore` entry point.
+
+Custom adapters implement `ToolExecutionAdapter.prepare(tools, routeId)`, returning
+an optional resource-factory operation, durable bindings/drivers, and per-program
+scoped setup. `driverFactories` acquire resource-owning drivers in the application
+scope, so workers can outlive an individual activation. `runtimeId` identifies ordinary execution references and must remain
+stable across deployments. The built-in local and AgentCore adapters preserve
+`local` and `agentcore`; mixed routing uses `tools`. This placement boundary does
+not replace journal or execution semantics.
+`installChatTools({ tools, execution, effects })` provides the same composition
+inside a caller-owned Effection scope. Omit `tools` on `createChatApp` only when
+`setup.application` supplies the complete lower-level runtime itself.
 
 ## What `name` + `secret` derive
 
@@ -116,6 +244,7 @@ Storage is one explicit choice; there is no implicit fallback.
 
 ```ts
 storage: { kind: "sqlite", path: "/var/lib/my-app/authority.sqlite" }
+storage: { kind: "postgres", connectionString }
 storage: { kind: "memory" }                       // non-durable, tests/tooling
 storage: { kind: "custom", conversationStore, executionStore } // bring your own
 ```
@@ -127,6 +256,7 @@ contract, shared by every sweatpants app:
 |---|---|
 | _(unset)_ | SQLite at `SWEATPANTS_DB_PATH` or `defaultPath` |
 | `SWEATPANTS_STORAGE=memory` | explicit in-memory storage |
+| `SWEATPANTS_STORAGE=postgres` | PostgreSQL using `SWEATPANTS_PG_URL` |
 | `SWEATPANTS_STORAGE=<anything else>` | configuration error |
 | `SWEATPANTS_STORAGE=memory` + `SWEATPANTS_DB_PATH` | configuration error |
 | `SWEATPANTS_DB_PATH=""` | configuration error |
@@ -154,6 +284,7 @@ import {
   createChatApp,
   openChatStorageDatabase,
 } from "@sweatpants/agent-host/server";
+import { local } from "@sweatpants/tool-runtime-local";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { sqliteSchema } from "@sweatpants/storage-sqlite/schema";
 import { myTables } from "./db/schema";
@@ -166,7 +297,8 @@ const app = createChatApp({
   name: "my-app",
   secret,
   storage: database ? { kind: "sqlite", database } : selection,
-  programs: [myDurableTool],
+  tools: [myDurableTool],
+  execution: local({ durableWorker }),
 });
 
 // One connection, two ORM views:
@@ -272,7 +404,7 @@ createChatApp({
   authorizeHistoryRead: function* (request, conversationId) {
     return (yield* authenticate(request, conversationId)) ? "authorized" : "forbidden";
   },
-  // Custom journal composition (replaces `programs`):
+  // Custom journal composition (owns schema registration):
   createProgramDriverJournalStore: (executionStore) =>
     createProgramDriverJournalStore({ keyring, schemaRegistry, executionStore }),
   projectionTokens: createProjectionTokenKeyring(rotatingSecret, [previousSecret]),
@@ -295,3 +427,17 @@ Neither is needed for ordinary HTTP mounting with `createChatApp`.
 - `apps/yo-chat/src/server/chat-handler.ts` — production app, env-driven storage, durable tools
 - `apps/yo-studio/src/server/durable-chat-application.ts` — workspace tooling with `setup.application`
 - `apps/yo-agent/src/lib/in-process-handler.ts` — endpoint-only embedding
+
+## Execution package boundaries
+
+`agent-host` consumes the placement contract from `@sweatpants/tool-session/execution`.
+It has no production dependency on either concrete execution adapter. Import
+`local()` from `@sweatpants/tool-runtime-local` and `agentCore()` from
+`@sweatpants/tool-runtime-agentcore`. `routeTools()` and the advanced
+`ToolExecutionAdapter` contract belong to `@sweatpants/tool-session/execution`.
+
+The neutral entry owns invocation orchestration and durable ephemeral-effect
+bridging over `ToolInvocationHostPort`. Runtime packages own worker or remote
+resources. The host validates authored tools and installs the prepared bindings;
+the journal remains the execution authority. `inProcess()` remains a host helper
+because it explicitly places durable programs in the host crank.

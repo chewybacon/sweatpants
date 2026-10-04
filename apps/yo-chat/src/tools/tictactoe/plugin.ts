@@ -38,10 +38,10 @@ export const tictactoePlugin = makePlugin(tictactoeTool)
         moveHistory: moveHistory || [],
         userSymbol,
         modelSymbol,
-        ...(lastMove !== undefined ? { lastMove } : {}),
-        ...(winningLine !== undefined ? { winningLine } : {}),
-        ...(gameOver !== undefined ? { gameOver } : {}),
-        ...(resultMessage !== undefined ? { resultMessage } : {}),
+        lastMove,
+        winningLine,
+        gameOver,
+        resultMessage,
       };
 
       // Render GameChatView. For game-over, the component auto-acks with

@@ -73,7 +73,7 @@
         "zod": "catalog:"
     },
     "devDependencies": {
-        "@ag-ui/core": "0.0.57",
+        "@ag-ui/core": "1.0.1",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
@@ -82,6 +82,6 @@
         "vitest": "catalog:"
     },
     "peerDependencies": {
-        "@ag-ui/core": "0.0.57"
+        "@ag-ui/core": "1.0.1"
     }
 }

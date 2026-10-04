@@ -1,4 +1,4 @@
-import { EventType, type AGUIEvent, type Message } from "@ag-ui/core";
+import { EventType, type AGUIEvent, type InputContentPart, type Message } from "@ag-ui/core";
 import { parse as parsePartialJson } from "partial-json";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
 import { decodeChatContent, type ChatContentPart } from "../content.ts";
@@ -89,6 +89,7 @@ interface InternalMediaPart {
 type InternalMessagePart = InternalTextPart | InternalStructuredOutputPart | InternalMediaPart;
 
 interface InternalMessage {
+  readonly subagentRunId?: string;
   readonly id: string;
   readonly role: ChatUIMessage["role"];
   readonly metadata?: Readonly<Record<string, Json>>;
@@ -913,7 +914,7 @@ function applyPatchToNode(node: PublicActivityNode, event: ActivityDeltaEvent): 
         `Patch operation ${patch.op} is not allowed for public activity`,
       );
     }
-    const value = patch.value;
+    const value = patch.op === "remove" ? undefined : patch.value;
     if (patch.path === "/node/state") {
       if (typeof value !== "string" || !states.has(value as PublicActivityNode["state"])) {
         throw new ChatProjectionError(
@@ -1138,7 +1139,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
       return [];
     })
     .join("");
-  const contentParts: ChatContentPart[] = message.parts.flatMap((part): ChatContentPart[] => {
+  const contentParts: InputContentPart[] = message.parts.flatMap((part): InputContentPart[] => {
     if (part.type === "text") {
       return [{ type: "text", text: (part as ChatUITextPart).text }];
     }
@@ -1153,7 +1154,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
         {
           type: part.type,
           source: part.source,
-          metadata: part.metadata ?? null,
+          ...(part.metadata === undefined ? {} : { metadata: part.metadata }),
         },
       ];
     }
@@ -1177,12 +1178,14 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
     return {
       id: message.id,
       role: message.role,
+      ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
       content: message.role === "user" && hasMedia ? contentParts : text,
     } as Extract<ChatTransportRequestMessage, { role: "user" | "system" }>;
   }
   return {
     id: message.id,
     role: "assistant",
+    ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
     ...(text.length > 0 ? { content: text } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
   };
@@ -1252,7 +1255,13 @@ function appendMessageCore(state: ChatProjectionState, message: Message): ChatPr
             state: message.error === undefined ? "output-available" : "output-error",
             publicData:
               message.error === undefined
-                ? { ...data, output: parseJsonOrString(content) }
+                ? {
+                    ...data,
+                    output:
+                      typeof message.content === "string"
+                        ? parseJsonOrString(message.content)
+                        : assertJson(message.content),
+                  }
                 : {
                     ...data,
                     errorText: typeof message.error === "string" ? message.error : content,
@@ -1266,6 +1275,12 @@ function appendMessageCore(state: ChatProjectionState, message: Message): ChatPr
   }
   let next = ensureMessage(state, message.id, role);
   next = appendWireContent(next, message.id, role, message.content);
+  if (message.subagentRunId !== undefined) {
+    next = updateMessage(next, message.id, (current) => ({
+      ...current,
+      subagentRunId: message.subagentRunId,
+    }));
+  }
   if (message.role === "assistant") {
     for (const call of message.toolCalls ?? []) {
       next = toolNode(next, call.id, call.function.name, message.id);
@@ -1348,6 +1363,23 @@ export function foldAGUIEvents(
 }
 
 function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
+  const next = foldEventContent(state, event);
+  if (
+    "subagentRunId" in event &&
+    event.subagentRunId !== undefined &&
+    "messageId" in event &&
+    typeof event.messageId === "string" &&
+    next.messageById.has(event.messageId)
+  ) {
+    return updateMessage(next, event.messageId, (message) => ({
+      ...message,
+      subagentRunId: event.subagentRunId,
+    }));
+  }
+  return next;
+}
+
+function foldEventContent(state: ChatProjectionState, event: AGUIEvent): ChatProjectionState {
   switch (event.type) {
     case EventType.MESSAGES_SNAPSHOT: {
       let next = createChatProjection();
@@ -1360,7 +1392,7 @@ function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjec
       if (state.structuredOutputByMessageId.has(event.messageId)) {
         return state;
       }
-      const role = chatRole(event.role);
+      const role = chatRole(event.role ?? "assistant");
       return role === undefined
         ? state
         : startContent(ensureMessage(state, event.messageId, role), event.messageId, "text");
@@ -1448,7 +1480,10 @@ function foldEventCore(state: ChatProjectionState, event: AGUIEvent): ChatProjec
       }
       return updateTool(next, event.toolCallId, (node) => {
         const data = node.publicData;
-        const output = parseJsonOrString(event.content);
+        const output =
+          typeof event.content === "string"
+            ? parseJsonOrString(event.content)
+            : assertJson(event.content);
         const disposition = toolDisposition(output);
         return disposition.state === "output-error"
           ? {
@@ -1824,6 +1859,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
     role: message.role,
     parts: Object.freeze(parts.map((part) => part.value)),
     metadata: Object.freeze({}),
+    ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
   });
 }
 

@@ -105,7 +105,7 @@ yield *
     ProgramDriverForeignEffectsContext.set(
         createToolSessionForeignEffectRegistrations({ registry, tools }),
     );
-yield * installLocalToolRuntime({ tools, registry, samplingProvider });
+yield * installInvocationToolRuntime({ tools, registry, samplingProvider });
 ```
 
 Omitting the first call fails nested `ctx.sample()` with
@@ -124,7 +124,7 @@ both repeat this pairing.
 
 `installLocalProgramToolRuntime` now composes the worker-backed local runtime
 with durable foreign-effect registration using the same required registry and
-tool list. Plain `installLocalToolRuntime` remains unchanged. The acceptance
+tool list. Plain `installInvocationToolRuntime` remains unchanged. The acceptance
 fixture and yo-chat local composition use the helper; AgentCore retains an
 explicit registration because it is not a local-runtime composition.
 
@@ -135,7 +135,7 @@ explicit registration because it is not a local-runtime composition.
 
 ### Evidence
 
-`installLocalToolRuntime` receives full `RuntimeTool` objects. In worker-backed
+`installInvocationToolRuntime` receives full `RuntimeTool` objects. In worker-backed
 mode the session registry uses the host object for name/schema validation, but
 execution happens only in the worker identified by `workerUrl`. The authored
 execute closure is therefore present in the host process even though that

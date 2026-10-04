@@ -3,9 +3,12 @@ import {
   exactProgramKey,
   REPLAY_CHECKPOINT_CAPABILITIES,
   type DurableToolRegistry,
+  type ProgramAttachment,
+  type ProgramDriver,
 } from "@sweatpants/durable-execution";
-import { useWorker, type WorkerResource } from "@effectionx/worker";
-import { type ProgramAttachment, type ProgramDriver } from "@sweatpants/durable-execution";
+import { useWorker } from "@effectionx/worker";
+import type { Operation } from "effection";
+import { useDurableWorkerPool, type DurableWorkerLease } from "./durable-worker-pool.ts";
 
 import type {
   DurableProgramWorkerRequest,
@@ -25,16 +28,10 @@ export interface LocalWorkerDurableProgramDriverOptions {
 
 let workerAttachmentCounter = 0;
 
-type DurableWorkerResource = WorkerResource<
-  DurableProgramWorkerRequest,
-  DurableProgramWorkerResponse,
-  DurableProgramWorkerResult
->;
-
 class LocalWorkerAttachmentHandle {
   shutdown = false;
 
-  constructor(readonly worker: DurableWorkerResource) {}
+  constructor(readonly worker: DurableWorkerLease) {}
 
   toJSON(): never {
     throw new CrankError("invalid_descriptor", "Durable worker attachments are runtime-only");
@@ -49,19 +46,48 @@ class LocalWorkerAttachmentHandle {
 export function createLocalWorkerDurableProgramDriver(
   options: LocalWorkerDurableProgramDriverOptions,
 ): ProgramDriver {
+  return createDriver(options, function* () {
+    const worker = yield* useWorker<
+      DurableProgramWorkerRequest,
+      DurableProgramWorkerResponse,
+      DurableProgramWorkerResult,
+      void
+    >(options.workerUrl, { type: "module", name: options.name });
+    return { send: (request) => worker.send(request), *release() {} };
+  });
+}
+
+export interface RetainedLocalWorkerOptions extends LocalWorkerDurableProgramDriverOptions {
+  /** Keep an unattached worker warm after a durable park. Zero disables retention. */
+  idleTimeoutMs: number;
+  /** Observe worker transport failures; defaults to console.error. */
+  onWorkerError?: (error: unknown) => void;
+}
+
+/** Acquire an application-scoped driver; generator attachments still close at every park. */
+export function* useLocalWorkerDurableProgramDriver(
+  options: RetainedLocalWorkerOptions,
+): Operation<ProgramDriver> {
+  if (
+    !Number.isSafeInteger(options.idleTimeoutMs) ||
+    options.idleTimeoutMs < 0 ||
+    options.idleTimeoutMs > 2_147_483_647
+  )
+    throw new Error("idleTimeoutMs must be an integer between 0 and 2147483647");
+  if (options.idleTimeoutMs === 0) return createLocalWorkerDurableProgramDriver(options);
+  const pool = yield* useDurableWorkerPool(options);
+  return createDriver(options, () => pool.acquire());
+}
+
+function createDriver(
+  options: LocalWorkerDurableProgramDriverOptions,
+  acquire: () => Operation<DurableWorkerLease>,
+): ProgramDriver {
   return {
     evaluatorKind: "worker",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     *attach(request) {
-      const worker = yield* useWorker<
-        DurableProgramWorkerRequest,
-        DurableProgramWorkerResponse,
-        DurableProgramWorkerResult,
-        void
-      >(options.workerUrl, {
-        type: "module",
-        ...(options.name ? { name: options.name } : {}),
-      });
+      const worker = yield* acquire();
       const response = yield* worker.send({ type: "attach", request });
       if (response.type === "rejected") {
         throw new CrankError(response.error.code, response.error.message);
@@ -99,12 +125,18 @@ export function createLocalWorkerDurableProgramDriver(
         return;
       }
       handle.shutdown = true;
-      const response = yield* handle.worker.send({ type: "shutdown", reason });
-      if (response.type === "rejected") {
-        throw new CrankError(response.error.code, response.error.message);
-      }
-      if (response.type !== "shutdown_complete") {
-        throw new CrankError("program_protocol_error", "Worker did not acknowledge shutdown");
+      let reusable = false;
+      try {
+        const response = yield* handle.worker.send({ type: "shutdown", reason });
+        if (response.type === "rejected") {
+          throw new CrankError(response.error.code, response.error.message);
+        }
+        if (response.type !== "shutdown_complete") {
+          throw new CrankError("program_protocol_error", "Worker did not acknowledge shutdown");
+        }
+        reusable = reason === "parked";
+      } finally {
+        yield* handle.worker.release(reusable);
       }
     },
 

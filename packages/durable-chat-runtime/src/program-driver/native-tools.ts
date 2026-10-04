@@ -1,30 +1,13 @@
+import type { ToolExecutionBinding } from "@sweatpants/tool-session/execution";
 import { createContext, type Operation } from "effection";
 import type { DurableEffectRegistration } from "@sweatpants/chat-core";
-import type { ToolContract } from "@sweatpants/agent-sdk";
-import type { DurableTool, ProgramDriver, ProgramRoute } from "@sweatpants/durable-execution";
+import type { ProgramDriver } from "@sweatpants/durable-execution";
 
 export type NativeProgramIdentity = { id: string; version: string; digest: string };
 
-/** One public model-tool name routed to a crank-native child program. */
-export interface ProgramDriverNativeToolBinding {
-  readonly publicName: string;
-  readonly tool: DurableTool<any, any> & ToolContract;
-  readonly route: ProgramRoute;
-  /**
-   * Explicit activation-safety capability of the driver behind `route`.
-   *
-   * Declare `"fenced"` when program evaluation can execute in a remote or
-   * process-independent substrate that may outlive or race this host's
-   * activation. Fenced bindings cause the host to claim, renew, and release
-   * an activation lease around each workflow host run. In-process drivers
-   * (generator, worker threads owned by this host) omit it.
-   */
-  readonly activation?: "fenced";
-}
-
 /** Deployment composition for location-transparent native durable tools. */
 export interface ProgramDriverNativeToolComposition {
-  readonly bindings: ReadonlyMap<string, ProgramDriverNativeToolBinding>;
+  readonly bindings: ReadonlyMap<string, ToolExecutionBinding>;
   readonly drivers: readonly (readonly [string, ProgramDriver])[];
   readonly effects: readonly DurableEffectRegistration[];
   /** Installs ordinary scoped APIs for each local program attachment. */
