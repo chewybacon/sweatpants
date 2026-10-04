@@ -6,6 +6,8 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 
 import {
   FileCredentialStore,
+  YO_CHAT_AUTH_PROVIDERS,
+  defaultModelForProvider,
   readStoredModelSelection,
   selectStoredModel,
   sweatpantsAuthFile,
@@ -76,5 +78,12 @@ describe("file-backed model credentials", () => {
     expect(sweatpantsAuthFile({ YO_CHAT_MODEL_AUTH_FILE: "/tmp/alternate.json" })).toBe(
       "/tmp/alternate.json",
     );
+  });
+});
+
+describe("default model catalog", () => {
+  it.each(YO_CHAT_AUTH_PROVIDERS)("resolves the default model for %s", (provider) => {
+    const id = defaultModelForProvider(provider);
+    expect(builtinModels().getModel(provider, id)).toMatchObject({ provider, id });
   });
 });

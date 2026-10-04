@@ -31,7 +31,7 @@ interface AuthFile {
 }
 
 const DEFAULT_MODELS: Readonly<Record<YoChatAuthProvider, string>> = {
-  "github-copilot": "claude-sonnet-4.5",
+  "github-copilot": "claude-sonnet-4.6",
   "openai-codex": "gpt-5.5",
   opencode: "gpt-5.5",
 };

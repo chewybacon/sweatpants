@@ -70,7 +70,7 @@ pnpm model:auth:login --provider openai-codex --model gpt-5.5
 pnpm model:auth:login --provider opencode --model gpt-5.5
 
 # Change the selected provider/model without reauthenticating
-pnpm model:auth:use --provider github-copilot --model claude-sonnet-4.5
+pnpm model:auth:use --provider github-copilot --model claude-sonnet-4.6
 
 # Redacted status and OAuth refresh
 pnpm model:auth:status
@@ -149,7 +149,7 @@ REDIS_URL=redis://localhost:6379
 PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
 
 # Optional chat model allow-list. When unset, only the configured default is allowed.
-ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"github-copilot","id":"claude-sonnet-4.5"}]'
+ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"github-copilot","id":"claude-sonnet-4.6"}]'
 
 # Developer-only opt-out from allow-list checks. Resolution still must succeed.
 UNSAFE_ALLOW_ANY_CHAT_MODEL=yes

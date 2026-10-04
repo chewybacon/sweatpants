@@ -251,7 +251,6 @@ function createPiAiModelProviderDriver(runtime: Runtime): ModelProviderDriver {
 export interface CreatePiAiModelProviderOptions {
   /** One collection owns model resolution, credentials, and provider execution. */
   readonly models?: PiAi.Models;
-  readonly images?: PiAi.ImagesModels;
 }
 
 export interface InstallPiAiModelProviderOptions {
@@ -270,10 +269,7 @@ export function createPiAiModelProvider(
   options: CreatePiAiModelProviderOptions = {},
 ): ConfiguredModelProvider {
   const models = options.models ?? builtinModels({ credentials: new FileCredentialStore() });
-  const runtime = createPiAiRuntime({
-    models,
-    ...(options.images ? { images: options.images } : {}),
-  });
+  const runtime = createPiAiRuntime({ models });
   const driver = createPiAiModelProviderDriver(runtime);
   return {
     runtime,

@@ -18,7 +18,7 @@ export default defineConfig({
       DEFAULT_CHAT_MODEL_PROVIDER:
         process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selectedModel?.provider ?? "github-copilot",
       DEFAULT_CHAT_MODEL_ID:
-        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.5",
+        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.6",
     },
   },
 });

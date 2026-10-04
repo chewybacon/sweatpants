@@ -31,7 +31,7 @@ const config: UserConfig = {
       DEFAULT_CHAT_MODEL_PROVIDER:
         process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selectedModel?.provider ?? "github-copilot",
       DEFAULT_CHAT_MODEL_ID:
-        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.5",
+        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.6",
     },
     include: ["src/outside-in/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],

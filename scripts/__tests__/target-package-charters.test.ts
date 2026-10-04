@@ -111,7 +111,7 @@ describe("target package charters", () => {
       devDependencies?: Record<string, string>;
       pnpm?: { patchedDependencies?: Record<string, string> };
     };
-    expect(manifest.devDependencies?.["@earendil-works/pi-ai"]).toBe("0.84.0");
+    expect(manifest.devDependencies?.["@earendil-works/pi-ai"]).toBe("1.0.1");
     expect(manifest.pnpm?.patchedDependencies?.["@earendil-works/pi-ai@0.80.1"]).toBeUndefined();
     expect(existsSync(resolve(root, "patches/@earendil-works__pi-ai@0.80.1.patch"))).toBe(false);
   });

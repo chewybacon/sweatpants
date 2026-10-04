@@ -6,7 +6,7 @@ export const appEnv = createEnv({
     // Canonical default chat model identity. Requests may override this with
     // nested { model: { provider, id } } when allowed by server policy.
     DEFAULT_CHAT_MODEL_PROVIDER: z.string().min(1).default("github-copilot"),
-    DEFAULT_CHAT_MODEL_ID: z.string().min(1).default("claude-sonnet-4.5"),
+    DEFAULT_CHAT_MODEL_ID: z.string().min(1).default("claude-sonnet-4.6"),
 
     // Optional structured allow-list. When unset, only the configured default
     // model is allowed unless UNSAFE_ALLOW_ANY_CHAT_MODEL=yes.

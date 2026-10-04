@@ -136,7 +136,7 @@ export async function bootServer(options: BootServerOptions = {}): Promise<Serve
       env: scrubbedServerEnv({
         NODE_ENV: "development",
         DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-        DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
+        DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.6",
         MCP_TOOL_RUNTIME: process.env["MCP_TOOL_RUNTIME"] ?? "local",
         ...options.env,
       }),
