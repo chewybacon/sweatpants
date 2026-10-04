@@ -15,8 +15,7 @@ import {
   samplingToolCalls,
 } from "@sweatpants/model-sampling";
 import {
-  createPiAiModelProviderDriver,
-  resolvePiAiModel,
+  createPiAiModelProvider,
   type ModelSelection,
 } from "../../../packages/model-provider-pi-ai/src/index.ts";
 import type { ModelResponse, ModelContext } from "@sweatpants/model-provider";
@@ -187,8 +186,9 @@ export async function sampleInsideAgentCore(
 
   const selection = selectInternalSampleModel(config, request.inheritedModel);
   assertAgentCoreUsableModel(selection);
-  const model = resolvePiAiModel(selection);
-  const driver = createPiAiModelProviderDriver();
+  const piProvider = createPiAiModelProvider();
+  const model = piProvider.resolveModel(selection);
+  const driver = piProvider.driver;
   const assistant = await run(function* () {
     return yield* driver.sample({
       model,

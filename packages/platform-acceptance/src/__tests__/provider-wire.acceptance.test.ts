@@ -2,8 +2,12 @@
 // its request barrier is the simulator's causal nextRequest, not application choreography.
 import { describe, expect, it } from "vitest";
 import { run, type Operation } from "effection";
-import { startModelSimulator, type PendingModelRequest } from "@sweatpants/test-rig";
-import { createOpenAiResponsesModel, createPiAiRuntime } from "@sweatpants/model-provider-pi-ai";
+import {
+  startModelSimulator,
+  createSimulatorModel,
+  type PendingModelRequest,
+} from "@sweatpants/test-rig";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import type {
   ModelContext,
   ModelResponse,
@@ -34,7 +38,7 @@ function startProvider(
 ): Promise<ModelRun> {
   const canonicalContext: ModelContext = { messages: context.messages, tools: context.tools ?? [] };
   return run(function* (): Operation<ModelRun> {
-    const subscription = yield* createPiAiRuntime().stream(model, canonicalContext, {
+    const subscription = yield* createPiAiModelProvider().runtime.stream(model, canonicalContext, {
       apiKey: "sk-sweatpants-test-only",
       ...options,
     });
@@ -55,7 +59,7 @@ async function setupProvider(): Promise<{
   const simulator = await startModelSimulator(undefined, { unmatchedRequests: "buffer" });
   return {
     simulator,
-    model: createOpenAiResponsesModel("sim-model", simulator.baseUrl),
+    model: createSimulatorModel("sim-model", simulator.baseUrl),
   };
 }
 

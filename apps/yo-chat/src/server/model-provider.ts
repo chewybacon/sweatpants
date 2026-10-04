@@ -1,15 +1,16 @@
 import type { Operation } from "effection";
 import type { ChatHandlerSetupContext } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
-  installPiAiModelProvider,
+  createPiAiModelProvider,
   parseAllowedModelsJson,
   parseRequestModelSelection,
   resolveModelSelection,
-  resolvePiAiModel,
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
 import { defaultYoChatModel } from "./default-model.ts";
 import { env } from "@/env";
+const piProvider = createPiAiModelProvider();
+
 type ChatRequestModelBody = {
   model?: unknown;
 };
@@ -28,5 +29,5 @@ export function* setupYoChatModelProvider(ctx: ChatHandlerSetupContext): Operati
     unsafeAllowAny: env.UNSAFE_ALLOW_ANY_CHAT_MODEL === "yes",
   });
 
-  yield* installPiAiModelProvider({ model: resolvePiAiModel(selection) });
+  yield* piProvider.install({ model: piProvider.resolveModel(selection) });
 }

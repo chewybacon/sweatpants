@@ -147,4 +147,59 @@ describe("windowed native lifecycle", () => {
     },
     30_000,
   );
+
+  it.each(["in-process", "http"] as const)(
+    "replays the complete active text lifecycle when reconnecting after content over %s",
+    async (binding) => {
+      await withTestScenario(
+        {
+          binding,
+          modelId: ACCEPTANCE_MODEL_ID,
+          createApplication: createDurabilityAcceptanceApplication,
+        },
+        function* (s) {
+          const conversation = s.conversation();
+          const turn = yield* conversation.send("RELOAD_DURING_TEXT");
+          const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+          const response = yield* request.respond.textStream(["Already visible", " before reload"]);
+          yield* response.releaseNext();
+          yield* turn.textDelta("Already visible");
+          yield* response.releaseNext();
+          yield* turn.textDelta(" before reload");
+
+          // Reload after all content, but before the model closes the message.
+          // The durable checkpoint does not contain this in-flight message yet.
+          const reconnect = yield* s.streams.reconnect({
+            conversationId: conversation.conversationId,
+          });
+          yield* reconnect.event("sweatpants.conversation-authority.v1");
+          yield* response.finish();
+          const frames = yield* reconnect.complete();
+          const textEvents = frames
+            .map((frame) => frame.event)
+            .filter(
+              (event) =>
+                event.type === EventType.TEXT_MESSAGE_START ||
+                event.type === EventType.TEXT_MESSAGE_CONTENT ||
+                event.type === EventType.TEXT_MESSAGE_END,
+            );
+          expect(textEvents.map((event) => event.type)).toEqual([
+            EventType.TEXT_MESSAGE_START,
+            EventType.TEXT_MESSAGE_CONTENT,
+            EventType.TEXT_MESSAGE_CONTENT,
+            EventType.TEXT_MESSAGE_END,
+          ]);
+          expect(
+            textEvents
+              .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+              .map((event) => event.delta)
+              .join(""),
+          ).toBe("Already visible before reload");
+          expect((yield* turn.settled()).text).toBe("Already visible before reload");
+          expect(s.model.requests()).toHaveLength(1);
+        },
+      );
+    },
+    30_000,
+  );
 });

@@ -13,7 +13,7 @@ import {
   samplingToolCalls,
 } from "@sweatpants/model-sampling";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
-import { createPiAiModelProviderDriver, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
 import { defaultYoChatModel } from "./default-model.ts";
 
@@ -42,8 +42,9 @@ function modelContext(messages: ChatMessage[], options: SamplingOptions | undefi
 }
 
 export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
-  const driver = createPiAiModelProviderDriver();
-  const model = resolvePiAiModel(defaultYoChatModel());
+  const piProvider = createPiAiModelProvider();
+  const driver = piProvider.driver;
+  const model = piProvider.resolveModel(defaultYoChatModel());
 
   return {
     *sample(

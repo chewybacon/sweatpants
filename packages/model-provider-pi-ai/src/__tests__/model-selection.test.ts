@@ -6,8 +6,10 @@ import {
   parseAllowedModelsJson,
   parseRequestModelSelection,
   resolveModelSelection,
-  resolvePiAiModel,
+  createPiAiModelProvider,
 } from "../index.ts";
+
+const piProvider = createPiAiModelProvider();
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -39,16 +41,16 @@ describe("structured model selection", () => {
     const defaultModel = { provider: "amazon-bedrock", id: "zai.glm-5" };
     expect(
       resolveModelSelection({
-        requestModel: { provider: "ollama", id: "qwen3:30b" },
+        requestModel: { provider: "github-copilot", id: "claude-sonnet-4.5" },
         defaultModel,
-        allowedModels: [{ provider: "ollama", id: "qwen3:30b" }],
+        allowedModels: [{ provider: "github-copilot", id: "claude-sonnet-4.5" }],
       }),
-    ).toEqual({ provider: "ollama", id: "qwen3:30b" });
+    ).toEqual({ provider: "github-copilot", id: "claude-sonnet-4.5" });
 
     expect(resolveModelSelection({ defaultModel })).toEqual(defaultModel);
     expect(() =>
       resolveModelSelection({
-        requestModel: { provider: "ollama", id: "qwen3:30b" },
+        requestModel: { provider: "github-copilot", id: "claude-sonnet-4.5" },
         defaultModel,
       }),
     ).toThrow(ModelPolicyError);
@@ -69,13 +71,13 @@ describe("structured model selection", () => {
   it("unsafe mode skips only policy validation", () => {
     expect(
       resolveModelSelection({
-        requestModel: { provider: "ollama", id: "qwen3:30b" },
+        requestModel: { provider: "github-copilot", id: "claude-sonnet-4.5" },
         defaultModel: { provider: "amazon-bedrock", id: "zai.glm-5" },
         unsafeAllowAny: true,
       }),
-    ).toEqual({ provider: "ollama", id: "qwen3:30b" });
+    ).toEqual({ provider: "github-copilot", id: "claude-sonnet-4.5" });
 
-    expect(() => resolvePiAiModel({ provider: "unknown-provider", id: "nope" })).toThrow(
+    expect(() => piProvider.resolveModel({ provider: "unknown-provider", id: "nope" })).toThrow(
       ModelResolutionError,
     );
   });
@@ -83,7 +85,7 @@ describe("structured model selection", () => {
 
 describe("pi-ai model resolution", () => {
   it("resolves Bedrock GLM 5 through the pi-ai registry", () => {
-    const model = resolvePiAiModel({ provider: "amazon-bedrock", id: "zai.glm-5" });
+    const model = piProvider.resolveModel({ provider: "amazon-bedrock", id: "zai.glm-5" });
     expect(model.provider).toBe("amazon-bedrock");
     expect(model.id).toBe("zai.glm-5");
     expect(model.api).toBe("bedrock-converse-stream");
@@ -91,30 +93,34 @@ describe("pi-ai model resolution", () => {
   });
 
   it("preserves thinkingLevelMap from pi-ai registry models", () => {
-    const model = resolvePiAiModel({
+    const model = piProvider.resolveModel({
       provider: "amazon-bedrock",
       id: "anthropic.claude-opus-4-6-v1",
     });
     expect(model.thinkingLevelMap).toEqual({ xhigh: "max" });
   });
 
-  it("synthesizes dynamic Ollama descriptors with normalized base URL", () => {
+  it("rejects implicit Ollama models even with a configured endpoint", () => {
     vi.stubEnv("OLLAMA_BASE_URL", "http://localhost:11434");
-    expect(resolvePiAiModel({ provider: "ollama", id: "qwen3:30b" })).toMatchObject({
-      provider: "ollama",
-      id: "qwen3:30b",
-      api: "openai-completions",
-      baseUrl: "http://localhost:11434/v1",
-    });
+    expect(() => piProvider.resolveModel({ provider: "ollama", id: "qwen3:30b" })).toThrow(
+      ModelResolutionError,
+    );
   });
 
-  it("synthesizes OpenAI-compatible response descriptors", () => {
+  it("rejects unknown OpenAI models even with a configured endpoint", () => {
     vi.stubEnv("OPENAI_BASE_URL", "https://example.test/v1");
-    expect(resolvePiAiModel({ provider: "openai", id: "custom-openai-test-model" })).toMatchObject({
+    expect(() =>
+      piProvider.resolveModel({ provider: "openai", id: "custom-openai-test-model" }),
+    ).toThrow(ModelResolutionError);
+  });
+
+  it("resolves known OpenAI models with catalog capabilities", () => {
+    const model = piProvider.resolveModel({ provider: "openai", id: "gpt-4o" });
+    expect(model).toMatchObject({
       provider: "openai",
-      id: "custom-openai-test-model",
-      api: "openai-responses",
-      baseUrl: "https://example.test/v1",
+      id: "gpt-4o",
+      metadata: { source: "pi-ai-registry" },
     });
+    expect(model.contextWindow).toBeGreaterThan(0);
   });
 });

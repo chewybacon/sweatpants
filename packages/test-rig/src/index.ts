@@ -6,11 +6,7 @@ export * from "./transport.ts";
 export * from "./scenario.ts";
 
 import { createAgUiProbe } from "./ag-ui.ts";
-import {
-  createOpenAiResponsesModel,
-  createPiAiModelProviderDriver,
-  installPiAiModelProvider,
-} from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import { type Model, type StreamOptions } from "@sweatpants/model-provider";
 import { call, createScope, type Operation } from "effection";
 import { createChatRuntime, type ChatFetch, type ChatRuntime } from "./chat.ts";
@@ -137,6 +133,22 @@ export interface TestRigBodyContext {
   signal: AbortSignal;
 }
 
+/** Explicit descriptor for the test rig's OpenAI Responses HTTP simulator. */
+export function createSimulatorModel(modelId: string, baseUrl: string): Model {
+  return {
+    id: modelId,
+    name: modelId,
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 16384,
+  };
+}
+
 function createModelInstallation(baseUrl: string, modelId: string): TestModelInstallation {
   const apiKey = "sk-sweatpants-test-only";
   const providerOptions = { cacheRetention: "short" as const };
@@ -145,7 +157,7 @@ function createModelInstallation(baseUrl: string, modelId: string): TestModelIns
     sendSessionIdHeader: true as const,
   };
   const model = {
-    ...createOpenAiResponsesModel(modelId, baseUrl),
+    ...createSimulatorModel(modelId, baseUrl),
     compat,
   };
   const streamOptions: StreamOptions = {
@@ -161,8 +173,7 @@ function createModelInstallation(baseUrl: string, modelId: string): TestModelIns
     model,
     streamOptions,
     *install(): Operation<void> {
-      yield* installPiAiModelProvider({
-        driver: createPiAiModelProviderDriver(),
+      yield* createPiAiModelProvider().install({
         model,
         streamOptions,
       });
