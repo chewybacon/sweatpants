@@ -1,41 +1,4 @@
-/**
- * MCP Protocol Module
- *
- * Provides encoding/decoding between ToolSessionEvents and MCP JSON-RPC messages,
- * plus SSE formatting for the Streamable HTTP transport.
- *
- * ## Quick Start
- *
- * ```typescript
- * import {
- *   encodeSessionEvent,
- *   createEncoderContext,
- *   formatMessageAsSse,
- *   createSseHeaders,
- * } from '@grove/framework/mcp-tools/protocol'
- *
- * // Encode a session event as MCP JSON-RPC
- * const ctx = createEncoderContext(toolCallRequestId)
- * const encoded = encodeSessionEvent(event, ctx)
- *
- * // Format as SSE for streaming
- * const sse = formatMessageAsSse(encoded.message, sessionId, event.lsn)
- * ```
- *
- * ## MCP Mapping
- *
- * | ToolSessionEvent     | MCP Message                        |
- * |---------------------|-------------------------------------|
- * | progress            | notifications/progress              |
- * | log                 | notifications/message               |
- * | elicit_request      | elicitation/create request          |
- * | sample_request      | sampling/createMessage request      |
- * | result              | tools/call response (success)       |
- * | error               | tools/call response (error)         |
- * | cancelled           | tools/call response (error)         |
- *
- * @packageDocumentation
- */
+/** MCP message codecs and request-scoped SSE helpers. */
 
 // =============================================================================
 // TYPES
@@ -123,8 +86,6 @@ export {
 // ENCODER
 // =============================================================================
 
-export type { EncoderContext, EncodedMessage } from "./message-encoder.ts";
-
 export {
   // Individual encoders
   encodeProgressNotification,
@@ -136,10 +97,8 @@ export {
   encodeToolCallCancelled,
 
   // Unified encoder
-  encodeSessionEvent,
 
   // Helpers
-  createEncoderContext,
 } from "./message-encoder.ts";
 
 // =============================================================================
@@ -174,20 +133,14 @@ export {
 // SSE FORMATTER
 // =============================================================================
 
-export type { SseWriter } from "./sse-formatter.ts";
-
 export {
   // Event ID handling
-  generateEventId,
-  parseEventId,
 
   // SSE formatting
   formatSseEvent,
   formatMessageAsSse,
 
   // Stream control
-  createPrimeEvent,
-  createCloseEvent,
 
   // SSE parsing (for testing/clients)
   parseSseEvent,
@@ -195,5 +148,4 @@ export {
 
   // Stream helpers
   createSseHeaders,
-  createSseWriter,
 } from "./sse-formatter.ts";

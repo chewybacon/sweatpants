@@ -1,3 +1,4 @@
+import { MCP_PROTOCOL_VERSION } from "@sweatpants/tool-session/mcp";
 import { CrankError } from "@sweatpants/durable-execution";
 import { hasControlCharacter } from "@sweatpants/foundation";
 import { type SandboxCapabilities, type WorkspacePersistence } from "@sweatpants/workspace-runtime";
@@ -91,7 +92,7 @@ export interface JournalAuthorityDefinition {
 export interface ProjectionDefinition {
   readonly kind: "react-chat" | "headless-http" | "mcp";
   readonly path?: string;
-  readonly protocolVersion?: "2025-11-25";
+  readonly protocolVersion?: typeof MCP_PROTOCOL_VERSION;
 }
 
 interface ProgramDefinition {
@@ -327,7 +328,11 @@ export function headlessHttp(path = "/api/tasks"): ProjectionDefinition {
 }
 
 export function streamableMcp(path = "/mcp"): ProjectionDefinition {
-  return Object.freeze({ kind: "mcp", path: routePath(path), protocolVersion: "2025-11-25" });
+  return Object.freeze({
+    kind: "mcp",
+    path: routePath(path),
+    protocolVersion: MCP_PROTOCOL_VERSION,
+  });
 }
 
 export function defineDeployment<

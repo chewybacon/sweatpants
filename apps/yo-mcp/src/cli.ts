@@ -14,12 +14,8 @@ async function main() {
 
   const server = await startYoMcpServer(PORT);
   console.error(`\nHTTP server running on ${server.origin}`);
-  console.error("\nTest with:");
-  console.error(`  curl -X POST http://localhost:${PORT}/mcp \\`);
-  console.error('    -H "Content-Type: application/json" \\');
-  console.error(
-    `    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hello"}}}'`,
-  );
+  console.error("Protocol: MCP 2026-07-28 (POST-only, multi-round-trip input)");
+  console.error("Inspect with: pnpm inspect");
 
   process.on("SIGINT", async () => {
     console.error("\nShutting down...");

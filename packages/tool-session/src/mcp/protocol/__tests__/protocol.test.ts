@@ -6,8 +6,6 @@
 import { describe, it, expect } from "vitest";
 import {
   // Encoder
-  encodeSessionEvent,
-  createEncoderContext,
   encodeProgressNotification,
   encodeLogNotification,
   encodeElicitationRequest,
@@ -24,10 +22,6 @@ import {
   formatMessageAsSse,
   parseSseEvent,
   parseSseChunk,
-  generateEventId,
-  parseEventId,
-  createPrimeEvent,
-  createCloseEvent,
   // Types
   isJsonRpcError,
   isJsonRpcSuccess,
@@ -146,65 +140,6 @@ describe("MCP Protocol", () => {
             text: JSON.stringify({ answer: 42 }),
           });
         }
-      });
-    });
-
-    describe("encodeSessionEvent", () => {
-      it("should encode all event types", () => {
-        const ctx = createEncoderContext("call_1", "progress_1", "test-logger");
-
-        // Progress
-        const progressEncoded = encodeSessionEvent(
-          { type: "progress", lsn: 1, timestamp: Date.now(), message: "Working..." },
-          ctx,
-        );
-        expect(progressEncoded.type).toBe("notification");
-
-        // Log
-        const logEncoded = encodeSessionEvent(
-          { type: "log", lsn: 2, timestamp: Date.now(), level: "info", message: "Info" },
-          ctx,
-        );
-        expect(logEncoded.type).toBe("notification");
-
-        // Elicit
-        const elicitEncoded = encodeSessionEvent(
-          {
-            type: "elicit_request",
-            lsn: 3,
-            timestamp: Date.now(),
-            elicitId: "e1",
-            key: "confirm",
-            message: "Confirm?",
-            schema: {},
-          },
-          ctx,
-        );
-        expect(elicitEncoded.type).toBe("request");
-        if (elicitEncoded.type === "request") {
-          expect(elicitEncoded.elicitId).toBe("e1");
-        }
-
-        // Result
-        const resultEncoded = encodeSessionEvent(
-          { type: "result", lsn: 4, timestamp: Date.now(), result: "done" },
-          ctx,
-        );
-        expect(resultEncoded.type).toBe("response");
-
-        // Error
-        const errorEncoded = encodeSessionEvent(
-          { type: "error", lsn: 5, timestamp: Date.now(), name: "Error", message: "Failed" },
-          ctx,
-        );
-        expect(errorEncoded.type).toBe("response");
-
-        // Cancelled
-        const cancelledEncoded = encodeSessionEvent(
-          { type: "cancelled", lsn: 6, timestamp: Date.now(), reason: "User cancelled" },
-          ctx,
-        );
-        expect(cancelledEncoded.type).toBe("response");
       });
     });
   });
@@ -449,9 +384,9 @@ describe("MCP Protocol", () => {
     describe("formatMessageAsSse", () => {
       it("should format a JSON-RPC message as SSE", () => {
         const message = { jsonrpc: "2.0", method: "test" };
-        const formatted = formatMessageAsSse(message, "session_1", 5);
+        const formatted = formatMessageAsSse(message);
 
-        expect(formatted).toContain("id: session_1:5\n");
+        expect(formatted).not.toContain("id:");
         expect(formatted).toContain('data: {"jsonrpc":"2.0","method":"test"}\n');
       });
     });
@@ -493,45 +428,6 @@ describe("MCP Protocol", () => {
 
         expect(events).toHaveLength(1);
         expect(remaining).toBe("id: 2\ndata:");
-      });
-    });
-
-    describe("Event ID handling", () => {
-      it("should generate and parse event IDs", () => {
-        const id = generateEventId("session_abc", 42);
-
-        expect(id).toBe("session_abc:42");
-
-        const parsed = parseEventId(id);
-
-        expect(parsed).not.toBeNull();
-        expect(parsed?.sessionId).toBe("session_abc");
-        expect(parsed?.lsn).toBe(42);
-      });
-
-      it("should handle session IDs with colons", () => {
-        const id = generateEventId("session:with:colons", 10);
-        const parsed = parseEventId(id);
-
-        expect(parsed?.sessionId).toBe("session:with:colons");
-        expect(parsed?.lsn).toBe(10);
-      });
-    });
-
-    describe("Stream control events", () => {
-      it("should create prime event", () => {
-        const event = createPrimeEvent("session_1", 3000);
-
-        expect(event).toContain("id: session_1:0\n");
-        expect(event).toContain("retry: 3000\n");
-        expect(event).toContain("data: \n");
-      });
-
-      it("should create close event", () => {
-        const event = createCloseEvent("session_1", 10, 5000);
-
-        expect(event).toContain("id: session_1:10\n");
-        expect(event).toContain("retry: 5000\n");
       });
     });
   });

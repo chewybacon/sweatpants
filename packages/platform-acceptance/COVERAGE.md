@@ -52,7 +52,7 @@ rather than introduce pre-armed promise choreography.
 | HTTP reconnect                           | Disconnect after first delta, reconnect from checkpoint, replay only unseen delta, model runs once                                                                                                                | HTTP                               |
 | Standard A2A agent                       | Agent Card discovery and HTTP+JSON send cross both an assembled code handle and an independently hosted real-HTTP origin; the rig causally controls pi-ai sampling and verifies completed task history            | in-process + HTTP                  |
 | Sub-agent composition postures           | The same authored crank-native child runs as a mounted packaged handle and through a real A2A WebSocket driver/executor; nested sample, elicit, replay, result, and final response are equivalent                 | in-process + HTTP                  |
-| MCP Streamable HTTP backchannels         | Real worker-backed tool crosses `createMcpHandler`; two elicitation responses and one sampling response route into the live session before terminal result                                                        | direct Request/Response + SSE      |
+| MCP multi-round-trip continuations       | Real worker-backed tool crosses `createMcpHandler`; two elicitation retries and one sampling retry advance one invocation before terminal result                                                                  | direct Request/Response + SSE      |
 
 ## Deliberately outside this matrix
 

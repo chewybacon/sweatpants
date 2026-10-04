@@ -11,7 +11,7 @@ import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import { z } from "zod";
 
-export const MCP_PROTOCOL_VERSION = "2025-11-25" as const;
+export { MCP_PROTOCOL_VERSION } from "./protocol-version.ts";
 export const DURABLE_INVOCATION_META_KEY = "sweatpants.chat/invocation" as const;
 export const DURABLE_INVOCATION_FORMAT = "sweatpants.chat/durable-invocations.v1" as const;
 export const MCP_INVENTORY_FORMAT = "sweatpants.mcp-inventory.v1" as const;
@@ -55,16 +55,6 @@ export interface McpInventoryInput {
   readonly collectionDigest: Sha256;
   readonly evaluatorAbi: string;
   readonly tools: Readonly<Record<string, McpInventoryTool>>;
-}
-
-export interface McpSessionBinding {
-  readonly format: "sweatpants.mcp-session.v1";
-  readonly sessionId: string;
-  readonly authenticatedCallerHash: Sha256;
-  readonly inventoryGeneration: Sha256;
-  readonly clientCapabilities: readonly RequiredClientCapability[];
-  readonly createdAt: string;
-  readonly expiresAt: string;
 }
 
 export interface DurableInvocationIdentity {

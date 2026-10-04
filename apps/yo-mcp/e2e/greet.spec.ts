@@ -25,156 +25,62 @@ async function selectTool(page: Page, toolName: string) {
   await page.waitForTimeout(500);
 }
 
-type JsonRpcMessage = {
-  jsonrpc: "2.0";
-  id?: string | number | null;
-  method?: string;
-  params?: Record<string, unknown>;
-  result?: Record<string, unknown>;
-  error?: Record<string, unknown>;
-};
-
-type SseReader = ReadableStreamDefaultReader<Uint8Array>;
-
-type SseBuffer = { text: string };
-
-function parseSseData(rawEvent: string): string | null {
-  const data = rawEvent
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n");
-  return data.trim().length > 0 ? data : null;
-}
-
-async function readNextSseMessage(reader: SseReader, buffer: SseBuffer): Promise<JsonRpcMessage> {
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const boundary = buffer.text.indexOf("\n\n");
-    if (boundary >= 0) {
-      const rawEvent = buffer.text.slice(0, boundary);
-      buffer.text = buffer.text.slice(boundary + 2);
-      const data = parseSseData(rawEvent);
-      if (!data) {
-        continue;
-      }
-      return JSON.parse(data) as JsonRpcMessage;
-    }
-
-    const next = await reader.read();
-    if (next.done) {
-      throw new Error("SSE stream ended before the expected message arrived");
-    }
-    buffer.text += decoder.decode(next.value, { stream: true });
-  }
-}
-
-async function readUntilSseMessage(
-  reader: SseReader,
-  buffer: SseBuffer,
-  label: string,
-  predicate: (message: JsonRpcMessage) => boolean,
-): Promise<JsonRpcMessage> {
-  const readLoop = async () => {
-    while (true) {
-      const message = await readNextSseMessage(reader, buffer);
-      if (predicate(message)) {
-        return message;
-      }
-    }
-  };
-
-  return Promise.race([
-    readLoop(),
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 15000);
-    }),
-  ]);
-}
-
 async function callGreetViaMcpSampling(input: {
   name: string;
   style: "formal" | "casual" | "poetic" | "pirate";
   sampledGreeting: string;
 }): Promise<Record<string, unknown>> {
-  const callId = `call-${input.style}-${Date.now()}`;
-  const response = await fetch("http://localhost:3001/mcp", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: callId,
-      method: "tools/call",
-      params: {
-        name: "greet",
-        arguments: {
-          name: input.name,
-          style: input.style,
-        },
-      },
-    }),
-  });
-
-  expect(response.status).toBe(200);
-  expect(response.headers.get("content-type")).toContain("text/event-stream");
-  const sessionId =
-    response.headers.get("mcp-session-id") ?? response.headers.get("Mcp-Session-Id");
-  expect(sessionId).toBeTruthy();
-  expect(response.body).toBeTruthy();
-
-  const reader = response.body!.getReader();
-  const buffer = { text: "" };
-
-  try {
-    const sampleRequest = await readUntilSseMessage(
-      reader,
-      buffer,
-      "sampling/createMessage request",
-      (message) => message.method === "sampling/createMessage",
-    );
-    expect(sampleRequest.id).toBeTruthy();
-    expect(JSON.stringify(sampleRequest.params)).toContain(input.name);
-    expect(JSON.stringify(sampleRequest.params)).toContain(input.style);
-
-    const sampleResponse = await fetch("http://localhost:3001/mcp", {
+  async function post(params: Record<string, unknown>) {
+    const response = await fetch("http://localhost:3001/mcp", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Mcp-Session-Id": sessionId!,
+        Accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "greet",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
-        id: sampleRequest.id,
-        result: {
-          role: "assistant",
-          content: { type: "text", text: input.sampledGreeting },
-          model: "playwright-sampling-model",
-          stopReason: "endTurn",
+        id: crypto.randomUUID(),
+        method: "tools/call",
+        params: {
+          ...params,
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": { sampling: {} },
+          },
         },
       }),
     });
-
-    expect(sampleResponse.status).toBe(202);
-
-    const toolResult = await readUntilSseMessage(
-      reader,
-      buffer,
-      "tools/call result",
-      (message) => message.id === callId && !!message.result,
-    );
-
-    const result = toolResult.result as { content?: Array<{ text?: unknown }>; isError?: boolean };
-    expect(result.isError).toBe(false);
-    const resultText = result.content?.[0]?.text;
-    expect(typeof resultText).toBe("string");
-    return JSON.parse(resultText as string) as Record<string, unknown>;
-  } finally {
-    await reader.cancel().catch(() => undefined);
+    expect(response.status).toBe(200);
+    expect(response.headers.has("mcp-session-id")).toBe(false);
+    const text = await response.text();
+    const messages = [...text.matchAll(/^data: (.*)$/gm)].map((match) => JSON.parse(match[1]));
+    return messages.at(-1).result;
   }
+  const params = { name: "greet", arguments: { name: input.name, style: input.style } };
+  const pending = await post(params);
+  expect(pending.resultType).toBe("input_required");
+  const requestId = Object.keys(pending.inputRequests)[0];
+  expect(pending.inputRequests[requestId].method).toBe("sampling/createMessage");
+  expect(JSON.stringify(pending.inputRequests[requestId].params)).toContain(input.name);
+  expect(JSON.stringify(pending.inputRequests[requestId].params)).toContain(input.style);
+  const result = await post({
+    ...params,
+    requestState: pending.requestState,
+    inputResponses: {
+      [requestId]: {
+        role: "assistant",
+        content: { type: "text", text: input.sampledGreeting },
+        model: "playwright-sampling-model",
+        stopReason: "endTurn",
+      },
+    },
+  });
+  expect(result.resultType).toBe("complete");
+  expect(result.isError).toBe(false);
+  return JSON.parse(result.content[0].text) as Record<string, unknown>;
 }
 
 test.describe("Greet Tool (Sampling)", () => {

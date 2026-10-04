@@ -1,3 +1,4 @@
+import type { Json } from "@sweatpants/foundation";
 /**
  * MCP Message Encoder
  *
@@ -17,6 +18,7 @@
  *
  * @packageDocumentation
  */
+import type { ToolInvocationElicitAsk, ToolInvocationSampleAsk } from "../../invocation.ts";
 import type {
   JsonRpcRequest,
   JsonRpcNotification,
@@ -33,17 +35,13 @@ import type {
   McpToolChoice,
 } from "./types.ts";
 import type {
-  ToolSessionEvent,
   ProgressEvent,
   LogEvent,
-  ElicitRequestEvent,
-  SampleRequestEvent,
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
 } from "../../contract.ts";
 import { SCHEMA_TOOL_NAME, type LogLevel as ToolLogLevel } from "@sweatpants/agent-sdk";
-import type { Json } from "@sweatpants/foundation";
 import { encodeElicitContext } from "../../elicit-context/index.ts";
 import { chatMessagesToMcpMessages } from "../../messages.ts";
 
@@ -118,12 +116,12 @@ export function encodeLogNotification(
 /**
  * Encode an elicit request event as an MCP elicitation/create request.
  *
- * Note: MCP 2025-11-25 supports URL mode elicitation for sensitive data flows
+ * Note: MCP 2026-07-28 supports URL mode elicitation for sensitive data flows
  * (OAuth, payments, etc.), but sweatpants does not support this yet.
  * If URL mode is requested, we throw a clear error.
  */
 export function encodeElicitationRequest(
-  event: ElicitRequestEvent,
+  event: Omit<ToolInvocationElicitAsk, "kind" | "requestId" | "binding">,
   requestId: JsonRpcId,
 ): JsonRpcRequest<"elicitation/create", McpElicitationParams> {
   // Guard against URL mode elicitation (not supported)
@@ -131,7 +129,7 @@ export function encodeElicitationRequest(
     throw new Error(
       "URL elicitation mode is not supported by sweatpants. " +
         "Use form mode (default) instead. " +
-        "See: https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation",
+        "See: https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation",
     );
   }
 
@@ -171,7 +169,7 @@ export function encodeElicitationRequest(
  * while naive clients can fall through to tool calling.
  */
 export function encodeSamplingRequest(
-  event: SampleRequestEvent,
+  event: Omit<ToolInvocationSampleAsk, "kind" | "requestId">,
   requestId: JsonRpcId,
 ): JsonRpcRequest<"sampling/createMessage", McpCreateMessageParams> {
   // Canonical Chat values are encoded once at this MCP boundary. System and
@@ -214,6 +212,7 @@ export function encodeSamplingRequest(
       messages: mcpMessages,
       ...(event.systemPrompt !== undefined && { systemPrompt: event.systemPrompt }),
       maxTokens: event.maxTokens ?? 4096,
+      ...(event.modelPreferences === undefined ? {} : { modelPreferences: event.modelPreferences }),
       ...(mcpTools !== undefined && mcpTools.length > 0 && { tools: mcpTools }),
       ...(mcpToolChoice !== undefined && { toolChoice: mcpToolChoice }),
     },
@@ -243,6 +242,7 @@ export function encodeToolCallResult<TResult extends Json>(
     jsonrpc: "2.0",
     id: requestId,
     result: {
+      resultType: "complete",
       content,
       isError: false,
     },
@@ -260,6 +260,7 @@ export function encodeToolCallError(
     jsonrpc: "2.0",
     id: requestId,
     result: {
+      resultType: "complete",
       content: [
         {
           type: "text",
@@ -282,6 +283,7 @@ export function encodeToolCallCancelled(
     jsonrpc: "2.0",
     id: requestId,
     result: {
+      resultType: "complete",
       content: [
         {
           type: "text",
@@ -290,125 +292,5 @@ export function encodeToolCallCancelled(
       ],
       isError: true,
     },
-  };
-}
-
-// =============================================================================
-// UNIFIED ENCODER
-// =============================================================================
-
-/**
- * Encoder context for generating request IDs and tracking state.
- */
-export interface EncoderContext {
-  /** Generate a unique request ID */
-  nextRequestId(): JsonRpcId;
-  /** Progress token for the current tool call */
-  progressToken: string | number;
-  /** Logger name for log messages */
-  logger?: string;
-  /** Original request ID for the tools/call request */
-  toolCallRequestId: JsonRpcId;
-}
-
-/**
- * Result of encoding a session event.
- */
-export type EncodedMessage =
-  | { type: "notification"; message: JsonRpcNotification }
-  | { type: "request"; message: JsonRpcRequest; elicitId?: string; sampleId?: string }
-  | { type: "response"; message: JsonRpcResponse };
-
-/**
- * Encode a ToolSessionEvent into an MCP message.
- *
- * @param event - The session event to encode
- * @param ctx - Encoder context
- * @returns The encoded MCP message with its type
- */
-export function encodeSessionEvent<TResult extends Json = Json>(
-  event: ToolSessionEvent<TResult>,
-  ctx: EncoderContext,
-): EncodedMessage {
-  switch (event.type) {
-    case "progress":
-      return {
-        type: "notification",
-        message: encodeProgressNotification(event, ctx.progressToken),
-      };
-
-    case "log":
-      return {
-        type: "notification",
-        message: encodeLogNotification(event, ctx.logger),
-      };
-
-    case "elicit_request":
-      return {
-        type: "request",
-        message: encodeElicitationRequest(event, ctx.nextRequestId()),
-        elicitId: event.elicitId,
-      };
-
-    case "sample_request":
-      return {
-        type: "request",
-        message: encodeSamplingRequest(event, ctx.nextRequestId()),
-        sampleId: event.sampleId,
-      };
-
-    case "result":
-      return {
-        type: "response",
-        message: encodeToolCallResult(event, ctx.toolCallRequestId),
-      };
-
-    case "error":
-      return {
-        type: "response",
-        message: encodeToolCallError(event, ctx.toolCallRequestId),
-      };
-
-    case "cancelled":
-      return {
-        type: "response",
-        message: encodeToolCallCancelled(event, ctx.toolCallRequestId),
-      };
-
-    case "sample_response_queued":
-      // Internal event - should not be encoded for clients.
-      // Return a notification with no content (will be filtered out).
-      return {
-        type: "notification",
-        message: {
-          jsonrpc: "2.0" as const,
-          method: "internal/sample_response_queued",
-          params: {},
-        },
-      };
-  }
-}
-
-// =============================================================================
-// HELPERS
-// =============================================================================
-
-/**
- * Create a simple encoder context.
- */
-export function createEncoderContext(
-  toolCallRequestId: JsonRpcId,
-  progressToken?: string | number,
-  logger?: string,
-): EncoderContext {
-  let requestCounter = 0;
-
-  return {
-    nextRequestId(): JsonRpcId {
-      return `req_${++requestCounter}`;
-    },
-    progressToken: progressToken ?? `progress_${toolCallRequestId}`,
-    logger,
-    toolCallRequestId,
   };
 }

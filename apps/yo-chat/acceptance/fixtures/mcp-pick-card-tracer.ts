@@ -1,3 +1,4 @@
+import { readMcpRequestMetadata, requireMcpFormCapability } from "@sweatpants/tool-session/mcp";
 import { createMcpContinuations, decodeMcpFormResponse } from "@sweatpants/tool-session/mcp";
 import type { Operation } from "effection";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
@@ -15,6 +16,10 @@ export interface TracerRequest {
     arguments: Json;
     requestState?: string;
     inputResponses?: unknown;
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28";
+      "io.modelcontextprotocol/clientCapabilities": Record<string, unknown>;
+    };
   };
 }
 
@@ -52,11 +57,19 @@ export function createPickCardMcpTracer(options: {
   return function* call(
     request: TracerRequest,
     callerId: string,
+    headers: Headers,
   ): Operation<{
     jsonrpc: "2.0";
     id: string;
     result: Record<string, unknown>;
   }> {
+    const metadata = readMcpRequestMetadata({
+      headers,
+      method: request.method,
+      params: request.params,
+      protocolVersion: "2026-07-28",
+    });
+    requireMcpFormCapability(metadata.capabilities);
     if (
       canonicalJson({
         callerId,

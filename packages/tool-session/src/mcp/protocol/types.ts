@@ -2,9 +2,9 @@
  * MCP Protocol Types
  *
  * Type definitions for MCP (Model Context Protocol) messages.
- * These types follow the MCP spec 2025-11-25.
+ * These types follow the MCP spec 2026-07-28.
  *
- * @see https://modelcontextprotocol.io/specification/2025-11-25
+ * @see https://modelcontextprotocol.io/specification/2026-07-28
  * @packageDocumentation
  */
 import type { Json } from "@sweatpants/foundation";
@@ -374,6 +374,7 @@ export interface McpToolCallParams {
  * Result of tools/call.
  */
 export interface McpToolCallResult {
+  resultType: "complete";
   content: McpContentBlock[];
   isError?: boolean;
 }

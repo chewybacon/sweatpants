@@ -2,106 +2,119 @@ import { describe, expect, it } from "vitest";
 import { call, run } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
-import { MCP_PROTOCOL_VERSION } from "../../protocol-version.ts";
-import type { ToolInvocationEventSource } from "../../../contract.ts";
-import {
-  ToolInvocationEventSourcePort,
-  ToolInvocationHostPort,
-  type ToolInvocationHost,
-} from "../../../invocation.ts";
-import { createMcpHandler, generateMcpManifest } from "../mcp-handler.ts";
+import { createMcpHandler } from "../mcp-handler.ts";
+import { generateMcpManifest } from "../manifest.ts";
 
-const unusedEvents = {} as ToolInvocationEventSource;
-const unusedHost = {} as ToolInvocationHost;
-
-function handle(request: Request): Promise<Response> {
-  return run(function* () {
-    yield* ToolInvocationHostPort.installDriver(unusedHost);
-    yield* ToolInvocationEventSourcePort.installDriver(unusedEvents);
-    const { handler } = yield* createMcpHandler({ tools: new Map() });
-    return yield* call(() => handler(request));
-  });
-}
-
-function initialize(protocolVersion?: string): Request {
-  return new Request("http://localhost/mcp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "initialize-1",
-      method: "initialize",
-      params: {
-        ...(protocolVersion === undefined ? {} : { protocolVersion }),
-        capabilities: { elicitation: {}, sampling: {} },
-        clientInfo: { name: "test", version: "1" },
-      },
-    }),
-  });
-}
-
-function ping(protocolVersion: string): Request {
+const version = "2026-07-28";
+function request(method = "server/discover", headers: Record<string, string> = {}, params = {}) {
   return new Request("http://localhost/mcp", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "MCP-Protocol-Version": protocolVersion,
+      accept: "application/json, text/event-stream",
+      "MCP-Protocol-Version": version,
+      "Mcp-Method": method,
+      ...headers,
     },
-    body: JSON.stringify({ jsonrpc: "2.0", id: "ping-1", method: "ping" }),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "test",
+      method,
+      params: {
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": version,
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+        ...params,
+      },
+    }),
   });
 }
-
-describe("canonical MCP profile", () => {
-  it("negotiates MCP 2025-11-25 without advertising unimplemented extensions", async () => {
-    const response = await handle(initialize(MCP_PROTOCOL_VERSION));
-    const body = (await response.json()) as {
-      result: { protocolVersion: string; capabilities: Record<string, unknown> };
-    };
-    expect(response.status).toBe(200);
-    expect(response.headers.get("mcp-session-id")).toBeTruthy();
-    expect(body.result.protocolVersion).toBe(MCP_PROTOCOL_VERSION);
-    expect(body.result.capabilities).not.toHaveProperty("experimental");
+function handle(request: Request) {
+  return run(function* () {
+    const { handler } = yield* createMcpHandler({
+      name: "test",
+      version: "1",
+      secret: "test-continuation-secret-at-least-32-bytes",
+      tools: [],
+      *authenticate() {
+        return "test-user";
+      },
+    });
+    return yield* call(() => handler(request));
   });
-
-  it("returns its supported version when the client proposes an older version", async () => {
-    const response = await handle(initialize("2024-11-05"));
-    const body = (await response.json()) as { result: { protocolVersion: string } };
+}
+describe("MCP 2026-07-28 profile", () => {
+  it("discovers without initialize and advertises only tools", async () => {
+    const response = await handle(request());
     expect(response.status).toBe(200);
-    expect(body.result.protocolVersion).toBe(MCP_PROTOCOL_VERSION);
-  });
-
-  it("returns a correlated invalid-params error when protocolVersion is missing", async () => {
-    const response = await handle(initialize());
-    const body = (await response.json()) as {
-      id: string;
-      error: { code: number; message: string };
-    };
-    expect(response.status).toBe(400);
-    expect(body).toEqual({
-      jsonrpc: "2.0",
-      id: "initialize-1",
-      error: { code: -32602, message: "initialize requires params.protocolVersion" },
+    expect(response.headers.has("mcp-session-id")).toBe(false);
+    expect(await response.json()).toMatchObject({
+      id: "test",
+      result: {
+        resultType: "complete",
+        supportedVersions: [version],
+        capabilities: { tools: {} },
+        ttlMs: 0,
+        cacheScope: "private",
+        _meta: { "io.modelcontextprotocol/serverInfo": { name: "test", version: "1" } },
+      },
     });
   });
-
-  it("rejects a conflicting post-initialize MCP-Protocol-Version header", async () => {
-    const response = await handle(ping("2024-11-05"));
-    const body = (await response.json()) as { id: string; error: { code: number } };
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({ id: "ping-1", error: { code: -32602 } });
+  it.each(["initialize", "ping", "subscriptions/listen"])(
+    "rejects unsupported %s instead of silently falling back",
+    async (method) => {
+      const response = await handle(request(method));
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ id: "test", error: { code: -32601 } });
+    },
+  );
+  it.each(["GET", "DELETE"])("rejects removed %s transport behavior", async (method) => {
+    expect((await handle(new Request("http://localhost/mcp", { method }))).status).toBe(405);
   });
-
-  it("keeps authored x-sweatpants metadata consumable by CLI clients", () => {
-    const interactive = createTool("interactive")
-      .description("interactive tool")
+  it("rejects a foreign origin", async () => {
+    expect(
+      (await handle(request("server/discover", { origin: "https://untrusted.example" }))).status,
+    ).toBe(403);
+  });
+  it("rejects unsupported versions with supported versions", async () => {
+    const response = await handle(
+      request(
+        "server/discover",
+        { "MCP-Protocol-Version": "2025-11-25" },
+        {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2025-11-25",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      ),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: -32022, data: { supported: [version] } },
+    });
+  });
+  it("rejects mismatched headers before execution", async () => {
+    const response = await handle(request("server/discover", { "Mcp-Method": "tools/call" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: -32020 } });
+  });
+  it("requires both response media types", async () => {
+    expect((await handle(request("server/discover", { accept: "application/json" }))).status).toBe(
+      406,
+    );
+  });
+  it("keeps authored schemas in the CLI manifest", () => {
+    const tool = createTool("interactive")
+      .description("interactive")
       .parameters(z.object({}))
       .elicits({ approval: z.boolean() })
       .execute(function* () {
         return { ok: true };
       });
-    const manifest = generateMcpManifest(new Map([["interactive", interactive]]));
-    expect(manifest.tools[0]?._meta?.["x-sweatpants"]?.requires).toEqual({
-      elicitation: true,
-    });
+    const manifest = generateMcpManifest(new Map([[tool.name, tool]]));
+    expect(manifest.mcp.protocolVersion).toBe(version);
+    expect(manifest.tools[0]._meta?.["x-sweatpants"]?.requires).toEqual({ elicitation: true });
   });
 });

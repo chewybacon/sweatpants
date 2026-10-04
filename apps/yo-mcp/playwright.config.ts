@@ -50,7 +50,7 @@ export default defineConfig({
       // Start MCP Inspector (connects to yo-mcp). The exact app-local
       // dependency keeps the UI and protocol client reproducible.
       command:
-        "DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false pnpm exec mcp-inspector --web --transport http --server-url http://localhost:3001/mcp",
+        "DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false pnpm exec mcp-inspector --web --protocol-era modern --transport http --server-url http://localhost:3001/mcp",
       port: 6274, // Inspector UI port
       reuseExistingServer,
       timeout: 30000,

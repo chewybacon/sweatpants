@@ -103,9 +103,21 @@ describe("MCP multi-round-trip pick_card tracer", () => {
           jsonrpc: "2.0",
           id: "request-1",
           method: "tools/call",
-          params: { name: "pick_card", arguments: { count: 3 } },
+          params: {
+            name: "pick_card",
+            arguments: { count: 3 },
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientCapabilities": { elicitation: { form: {} } },
+            },
+          },
         };
-        const parked = yield* makeTracer()(initial, "alice");
+        const headers = new Headers({
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "pick_card",
+        });
+        const parked = yield* makeTracer()(initial, "alice", headers);
         expect(parked).toMatchObject({ id: "request-1", result: { resultType: "input_required" } });
         const requests = parked.result.inputRequests as Record<string, unknown>;
         const [pullId] = Object.keys(requests);
@@ -143,12 +155,24 @@ describe("MCP multi-round-trip pick_card tracer", () => {
         ): Operation<void> {
           let caught: unknown;
           try {
-            yield* replacement(request, caller);
+            yield* replacement(request, caller, headers);
           } catch (error) {
             caught = error;
           }
           expect(caught).toMatchObject({ message: expect.stringContaining(message) });
         };
+        yield* reject(
+          {
+            ...retry,
+            params: {
+              ...retry.params,
+              _meta: { ...retry.params._meta, "io.modelcontextprotocol/clientCapabilities": {} },
+            },
+          },
+          "alice",
+          "form elicitation",
+        );
+        expect(activations).toBe(1);
         yield* reject(retry, "mallory", "binding mismatch");
         yield* reject(
           { ...retry, params: { ...retry.params, arguments: { count: 4 } } },
@@ -170,14 +194,14 @@ describe("MCP multi-round-trip pick_card tracer", () => {
         yield* reject(retry, "alice", "Expired");
         now = 2_000;
         expect(draws).toBe(1);
-        const completed = yield* replacement(retry, "alice");
+        const completed = yield* replacement(retry, "alice", headers);
         expect(completed).toMatchObject({ id: "request-2", result: { resultType: "complete" } });
         expect(JSON.stringify(completed.result)).toContain(
           action === "accept" ? cards[0].display : "No card was selected.",
         );
         expect(draws).toBe(1);
         expect(activations).toBe(2);
-        const duplicate = yield* replacement({ ...retry, id: "request-3" }, "alice");
+        const duplicate = yield* replacement({ ...retry, id: "request-3" }, "alice", headers);
         expect(duplicate.result).toEqual(completed.result);
         expect(duplicate.id).toBe("request-3");
         expect(activations).toBe(2);

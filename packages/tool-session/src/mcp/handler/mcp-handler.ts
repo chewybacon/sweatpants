@@ -1,787 +1,362 @@
-/**
- * MCP HTTP Handler
- *
- * Main entry point for the MCP Streamable HTTP handler.
- *
- * ## Overview
- *
- * This handler implements the MCP Streamable HTTP transport (spec 2025-11-25),
- * providing a single endpoint that supports:
- *
- * - **POST** - Execute tools, send elicit/sample responses
- * - **GET** - Establish SSE stream for server→client messages
- * - **DELETE** - Terminate a session
- *
- * ## Usage
- *
- * ```typescript
- * yield* createLocalToolInvocationRuntime({})
- * const tools = new Map([['my_tool', myTool]])
- * const { handler } = yield* createMcpHandler({ tools })
- *
- * // Use with any HTTP framework
- * app.all('/mcp',
-  handler)
- * ```
- *
- * @packageDocumentation
- */
-import { createScope, useScope, type Operation } from "effection";
-import { requireJsonObject, type Json, type JsonObject } from "@sweatpants/foundation";
-import type {
-  McpHandlerConfig,
-  McpHttpHandler,
-  McpClassifiedRequest,
-  McpSessionState,
-  McpInitializeRequest,
-  McpToolsListRequest,
-} from "./types.ts";
-import { McpHandlerError } from "./types.ts";
-import { parseAndClassify } from "./request-parser.ts";
-import { createSessionManager, type McpSessionManager } from "./session-manager.ts";
-import { handlePost, type PostHandlerOptions } from "./post-handler.ts";
-import { createSseEventStream, type SseStreamOptions } from "./get-handler.ts";
-import { createPrimeEvent, createSseHeaders } from "../protocol/sse-formatter.ts";
-import { JSON_RPC_ERROR_CODES } from "../protocol/types.ts";
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
+import { createScope, ensure, useScope, type Operation } from "effection";
+import { z } from "zod";
+import type { AnyToolContract } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
+import {
+  ToolInvocationHostPort,
+  ToolInvocationEventSourcePort,
+  ToolInvocationHostError,
+  type ToolInvocationTurn,
+  type ToolInvocationResume,
+} from "../../invocation.ts";
+import { createMcpContinuations, McpContinuationError } from "../continuations.ts";
+import {
+  readMcpRequestMetadata,
+  requireMcpFormCapability,
+  McpRequestMetadataError,
+  compileMcpParameterHeaders,
+  validateMcpParameterHeaders,
+} from "../request-metadata.ts";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
-import { ToolInvocationEventSourcePort, ToolInvocationHostPort } from "../../invocation.ts";
+import { encodeLogNotification, encodeProgressNotification } from "../protocol/message-encoder.ts";
+import {
+  McpHttpError as HttpError,
+  requestEnvelope,
+  readMcpBody,
+  acceptsMcpResponses,
+} from "./http.ts";
+import {
+  projectInputRequest,
+  resumeInput,
+  requireInputCapabilities,
+  type McpFormAdapters,
+} from "./interactions.ts";
+import { projectMcpTool } from "./manifest.ts";
 
-// =============================================================================
-// HANDLER OPTIONS
-// =============================================================================
+const logLevels = ["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"];
 
-/**
- * Full options for creating an MCP handler.
- */
-export interface McpHandlerOptions extends McpHandlerConfig {
-  /** POST handler options */
-  postOptions?: PostHandlerOptions | undefined;
-  /** SSE stream options */
-  sseOptions?: SseStreamOptions | undefined;
-}
-
-// =============================================================================
-// ERROR RESPONSE HELPERS
-// =============================================================================
-
-/**
- * Create a JSON-RPC error response.
- */
-function createJsonRpcErrorResponse(
-  code: number,
-  message: string,
-  id: string | number | null = null,
-): Record<string, unknown> {
-  return {
-    jsonrpc: "2.0",
-    id,
-    error: {
-      code,
-      message,
-    },
-  };
-}
-
-/**
- * Create an HTTP error response.
- */
-function createErrorResponse(
-  status: number,
-  code: number,
-  message: string,
-  id: string | number | null = null,
-  headers?: Record<string, string>,
-): Response {
-  const body = createJsonRpcErrorResponse(code, message, id);
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...headers,
-    },
-  });
-}
-
-// =============================================================================
-// INITIALIZE AND TOOLS/LIST RESPONSES
-// =============================================================================
-
-/**
- * Create an initialize response with server capabilities.
- */
-function createInitializeResponse(
-  request: McpInitializeRequest,
-  _options: McpHandlerOptions,
-): Record<string, unknown> {
-  return {
-    jsonrpc: "2.0",
-    id: request.requestId,
-    result: {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: {
-        tools: {
-          listChanged: false,
-        },
-      },
-      serverInfo: {
-        name: "mcp-durable-runtime",
-        version: "1.0.0",
-      },
-    },
-  };
-}
-
-type ListedTool = McpHandlerConfig["tools"] extends Map<string, infer Tool> ? Tool : never;
-type McpElicitProjection = { response: JsonObject; context?: JsonObject };
-type McpToolProjection = {
+export type McpHttpHandler = (request: Request) => Promise<Response>;
+export interface McpHandlerOptions {
   name: string;
-  description: string;
-  inputSchema: JsonObject;
-  _meta?: {
-    "x-sweatpants": {
-      elicits?: Record<string, McpElicitProjection>;
-      requires?: { elicitation?: boolean; sampling?: boolean };
-    };
-  };
-};
-
-/** JSON Schema was authored and digested upstream; this only applies MCP's keyed constraint. */
-function portableSchemaObject(projection: Json, label: string): JsonObject {
-  const { $id: _id, $schema: _schema, ...schema } = requireJsonObject(projection, label);
-  return schema;
+  version: string;
+  secret: string;
+  tools: readonly AnyToolContract[];
+  /** Trusted application identity, never self-reported MCP clientInfo. */
+  authenticate(request: Request): Operation<string>;
+  /** Same-origin requests are accepted by default. */
+  allowedOrigins?: readonly string[];
+  forms?: McpFormAdapters;
 }
-
-function projectElicits(tool: ListedTool): Record<string, McpElicitProjection> | undefined {
-  const entries = Object.entries(tool.artifacts.elicits).map(([key, artifact]) => [
-    key,
-    {
-      response: portableSchemaObject(
-        artifact.response.inputProjection,
-        `tool ${tool.name} elicitation ${key} response`,
-      ),
-      ...(artifact.context
-        ? {
-            context: portableSchemaObject(
-              artifact.context.inputProjection,
-              `tool ${tool.name} elicitation ${key} context`,
-            ),
-          }
-        : {}),
-    },
-  ]);
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-/** One projection shared by tools/list and the discovery manifest. */
-function projectMcpTool(name: string, tool: ListedTool): McpToolProjection {
-  const elicits = projectElicits(tool);
-  const requires = {
-    ...(tool.capabilities.elicitation ? { elicitation: true } : {}),
-    ...(tool.capabilities.sampling ? { sampling: true } : {}),
-  };
-  const hasRequires = Object.keys(requires).length > 0;
+function failure(error: unknown, id: string | number | null) {
+  const known = error instanceof HttpError || error instanceof McpRequestMetadataError;
+  const stateError =
+    error instanceof McpContinuationError || error instanceof ToolInvocationHostError;
   return {
-    name,
-    description: tool.description,
-    inputSchema: portableSchemaObject(
-      tool.artifacts.parameters.inputProjection,
-      `tool ${name} parameters`,
-    ),
-    ...(elicits || hasRequires
-      ? {
-          _meta: {
-            "x-sweatpants": {
-              ...(elicits ? { elicits } : {}),
-              ...(hasRequires ? { requires } : {}),
-            },
-          },
-        }
-      : {}),
-  };
-}
-
-/**
- * Create a tools/list response.
- *
- * Includes x-sweatpants extension in _meta for tools with elicits definitions,
- * enabling clients to introspect elicitation schemas for type generation.
- */
-function createToolsListResponse(
-  request: McpToolsListRequest,
-  tools: McpHandlerConfig["tools"],
-): Record<string, unknown> {
-  const toolList = Array.from(tools.entries()).map(([name, tool]) => projectMcpTool(name, tool));
-
-  return {
-    jsonrpc: "2.0",
-    id: request.requestId,
-    result: {
-      tools: toolList,
+    status: known ? error.status : stateError ? 400 : 500,
+    body: {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: known ? error.code : stateError ? -32602 : -32603,
+        message: known || stateError ? error.message : "Internal server error",
+        ...(error instanceof McpRequestMetadataError && error.data ? { data: error.data } : {}),
+      },
     },
   };
 }
 
-// =============================================================================
-// MAIN HANDLER FACTORY
-// =============================================================================
-
-/**
- * Create an MCP HTTP handler.
- *
- * The handler manages tool execution sessions and implements the
- * MCP Streamable HTTP transport protocol.
- */
-export function* createMcpHandler(options: McpHandlerOptions): Operation<{
-  handler: McpHttpHandler;
-  manager: McpSessionManager;
-}> {
-  // HTTP requests execute in standalone scopes created below, not descendants
-  // of this installation scope. Bind the two installed capabilities so those
-  // ephemeral request scopes dispatch through the application-owned runtime.
-  const installationScope = yield* useScope();
-  // SCOPE-CROSSING (ownership): standalone HTTP request scopes use the
-  // invocation host owned by this MCP application installation.
-  const host = ToolInvocationHostPort.bind(installationScope);
-  // SCOPE-CROSSING (ownership): standalone HTTP request scopes use the event
-  // source owned by this MCP application installation.
-  const events = ToolInvocationEventSourcePort.bind(installationScope);
-  const {
-    tools,
-    sessionTimeout,
-    sseRetryMs = 1000,
-    logger = "mcp-handler",
-    includeStackTraces = false,
-    postOptions = {},
-    sseOptions = {},
-  } = options;
-
-  // Create session manager
-  const manager = createSessionManager({
-    events,
-    host,
-    tools,
-    sessionTimeout,
+/** POST-only MCP. Runtime placement and execution lifetime remain application-owned. */
+export function* createMcpHandler(
+  options: McpHandlerOptions,
+): Operation<{ handler: McpHttpHandler }> {
+  const installation = yield* useScope();
+  // SCOPE-CROSSING (ownership): HTTP request scopes dispatch into the application-owned invocation runtime.
+  const host = ToolInvocationHostPort.bind(installation);
+  // SCOPE-CROSSING (ownership): HTTP response readers consume the application's invocation projections.
+  const events = ToolInvocationEventSourcePort.bind(installation);
+  const continuations = createMcpContinuations({ secret: options.secret });
+  const tools = new Map(options.tools.map((tool) => [tool.name, tool]));
+  if (tools.size !== options.tools.length) throw new Error("Duplicate MCP tool name");
+  const parameterHeaders = new Map(
+    [...tools].map(([name, tool]) => [
+      name,
+      compileMcpParameterHeaders(tool.artifacts.parameters.inputProjection),
+    ]),
+  );
+  const invocations = new Set<string>();
+  yield* ensure(function* () {
+    for (const id of invocations) yield* host.dispose(id);
   });
-
-  // Merge SSE options with defaults
-  const mergedSseOptions: SseStreamOptions = {
-    retryMs: sseRetryMs,
-    logger,
-    ...sseOptions,
+  const serverMeta = {
+    "io.modelcontextprotocol/serverInfo": { name: options.name, version: options.version },
   };
+  const cache = { ttlMs: 0, cacheScope: "private" };
 
-  /**
-   * The main HTTP handler function.
-   */
-  const handler: McpHttpHandler = async (request: Request): Promise<Response> => {
-    const [scope, destroy] = createScope();
-
-    try {
-      // Parse and classify the request
-      let classified: McpClassifiedRequest;
-      try {
-        classified = await scope.run(function* () {
-          return yield* parseAndClassify(request);
-        });
-      } catch (error) {
-        await destroy();
-        if (error instanceof McpHandlerError) {
-          return createErrorResponse(
-            error.httpStatus,
-            error.code === "INVALID_REQUEST"
-              ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
-              : JSON_RPC_ERROR_CODES.INVALID_REQUEST,
-            error.message,
-            error.requestId,
-          );
-        }
-        throw error;
-      }
-
-      // Handle based on request type
-      switch (classified.type) {
-        case "initialize": {
-          // Generate a session ID for this connection
-          const initSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-
-          // Respond with server capabilities and session ID
-          const response = createInitializeResponse(classified, options);
-          await destroy();
-          return new Response(JSON.stringify(response), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Mcp-Session-Id": initSessionId,
-            },
-          });
-        }
-
-        case "tools_list": {
-          // Respond with list of available tools
-          const response = createToolsListResponse(classified, tools);
-          await destroy();
-          return new Response(JSON.stringify(response), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        case "ping": {
-          // Respond to ping
-          await destroy();
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: classified.requestId,
-              result: {},
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-
-        case "notification": {
-          // Notifications don't expect a response - just acknowledge
-          await destroy();
-          return new Response(null, { status: 202 });
-        }
-
-        case "tools_call":
-        case "elicit_response":
-        case "sample_response": {
-          // POST requests
-          const result = await scope.run(function* () {
-            return yield* handlePost(classified, manager, postOptions);
-          });
-
-          if (result.type === "json") {
-            await destroy();
-            return new Response(JSON.stringify(result.body), {
-              status: result.status,
-              headers: {
-                "Content-Type": "application/json",
-                ...result.headers,
-              },
-            });
-          }
-
-          // Upgrade to SSE - get session state
-          const { sessionId } = result;
-          const state = await scope.run(function* () {
-            return yield* manager.getSession(sessionId);
-          });
-
-          if (!state) {
-            await destroy();
-            return createErrorResponse(
-              404,
-              JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
-              "Session state not found",
-            );
-          }
-
-          // Create SSE response
-          return createSseResponse(scope, destroy, state, manager, mergedSseOptions);
-        }
-
-        case "sse_stream": {
-          // GET request for SSE
-          const { sessionId, afterLSN } = classified;
-
-          // If no session ID or empty, return an idle SSE stream
-          // This is used for general server notifications (not tool-specific)
-          if (!sessionId) {
-            return createIdleSseResponse(destroy, mergedSseOptions);
-          }
-
-          // Try to acquire the session
-          try {
-            const state = await scope.run(function* () {
-              const s = yield* manager.openSession(sessionId);
-              if (afterLSN !== undefined) {
-                s.lastLSN = afterLSN;
-              }
-              return s;
-            });
-
-            return createSseResponse(scope, destroy, state, manager, mergedSseOptions);
-          } catch {
-            // Session not found - return idle stream instead of error
-            return createIdleSseResponse(destroy, mergedSseOptions);
-          }
-        }
-
-        case "terminate": {
-          // DELETE request
-          const { sessionId } = classified;
-
-          await scope.run(function* () {
-            yield* manager.terminateSession(sessionId);
-          });
-
-          await destroy();
-          return new Response(null, { status: 204 });
-        }
-
-        default:
-          await destroy();
-          return createErrorResponse(
-            400,
-            JSON_RPC_ERROR_CODES.INVALID_REQUEST,
-            "Unknown request type",
-          );
-      }
-    } catch (error) {
-      await destroy();
-
-      if (error instanceof McpHandlerError) {
-        return createErrorResponse(
-          error.httpStatus,
-          error.code === "INVALID_REQUEST"
-            ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
-            : JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
-          error.message,
-          error.requestId,
-        );
-      }
-
-      const message =
-        includeStackTraces && error instanceof Error
-          ? `${error.message}\n${error.stack}`
-          : "Internal server error";
-
-      return createErrorResponse(500, JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message);
-    }
-  };
-
-  return { handler, manager };
-}
-
-// =============================================================================
-// IDLE SSE RESPONSE (for connections without active sessions)
-// =============================================================================
-
-/**
- * Create an idle SSE stream for general server notifications.
- *
- * This is returned when a client connects without a valid session ID.
- * It sends a keepalive comment every 30 seconds to keep the connection alive.
- */
-function createIdleSseResponse(destroy: () => Promise<void>, options: SseStreamOptions): Response {
-  const { retryMs = 1000 } = options;
-
-  const headers = new Headers(createSseHeaders());
-  const encoder = new TextEncoder();
-
-  let intervalId: ReturnType<typeof setInterval> | null = null;
-
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      // Send initial retry directive
-      controller.enqueue(encoder.encode(`retry: ${retryMs}\n\n`));
-
-      // Send keepalive comments every 30 seconds
-      intervalId = setInterval(() => {
+  const handler: McpHttpHandler = async (request) => {
+    const [scope, destroy] = createScope(installation);
+    // Request failures must not escape into the supervising application task.
+    async function run<T>(operation: () => Operation<T>): Promise<T> {
+      const result = await scope.run(function* () {
         try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`));
-        } catch {
-          // Stream might be closed
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
+          return { ok: true as const, value: yield* operation() };
+        } catch (error) {
+          return { ok: false as const, error };
         }
-      }, 30000);
-    },
-
-    cancel() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-      destroy().catch(() => {});
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers,
-  });
-}
-
-// =============================================================================
-// SSE RESPONSE HELPER
-// =============================================================================
-
-/**
- * Create an SSE Response from a session state.
- *
- * Uses a queue-based pattern to bridge between Effection's cooperative
- * scheduling and the ReadableStream's pull-based model. A persistent
- * Effection task reads events and pushes them to a queue, while pull()
- * reads from the queue via Promises.
- */
-function createSseResponse(
-  scope: { run: <T>(op: () => Operation<T>) => Promise<T> },
-  destroy: () => Promise<void>,
-  state: McpSessionState,
-  manager: McpSessionManager,
-  options: SseStreamOptions,
-): Response {
-  const { sessionId } = state;
-  const { retryMs = 1000 } = options;
-
-  // Build headers
-  const headers = new Headers(createSseHeaders());
-  headers.set("Mcp-Session-Id", sessionId);
-
-  // Encoder for stream
-  const encoder = new TextEncoder();
-
-  // Queue for bridging Effection -> ReadableStream
-  // Events are pushed by the Effection task, consumed by pull()
-  const eventQueue: Array<IteratorResult<string, void>> = [];
-  let queueResolver: (() => void) | null = null;
-  let streamDone = false;
-  let scopeDestroyed = false;
-
-  // Helper to wait for queue to have items
-  function waitForQueueItem(): Promise<void> {
-    if (eventQueue.length > 0 || streamDone) {
-      return Promise.resolve();
+      });
+      if (!result.ok) throw result.error;
+      return result.value;
     }
-    return new Promise<void>((resolve) => {
-      queueResolver = resolve;
-    });
-  }
-
-  // Helper to push to queue and wake up waiter
-  function pushToQueue(item: IteratorResult<string, void>): void {
-    eventQueue.push(item);
-    if (queueResolver) {
-      queueResolver();
-      queueResolver = null;
-    }
-  }
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        // Send prime event immediately
-        const primeEvent = createPrimeEvent(sessionId, retryMs);
-        controller.enqueue(encoder.encode(primeEvent));
-
-        // Start a persistent Effection task that reads from subscription
-        // and pushes to the queue. This scope.run() stays active until
-        // the stream completes, which keeps the Effection scheduler running
-        // and allows spawned tasks (like tool execution) to process events.
-        // Start a persistent Effection task that reads from subscription
-        // and pushes to the queue. This scope.run() stays active until
-        // the stream completes, which keeps the Effection scheduler running
-        // and allows spawned tasks (like tool execution) to process events.
-        scope
-          .run(function* () {
-            try {
-              const subscription = yield* createSseEventStream(state, manager, options);
-
-              while (!scopeDestroyed) {
-                const result = yield* subscription.next();
-                pushToQueue(result);
-
-                if (result.done) {
-                  break;
-                }
-              }
-            } catch (error) {
-              // Push error as a special marker
-              pushToQueue({ done: true, value: undefined });
-              throw error;
-            } finally {
-              streamDone = true;
-              // Wake up any waiting pull()
-              if (queueResolver) {
-                queueResolver();
-                queueResolver = null;
-              }
-            }
-          })
-          .catch(() => {
-            // Errors will surface via queue, no need to log here
-            streamDone = true;
-            if (queueResolver) {
-              queueResolver();
-              queueResolver = null;
-            }
-          });
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-
-    async pull(controller) {
-      if (scopeDestroyed) {
-        controller.close();
-        return;
-      }
-
-      // Wait for an item in the queue
-      await waitForQueueItem();
-
-      // Get item from queue
-      const result = eventQueue.shift();
-
-      if (!result || result.done) {
-        controller.close();
-        if (!scopeDestroyed) {
-          scopeDestroyed = true;
-          try {
-            await destroy();
-          } catch {
-            // Ignore destroy errors
-          }
+    let id: string | number | null = null;
+    let streaming = false;
+    try {
+      const origin = request.headers.get("origin");
+      if (
+        origin &&
+        origin !== new URL(request.url).origin &&
+        !options.allowedOrigins?.includes(origin)
+      )
+        throw new HttpError(403, -32600, "Origin is not allowed");
+      if (request.method !== "POST") throw new HttpError(405, -32600, "MCP requires POST");
+      if (request.headers.get("content-type")?.split(";")[0]?.trim() !== "application/json")
+        throw new HttpError(415, -32600, "Content-Type must be application/json");
+      const accept = request.headers.get("accept") ?? "";
+      if (!acceptsMcpResponses(accept))
+        throw new HttpError(
+          406,
+          -32600,
+          "Accept must include application/json and text/event-stream",
+        );
+      const parsed = requestEnvelope.safeParse(await readMcpBody(request));
+      if (!parsed.success)
+        throw new HttpError(400, -32600, "Expected a JSON-RPC request with params");
+      const rpc = parsed.data;
+      id = rpc.id;
+      const metadata = readMcpRequestMetadata({
+        ...rpc,
+        headers: request.headers,
+        protocolVersion: MCP_PROTOCOL_VERSION,
+      });
+      const callerId = await run(() => options.authenticate(request));
+      if (!callerId) throw new HttpError(401, -32600, "Caller identity is required");
+      const success = (result: unknown) => Response.json({ jsonrpc: "2.0", id, result });
+      if (rpc.method === "server/discover")
+        return success({
+          resultType: "complete",
+          ...cache,
+          supportedVersions: [MCP_PROTOCOL_VERSION],
+          capabilities: { tools: {} },
+          _meta: serverMeta,
+        });
+      if (rpc.method === "tools/list")
+        return success({
+          resultType: "complete",
+          ...cache,
+          tools: [...tools].map(([name, tool]) => projectMcpTool(name, tool)),
+        });
+      if (rpc.method !== "tools/call") throw new HttpError(404, -32601, "Method not found");
+      const {
+        name,
+        arguments: args = {},
+        requestState,
+        inputResponses,
+        _meta,
+        ...extra
+      } = rpc.params;
+      if (typeof name !== "string" || !tools.has(name))
+        throw new HttpError(400, -32602, "Unknown tool");
+      const tool = tools.get(name)!;
+      const forms = options.forms?.[name];
+      validateMcpParameterHeaders(request.headers, args, parameterHeaders.get(name)!);
+      if (tool.capabilities.elicitation) requireMcpFormCapability(metadata.capabilities);
+      if (
+        tool.capabilities.sampling &&
+        !z.object({}).safeParse(metadata.capabilities.sampling).success
+      )
+        throw new McpRequestMetadataError(-32021, "Client does not support sampling", {
+          requiredCapabilities: { sampling: {} },
+        });
+      if (validateAuthoredSchema(tool.parameters, args).status !== "ok")
+        throw new HttpError(400, -32602, "Arguments do not match the authored tool schema");
+      const binding = {
+        serverId: options.name,
+        callerId,
+        method: rpc.method,
+        params: { name, arguments: args, ...extra } as Json,
+      };
+      let invocationId: string;
+      let cursor = 0;
+      let resume: ToolInvocationResume | undefined;
+      if (requestState !== undefined) {
+        if (typeof requestState !== "string")
+          throw new HttpError(400, -32602, "Invalid requestState");
+        const reference = await run(() => continuations.verify(requestState, binding));
+        invocationId = reference.invocationId;
+        cursor = Number(reference.pullId);
+        if (!Number.isSafeInteger(cursor) || cursor < 1)
+          throw new HttpError(400, -32602, "Invalid continuation cursor");
+        const parked = await run(() =>
+          host.turn({ invocationId, commandId: `mcp:inspect:${cursor}`, cursor: cursor - 1 }),
+        );
+        if (parked.type !== "parked" || parked.cursor !== cursor)
+          throw new HttpError(400, -32602, "Pending input is unavailable");
+        requireInputCapabilities(parked.ask, metadata.capabilities);
+        resume = resumeInput(parked.ask, inputResponses, forms);
+        if (
+          parked.ask.kind === "elicit" &&
+          resume.kind === "elicit" &&
+          resume.response.action === "accept"
+        ) {
+          const validation = validateAuthoredSchema(
+            tool.elicits[parked.ask.key]?.response,
+            resume.response.content,
+          );
+          if (validation.status !== "ok")
+            throw new HttpError(
+              400,
+              -32602,
+              "Input does not match the authored elicitation schema",
+            );
         }
       } else {
-        controller.enqueue(encoder.encode(result.value));
+        if (inputResponses !== undefined)
+          throw new HttpError(400, -32602, "inputResponses requires requestState");
+        invocationId = crypto.randomUUID();
+        await run(() => host.start({ invocationId, tool, input: args }));
+        invocations.add(invocationId);
       }
-    },
-
-    async cancel() {
-      if (!scopeDestroyed) {
-        scopeDestroyed = true;
-        streamDone = true;
-        // Wake up any blocked queue wait
-        if (queueResolver) {
-          queueResolver();
-          queueResolver = null;
+      const reader = await run(() => events.open(invocationId));
+      if (!reader) throw new HttpError(400, -32602, "Invocation is unavailable");
+      // The host deduplicates retries by command identity and rejects changed answers.
+      const outcome = run(() =>
+        host.turn({ invocationId, commandId: `mcp:turn:${cursor}`, cursor, resume }),
+      ).then(
+        (turn) => ({ turn }),
+        (error) => ({ error }),
+      );
+      const turnFailure = outcome.then((result) =>
+        "error" in result ? { error: result.error } : new Promise<never>(() => {}),
+      );
+      let finished = false;
+      const encoder = new TextEncoder();
+      const serialize = (message: unknown) =>
+        encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`);
+      async function resultFor(turn: ToolInvocationTurn): Promise<unknown> {
+        if (turn.type === "parked") {
+          const ask = turn.ask;
+          requireInputCapabilities(ask, metadata.capabilities);
+          const inputRequest = projectInputRequest(ask, forms);
+          return {
+            resultType: "input_required",
+            inputRequests: { [ask.requestId]: inputRequest },
+            requestState: await run(() =>
+              continuations.issue(binding, { invocationId, pullId: String(turn.cursor) }),
+            ),
+          };
         }
-        try {
-          await destroy();
-        } catch {
-          // Ignore destroy errors
-        }
-      }
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers,
-  });
-}
-
-// =============================================================================
-// MCP MANIFEST GENERATION
-// =============================================================================
-
-/**
- * MCP Manifest format for /.well-known/mcp.json
- *
- * Follows RFC 8615 well-known URIs pattern for service discovery.
- */
-export interface McpManifest {
-  /** Schema version for the manifest */
-  version: "1.0";
-
-  /** Server metadata */
-  server: {
-    name: string;
-    version: string;
-    description?: string;
-  };
-
-  /** MCP endpoint configuration */
-  mcp: {
-    /** URL path to the MCP endpoint (relative to manifest location) */
-    endpoint: string;
-    /** Supported MCP protocol version */
-    protocolVersion: string;
-  };
-
-  /** Tool definitions with x-sweatpants extensions */
-  tools: Array<{
-    name: string;
-    description: string;
-    inputSchema: JsonObject;
-    _meta?: {
-      "x-sweatpants"?: {
-        elicits?: Record<string, McpElicitProjection>;
-        requires?: {
-          elicitation?: boolean;
-          sampling?: boolean;
+        return {
+          resultType: "complete",
+          isError: turn.type !== "completed",
+          content: [
+            {
+              type: "text",
+              text:
+                turn.type === "completed"
+                  ? typeof turn.result === "string"
+                    ? turn.result
+                    : JSON.stringify(turn.result)
+                  : turn.type === "failed"
+                    ? turn.error.message
+                    : (turn.reason ?? "Cancelled"),
+            },
+          ],
         };
-      };
-    };
-  }>;
-}
-
-/**
- * Options for generating an MCP manifest.
- */
-export interface GenerateMcpManifestOptions {
-  /** Server name */
-  name?: string;
-  /** Server version */
-  version?: string;
-  /** Server description */
-  description?: string;
-  /** MCP endpoint path (default: '/mcp') */
-  endpoint?: string;
-}
-
-/**
- * Generate an MCP manifest for /.well-known/mcp.json
- *
- * This enables service discovery and introspection of MCP tools,
- * including x-sweatpants extensions for elicit schemas.
- *
- * @example
- * ```typescript
- * import { generateMcpManifest } from '@sweatpants/tool-session/mcp'
- *
- * const tools = new Map([['book_flight', bookFlightTool]])
- *
- * const manifest = generateMcpManifest(tools, {
- *   name: 'Travel Agent',
- *   version: '1.0.0',
- *   description: 'Book flights and hotels',
- * })
- *
- * // Mount at /.well-known/mcp.json
- * app.get('/.well-known/mcp.json', () => Response.json(manifest))
- * ```
- */
-export function generateMcpManifest(
-  tools: McpHandlerConfig["tools"],
-  options: GenerateMcpManifestOptions = {},
-): McpManifest {
-  const { name = "mcp-server", version = "1.0.0", description, endpoint = "/mcp" } = options;
-
-  const toolList = Array.from(tools.entries()).map(([toolName, tool]) =>
-    projectMcpTool(toolName, tool),
-  );
-
-  const manifest: McpManifest = {
-    version: "1.0",
-    server: {
-      name,
-      version,
-      ...(description && { description }),
-    },
-    mcp: {
-      endpoint,
-      protocolVersion: MCP_PROTOCOL_VERSION,
-    },
-    tools: toolList,
+      }
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            try {
+              // Pull exactly one projection record at a time. No background notification queue.
+              while (!finished) {
+                const settled = await Promise.race([
+                  run(function* () {
+                    const subscription = yield* reader.events(cursor);
+                    return { event: yield* subscription.next() };
+                  }),
+                  turnFailure,
+                ]);
+                if ("error" in settled) throw settled.error;
+                const next = settled.event;
+                if (next.done) throw new Error("Invocation ended without a result");
+                cursor = next.value.lsn;
+                const event = next.value;
+                const progressToken = z
+                  .object({ progressToken: z.union([z.string(), z.number()]).optional() })
+                  .safeParse(_meta);
+                if (
+                  event.type === "progress" &&
+                  progressToken.success &&
+                  progressToken.data.progressToken !== undefined
+                ) {
+                  controller.enqueue(
+                    serialize(encodeProgressNotification(event, progressToken.data.progressToken)),
+                  );
+                  return;
+                }
+                if (
+                  event.type === "log" &&
+                  metadata.logLevel &&
+                  logLevels.indexOf(event.level) >= logLevels.indexOf(metadata.logLevel)
+                ) {
+                  controller.enqueue(serialize(encodeLogNotification(event)));
+                  return;
+                }
+                if (
+                  event.type === "log" ||
+                  event.type === "progress" ||
+                  event.type === "sample_response_queued"
+                )
+                  continue;
+                const result = await outcome;
+                if ("error" in result) throw result.error;
+                controller.enqueue(
+                  serialize({ jsonrpc: "2.0", id, result: await resultFor(result.turn) }),
+                );
+                finished = true;
+                controller.close();
+                await destroy();
+              }
+            } catch (error) {
+              finished = true;
+              controller.enqueue(serialize(failure(error, id).body));
+              controller.close();
+              await destroy();
+            }
+          },
+          async cancel() {
+            if (finished) return;
+            finished = true;
+            await destroy();
+            await installation.run(() => host.dispose(invocationId));
+            invocations.delete(invocationId);
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      streaming = true;
+      return new Response(stream, {
+        headers: {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+        },
+      });
+    } catch (error) {
+      const result = failure(error, id);
+      return Response.json(result.body, { status: result.status });
+    } finally {
+      if (!streaming) await destroy();
+    }
   };
-
-  return manifest;
+  return { handler };
 }
-
-// =============================================================================
-// RE-EXPORTS
-// =============================================================================
-
-export type { McpHandlerConfig, McpHttpHandler } from "./types.ts";
-export { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";

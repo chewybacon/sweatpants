@@ -6,7 +6,7 @@ import type { McpManifest } from "../lib/fetch-manifest.ts";
 const manifest: McpManifest = {
   version: "1.0",
   server: { name: "test", version: "1" },
-  mcp: { endpoint: "/mcp", protocolVersion: "2025-11-25" },
+  mcp: { endpoint: "/mcp", protocolVersion: "2026-07-28" },
   tools: [
     {
       name: "pick_card",
