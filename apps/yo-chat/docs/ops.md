@@ -6,7 +6,7 @@ Production-candidate ops story for the cutover app (`apps/yo-chat`).
 
 | Variable | Required | Description |
 |---|---|---|
-| `DEFAULT_CHAT_MODEL_PROVIDER` | Override | e.g. `github-copilot`, `openai-codex`, `opencode`, `ollama` |
+| `DEFAULT_CHAT_MODEL_PROVIDER` | Override | e.g. `github-copilot`, `openai-codex`, `opencode` |
 | `DEFAULT_CHAT_MODEL_ID` | Override | Model id for the chosen provider |
 | `.sweatpants/auth.json` | Real managed providers | Git-ignored credentials and selected model; use `pnpm model:auth:login` |
 | `MCP_TOOL_RUNTIME` | No | `local` (default) or `agentcore` |
@@ -32,9 +32,6 @@ Primary chat inference is configured with `DEFAULT_CHAT_MODEL_PROVIDER` + `DEFAU
 Examples:
 
 ```bash
-# Local Ollama
-DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx
-
 # Managed providers are selected once; this is an explicit per-process override
 DEFAULT_CHAT_MODEL_PROVIDER=github-copilot DEFAULT_CHAT_MODEL_ID=claude-sonnet-4.5
 

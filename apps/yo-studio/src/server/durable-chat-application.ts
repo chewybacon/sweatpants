@@ -1,3 +1,4 @@
+import { installModelProvider, ModelProviderModelContext } from "@sweatpants/model-provider";
 import {
   createToolInventory,
   createToolInventoryEntry,
@@ -26,11 +27,7 @@ import {
   type WorkspaceOperations,
 } from "@sweatpants/workspace-runtime";
 import { useProgramExecution, type ProgramExecutionValue } from "@sweatpants/durable-execution";
-import {
-  createPiAiModelProviderDriver,
-  installPiAiModelProvider,
-  resolvePiAiModel,
-} from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 
 import { codingCapabilities } from "../capabilities/index.ts";
 import { codingModelProvider } from "../deployment.ts";
@@ -53,9 +50,10 @@ export interface StudioModelProviderRuntime {
 }
 
 export function createPiAiStudioModelProvider(): StudioModelProviderRuntime {
+  const piProvider = createPiAiModelProvider();
   return {
-    driver: createPiAiModelProviderDriver(),
-    model: resolvePiAiModel(codingModelProvider.model),
+    driver: piProvider.driver,
+    model: piProvider.resolveModel(codingModelProvider.model),
   };
 }
 
@@ -105,7 +103,8 @@ export function createStudioDurableChatApplication(options: {
     maxToolIterations: 8,
     setup: {
       chat: function* () {
-        yield* installPiAiModelProvider(modelProvider);
+        yield* installModelProvider(modelProvider.driver);
+        yield* ModelProviderModelContext.set(modelProvider.model);
       },
       application: function* () {
         yield* setupDurableStreams({

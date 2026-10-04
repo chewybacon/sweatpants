@@ -271,8 +271,6 @@ export function* executeChatTurn(
 
   let session: SessionHandle<StreamEvent> | undefined;
   let recoverDetachedSession = false;
-  let responsePrefix: readonly StreamEvent[] = [];
-  let responseStartLSN = 0;
 
   // Debug: log which path we're taking and if we have elicit responses
   log.debug(
@@ -286,15 +284,12 @@ export function* executeChatTurn(
   );
 
   if (isReconnect) {
-    ({ session, recoverDetachedSession, responsePrefix, responseStartLSN } =
-      yield* reconnectResponse(
-        execution,
-        context,
-        registry,
-        sessionId,
-        toolSchemas,
-        selectedLiveActivation,
-      ));
+    ({ session, recoverDetachedSession } = yield* reconnectResponse(
+      resolvedHead?.activeExecutionId ?? null,
+      registry,
+      sessionId,
+      selectedLiveActivation,
+    ));
   }
 
   if (!isReconnect || recoverDetachedSession) {
@@ -731,11 +726,6 @@ export function* executeChatTurn(
     throw new Error(`Conversation response session ${sessionId} was not acquired`);
   }
 
-  const response = yield* directChatSubscription(
-    registry,
-    session,
-    responsePrefix,
-    responseStartLSN,
-  );
+  const response = yield* directChatSubscription(registry, session);
   return { subscription: response };
 }

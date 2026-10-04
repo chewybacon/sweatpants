@@ -7,7 +7,7 @@ import {
 } from "@sweatpants/tool-runtime";
 import { MaxIterationsContext } from "@sweatpants/durable-chat-runtime/contexts";
 import type { RuntimeTool } from "@sweatpants/agent-sdk";
-import { installPiAiModelProvider, resolvePiAiModel } from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import {
   setupInMemoryDurableStreams,
   type DurableStreamsOwner,
@@ -17,6 +17,8 @@ import {
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
+
+const piProvider = createPiAiModelProvider();
 
 export type AgentTool = RuntimeTool;
 
@@ -50,7 +52,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
         "Configure DEFAULT_CHAT_MODEL_PROVIDER and DEFAULT_CHAT_MODEL_ID before starting yo-agent",
       );
     }
-    yield* installPiAiModelProvider({ model: resolvePiAiModel({ provider, id }) });
+    yield* piProvider.install({ model: piProvider.resolveModel({ provider, id }) });
   };
 
   const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {

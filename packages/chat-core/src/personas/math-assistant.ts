@@ -25,19 +25,16 @@ Always double-check your work.`,
   effortLevels: {
     low: {
       models: {
-        ollama: "qwen2.5:3b",
         openai: "gpt-4o-mini",
       },
     },
     medium: {
       models: {
-        ollama: "qwen2.5:7b",
         openai: "gpt-4o",
       },
     },
     high: {
       models: {
-        ollama: "qwen2.5:14b",
         openai: "o1",
       },
     },

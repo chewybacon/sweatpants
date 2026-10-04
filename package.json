@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "pnpm run -r --parallel --aggregate-output dev",
         "dev:yo-chat": "tsx scripts/dev-yo-chat.ts",
-        "dev:yo-chat:local": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-ollama} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-gemma4:12b-mlx} MCP_TOOL_RUNTIME=local pnpm -C apps/yo-chat dev",
+        "dev:yo-chat:local": "MCP_TOOL_RUNTIME=local pnpm -C apps/yo-chat dev",
         "dev:yo-chat:agentcore": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm -C apps/yo-chat dev",
         "dev:yo-chat:agentcore:auto": "./scripts/launch-yo-chat-agentcore.sh",
         "dev:yo-chat:remote": "./scripts/launch-yo-chat-remote.sh",

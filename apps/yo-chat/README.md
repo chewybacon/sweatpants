@@ -81,6 +81,27 @@ pnpm model:auth:refresh
 `DEFAULT_CHAT_MODEL_PROVIDER` / `DEFAULT_CHAT_MODEL_ID` pair overrides it for
 that process.
 
+Server setup uses one configured adapter for model lookup and execution:
+
+```ts
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
+
+const pi = createPiAiModelProvider();
+const model = pi.resolveModel({ provider: "openai-codex", id: "gpt-5.5" });
+
+// In createChatApp({ setup: { chat } }):
+function* chat() {
+    yield* pi.install({ model, streamOptions: { maxTokens: 4096 } });
+}
+```
+
+Pass `createPiAiModelProvider({ models })` to use a Pi `Models` collection with
+custom providers or credentials. That same collection handles resolution and
+requests, including later catalog updates. Unknown models fail resolution.
+Request allow-list policy remains in `resolveModelSelection`, before lookup.
+`pi.driver` exposes the canonical Sweatpants provider port implementation;
+`pi.runtime` also exposes image generation. Installation is Effection-scoped.
+
 ## MCP tool runtime mode
 
 yo-chat can run MCP plugin tool sessions in either local mode or AgentCore mode.
@@ -91,8 +112,6 @@ The chat handler, UI, elicitation handling, sampling provider, and durable app s
 This is the default. Tool generators run in the local Sweatpants worker/session runtime.
 
 ```bash
-DEFAULT_CHAT_MODEL_PROVIDER=ollama \
-DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx \
 MCP_TOOL_RUNTIME=local pnpm dev
 ```
 
@@ -113,7 +132,7 @@ AGENTCORE_ENDPOINT_NAME=DEFAULT \
 pnpm dev
 ```
 
-Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `ollama`/`gemma4:12b-mlx`, `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. For local Ollama tool-calling demos, use a tool-capable model such as `gemma4:12b-mlx`; smaller/default chat models may answer with JSON text instead of making native tool calls.
+Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. Unknown model IDs are rejected; selection must resolve through the installed Pi model catalog.
 
 Runtime selection is binary: `local` runs the complete generated tool registry in local workers, while `agentcore` runs that same complete registry in AgentCore. There is no per-tool hybrid router.
 
@@ -130,7 +149,7 @@ REDIS_URL=redis://localhost:6379
 PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
 
 # Optional chat model allow-list. When unset, only the configured default is allowed.
-ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"ollama","id":"gemma4:12b-mlx"}]'
+ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"github-copilot","id":"claude-sonnet-4.5"}]'
 
 # Developer-only opt-out from allow-list checks. Resolution still must succeed.
 UNSAFE_ALLOW_ANY_CHAT_MODEL=yes
@@ -138,7 +157,7 @@ UNSAFE_ALLOW_ANY_CHAT_MODEL=yes
 # AgentCore-hosted tools default to host-mediated ctx.sample(). Enable internal
 # AgentCore sampling only when the runtime has credentials/network access for the sample model.
 # If internal sampling is used while the chat model is app-local (for example
-# github-copilot or ollama), configure this explicit AgentCore-reachable sample model.
+# github-copilot), configure this explicit AgentCore-reachable sample model.
 AGENTCORE_TOOL_SAMPLE_MODE=host # host | internal
 AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER=amazon-bedrock
 AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5

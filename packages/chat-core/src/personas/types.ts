@@ -18,7 +18,6 @@ export type EffortLevel = "auto" | "low" | "medium" | "high";
 
 export interface EffortConfig {
   models?: {
-    ollama?: string;
     openai?: string;
   };
   // Future: reasoning_effort, temperature, etc.
@@ -59,7 +58,7 @@ export interface ResolvedPersona {
   name: string;
   systemPrompt: string;
   tools: string[];
-  model?: { ollama?: string; openai?: string };
+  model?: { openai?: string };
   capabilities: Capabilities;
 }
 

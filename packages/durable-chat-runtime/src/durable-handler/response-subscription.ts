@@ -13,11 +13,8 @@ let responseWriterEpoch = 1;
 export function* directChatSubscription(
   registry: SessionRegistry<StreamEvent>,
   session: SessionHandle<StreamEvent>,
-  prefix: readonly StreamEvent[] = [],
-  startLSN = 0,
 ): Operation<Subscription<string, void>> {
   const validator = new ConversationSegmentValidator();
-  let prefixIndex = 0;
   let finished = false;
   const stream: Stream<string, void> = resource(function* (provide) {
     // The response subscription owns the registry reference. This is the
@@ -26,13 +23,10 @@ export function* directChatSubscription(
     // response scope is destroyed, including client cancellation and setup
     // failure after acquisition.
     yield* ensure(() => registry.release(session.id));
-    const subscription = yield* createPullStream(session.buffer, startLSN);
+    const subscription = yield* createPullStream(session.buffer);
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
-        const next =
-          prefixIndex < prefix.length
-            ? { done: false as const, value: { token: prefix[prefixIndex++]!, lsn: 0 } }
-            : yield* subscription.next();
+        const next = yield* subscription.next();
         if (next.done) {
           if (!finished) {
             validator.finish();

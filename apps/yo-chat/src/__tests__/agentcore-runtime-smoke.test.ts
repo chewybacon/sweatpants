@@ -39,8 +39,8 @@ describe("yo-chat AgentCore runtime smoke", () => {
         AGENTCORE_TOOL_SESSION_TTL_MS: 60_000,
         AGENTCORE_REDIS_KEY_PREFIX: "sp:test:agentcore:",
         AGENTCORE_TOOL_NAMES: undefined,
-        DEFAULT_CHAT_MODEL_PROVIDER: "ollama",
-        DEFAULT_CHAT_MODEL_ID: "gemma4:12b-mlx",
+        DEFAULT_CHAT_MODEL_PROVIDER: "github-copilot",
+        DEFAULT_CHAT_MODEL_ID: "claude-sonnet-4.5",
       },
     }));
 

@@ -36,7 +36,7 @@ import {
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { ProgramDriverEphemeralEffectsContext } from "@sweatpants/durable-chat-runtime/program-driver/effects";
 import type { ToolSessionSamplingProvider } from "@sweatpants/tool-session";
-import { createPiAiModelProviderDriver } from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import type { ModelContext } from "@sweatpants/model-provider";
 import type { ChatMessage } from "@sweatpants/chat-contract";
 import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
@@ -105,7 +105,8 @@ function resolveFixtureBootstrapUrl(filename: string): URL {
 function createSamplingProvider(
   context: TestApplicationFactoryContext,
 ): ToolSessionSamplingProvider {
-  const driver = createPiAiModelProviderDriver();
+  const piProvider = createPiAiModelProvider();
+  const driver = piProvider.driver;
   return {
     *sample(messages, options) {
       const modelMessages: ChatMessage[] = messages;

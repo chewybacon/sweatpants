@@ -9,7 +9,8 @@ import type {
   Runtime,
   StreamOptions,
 } from "@sweatpants/model-provider";
-import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from "./runtime/index.ts";
+import { createPiAiRuntime } from "./runtime/pi-ai.ts";
+import { FileCredentialStore } from "./auth.ts";
 import { isProviderRecord } from "./runtime/schema-normalization.ts";
 import {
   installModelProvider,
@@ -18,7 +19,6 @@ import {
   type ModelProviderDriver,
 } from "@sweatpants/model-provider";
 
-export * from "./runtime/index.ts";
 export * from "./auth.ts";
 
 export interface ModelSelection {
@@ -52,11 +52,6 @@ export class ModelResolutionError extends Error {
     super(message);
     this.name = "ModelResolutionError";
   }
-}
-
-export function normalizeOllamaBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
 export function modelSelectionKey(selection: ModelSelection): string {
@@ -210,41 +205,6 @@ function fromPiAiModel(model: PiAi.Model<string>): Model {
   };
 }
 
-const registryModels = builtinModels();
-
-function registryLookup(selection: ModelSelection): Model | undefined {
-  const model = registryModels.getModel(selection.provider, selection.id);
-  return model ? fromPiAiModel(model) : undefined;
-}
-
-export function resolvePiAiModel(selection: ModelSelection): Model {
-  const normalized = parseModelSelection(selection, "model");
-  const registryModel = registryLookup(normalized);
-  if (registryModel) {
-    return registryModel;
-  }
-
-  if (normalized.provider === "ollama") {
-    return createOllamaModel(
-      normalized.id,
-      normalizeOllamaBaseUrl(
-        process.env["OLLAMA_BASE_URL"] ?? process.env["OLLAMA_URL"] ?? "http://localhost:11434",
-      ),
-    );
-  }
-
-  if (normalized.provider === "openai") {
-    return createOpenAiResponsesModel(
-      normalized.id,
-      (process.env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1").trim(),
-    );
-  }
-
-  throw new ModelResolutionError(
-    `Unable to resolve chat model ${sanitizeIdentifier(normalized.provider)}/${sanitizeIdentifier(normalized.id)}`,
-  );
-}
-
 export function redactSensitiveString(message: string | undefined): string | undefined {
   if (!message) {
     return undefined;
@@ -259,7 +219,7 @@ export function redactSensitiveString(message: string | undefined): string | und
     .slice(0, 2000);
 }
 
-export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): ModelProviderDriver {
+function createPiAiModelProviderDriver(runtime: Runtime): ModelProviderDriver {
   return {
     *stream(request) {
       return runtime.stream(request.model, request.context, request.options);
@@ -288,20 +248,52 @@ export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): M
   };
 }
 
+export interface CreatePiAiModelProviderOptions {
+  /** One collection owns model resolution, credentials, and provider execution. */
+  readonly models?: PiAi.Models;
+  readonly images?: PiAi.ImagesModels;
+}
+
 export interface InstallPiAiModelProviderOptions {
-  driver?: ModelProviderDriver;
   model?: Model;
   streamOptions?: StreamOptions;
 }
 
-export function* installPiAiModelProvider(
-  options: InstallPiAiModelProviderOptions = {},
-): Operation<void> {
-  yield* installModelProvider(options.driver ?? createPiAiModelProviderDriver());
-  if (options.model) {
-    yield* ModelProviderModelContext.set(options.model);
-  }
-  if (options.streamOptions) {
-    yield* ModelProviderStreamOptionsContext.set(options.streamOptions);
-  }
+export interface ConfiguredModelProvider {
+  readonly runtime: Runtime;
+  readonly driver: ModelProviderDriver;
+  resolveModel(selection: ModelSelection): Model;
+  install(options?: InstallPiAiModelProviderOptions): Operation<void>;
+}
+
+export function createPiAiModelProvider(
+  options: CreatePiAiModelProviderOptions = {},
+): ConfiguredModelProvider {
+  const models = options.models ?? builtinModels({ credentials: new FileCredentialStore() });
+  const runtime = createPiAiRuntime({
+    models,
+    ...(options.images ? { images: options.images } : {}),
+  });
+  const driver = createPiAiModelProviderDriver(runtime);
+  return {
+    runtime,
+    driver,
+    resolveModel(selection) {
+      const normalized = parseModelSelection(selection, "model");
+      const model = models.getModel(normalized.provider, normalized.id);
+      if (model) return fromPiAiModel(model);
+      throw new ModelResolutionError(
+        `Unable to resolve chat model ${sanitizeIdentifier(normalized.provider)}/${sanitizeIdentifier(normalized.id)}`,
+      );
+    },
+    *install(installation = {}) {
+      yield* installModelProvider(driver);
+      if (installation.model) {
+        yield* ModelProviderModelContext.set(installation.model);
+      }
+      if (installation.streamOptions) {
+        yield* ModelProviderStreamOptionsContext.set(installation.streamOptions);
+      }
+    },
+  };
 }

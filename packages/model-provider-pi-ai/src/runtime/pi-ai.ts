@@ -1,7 +1,5 @@
 import { call, resource, useAbortSignal, type Operation } from "effection";
-import { createProvider } from "@earendil-works/pi-ai";
-import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
-import { builtinImagesModels, builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { builtinImagesModels } from "@earendil-works/pi-ai/providers/all";
 import type * as PiAi from "@earendil-works/pi-ai";
 import {
   UnsupportedModelCapabilityError,
@@ -15,7 +13,6 @@ import {
   type StreamOptions,
   type ThinkingLevel,
 } from "@sweatpants/model-provider";
-import { FileCredentialStore } from "../auth.ts";
 import {
   STRUCTURED_RESPONSE_TOOL_NAME,
   appendPiStructuredResponseTool,
@@ -162,7 +159,7 @@ function toPiStreamOptions(
   signal: AbortSignal,
   direct: boolean,
 ): PiAi.SimpleStreamOptions & Record<string, unknown> {
-  const apiKey = options?.apiKey ?? (model.provider === "ollama" ? "ollama" : undefined);
+  const apiKey = options?.apiKey;
   const reasoning = toPiReasoning(options);
   const toolChoice = options?.responseFormat
     ? encodePiToolChoice(model, "required")
@@ -231,44 +228,15 @@ function decodeStreamEvent(
 
 export interface AdapterRuntimeOptions {
   /** Non-compat Pi-AI model collection; injection keeps provider ownership explicit. */
-  readonly models?: PiAi.Models;
+  readonly models: PiAi.Models;
   /** Non-compat Pi-AI image-model collection. */
   readonly images?: PiAi.ImagesModels;
 }
 
-function createDefaultPiModels(): PiAi.Models {
-  const models = builtinModels({ credentials: new FileCredentialStore() });
-  // Ollama is an app-local, dynamically selected model rather than a model in
-  // pi-ai's built-in catalog. Register its OpenAI-compatible transport so the
-  // Models collection can still apply auth before dispatching the request.
-  models.setProvider(
-    createProvider({
-      id: "ollama",
-      name: "Ollama",
-      auth: {
-        apiKey: {
-          name: "Ollama",
-          resolve: async ({ credential, signal }) => {
-            signal.throwIfAborted();
-            return {
-              auth: { apiKey: credential?.key ?? "ollama" },
-              source: "local Ollama",
-            };
-          },
-        },
-      },
-      models: [],
-      api: openAICompletionsApi(),
-    }),
-  );
-  return models;
-}
-
-const defaultPiModels = createDefaultPiModels();
 const defaultPiImages = builtinImagesModels();
 
-export function createPiAiRuntime(options: AdapterRuntimeOptions = {}): Runtime {
-  const models = options.models ?? defaultPiModels;
+export function createPiAiRuntime(options: AdapterRuntimeOptions): Runtime {
+  const models = options.models;
   const images = options.images ?? defaultPiImages;
   return {
     stream(model, context, streamOptions) {
@@ -340,47 +308,5 @@ export function createPiAiRuntime(options: AdapterRuntimeOptions = {}): Runtime 
         }
       });
     },
-  };
-}
-
-export const piAiRuntime = createPiAiRuntime();
-
-export function createOllamaModel(modelId: string, baseUrl = "http://localhost:11434/v1"): Model {
-  return {
-    id: modelId,
-    name: `${modelId} (Ollama)`,
-    api: "openai-completions",
-    provider: "ollama",
-    baseUrl,
-    reasoning: true,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128000,
-    maxTokens: 32000,
-    compat: {
-      supportsDeveloperRole: false,
-      supportsReasoningEffort: false,
-      supportsStore: false,
-      supportsStrictMode: false,
-      supportsUsageInStreaming: false,
-    },
-  };
-}
-
-export function createOpenAiResponsesModel(
-  modelId: string,
-  baseUrl = "https://api.openai.com/v1",
-): Model {
-  return {
-    id: modelId,
-    name: modelId,
-    api: "openai-responses",
-    provider: "openai",
-    baseUrl,
-    reasoning: true,
-    input: ["text", "image"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128000,
-    maxTokens: 16384,
   };
 }

@@ -39,8 +39,6 @@ export const appEnv = createEnv({
     UNSAFE_ALLOW_ANY_CHAT_MODEL: z.string().optional(),
 
     // Provider option configuration. These do not select model identity.
-    OLLAMA_URL: z.string().default("http://localhost:11434"),
-    OLLAMA_BASE_URL: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
     AWS_REGION: z.string().optional(),
