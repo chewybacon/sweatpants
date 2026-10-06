@@ -1,3 +1,4 @@
+export { createChatFetchHandler } from "./request-handler.ts";
 import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { FetchHandler, ScopedEndpoint } from "@sweatpants/durable-chat-runtime/streaming";
@@ -243,10 +244,7 @@ export function createChatHandler(config: DurableChatHandlerConfig) {
   return createChatEndpoints(config).postChat;
 }
 
-export {
-  chatStorageFromEnv,
-  openChatStorageDatabase,
-} from "@sweatpants/durable-chat-runtime/durable-handler";
+export { chatStorageFromEnv } from "@sweatpants/durable-chat-runtime/durable-handler";
 export type {
   ChatStorageConfig,
   ChatStorageEnvOptions,

@@ -7,7 +7,7 @@
     },
     "type": "module",
     "scripts": {
-        "dev": "tsx src/cli.tsx",
+        "dev": "tsx ../../scripts/dev-app.ts yo-agent tsx src/cli.tsx",
         "build": "tsup",
         "start": "node dist/cli.js",
         "check": "tsc --noEmit",

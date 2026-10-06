@@ -1286,16 +1286,9 @@ export function createPostgresDurableKernel(options: {
       return yield* call(() => scanIn(database, request));
     },
     *waitForChange(request): Operation<void> {
-      const deadline = Date.now() + Math.max(0, request.timeoutMs);
-      while (Date.now() < deadline) {
-        const current = yield* call(() =>
-          readAuthorityIn(database, request.collection, request.key),
-        );
-        if (current && BigInt(current.revision) > BigInt(request.afterRevision)) {
-          return;
-        }
-        yield* sleep(Math.min(10, deadline - Date.now()));
-      }
+      // The repository checks the head before and after this wake-up hint.
+      // Do not multiply one wait into repeated payload reads and connections.
+      yield* sleep(Math.max(0, request.timeoutMs));
     },
     *apply(mutation): Operation<DurableMutationOutcome> {
       validateMutationStructure(mutation);

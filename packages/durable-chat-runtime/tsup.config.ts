@@ -2,6 +2,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    "node-storage": "src/durable-handler/storage-node.ts",
     streaming: "src/streaming.ts",
     "response-streams/index": "src/response-streams/index.ts",
     "response-streams/testing": "src/response-streams/__tests__/vitest-effection.ts",

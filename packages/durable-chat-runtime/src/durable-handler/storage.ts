@@ -1,7 +1,5 @@
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { call, createScope, ensure, suspend, type Operation, type Scope } from "effection";
+import type { Operation, Scope } from "effection";
 import { z } from "zod";
 import type Database from "better-sqlite3";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
@@ -10,11 +8,6 @@ import type { ConversationStore } from "@sweatpants/history-store/contract";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import { installExecutionStore } from "@sweatpants/journal-authority/api";
-import {
-  createSqliteWriterBinding,
-  openBetterSqliteStorage,
-} from "@sweatpants/storage-sqlite/better-sqlite3";
-import { openPostgresStorage } from "@sweatpants/storage-postgres/pg-binding";
 
 export type ChatStorageConfig =
   | {
@@ -67,22 +60,6 @@ export function assertChatSqliteStorageVariant(
       "Durable chat storage configuration requires a SQLite path or a database binding",
     );
   }
-}
-
-/**
- * Converts a resolved storage selection into a caller-owned binding.
- * Returns `null` for non-sqlite selections; returns a handed-in binding
- * unchanged; opens and disciplines a writer binding for path selections.
- */
-export function openChatStorageDatabase(selection: ChatStorageConfig): Database.Database | null {
-  if (selection.kind !== "sqlite") {
-    return null;
-  }
-  assertChatSqliteStorageVariant(selection);
-  if ("database" in selection) {
-    return selection.database;
-  }
-  return createSqliteWriterBinding(selection.path);
 }
 
 export interface ResolvedChatStorage {
@@ -218,108 +195,6 @@ export function resolveImmediateChatStorage(
   return drivers;
 }
 
-function isHaltedError(error: unknown): boolean {
-  return error instanceof Error && error.message === "halted";
-}
-
-/**
- * Opens one SQLite composition in a child of the application scope. The child
- * remains suspended until its parent closes, at which point the handle's
- * finalizer closes the database connection.
- */
-export function openScopedSqliteChatStorage(
-  config: Extract<ChatStorageConfig, { readonly kind: "sqlite" }>,
-  applicationScope: Scope,
-): Promise<ResolvedChatStorage> {
-  const databaseMode = "database" in config;
-  const databasePath = databaseMode ? undefined : config.path;
-  const databaseBinding = databaseMode ? config.database : undefined;
-  const [ownerScope, destroyOwnerScope] = createScope(applicationScope);
-  let settled = false;
-
-  return new Promise<ResolvedChatStorage>((resolve, reject) => {
-    ownerScope
-      .run(function* (): Operation<void> {
-        if (!databaseMode) {
-          yield* call(() => mkdir(dirname(config.path), { recursive: true }));
-        }
-        const handle = yield* openBetterSqliteStorage(databasePath, {
-          migrate: true,
-          wal: true,
-          database: databaseBinding,
-        });
-        // Caller-owned bindings are closed by their owner (REQ-005).
-        if (!databaseMode) {
-          yield* ensure(() => handle.close());
-        }
-        settled = true;
-        resolve({
-          conversationStore: handle.storage.conversationStore,
-          executionStore: handle.storage.executionStore,
-          profile: config.profile,
-        });
-        yield* suspend();
-      })
-      .catch((error: unknown) => {
-        if (!settled) {
-          settled = true;
-          reject(error);
-          void destroyOwnerScope().catch(() => undefined);
-        } else if (!isHaltedError(error)) {
-          console.error("[ChatStorage] SQLite owner failed", { error });
-        }
-      });
-  });
-}
-
-/**
- * Opens one Postgres composition in a child of the application scope. The
- * pool is owned by the child scope and closed when the application scope
- * closes; caller-owned pools and databases are closed by their owner.
- */
-export function openScopedPostgresChatStorage(
-  config: Extract<ChatStorageConfig, { readonly kind: "postgres" }>,
-  applicationScope: Scope,
-): Promise<ResolvedChatStorage> {
-  const [ownerScope, destroyOwnerScope] = createScope(applicationScope);
-  let settled = false;
-
-  return new Promise<ResolvedChatStorage>((resolve, reject) => {
-    ownerScope
-      .run(function* (): Operation<void> {
-        const handle = yield* call(() =>
-          openPostgresStorage({
-            connectionString: config.connectionString,
-            migrate: true,
-            maxPoolSize: config.maxPoolSize,
-            synchronousCommit: config.synchronousCommit,
-          }),
-        );
-        yield* ensure(() => handle.close());
-        settled = true;
-        resolve({
-          conversationStore: handle.storage.conversationStore,
-          executionStore: handle.storage.executionStore,
-          profile: config.profile,
-        });
-        yield* suspend();
-      })
-      .catch((error: unknown) => {
-        if (!settled) {
-          settled = true;
-          reject(error);
-          void destroyOwnerScope().catch(() => undefined);
-        } else if (!isHaltedError(error)) {
-          console.error("[ChatStorage] Postgres owner failed", { error });
-        }
-      });
-  });
-}
-
-/**
- * Resolves a storage selection into driver instances WITHOUT opening a
- * backend: memory and caller-owned stores are the drivers themselves.
- */
 /**
  * Resolves a storage selection into driver instances WITHOUT opening a
  * backend: memory and caller-owned stores are the drivers themselves.
@@ -358,13 +233,16 @@ export function* installChatStorageDrivers(storage: ResolvedChatStorage): Operat
  * and returns the driver bundle. Consumers never see backend identity —
  * they resolve stores through the ports via `installChatStorageDrivers`.
  */
-export function chatStorageForScope(
+export async function chatStorageForScope(
   config: ChatStorageConfig,
   applicationScope: Scope,
 ): Promise<ResolvedChatStorage> {
   if (config.kind === "custom" || config.kind === "memory") {
-    return Promise.resolve(resolveImmediateChatStorage(config));
+    return resolveImmediateChatStorage(config);
   }
+  // Node backends are imported only after an explicit backend selection.
+  const { openScopedPostgresChatStorage, openScopedSqliteChatStorage } =
+    await import("./storage-node.ts");
   if (config.kind === "postgres") {
     return openScopedPostgresChatStorage(config, applicationScope);
   }

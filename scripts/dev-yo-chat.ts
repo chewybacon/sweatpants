@@ -1,13 +1,13 @@
-import { spawn, spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { readMode } from "./dev-options.ts";
+import { prepareApp, repoRoot, runCommand } from "./dev-app.ts";
 import {
+  FileCredentialStore,
   defaultModelForProvider,
   isYoChatAuthProvider,
   readStoredModelSelection,
 } from "../packages/model-provider-pi-ai/src/auth.ts";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const stored = readStoredModelSelection();
 const provider = process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? stored?.provider ?? "github-copilot";
 const model =
@@ -15,17 +15,10 @@ const model =
   (stored?.provider === provider ? stored.id : undefined) ??
   (isYoChatAuthProvider(provider) ? defaultModelForProvider(provider) : "gpt-5.5");
 
-function runPnpmTask(task: string, args: readonly string[] = []): void {
-  const result = spawnSync("pnpm", [task, ...args], {
-    cwd: repoRoot,
-    env: process.env,
-    stdio: "inherit",
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status ?? 1);
-}
-
-function launch(): void {
+async function launch(): Promise<void> {
+  const args = process.argv.slice(2);
+  const mode = readMode(args);
+  await prepareApp("yo-chat");
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     DEFAULT_CHAT_MODEL_PROVIDER: provider,
@@ -34,30 +27,34 @@ function launch(): void {
 
   if (isYoChatAuthProvider(provider)) {
     console.log(`Checking ${provider} credentials before starting yo-chat...`);
-    runPnpmTask("model:auth:refresh", ["--provider", provider]);
+    await runCommand(["model:auth:refresh", "--provider", provider]);
   }
 
-  console.log(`Starting yo-chat with ${provider}/${model}`);
-  const child = spawn("pnpm", ["-C", "apps/yo-chat", "dev", ...process.argv.slice(2)], {
-    cwd: repoRoot,
-    env: childEnv,
-    stdio: "inherit",
-  });
+  if (mode === "cloudflare") {
+    const credential = await new FileCredentialStore().read(provider);
+    if (!credential) {
+      throw new Error(`No stored credential for ${provider}`);
+    }
+    childEnv.MODEL_CREDENTIALS = JSON.stringify({ [provider]: credential });
+    childEnv.CLOUDFLARE_INCLUDE_PROCESS_ENV = "true";
+    await runCommand(
+      ["exec", "tsx", "scripts/prepare-cloudflare.ts"],
+      resolve(repoRoot, "apps/yo-chat"),
+      childEnv,
+    );
+  }
 
-  const forward = (signal: NodeJS.Signals): void => child.kill(signal);
-  process.once("SIGINT", () => forward("SIGINT"));
-  process.once("SIGTERM", () => forward("SIGTERM"));
-  child.once("error", (error) => {
-    console.error(`yo-chat failed to start: ${error.message}`);
-    process.exit(1);
-  });
-  child.once("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
+  console.error(
+    `Starting yo-chat: mode=${mode}, model=${provider}/${model}, tools=${mode === "cloudflare" ? "cloudflare" : (process.env["MCP_TOOL_RUNTIME"] ?? "local")}`,
+  );
+  await runCommand(
+    ["exec", "vite", "dev", "--port", "8000", ...args, "--strictPort", "--force"],
+    resolve(repoRoot, "apps/yo-chat"),
+    childEnv,
+  );
 }
 
-try {
-  launch();
-} catch (error) {
+launch().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  console.error("Run `pnpm model:auth:login --provider <provider>` to authenticate.");
   process.exit(1);
-}
+});

@@ -1,3 +1,4 @@
+import { openChatStorageDatabase, openScopedSqliteChatStorage } from "../storage-node.ts";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,8 +9,6 @@ import { BetterSqliteDatabase as Database } from "@sweatpants/storage-sqlite/bet
 import {
   assertChatSqliteStorageVariant,
   chatStorageFromEnv,
-  openChatStorageDatabase,
-  openScopedSqliteChatStorage,
   type ChatStorageConfig,
 } from "../storage.ts";
 import { createDurableChatEndpoints } from "../handler.ts";

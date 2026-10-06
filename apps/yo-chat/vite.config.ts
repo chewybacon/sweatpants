@@ -1,6 +1,7 @@
+import { build as bundleWorker } from "esbuild";
 import { builtinModules } from "node:module";
 import { cloudflare } from "@cloudflare/vite-plugin";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -25,9 +26,18 @@ const workspacePackages = [
 const config = defineConfig(({ mode }) => {
   const isCloudflare = mode === "cloudflare";
   return {
+    cacheDir: `node_modules/.vite-${mode}`,
     resolve: {
-      alias:
-        mode === "d1-local"
+      dedupe: ["react", "react-dom"],
+      alias: isCloudflare
+        ? [
+            {
+              find: /^.*\/chat-application(?:\.ts)?$/,
+              replacement: new URL("./src/server/cloudflare-chat-application.ts", import.meta.url)
+                .pathname,
+            },
+          ]
+        : mode === "d1-local"
           ? [
               {
                 find: /^\.\/storage-config$/,
@@ -63,7 +73,42 @@ const config = defineConfig(({ mode }) => {
     },
 
     plugins: [
-      ...(isCloudflare ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
+      ...(isCloudflare
+        ? [
+            {
+              name: "yo-chat-tool-executor",
+              resolveId(id: string) {
+                if (id === "virtual:yo-chat-tool-executor") return "\0" + id;
+                return undefined;
+              },
+              async load(id: string) {
+                if (id !== "\0virtual:yo-chat-tool-executor") return;
+                const result = await bundleWorker({
+                  entryPoints: [
+                    new URL("./src/server/cloudflare-tool-executor.ts", import.meta.url).pathname,
+                  ],
+                  metafile: true,
+                  bundle: true,
+                  write: false,
+                  format: "esm",
+                  platform: "browser",
+                  conditions: ["development"],
+                  external: ["cloudflare:workers", "node:*"],
+                });
+                for (const path of Object.keys(result.metafile!.inputs)) this.addWatchFile(path);
+                return "export default " + JSON.stringify(result.outputFiles[0]!.text);
+              },
+            } satisfies Plugin,
+          ]
+        : []),
+      ...(isCloudflare
+        ? [
+            cloudflare({
+              viteEnvironment: { name: "ssr" },
+              persistState: { path: ".wrangler/worker-state" },
+            }),
+          ]
+        : []),
       // Derive browser-safe interaction contracts from statically imported authored tools.
       clientContractPlugin(),
       // Node.js worker_threads support with ?nodeWorker and ?modulePath imports.
@@ -80,7 +125,7 @@ const config = defineConfig(({ mode }) => {
       }),
       tailwindcss(),
       imagetools(),
-      tanstackStart(),
+      tanstackStart(isCloudflare ? { server: { entry: "server.cloudflare" } } : {}),
       viteReact(),
     ],
 

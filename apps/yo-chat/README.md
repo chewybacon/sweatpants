@@ -21,6 +21,42 @@ pnpm model:auth:login --provider openai-codex
 pnpm dev:yo-chat
 ```
 
+## Development configurations
+
+Use the launchers so workspace dependencies are rebuilt from current sources
+before Vite or the server imports them:
+
+| Command (repository root)     | Configuration                                                |
+| ----------------------------- | ------------------------------------------------------------ |
+| `pnpm dev:yo-chat`            | Node host, selected real model, configured storage and tools |
+| `pnpm dev:yo-chat:local`      | Node host, local tool workers                                |
+| `pnpm dev:yo-chat:cloudflare` | Worker host, D1, DOs, Dynamic Workers                        |
+| `pnpm dev:yo-chat:d1`         | Node host with local Cloudflare storage                      |
+| `pnpm dev:yo-chat:agentcore`  | Node host with configured AgentCore runtime                  |
+| `pnpm dev:yo-mcp`             | MCP server                                                   |
+| `pnpm dev:yo-agent`           | Terminal agent                                               |
+| `pnpm dev:yo-studio`          | Studio                                                       |
+
+Root `pnpm dev` starts yo-chat. App-local `pnpm dev` commands use the same preparation. Arguments pass through,
+for example `pnpm dev:yo-chat:cloudflare --port 8008`. Both `--mode cloudflare`
+and `--mode=cloudflare` initialize Cloudflare storage and credentials. The
+launcher stops if a dependency build, credential refresh, or storage preparation
+fails. It does not launch against an older successful build.
+
+Vite refreshes its dependency optimization cache on launch, keeps caches separate
+by mode, and fails if the requested port is occupied. Stop the old app before
+relaunching it after package changes; a running Node process may retain imported
+modules. Launch preparation does not provision remote infrastructure. The
+`d1-local` configuration still needs the metadata Worker described below;
+AgentCore requires a configured runtime (or the existing `:agentcore:auto` /
+`:remote` provisioning launchers).
+
+Playwright server startup uses the same dependency preparation. Its deterministic
+presentation tests do not require credential refresh; live tests retain their
+real-provider setup. Simulator scenarios belong in Test Rig, never in a running
+app. `yo-slides` is independent of the framework package graph and retains its
+Slidev commands.
+
 ## Cloudflare execution preparation
 
 The first Cloudflare adapter runs the existing durable pick-card and play-ttt
@@ -40,12 +76,44 @@ the executor process while parked, reconnects, and completes the same turn:
 pnpm -C apps/yo-chat exec vitest run acceptance/pick-card-terminal-publication.acceptance.test.ts
 ```
 
-Journal storage and chat ingress remain host-side in this test. The main
-`vite --mode cloudflare` configuration is preparation only: full yo-chat SSR/API
-still imports Node storage and ordinary tool workers. It is not yet a runnable
-Cloudflare deployment. Ordinary multi-turn tools can now use the local DO
-namespace through `cloudflare({ sessions })`; durable tools use the Dynamic Worker
-entrypoint through `cloudflare({ worker })`. Neither falls back to Node execution.
+That executor-only test keeps ingress on Node. The main `cloudflare` mode now
+runs yo-chat SSR, HTTP ingress, and the chat host inside workerd. It combines:
+
+- D1 conversation/execution journals and separate thread metadata.
+- Durable Objects for response buffers, writer fences, and registry entries.
+- Dynamic Workers for durable tools (`pick_card`, `play_ttt`).
+- Durable Objects for ordinary tool sessions (`book_flight`, `tictactoe`, etc.).
+
+```sh
+pnpm dev:yo-chat --mode cloudflare
+pnpm -C apps/yo-chat exec vite build --mode cloudflare
+pnpm -C apps/yo-chat exec vitest run acceptance/cloudflare-host.acceptance.test.ts
+```
+
+The launcher refreshes the selected local Pi credential, passes it to the Worker
+as a secret binding, and initializes local D1 before starting Vite. Local Worker
+state lives under `.wrangler/worker-state`, separate from the Node + D1 mode below.
+Model credentials are request-local snapshots: this local development path does
+not persist OAuth rotations performed inside the Worker. Restart through the
+launcher to refresh credentials. A deployed credential owner remains future work.
+Pi's bundled OAuth entry is required because filesystem dynamic imports cannot
+resolve inside a bundled Worker.
+
+Each HTTP request creates its own application and RPC targets. The runtime's
+`createChatFetchHandler(() => createApp())` keeps that application alive until
+response EOF, cancellation, or failure, without reading ahead. A later request
+replays durable tools from D1; ordinary tools reconnect to their live DO session.
+No Node executor fallback is used. Native SQLite/Postgres setup loads only when that backend is selected;
+`openChatStorageDatabase` is available from `@sweatpants/agent-host/node`. The combined acceptance suite replaces the
+entire workerd process while a card is parked and verifies replay and history,
+then exercises the flight and tic-tac-toe flows through the Worker host.
+
+This is local Worker validation, not a deployed Cloudflare certification. Live
+Codex access from local workerd currently receives an upstream rejection; the
+combined acceptance suite uses the real Pi HTTP adapter with Test Rig's model
+simulator. Simulation is confined to tests; running the app and validating it in
+the browser require a real provider. Cloud D1 provisioning and durable activation scheduling (wakeups/alarms)
+are outside this cut. Existing ordinary-tool session expiration is unchanged.
 
 ## Local Cloudflare storage
 

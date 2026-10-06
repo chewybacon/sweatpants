@@ -302,6 +302,15 @@ A passing `pnpm land` is required before declaring broad work complete unless th
 
 The broad live-provider Playwright suite is intentionally manual: refresh/sync Copilot auth and run `pnpm test:e2e:manual`. It is not part of `pnpm land`; see `apps/yo-chat/e2e/README.md`.
 
+### Real providers for app validation
+
+Never run product apps with scripted, fake, or simulated models, including for
+computer-use validation. Do not add temporary provider replacements, Vite
+overrides, or fallback modes to make browser checks pass. Simulator scenarios
+belong in Test Rig tests. If a real provider fails, report the app validation as
+blocked and investigate the actual failure; simulated results are not evidence
+that the live app works.
+
 ## Git Operations (When Requested)
 
 Git commits and pushes are **not automatic**. The agent will only perform git write operations when explicitly requested:
