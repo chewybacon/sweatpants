@@ -50,11 +50,14 @@ status here. Statuses:
 | `packages/model-sampling` | library | |
 | `packages/platform-acceptance` | infrastructure | Acceptance suite — the landing gate |
 | `packages/react-chat` | library | |
+| `packages/durable-streams-cloudflare` | library | Durable Object response buffers and registry storage for yo-chat |
+| `packages/storage-d1` | library | D1 durable kernel for the conversation and execution repositories |
 | `packages/storage-sqlite` | library | |
 | `packages/stream-bridge` | library | |
 | `packages/test-rig` | infrastructure | Test substrate consumed only by acceptance/yo-chat test contexts |
 | `packages/tool-runtime` | library | |
 | `packages/tool-runtime-agentcore` | library | |
+| `packages/tool-runtime-cloudflare` | library | Cloudflare Dynamic Workers for durable programs and Durable Objects for ordinary tool sessions |
 | `packages/tool-runtime-local` | library | |
 | `packages/tool-session` | library | |
 | `packages/ts-config` | infrastructure | Shared tsconfig base; consumed via manifest/tsconfig extends only |

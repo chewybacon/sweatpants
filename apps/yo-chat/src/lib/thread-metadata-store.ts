@@ -1,8 +1,4 @@
-import type Database from "better-sqlite3";
-import { desc, eq } from "drizzle-orm";
-import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
-import { ensureThreadMetadataSchema, threadMetadata } from "@/lib/thread-metadata-schema";
 
 export interface CreateThreadMetadataInput {
   namespace?: string;
@@ -18,8 +14,23 @@ export interface UpdateThreadMetadataInput {
   messageCount?: number;
 }
 
-interface SynchronousThreadMetadataStore {
-  list(namespace?: string): ThreadSummary[];
+export interface ThreadListCursor {
+  updatedAt: number;
+  id: string;
+}
+export interface ThreadListOptions {
+  before?: ThreadListCursor;
+  limit?: number;
+}
+export function threadListLimit(options: ThreadListOptions = {}): number {
+  const limit = options.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("Thread page limit must be between 1 and 100");
+  return limit;
+}
+
+export interface SynchronousThreadMetadataStore {
+  list(namespace?: string, options?: ThreadListOptions): ThreadSummary[];
   get(threadId: string): ThreadSummary | null;
   create(input?: CreateThreadMetadataInput): ThreadSummary;
   update(threadId: string, input: UpdateThreadMetadataInput): ThreadSummary | null;
@@ -34,7 +45,7 @@ export type ThreadMetadataStore = {
     | Promise<ReturnType<SynchronousThreadMetadataStore[K]>>;
 } & { close?: () => Promise<void> };
 
-function normalizeNamespace(namespace: string | undefined): string {
+export function normalizeNamespace(namespace: string | undefined): string {
   const value = compact(namespace ?? "");
   return value || "default";
 }
@@ -76,7 +87,7 @@ export function createThreadSummary(
   };
 }
 
-function applyUpdate(
+export function applyThreadMetadataUpdate(
   existing: ThreadSummary,
   input: UpdateThreadMetadataInput,
   updatedAt: number,
@@ -104,10 +115,22 @@ export function createInMemoryThreadMetadataStore(): SynchronousThreadMetadataSt
   const threads = new Map<string, ThreadSummary>();
 
   return {
-    list(namespace) {
+    list(namespace, options = {}) {
+      const limit = threadListLimit(options);
       return Array.from(threads.values())
         .filter((thread) => namespace === undefined || thread.namespace === namespace)
-        .sort((left, right) => right.updatedAt - left.updatedAt);
+        .filter(
+          (thread) =>
+            !options.before ||
+            thread.updatedAt < options.before.updatedAt ||
+            (thread.updatedAt === options.before.updatedAt && thread.id < options.before.id),
+        )
+        .sort(
+          (left, right) =>
+            right.updatedAt - left.updatedAt ||
+            (left.id < right.id ? 1 : left.id > right.id ? -1 : 0),
+        )
+        .slice(0, limit);
     },
 
     get(threadId) {
@@ -125,102 +148,13 @@ export function createInMemoryThreadMetadataStore(): SynchronousThreadMetadataSt
       if (!existing) {
         return null;
       }
-      const next = applyUpdate(existing, input, Date.now());
+      const next = applyThreadMetadataUpdate(existing, input, Date.now());
       threads.set(threadId, next);
       return next;
     },
 
     delete(threadId) {
       return threads.delete(threadId);
-    },
-  };
-}
-
-/**
- * Durable thread metadata as a co-tenant table: rows live in yo-chat's own
- * `thread_metadata` table beside the kernel's reserved `sp_` namespace, on
- * the same binding the application hands to the kernel. Writes run on this
- * application connection per the co-tenant write discipline; authority
- * writes stay on the kernel's connection.
- */
-export function createSqliteThreadMetadataStore(
-  binding: Database.Database,
-): SynchronousThreadMetadataStore {
-  ensureThreadMetadataSchema(binding);
-  const db: BetterSQLite3Database<{ threadMetadata: typeof threadMetadata }> = drizzle(binding, {
-    schema: { threadMetadata },
-  });
-
-  const readRow = (row: typeof threadMetadata.$inferSelect): ThreadSummary => ({
-    namespace: row.namespace,
-    id: row.id,
-    title: row.title,
-    // The kernel-disciplined binding returns INTEGER columns as bigint.
-    createdAt: Number(row.createdAt),
-    updatedAt: Number(row.updatedAt),
-    lastMessagePreview: row.lastMessagePreview,
-    messageCount: Number(row.messageCount),
-  });
-
-  const get = (threadId: string): ThreadSummary | null => {
-    const row = db.select().from(threadMetadata).where(eq(threadMetadata.id, threadId)).get();
-    return row ? readRow(row) : null;
-  };
-
-  return {
-    list(namespace) {
-      const rows = db
-        .select()
-        .from(threadMetadata)
-        .where(
-          namespace === undefined
-            ? undefined
-            : eq(threadMetadata.namespace, normalizeNamespace(namespace)),
-        )
-        .orderBy(desc(threadMetadata.updatedAt))
-        .all();
-      return rows.map(readRow);
-    },
-
-    get,
-
-    create(input = {}) {
-      const thread = createThreadSummary(input);
-      db.insert(threadMetadata)
-        .values({
-          id: thread.id,
-          namespace: thread.namespace,
-          title: thread.title,
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          lastMessagePreview: thread.lastMessagePreview,
-          messageCount: thread.messageCount,
-        })
-        .run();
-      return thread;
-    },
-
-    update(threadId, input) {
-      const existing = get(threadId);
-      if (!existing) {
-        return null;
-      }
-      const next = applyUpdate(existing, input, Date.now());
-      db.update(threadMetadata)
-        .set({
-          title: next.title,
-          lastMessagePreview: next.lastMessagePreview,
-          messageCount: next.messageCount,
-          updatedAt: next.updatedAt,
-        })
-        .where(eq(threadMetadata.id, threadId))
-        .run();
-      return next;
-    },
-
-    delete(threadId) {
-      const result = db.delete(threadMetadata).where(eq(threadMetadata.id, threadId)).run();
-      return result.changes > 0;
     },
   };
 }

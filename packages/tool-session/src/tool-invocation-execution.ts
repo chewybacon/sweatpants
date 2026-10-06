@@ -22,20 +22,17 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   ToolSessionOptions,
-  ToolInvocationResume,
-} from "@sweatpants/tool-session";
+} from "./contract.ts";
+import type { ToolInvocationResume } from "./invocation-resume.ts";
 import type {
   ElicitsMap,
   SamplesMap,
   ToolDefinition,
   SampleExchangeCompletion,
 } from "@sweatpants/agent-sdk";
-import {
-  parseToolParameters,
-  requireToolParameterResult,
-} from "@sweatpants/tool-session/tool-parameters";
-import { createBridgeHost, type ElicitId, type ElicitResponse } from "@sweatpants/tool-session/mcp";
-import { createToolSessionEventLog, isTerminalToolSessionStatus } from "@sweatpants/tool-session";
+import { parseToolParameters, requireToolParameterResult } from "./tool-parameters.ts";
+import { createBridgeHost, type ElicitId, type ElicitResponse } from "./mcp/index.ts";
+import { createToolSessionEventLog, isTerminalToolSessionStatus } from "./event-log.ts";
 
 // =============================================================================
 // INTERNAL TYPES

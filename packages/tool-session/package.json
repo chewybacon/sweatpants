@@ -103,6 +103,16 @@
                 "types": "./dist/execution/index.d.ts",
                 "default": "./dist/execution/index.js"
             }
+        },
+        "./invocation-execution": {
+            "development": {
+                "import": "./src/tool-invocation-execution.ts",
+                "types": "./src/tool-invocation-execution.ts"
+            },
+            "import": {
+                "types": "./dist/tool-invocation-execution.d.ts",
+                "default": "./dist/invocation-execution.js"
+            }
         }
     },
     "scripts": {

@@ -21,6 +21,112 @@ pnpm model:auth:login --provider openai-codex
 pnpm dev:yo-chat
 ```
 
+## Cloudflare execution preparation
+
+The first Cloudflare adapter runs the existing durable pick-card and play-ttt
+programs in request-scoped Dynamic Workers, using returned RPC targets for live
+generator attachments. Its entry is `src/server/cloudflare-tool-executor.ts`.
+`wrangler.tools.jsonc` bundles that entry for the Worker Loader. Check the bundle
+without deploying:
+
+```bash
+pnpm -C apps/yo-chat exec wrangler deploy --config wrangler.tools.jsonc --dry-run
+```
+
+The pick-card acceptance test exercises the adapter under real workerd, destroys
+the executor process while parked, reconnects, and completes the same turn:
+
+```bash
+pnpm -C apps/yo-chat exec vitest run acceptance/pick-card-terminal-publication.acceptance.test.ts
+```
+
+Journal storage and chat ingress remain host-side in this test. The main
+`vite --mode cloudflare` configuration is preparation only: full yo-chat SSR/API
+still imports Node storage and ordinary tool workers. It is not yet a runnable
+Cloudflare deployment. Ordinary multi-turn tools can now use the local DO
+namespace through `cloudflare({ sessions })`; durable tools use the Dynamic Worker
+entrypoint through `cloudflare({ worker })`. Neither falls back to Node execution.
+
+## Local Cloudflare storage
+
+The `d1-local` mode stores conversation and execution journals in D1 through
+`@sweatpants/storage-d1`. Thread sidebar metadata uses its own D1 Worker. That Worker also exports
+`ResponseStream`, a SQLite-backed Durable Object for each response stream.
+Response buffers, writer fences and session entries use the DO namespace, without
+Redis or an in-memory fallback. The application host and model provider still run in Node; this mode is not a full
+Cloudflare deployment. KV is not used.
+
+```sh
+# Apply the app-owned schema to local D1 (no cloud account required).
+pnpm -C apps/yo-chat metadata:migrate:local
+# Terminal 1: run the metadata Worker and response DOs on localhost:8788.
+pnpm -C apps/yo-chat dev:metadata
+# Terminal 2: run chat with a local workerd D1 journal binding.
+pnpm dev:yo-chat --mode d1-local
+```
+
+The metadata Worker uses the same HTTP handler and normalization as the Node app.
+D1 operations start at the primary for current reads, and partial updates use a
+single SQL statement so concurrent changes to different fields do not overwrite
+one another. Local D1 persists under `apps/yo-chat/.wrangler/state`; restarting the
+metadata Worker preserves thread names, previews, counts and namespaces. The
+transcript and execution journal also persist there in a separate D1 database.
+`wrangler.journal.jsonc` selects that binding; the storage package provisions its
+initial schema. Existing SQLite threads are not migrated to D1.
+`wrangler.metadata.jsonc` and `migrations/thread-metadata/` own this Worker and schema.
+
+The library fits the existing storage port:
+
+```ts
+import { createD1Storage, initializeD1Storage } from "@sweatpants/storage-d1";
+
+await initializeD1Storage(env.JOURNAL);
+const app = createChatApp({
+    name: "my-app",
+    secret,
+    storage: createD1Storage(env.JOURNAL),
+    programs: [myTool],
+});
+```
+
+D1 batches commit the receipt, journal records and authority change together.
+The commit guard validates the authority revision and immutable aliases read by
+that mutation. Unrelated conversations do not cause each other to retry; writers
+racing shared identities retry with a fresh snapshot. Records are chunked to stay
+below D1's row-size limit. D1's query, request and database limits still apply;
+this local validation does not establish production capacity. See
+[the D1 cost contract](../../packages/storage-d1/README.md) for measured read/write
+budgets and remaining deployment limits. The sidebar uses bounded cursor pages
+and restores older selections with a point lookup.
+
+Response delivery uses the existing setup interface:
+
+```ts
+import { createCloudflareResponseStores } from "@sweatpants/durable-streams-cloudflare";
+
+// Worker entrypoint:
+export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
+
+// Application setup:
+yield *
+    setupDurableStreams({
+        ...createCloudflareResponseStores<string>(env.RESPONSE_STREAMS),
+        retentionPolicy: { mode: "retain_forever" },
+    });
+```
+
+Readers pull bounded batches through the existing Effection stream. At the tail,
+a reader waits for a DO notification; cancellation releases its waiter. A bounded
+wait also releases abandoned requests after host loss. Stream offsets, terminal
+state, writer fences and registry entries survive DO replacement. Tokens must be
+JSON serializable and fit Cloudflare's storage/RPC limits.
+
+These DOs store delivery state, separate from tool-execution DOs. They do not run
+the chat generator or replace the D1 journal. The existing registry's reference
+counts are bookkeeping, not leases: a crashed host can leave a stale count. This
+local composition retains streams indefinitely; automatic expiry and lease-based
+cleanup are not provided by this cut.
+
 ## Durable storage
 
 Yo-chat uses SQLite for conversation and execution authority by default. The
@@ -439,3 +545,11 @@ Files prefixed with `demo` can be safely deleted. They are there to provide a st
 # Learn More
 
 You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+
+Local Cloudflare tool validation also exports `ToolSessions` from
+`src/server/cloudflare-tool-sessions.ts`. The fixture installs this SQLite-backed
+DO namespace beside the Dynamic Worker loader. Route ordinary tools with
+`cloudflare({ sessions })`; use `cloudflare({ worker, sessions })` for a mixed
+inventory. Ordinary DO sessions retain a generator across requests, with a bounded
+ten-minute lifetime and explicit failure after compute loss. They do not replay
+ordinary effects after restart.

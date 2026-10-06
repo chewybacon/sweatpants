@@ -1,14 +1,11 @@
 // @vitest-environment node
+import { createSqliteThreadMetadataStore } from "@/lib/sqlite-thread-metadata-store";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { handleThreadMetadataRequest } from "@/lib/thread-metadata-api";
-import {
-  configureThreadMetadataStore,
-  createSqliteThreadMetadataStore,
-  getThreadMetadataStore,
-} from "@/lib/thread-metadata-store";
+import { configureThreadMetadataStore, getThreadMetadataStore } from "@/lib/thread-metadata-store";
 import { createSqliteWriterBinding } from "@sweatpants/storage-sqlite/better-sqlite3";
 
 const roots: string[] = [];

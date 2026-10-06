@@ -79,6 +79,15 @@
         },
         {
             "path": "./packages/frame-renderer"
+        },
+        {
+            "path": "./packages/tool-runtime-cloudflare"
+        },
+        {
+            "path": "./packages/storage-d1"
+        },
+        {
+            "path": "./packages/durable-streams-cloudflare"
         }
     ],
     "files": []

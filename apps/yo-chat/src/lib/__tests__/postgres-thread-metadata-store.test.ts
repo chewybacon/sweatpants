@@ -24,7 +24,7 @@ it("persists metadata across pool restart and supports the asynchronous HTTP sto
       new Request(`http://localhost/api/threaded-chat/threads?namespace=${namespace}`),
     );
     expect(response.status).toBe(200);
-    const { threads } = await response.json();
+    const { threads } = (await response.json()) as { threads: unknown[] };
     expect(threads).toEqual([
       expect.objectContaining({
         id,

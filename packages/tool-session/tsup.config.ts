@@ -2,6 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
+    "invocation-execution": "src/tool-invocation-execution.ts",
     index: "src/index.ts",
     "execution/index": "src/execution/index.ts",
     contract: "src/contract.ts",

@@ -17,7 +17,9 @@ export const threadMetadata = sqliteTable(
     lastMessagePreview: text("last_message_preview").notNull(),
     messageCount: integer("message_count").notNull(),
   },
-  (table) => [index("idx_thread_metadata_namespace_updated").on(table.namespace, table.updatedAt)],
+  (table) => [
+    index("idx_thread_metadata_namespace_updated").on(table.namespace, table.updatedAt, table.id),
+  ],
 );
 
 /**
@@ -37,7 +39,10 @@ export function ensureThreadMetadataSchema(binding: Database.Database): void {
     );
   `);
   binding.exec(
+    `CREATE INDEX IF NOT EXISTS idx_thread_metadata_updated_id ON thread_metadata(updated_at DESC, id DESC)`,
+  );
+  binding.exec(
     `CREATE INDEX IF NOT EXISTS "idx_thread_metadata_namespace_updated"
-       ON "thread_metadata" ("namespace", "updated_at");`,
+       ON "thread_metadata" ("namespace", "updated_at" DESC, "id" DESC);`,
   );
 }
