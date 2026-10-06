@@ -140,7 +140,6 @@ export type DurableKernelErrorCode =
   | "durable_kernel_closed"
   | "durable_kernel_transaction_failed"
   | "durable_kernel_integer_out_of_range"
-  | "durable_kernel_schema_incompatible"
   | "durable_kernel_response_invalid"
   | "durable_kernel_persisted_data_invalid";
 

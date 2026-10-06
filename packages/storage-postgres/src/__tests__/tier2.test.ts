@@ -6,6 +6,10 @@
  * never a lost update.
  */
 import { run } from "effection";
+import { randomUUID } from "node:crypto";
+import type { QueryConfig } from "pg";
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import { encodePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
 import { describe, expect, it } from "vitest";
 import {
   DurableCollections,
@@ -16,9 +20,8 @@ import {
 import {
   encodeCommandReceipt,
   encodeConversationHead,
-  type CommandReceipt,
-  type ConversationHead,
 } from "@sweatpants/history-store/persistence";
+import type { CommandReceipt, ConversationHead } from "@sweatpants/history-store/contract";
 import { openPostgresStorageForTest } from "../pg-binding.ts";
 
 const connectionString =
@@ -67,7 +70,7 @@ function receiptValue(
 
 describe("postgres tier-2 concurrency", () => {
   it("admits exactly one winner per head revision under contention", async () => {
-    const handle = await openPostgresStorageForTest({ connectionString, migrate: true });
+    const handle = await openPostgresStorageForTest({ connectionString, initialize: true });
     const kernel: DurableKernel = handle.kernel;
     const conversationId = `tier2-cas-${Date.now()}`;
     const headKey = durableKey(conversationId);
@@ -141,7 +144,7 @@ describe("postgres tier-2 concurrency", () => {
   });
 
   it("elects exactly one claim holder under a same-claim race", async () => {
-    const handle = await openPostgresStorageForTest({ connectionString, migrate: true });
+    const handle = await openPostgresStorageForTest({ connectionString, initialize: true });
     const kernel: DurableKernel = handle.kernel;
     const conversationId = `tier2-claim-${Date.now()}`;
     const commandId = `cmd-${Date.now()}`;
@@ -188,3 +191,116 @@ describe("postgres tier-2 concurrency", () => {
     }
   });
 });
+
+it.each(["conflicting", "identical"] as const)(
+  "reconciles %s ensure-only insert races and rolls back partial batches",
+  async (kind) => {
+    let retries = 0;
+    const handle = await openPostgresStorageForTest({
+      connectionString,
+      initialize: true,
+      faultInjection: (point) => {
+        if (point === "ensure-insert-race-retry") retries++;
+      },
+    });
+    const executionId = `tier2-ensure-${randomUUID()}`;
+    const sharedIds = new Set([`${executionId}-shared-a`, `${executionId}-shared-b`]);
+    const connect = handle.pool.connect.bind(handle.pool);
+    let readers = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Hold both real Postgres reads after they saw an empty range, before either insert.
+    handle.pool.connect = (async () => {
+      const client = await connect();
+      const query = client.query.bind(client);
+      const releaseClient = client.release.bind(client);
+      client.query = (async (config: QueryConfig, values?: unknown[]) => {
+        const result = await query(config, values);
+        if (
+          config.text?.startsWith("select") &&
+          config.text.includes('from "sp_execution_journal_segments"') &&
+          (values ?? config.values ?? []).some(
+            (value: unknown) => typeof value === "string" && sharedIds.has(value),
+          )
+        ) {
+          if (++readers === 2) release();
+          await bothRead;
+        }
+        return result;
+      }) as typeof client.query;
+      client.release = (error?: boolean | Error) => {
+        client.query = query;
+        client.release = releaseClient;
+        releaseClient(error);
+      };
+      return client;
+    }) as typeof handle.pool.connect;
+    function segment(id: string, sequence: string, body: string, name: string) {
+      const entries = [body];
+      const snapshot = canonicalSnapshot(entries);
+      return {
+        name,
+        collection: DurableCollections.executionJournalSegments,
+        key: durableKey(id),
+        alternateKeys: [durableKey(executionId, "task", sequence, sequence)],
+        fingerprint: snapshot.sha,
+        value: encodePrivateSegment({
+          segmentId: id,
+          executionId,
+          taskId: "task",
+          previous: null,
+          firstSequence: sequence,
+          lastSequence: sequence,
+          entries,
+          contentHash: snapshot.sha,
+          encodedBytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+          createdAt: 1,
+        }),
+      };
+    }
+    const writers = ["a", "b"].map((writer, index) => ({
+      ensures: [
+        segment(`${executionId}-unique-${writer}`, String(index + 2), writer, "unique"),
+        segment(
+          `${executionId}-shared-${writer}`,
+          "1",
+          kind === "identical" ? "same" : writer,
+          "shared",
+        ),
+      ],
+    }));
+    try {
+      const outcomes = await Promise.all(
+        writers.map((mutation) => run(() => handle.kernel.apply(mutation))),
+      );
+      handle.pool.connect = connect;
+      expect(retries).toBeGreaterThanOrEqual(1);
+      const stored = await handle.pool.query(
+        "SELECT segment_id FROM sp_execution_journal_segments WHERE execution_id=$1",
+        [executionId],
+      );
+      if (kind === "conflicting") {
+        expect(outcomes.map((outcome) => outcome.status).sort()).toEqual([
+          "committed",
+          "immutable_conflict",
+        ]);
+        const loser = outcomes.findIndex((outcome) => outcome.status === "immutable_conflict");
+        expect(stored.rows.map((row) => row.segment_id)).not.toContain(
+          `${executionId}-unique-${["a", "b"][loser]}`,
+        );
+        expect(stored.rows).toHaveLength(2);
+      } else {
+        expect(outcomes.map((outcome) => outcome.status)).toEqual(["committed", "committed"]);
+        if (outcomes[0].status !== "committed" || outcomes[1].status !== "committed")
+          throw new Error("Expected committed replays");
+        expect(outcomes[0].ensured.shared.key).toBe(outcomes[1].ensured.shared.key);
+        expect(stored.rows).toHaveLength(3);
+      }
+    } finally {
+      handle.pool.connect = connect;
+      await run(() => handle.close());
+    }
+  },
+);

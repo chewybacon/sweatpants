@@ -155,7 +155,7 @@ export interface ChatStorageReader {
 
 /**
  * Opens a read-only binding for out-of-process tools: the file must exist,
- * no migrations run, no WAL is set, and the driver refuses writes.
+ * no initialization runs, no WAL is set, and the driver refuses writes.
  */
 export function openChatStorageReader(path: string): ChatStorageReader {
   const binding: BetterSqliteBinding = createSqliteReaderBinding(path);

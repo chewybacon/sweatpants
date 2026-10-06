@@ -55,7 +55,7 @@ export function openScopedSqliteChatStorage(
           yield* call(() => mkdir(dirname(config.path), { recursive: true }));
         }
         const handle = yield* openBetterSqliteStorage(databasePath, {
-          migrate: true,
+          initialize: true,
           wal: true,
           database: databaseBinding,
         });
@@ -101,7 +101,7 @@ export function openScopedPostgresChatStorage(
         const handle = yield* call(() =>
           openPostgresStorage({
             connectionString: config.connectionString,
-            migrate: true,
+            initialize: true,
             maxPoolSize: config.maxPoolSize,
             synchronousCommit: config.synchronousCommit,
           }),

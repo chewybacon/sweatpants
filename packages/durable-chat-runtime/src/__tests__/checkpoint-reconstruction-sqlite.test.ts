@@ -52,7 +52,7 @@ function messageEvents(prefix: string, count: number) {
 describe("checkpoint archive reconstruction", () => {
   it("uses bounded hot hydration and indexed model-history reconstruction", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       await run(function* () {
         yield* handle.storage.conversationStore.compareAndSwapHead(
@@ -108,7 +108,7 @@ describe("checkpoint archive reconstruction", () => {
 
   it("rejects an old versioned events envelope", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       await expect(
         run(() =>

@@ -3,4 +3,7 @@ export * from "./collections.ts";
 export * from "./contract.ts";
 export * from "./memory.ts";
 export * from "./middleware.ts";
+export * from "./mutation.ts";
 export * from "./validation.ts";
+export * from "./sql-values.ts";
+export * from "./scan.ts";

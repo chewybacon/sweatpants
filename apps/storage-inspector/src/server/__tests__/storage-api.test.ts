@@ -25,7 +25,7 @@ describe("storage inspector privacy boundary", () => {
     directories.push(directory);
     const databasePath = join(directory, "spine.sqlite");
     const handle = await run(() =>
-      openBetterSqliteStorage(databasePath, { migrate: true, wal: false }),
+      openBetterSqliteStorage(databasePath, { initialize: true, wal: false }),
     );
     const secret = "INSPECTOR_PRIVATE_BODY_MARKER";
     try {

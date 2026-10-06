@@ -1,5 +1,5 @@
 {
-    "id": "4b313e1b-2b61-447b-9ef6-c08acc9fa1a3",
+    "id": "c4303d7d-9974-4b72-b7dc-97c2739ea406",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "version": "7",
     "dialect": "postgresql",
@@ -406,6 +406,12 @@
                     "primaryKey": false,
                     "notNull": true
                 },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true
+                },
                 "content_hash": {
                     "name": "content_hash",
                     "type": "text",
@@ -553,6 +559,12 @@
                     "primaryKey": false,
                     "notNull": true
                 },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true
+                },
                 "content_hash": {
                     "name": "content_hash",
                     "type": "text",
@@ -676,6 +688,12 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -889,6 +907,12 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -1159,6 +1183,12 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true
                 },

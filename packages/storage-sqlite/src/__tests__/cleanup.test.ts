@@ -55,7 +55,7 @@ afterEach(async () => {
 describe("checkpoint orphan cleanup", () => {
   it("removes only expired unreferenced checkpoints", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const orphan = checkpoint("orphan", "conversation-1", 10);

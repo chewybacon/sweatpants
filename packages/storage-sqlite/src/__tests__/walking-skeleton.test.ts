@@ -22,16 +22,15 @@ afterEach(async () => {
 });
 
 describe("SQLite durability spine walking skeleton", () => {
-  it("migrates the mandatory domain tables without response-tail tables", async () => {
+  it("creates the mandatory domain tables without response-tail tables", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const rows = handle.database.all(
         sql`SELECT name FROM sqlite_master
           WHERE type = 'table'
-            AND name NOT LIKE 'sqlite_%'
-            AND name <> '__drizzle_migrations'
+            AND name LIKE 'sp_%'
           ORDER BY name`,
       ) as Array<{ name: string }>;
       expect(rows.map((row) => row.name)).toEqual([
@@ -55,7 +54,7 @@ describe("SQLite durability spine walking skeleton", () => {
 
   it("returns separate conversation and execution stores over one Drizzle session", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       expect(handle.storage.conversationStore).toBeDefined();
@@ -69,7 +68,7 @@ describe("SQLite durability spine walking skeleton", () => {
 
   it("admits a command, publishes a checkpoint, and returns the head to idle", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       await run(function* () {
         const store = handle.storage.conversationStore;

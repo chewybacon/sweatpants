@@ -71,7 +71,7 @@ describe("durable chat SQLite composition", () => {
     await closeScope();
 
     const reopened = await run(function* () {
-      return yield* openBetterSqliteStorage(path, { migrate: true });
+      return yield* openBetterSqliteStorage(path, { initialize: true });
     });
     await run(() => reopened.close());
   });

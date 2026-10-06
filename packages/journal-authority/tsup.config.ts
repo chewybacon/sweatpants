@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
+    "sql-codec": "src/sql-codec.ts",
     index: "src/index.ts",
     store: "src/store/store.ts",
     "store-persistence": "src/store/store-persistence.ts",

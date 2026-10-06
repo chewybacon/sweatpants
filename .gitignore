@@ -30,3 +30,6 @@ tmp/
 # External dependencies (pulled via pnpm scripts)
 apps/yo-agent/packages/gemini-cli/
 .btca/
+
+# Local Wrangler binding state
+.wrangler/

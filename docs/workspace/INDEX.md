@@ -35,6 +35,7 @@ status here. Statuses:
 | `packages/chat-client` | library | |
 | `packages/chat-contract` | library | |
 | `packages/chat-core` | library | |
+| `packages/cloudflare-tasks` | library | Wrangler binding tasks used by yo-chat storage preparation |
 | `packages/cli` | product | Developer CLI entry point |
 | `packages/durable-chat-runtime` | library | |
 | `packages/durable-effects` | library | |

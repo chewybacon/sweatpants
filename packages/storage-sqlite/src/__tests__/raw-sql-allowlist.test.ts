@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
 
-/** Raw SQL is limited to transaction control and read-only inspection helpers. */
+/** Raw SQL is limited to schema initialization, transaction control, and read-only inspection. */
 describe("SQLite raw SQL allowlist", () => {
   it("contains raw execution only at reviewed adapter locations", async () => {
     const files = (await readdir(sourceRoot)).filter((name) => name.endsWith(".ts"));

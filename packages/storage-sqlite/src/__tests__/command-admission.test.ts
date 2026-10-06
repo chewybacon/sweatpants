@@ -61,7 +61,7 @@ afterEach(async () => {
 describe("SQLite command admission", () => {
   it("atomically admits a command and makes an exact retry idempotent", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       await run(() =>
@@ -115,7 +115,7 @@ describe("SQLite command admission", () => {
     const path = await temporaryDatabase();
     const handle = await run(() =>
       openBetterSqliteStorageForTest(path, {
-        migrate: true,
+        initialize: true,
         wal: false,
         faultInjection: "command-before-commit",
       }),

@@ -57,7 +57,7 @@ afterEach(async () => {
 describe("SQLite public archive segments", () => {
   it("stores immutable noncontiguous segments without prefix authority", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       const first = segment("segment-1", [root("root-2", "2"), root("root-7", "7")]);
       const second = segment("segment-2", [root("root-1", "1")], {
@@ -95,7 +95,7 @@ describe("SQLite public archive segments", () => {
 
   it("makes exact retries idempotent and rejects changed immutable content", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       const first = segment("segment-1", [root("root-0", "0")]);
       await run(() => handle.storage.conversationStore.putPublicArchiveSegment(first));

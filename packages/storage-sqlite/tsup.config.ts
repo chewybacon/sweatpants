@@ -9,7 +9,7 @@ export default defineConfig({
     repository: "src/repository.ts",
     "sqlite-kernel": "src/sqlite-kernel.ts",
     "better-sqlite3": "src/better-sqlite3.ts",
-    migrations: "src/migrations.ts",
+    initialize: "src/initialize.ts",
     inspection: "src/inspection.ts",
     segmentation: "src/segmentation.ts",
     "checkpoint-bounds": "src/checkpoint-bounds.ts",

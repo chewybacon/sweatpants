@@ -33,7 +33,7 @@ function historyRequest(path: string) {
 }
 
 describe("yo-chat SQLite application wiring", () => {
-  it("creates the binding at composition, migrates on first request, and reopens in a new generation", async () => {
+  it("creates the binding at composition, initializes on first request, and reopens in a new generation", async () => {
     const root = await mkdtemp(join(tmpdir(), "yo-chat-sqlite-"));
     roots.push(root);
     const databasePath = join(root, "authority", "yo-chat.sqlite");
@@ -57,7 +57,7 @@ describe("yo-chat SQLite application wiring", () => {
     // The app owns the binding: the file exists at composition time.
     await expect(stat(databasePath)).resolves.toBeDefined();
 
-    // Kernel migrations stay lazy: no authority tables until the first request.
+    // Kernel initialization stays lazy: no authority tables until the first request.
     const raw = new BetterSqliteDatabase(databasePath, { readonly: true });
     const tableCountBefore = (
       raw

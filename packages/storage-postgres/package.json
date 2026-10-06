@@ -61,7 +61,8 @@
         "check": "tsc -b",
         "typecheck": "tsc -b",
         "lint": "oxlint src",
-        "test": "vitest run"
+        "test": "vitest run",
+        "db:generate": "drizzle-kit generate"
     },
     "dependencies": {
         "@sweatpants/durable-storage-kernel": "workspace:*",

@@ -8,7 +8,7 @@ export default defineConfig({
     repository: "src/repository.ts",
     "pg-kernel": "src/pg-kernel.ts",
     "pg-binding": "src/pg-binding.ts",
-    migrations: "src/migrations.ts",
+    initialize: "src/initialize.ts",
   },
   format: ["esm"],
   dts: { compilerOptions: { composite: false } },

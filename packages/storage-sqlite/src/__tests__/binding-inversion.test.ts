@@ -96,7 +96,7 @@ describe("SQLite binding inversion", () => {
 
     const first = await attemptUse(
       undefined,
-      { database: binding, migrate: true },
+      { database: binding, initialize: true },
       function* (handle) {
         yield* handle.storage.executionStore.putObject(putObjectBody("discipline"));
       },
@@ -115,7 +115,7 @@ describe("SQLite binding inversion", () => {
     // Second open over the same binding is a no-op, not an error.
     const second = await attemptUse(
       undefined,
-      { database: binding, migrate: true },
+      { database: binding, initialize: true },
       function* () {},
     );
     expect(second.ok).toBe(true);
@@ -142,7 +142,7 @@ describe("SQLite binding inversion", () => {
     track(createSqliteWriterBinding(path)).close();
 
     const reader = track(createSqliteReaderBinding(path));
-    const outcome = await attemptOpen(undefined, { database: reader, migrate: true });
+    const outcome = await attemptOpen(undefined, { database: reader, initialize: true });
     expect(outcome.ok).toBe(false);
     expect((outcome as { error: SqliteBindingError }).error.code).toBe("binding_readonly");
     expect(reader.open).toBe(true);
@@ -154,12 +154,12 @@ describe("SQLite binding inversion", () => {
     const binding = track(createSqliteWriterBinding(path));
 
     // Path mode: the kernel closes what it created.
-    const pathMode = await attemptOpen(path, { migrate: true });
+    const pathMode = await attemptOpen(path, { initialize: true });
     expect(pathMode.ok).toBe(true);
     if (pathMode.ok) await pathMode.handle.close();
 
     // Database mode: the kernel leaves the caller's binding open.
-    const databaseMode = await attemptOpen(undefined, { database: binding, migrate: true });
+    const databaseMode = await attemptOpen(undefined, { database: binding, initialize: true });
     expect(databaseMode.ok).toBe(true);
     if (databaseMode.ok) await databaseMode.handle.close();
     expect(binding.open).toBe(true);
@@ -171,7 +171,7 @@ describe("SQLite binding inversion", () => {
     roots.push(await mkdtemp(join(tmpdir(), "storage-binding-")));
     const path = tempFile("generations.sqlite");
 
-    const first = await attemptUse(path, { migrate: true }, function* (handle) {
+    const first = await attemptUse(path, { initialize: true }, function* (handle) {
       yield* handle.storage.executionStore.putObject(putObjectBody("generation-one"));
     });
     expect(first.ok).toBe(true);
@@ -179,7 +179,7 @@ describe("SQLite binding inversion", () => {
     const binding = track(createSqliteWriterBinding(path));
     const second = await attemptUse(
       undefined,
-      { database: binding, migrate: true },
+      { database: binding, initialize: true },
       function* (handle) {
         yield* handle.storage.executionStore.putObject(putObjectBody("generation-two"));
       },
@@ -195,7 +195,7 @@ describe("SQLite binding inversion", () => {
     expect(ids).toEqual(["object-generation-one", "object-generation-two"]);
   });
 
-  it("ignores co-tenant objects during open, migration, and operation (TC-014)", async () => {
+  it("ignores co-tenant objects during open, initialization, and operation (TC-014)", async () => {
     roots.push(await mkdtemp(join(tmpdir(), "storage-binding-")));
     const path = tempFile("co-tenant.sqlite");
     const raw = track(new Database(path));
@@ -205,7 +205,7 @@ describe("SQLite binding inversion", () => {
     `);
     raw.prepare("INSERT INTO user_preferences VALUES ('theme', 'dark')").run();
 
-    const outcome = await attemptUse(path, { migrate: true }, function* (handle) {
+    const outcome = await attemptUse(path, { initialize: true }, function* (handle) {
       yield* handle.storage.executionStore.putObject(putObjectBody("co-tenant"));
     });
     expect(outcome.ok).toBe(true);
@@ -235,7 +235,7 @@ describe("SQLite binding inversion", () => {
         raw.exec("CREATE INDEX sp_plain_idx ON plain (id)");
       }
 
-      const outcome = await attemptOpen(path, { migrate: true });
+      const outcome = await attemptOpen(path, { initialize: true });
       expect(outcome.ok, kind).toBe(false);
       const error = (outcome as { error: SqliteBindingError }).error;
       expect(error, kind).toBeInstanceOf(SqliteBindingError);
@@ -249,7 +249,7 @@ describe("SQLite binding inversion", () => {
     }
 
     // Control: a kernel-only file opens cleanly.
-    const clean = await attemptOpen(tempFile("clean.sqlite"), { migrate: true });
+    const clean = await attemptOpen(tempFile("clean.sqlite"), { initialize: true });
     expect(clean.ok).toBe(true);
   });
 
@@ -313,7 +313,7 @@ describe("SQLite binding inversion", () => {
 
     const outcome = await attemptUse(
       undefined,
-      { database: binding, migrate: true },
+      { database: binding, initialize: true },
       function* (handle) {
         yield* handle.storage.executionStore.putObject(putObjectBody("contention"));
       },
@@ -338,7 +338,7 @@ describe("SQLite binding inversion", () => {
   it("refuses writes through reader bindings (TC-013)", async () => {
     roots.push(await mkdtemp(join(tmpdir(), "storage-binding-")));
     const path = tempFile("reader.sqlite");
-    const setup = await attemptOpen(path, { migrate: true });
+    const setup = await attemptOpen(path, { initialize: true });
     expect(setup.ok).toBe(true);
     if (setup.ok) await setup.handle.close();
 
@@ -355,7 +355,7 @@ describe("SQLite binding inversion", () => {
     roots.push(await mkdtemp(join(tmpdir(), "storage-binding-")));
     const path = tempFile("corrupt.sqlite");
     await writeFile(path, "this is not a sqlite file".repeat(10));
-    const outcome = await attemptOpen(path, { migrate: true });
+    const outcome = await attemptOpen(path, { initialize: true });
     expect(outcome.ok).toBe(false);
     expect((outcome as { error: DurableKernelError }).error).toBeInstanceOf(DurableKernelError);
   });
@@ -364,8 +364,8 @@ describe("SQLite binding inversion", () => {
     roots.push(await mkdtemp(join(tmpdir(), "storage-binding-")));
     const path = tempFile("isolated.sqlite");
     await run(function* () {
-      const first = yield* openBetterSqliteStorage(path, { migrate: true });
-      const second = yield* openBetterSqliteStorage(path, { migrate: true });
+      const first = yield* openBetterSqliteStorage(path, { initialize: true });
+      const second = yield* openBetterSqliteStorage(path, { initialize: true });
       expect(first.database).not.toBe(second.database);
       expect(first.storage).not.toBe(second.storage);
       yield* first.close();

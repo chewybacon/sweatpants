@@ -262,11 +262,11 @@ contract, shared by every sweatpants app:
 | `SWEATPANTS_DB_PATH=""` | configuration error |
 
 Path mode opens lazily on the first request: the application creates parent
-directories, runs migrations, and enables WAL on one app-owned handle, then
+directories, initializes the schema, and enables WAL on one app-owned handle, then
 closes it in `app.close()`. In database mode the binding opens when the author
 creates it (typically at composition — an unopenable path fails loudly at
-startup, which is the fail-closed behavior you want) and kernel migrations run
-at the first request. Open, migration, or schema-compatibility failures
+startup, which is the fail-closed behavior you want) and kernel initialization runs
+at the first request. Open or initialization failures
 fail the request closed — storage never silently degrades to memory and files
 are never deleted automatically.
 
@@ -324,7 +324,7 @@ The rules that make this safe:
 
 | Tier | Import | Stability | Use for |
 |---|---|---|---|
-| 1 — schema | `@sweatpants/storage-sqlite/schema` | additive-only in minors; breaking = major | full SQL expressiveness, admin tooling |
+| 1 — schema | `@sweatpants/storage-sqlite/schema` | prerelease: reset databases and regenerate baselines | full SQL expressiveness, admin tooling |
 | 2 — client | `@sweatpants/storage-sqlite/client` | stable read models | thread lists, transcript pages, product UIs |
 
 ```ts
@@ -345,9 +345,9 @@ reader.close();
 The client façade is read-only by construction: authority mutations belong to
 kernel operations only. Neither tier adds authorization — filesystem access to
 the SQLite file is the trust boundary. Kernel tables come into existence when
-the kernel first opens with `migrate: true` (path mode) or on the first
+the kernel first opens with `initialize: true` (path mode) or on the first
 request (database mode); read from them only after that, or open the file once
-with `openBetterSqliteStorage(path, { migrate: true })` at startup to migrate
+with `openBetterSqliteStorage(path, { initialize: true })` at startup to initialize
 early.
 
 ### First consumer: yo-chat's thread list

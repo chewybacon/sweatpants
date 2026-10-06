@@ -54,7 +54,7 @@ afterEach(async () => {
 describe("SQLite checkpoints", () => {
   it("stores the exact typed-root checkpoint and retries immutable identity", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       const value = checkpoint();
       const pointer = await run(() => handle.storage.conversationStore.putCheckpoint(value));
@@ -88,7 +88,7 @@ describe("SQLite checkpoints", () => {
 
   it("rejects another hash for the same conversation and cause", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       const value = checkpoint();
       await run(() => handle.storage.conversationStore.putCheckpoint(value));

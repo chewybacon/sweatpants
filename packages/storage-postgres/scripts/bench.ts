@@ -330,20 +330,23 @@ async function benchBackend(
 const sqliteDir = await mkdtemp(join(tmpdir(), "sweatpants-bench-sqlite-"));
 try {
   await benchBackend("postgres", async () => {
-    const handle = await openPostgresStorageForTest({ connectionString, migrate: true });
+    const handle = await openPostgresStorageForTest({ connectionString, initialize: true });
     return { kernel: handle.kernel, close: () => run(() => handle.close()) };
   });
   await benchBackend("postgres (sync_commit=off)", async () => {
     const handle = await openPostgresStorageForTest({
       connectionString,
-      migrate: true,
+      initialize: true,
       synchronousCommit: "off",
     });
     return { kernel: handle.kernel, close: () => run(() => handle.close()) };
   });
   await benchBackend("sqlite", async () => {
     const handle = await run(() =>
-      openBetterSqliteStorageForTest(join(sqliteDir, "bench.sqlite"), { migrate: true, wal: true }),
+      openBetterSqliteStorageForTest(join(sqliteDir, "bench.sqlite"), {
+        initialize: true,
+        wal: true,
+      }),
     );
     return { kernel: handle.kernel, close: () => run(() => handle.close()) };
   });

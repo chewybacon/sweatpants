@@ -105,7 +105,7 @@ async function withPersistentScenario<T>(
 ): Promise<T> {
   const databasePath = await temporaryDatabase();
   const handle = await run(() =>
-    openBetterSqliteStorage(databasePath, { migrate: true, wal: false }),
+    openBetterSqliteStorage(databasePath, { initialize: true, wal: false }),
   );
   try {
     return await withTestScenario(

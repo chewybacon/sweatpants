@@ -313,7 +313,7 @@ async function produce(databasePath: string, expectedPath: string): Promise<void
   await rm(`${databasePath}-wal`, { force: true });
   await rm(`${databasePath}-shm`, { force: true });
   const handle = await run(() =>
-    openBetterSqliteStorage(databasePath, { migrate: true, wal: true }),
+    openBetterSqliteStorage(databasePath, { initialize: true, wal: true }),
   );
   try {
     const createApplication = await createPersistentApplication(handle, profile);
@@ -339,7 +339,7 @@ async function verify(databasePath: string, expectedPath: string): Promise<void>
     throw new Error("storage spine verifier must run in a fresh process");
   }
   const handle = await run(() =>
-    openBetterSqliteStorage(databasePath, { migrate: false, wal: true }),
+    openBetterSqliteStorage(databasePath, { initialize: false, wal: true }),
   );
   try {
     const actual = await run(() => collectExpected(handle, expected.producerPid));

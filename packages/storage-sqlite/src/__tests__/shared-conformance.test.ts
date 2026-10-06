@@ -26,7 +26,9 @@ function sqliteConversationCase() {
     name: "sqlite",
     async create() {
       const path = await temporaryDatabase();
-      const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+      const handle = await run(() =>
+        openBetterSqliteStorage(path, { initialize: true, wal: false }),
+      );
       return {
         store: handle.storage.conversationStore,
         close: () => run(() => handle.close()),
@@ -40,7 +42,9 @@ function sqliteExecutionCase() {
     name: "sqlite",
     async create() {
       const path = await temporaryDatabase();
-      const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+      const handle = await run(() =>
+        openBetterSqliteStorage(path, { initialize: true, wal: false }),
+      );
       return {
         store: handle.storage.executionStore,
         close: () => run(() => handle.close()),

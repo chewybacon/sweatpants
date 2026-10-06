@@ -1,12 +1,13 @@
 import type { D1Database, D1DatabaseSession, D1PreparedStatement } from "@cloudflare/workers-types";
 import { call, sleep, type Operation } from "effection";
 import {
-  authorityMismatch,
+  evaluateMutation,
   decodeDurableKey,
   durableKey,
   parseCounter,
   validateMutationStructure,
   validateScan,
+  planScanPage,
   DurableKernelError,
   type DurableKernel,
   type DurableMutationOutcome,
@@ -125,7 +126,7 @@ export function createD1DurableKernel(
       validateMutationStructure(mutation);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const session = database.withSession("first-primary");
-        const queries = [session.prepare("SELECT format FROM sp_d1_meta WHERE id=1")];
+        const queries: D1PreparedStatement[] = [];
         const identities: { collection: string; key: string; immutable: boolean }[] = [];
         const slots = new Map<string, number>();
         const add = (collection: string, key: string, immutable: boolean) => {
@@ -139,64 +140,33 @@ export function createD1DurableKernel(
           for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])])
             add(ensure.collection, key, true);
         const snapshot = yield* call(() => session.batch(queries));
-        const format = (snapshot[0]!.results[0] as { format?: unknown } | undefined)?.format;
-        if (format !== 1)
-          throw new DurableKernelError(
-            "durable_kernel_schema_incompatible",
-            "Initialize D1 storage before use",
-          );
         const read = (collection: string, key: string) =>
           record(
             snapshot[slots.get(JSON.stringify([collection, key]))!]!.results as unknown as Row[],
           );
-        if (mutation.claim) {
-          const existing = read(
-            mutation.claim.collection,
-            mutation.claim.key,
-          ) as StoredImmutableRecord | null;
-          if (existing) return { status: "claim_exists", claim: mutation.claim.name, existing };
-        }
-        const current = mutation.authority
-          ? (read(
-              mutation.authority.collection,
-              mutation.authority.key,
-            ) as StoredAuthorityRecord | null)
+        const claim = mutation.claim
+          ? (read(mutation.claim.collection, mutation.claim.key) as StoredImmutableRecord | null)
           : null;
-        if (mutation.authority) {
-          const mismatch = authorityMismatch(mutation.authority, current);
-          if (mismatch)
-            return {
-              status: "authority_conflict",
-              authority: mutation.authority.name,
-              mismatch,
-              current,
-            };
-        }
-        const ensured: Record<string, StoredImmutableRecord> = {};
-        const inserts = [];
-        for (const ensure of mutation.ensures) {
-          let existing: StoredImmutableRecord | null = null;
-          for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
-            const candidate = read(ensure.collection, key) as StoredImmutableRecord | null;
-            if (candidate) {
-              if (existing && existing.key !== candidate.key)
-                return { status: "immutable_conflict", write: ensure.name, existing: candidate };
-              existing = candidate;
-            }
-          }
-          if (
-            existing &&
-            (existing.fingerprint !== ensure.fingerprint ||
-              (mutation.authority && existing.key !== ensure.key))
-          )
-            return { status: "immutable_conflict", write: ensure.name, existing };
-          ensured[ensure.name] = existing ?? {
-            collection: ensure.collection,
-            key: ensure.key,
-            fingerprint: ensure.fingerprint,
-            value: new Uint8Array(ensure.value),
-          };
-          if (!existing) inserts.push(ensure);
+        const current =
+          !claim && mutation.authority
+            ? (read(
+                mutation.authority.collection,
+                mutation.authority.key,
+              ) as StoredAuthorityRecord | null)
+            : null;
+        const plan = evaluateMutation(mutation, {
+          claim,
+          authority: current,
+          candidates: (ensure) =>
+            [ensure.key, ...(ensure.alternateKeys ?? [])]
+              .map((key) => read(ensure.collection, key) as StoredImmutableRecord | null)
+              .filter((candidate) => candidate !== null),
+        });
+        if (plan.status !== "ready") return plan;
+        // Existing immutable identities cannot retarget, and this plan makes no changes.
+        // Replaying an ensure-only mutation needs no latch rotation or billable write.
+        if (!mutation.claim && plan.inserts.length === 0 && !plan.outcome.authority) {
+          return plan.outcome;
         }
         const token = crypto.randomUUID();
         // Validate only identities this mutation observed. A database-wide CAS
@@ -306,20 +276,11 @@ export function createD1DurableKernel(
           }
         };
         if (mutation.claim) write(mutation.claim, [mutation.claim.key]);
-        for (const ensure of inserts)
-          write(ensured[ensure.name]!, [ensure.key, ...(ensure.alternateKeys ?? [])]);
-        const authority: StoredAuthorityRecord | null = mutation.authority
-          ? {
-              collection: mutation.authority.collection,
-              key: mutation.authority.key,
-              revision: mutation.authority.next.revision,
-              fence: mutation.authority.next.fence ?? current?.fence ?? null,
-              value: new Uint8Array(mutation.authority.next.value),
-            }
-          : null;
-        if (authority) write(authority);
+        for (const ensure of plan.inserts)
+          write(plan.outcome.ensured[ensure.name]!, [ensure.key, ...(ensure.alternateKeys ?? [])]);
+        if (plan.outcome.authority) write(plan.outcome.authority);
         const result = yield* call(() => session.batch(statements));
-        if (result[0]!.results.length) return { status: "committed", authority, ensured };
+        if (result[0]!.results.length) return plan.outcome;
         yield* sleep(Math.min(50, 1 + attempt * 2));
       }
       throw new DurableKernelError(
@@ -350,26 +311,26 @@ export function createD1DurableKernel(
           .bind(...args, request.maxRecords + 1)
           .all<{ key: string; position: string; byte_length: number }>(),
       );
+      const page = planScanPage(
+        request,
+        rows.results.map((row) => ({
+          key: row.key,
+          position: row.position,
+          storedBytes: row.byte_length,
+        })),
+      );
       const records = [];
-      let bytes = 0;
-      let more = false;
-      for (const row of rows.results) {
-        if (
-          records.length >= request.maxRecords ||
-          bytes + row.byte_length > request.maxStoredBytes
-        ) {
-          more = true;
-          break;
-        }
+      for (const row of page.selected) {
         const result = yield* call(() =>
           readStatement(session, request.collection, row.key, true).all<Row>(),
         );
         const stored = record(result.results) as StoredImmutableRecord | null;
         if (!stored) throw corrupt("Missing indexed journal record");
-        records.push({ ...stored, position: row.position, storedBytes: row.byte_length });
-        bytes += row.byte_length;
+        if (stored.value.byteLength !== row.storedBytes)
+          throw corrupt("Indexed record byte count disagrees with payload");
+        records.push({ ...stored, position: row.position, storedBytes: row.storedBytes });
       }
-      return { records, nextCursor: more && records.length ? records.at(-1)!.position : null };
+      return { records, nextCursor: page.nextCursor };
     },
     *waitForChange(request) {
       parseCounter(request.afterRevision, "wait revision");

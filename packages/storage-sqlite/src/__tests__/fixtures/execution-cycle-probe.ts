@@ -1,3 +1,4 @@
+import { privateToRow } from "@sweatpants/journal-authority/sql-codec";
 import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { run } from "effection";
@@ -10,7 +11,7 @@ if (!databasePath) {
 }
 
 const handle = await run(() =>
-  openBetterSqliteStorage(databasePath, { migrate: true, wal: false }),
+  openBetterSqliteStorage(databasePath, { initialize: true, wal: false }),
 );
 try {
   const entries = [{ effect: "cycle" }];
@@ -31,9 +32,13 @@ try {
 
   // Intentional persisted-data corruption: a previous pointer cycle is a
   // fault-injection input, not a success-path fixture row.
+  const cycle = privateToRow({
+    ...segment,
+    previous: { segmentId: segment.segmentId, lastSequence: "0" },
+  });
   handle.database.run(
     sql`UPDATE sp_execution_journal_segments
-        SET previous_segment_id = ${segment.segmentId}
+        SET previous_segment_id = ${segment.segmentId}, stored_bytes = ${cycle.storedBytes}
         WHERE segment_id = ${segment.segmentId}`,
   );
 

@@ -129,6 +129,17 @@
                 "default": "./dist/store-conformance.js"
             },
             "default": "./src/store-conformance.ts"
+        },
+        "./sql-codec": {
+            "development": {
+                "import": "./src/sql-codec.ts",
+                "types": "./src/sql-codec.ts"
+            },
+            "import": {
+                "types": "./dist/sql-codec.d.ts",
+                "default": "./dist/sql-codec.js"
+            },
+            "default": "./src/sql-codec.ts"
         }
     },
     "scripts": {

@@ -126,7 +126,7 @@ Cloudflare deployment. KV is not used.
 
 ```sh
 # Apply the app-owned schema to local D1 (no cloud account required).
-pnpm -C apps/yo-chat metadata:migrate:local
+pnpm -C apps/yo-chat metadata:init:local
 # Terminal 1: run the metadata Worker and response DOs on localhost:8788.
 pnpm -C apps/yo-chat dev:metadata
 # Terminal 2: run chat with a local workerd D1 journal binding.
@@ -140,8 +140,8 @@ one another. Local D1 persists under `apps/yo-chat/.wrangler/state`; restarting 
 metadata Worker preserves thread names, previews, counts and namespaces. The
 transcript and execution journal also persist there in a separate D1 database.
 `wrangler.journal.jsonc` selects that binding; the storage package provisions its
-initial schema. Existing SQLite threads are not migrated to D1.
-`wrangler.metadata.jsonc` and `migrations/thread-metadata/` own this Worker and schema.
+initial schema.
+`wrangler.metadata.jsonc` and `schema/thread-metadata.sql` own this Worker and schema.
 
 The library fits the existing storage port:
 
@@ -198,7 +198,7 @@ cleanup are not provided by this cut.
 ## Durable storage
 
 Yo-chat uses SQLite for conversation and execution authority by default. The
-first chat/history request lazily opens and migrates
+first chat/history request lazily opens and initializes
 `apps/yo-chat/.data/yo-chat.sqlite`; the application scope closes that handle
 on shutdown. Set `SWEATPANTS_DB_PATH` to use another local file.
 

@@ -22,7 +22,7 @@ afterEach(async () => {
 describe("SQLite durable counters", () => {
   it("round-trips values above Number.MAX_SAFE_INTEGER and increments in SQLite", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       handle.database
@@ -82,7 +82,7 @@ describe("SQLite durable counters", () => {
 
   it("rejects a counter outside signed SQLite INTEGER range", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
     try {
       expect(() =>
         handle.database

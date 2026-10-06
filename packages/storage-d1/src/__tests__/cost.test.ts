@@ -268,3 +268,26 @@ it("protects shared immutable aliases even when authority identities differ", as
     expect(query.rowsRead).toBeLessThanOrEqual(10);
   }
 });
+
+it("performs no billable writes for an ensure-only replay", async () => {
+  const meter = meterD1(db);
+  const kernel = createD1DurableKernel(meter.database);
+  const mutation = {
+    ensures: [
+      {
+        name: "existing",
+        collection: "conversation-checkpoints" as const,
+        key: durableKey("noop-replay"),
+        fingerprint: "same",
+        value: new Uint8Array([1, 2]),
+      },
+    ],
+  };
+  expect((await run(() => kernel.apply(mutation))).status).toBe("committed");
+  meter.queries.length = 0;
+  const replay = await run(() => kernel.apply(mutation));
+  expect(replay.status).toBe("committed");
+  expect(meter.queries.length).toBeGreaterThan(0);
+  expect(meter.queries.reduce((sum, query) => sum + query.rowsWritten, 0)).toBe(0);
+  expect(meter.queries.some((query) => query.sql.includes("UPDATE sp_d1_meta"))).toBe(false);
+});
