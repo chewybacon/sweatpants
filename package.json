@@ -4,10 +4,10 @@
     "description": "AI Chat Framework - Build interactive chat applications with streaming, tools, and durable sessions",
     "license": "MIT",
     "scripts": {
-        "dev": "pnpm run -r --parallel --aggregate-output dev",
+        "dev": "pnpm dev:yo-chat",
         "dev:yo-chat": "tsx scripts/dev-yo-chat.ts",
-        "dev:yo-chat:local": "MCP_TOOL_RUNTIME=local pnpm -C apps/yo-chat dev",
-        "dev:yo-chat:agentcore": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm -C apps/yo-chat dev",
+        "dev:yo-chat:local": "MCP_TOOL_RUNTIME=local pnpm dev:yo-chat",
+        "dev:yo-chat:agentcore": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm dev:yo-chat",
         "dev:yo-chat:agentcore:auto": "./scripts/launch-yo-chat-agentcore.sh",
         "dev:yo-chat:remote": "./scripts/launch-yo-chat-remote.sh",
         "build": "pnpm run -r build && pnpm validate:exports && pnpm validate:product-surface",
@@ -54,7 +54,12 @@
         "model:auth:use": "tsx scripts/model-auth.ts use",
         "model:auth:selection": "tsx scripts/model-auth.ts selection",
         "model:auth:providers": "tsx scripts/model-auth.ts providers",
-        "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
+        "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git",
+        "dev:yo-chat:cloudflare": "pnpm dev:yo-chat --mode cloudflare",
+        "dev:yo-chat:d1": "pnpm dev:yo-chat --mode d1-local",
+        "dev:yo-mcp": "pnpm -C apps/yo-mcp dev",
+        "dev:yo-agent": "pnpm -C apps/yo-agent dev",
+        "dev:yo-studio": "pnpm -C apps/yo-studio dev"
     },
     "dependencies": {
         "@effectionx/context-api": "catalog:",

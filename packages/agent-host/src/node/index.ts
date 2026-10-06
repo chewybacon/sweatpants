@@ -1,3 +1,4 @@
+export { openChatStorageDatabase } from "@sweatpants/durable-chat-runtime/node-storage";
 import { serve as serveNode, toNodeHandler as adaptNode } from "srvx/node";
 import type { ServerOptions, NodeHttp1Handler, FetchHandler } from "srvx";
 

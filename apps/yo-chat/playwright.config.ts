@@ -61,7 +61,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec vite dev --port ${playwrightPort}`,
+    command: `pnpm exec tsx ../../scripts/dev-app.ts yo-chat vite dev --port ${playwrightPort} --strictPort --force`,
     url: playwrightBaseUrl,
     reuseExistingServer,
     timeout: 120000,

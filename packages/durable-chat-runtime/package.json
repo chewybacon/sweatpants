@@ -151,6 +151,17 @@
                 "default": "./dist/streaming.js"
             },
             "default": "./src/streaming.ts"
+        },
+        "./node-storage": {
+            "development": {
+                "import": "./src/durable-handler/storage-node.ts",
+                "types": "./src/durable-handler/storage-node.ts"
+            },
+            "import": {
+                "types": "./dist/node-storage.d.ts",
+                "default": "./dist/node-storage.js"
+            },
+            "default": "./src/durable-handler/storage-node.ts"
         }
     },
     "scripts": {

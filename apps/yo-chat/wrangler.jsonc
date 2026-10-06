@@ -1,7 +1,49 @@
 {
     "$schema": "node_modules/wrangler/config-schema.json",
     "name": "yo-chat",
-    "main": "src/server.ts",
+    "main": "src/server.cloudflare.ts",
     "compatibility_date": "2026-10-05",
     "compatibility_flags": ["nodejs_compat"],
+    "worker_loaders": [
+        {
+            "binding": "LOADER",
+        },
+    ],
+    "durable_objects": {
+        "bindings": [
+            {
+                "name": "RESPONSE_STREAMS",
+                "class_name": "ResponseStream",
+            },
+            {
+                "name": "TOOL_SESSIONS",
+                "class_name": "ToolSessions",
+            },
+        ],
+    },
+    "migrations": [
+        {
+            "tag": "v1",
+            "new_sqlite_classes": ["ResponseStream", "ToolSessions"],
+        },
+    ],
+    "d1_databases": [
+        {
+            "binding": "JOURNAL",
+            "database_name": "yo-chat-worker-journal",
+        },
+        {
+            "binding": "THREAD_METADATA",
+            "database_name": "yo-chat-worker-metadata",
+            "migrations_dir": "migrations/thread-metadata",
+        },
+    ],
+    "secrets": {
+        "required": [
+            "MODEL_CREDENTIALS",
+            "PROGRAM_DRIVER_CAPABILITY_SECRET",
+            "DEFAULT_CHAT_MODEL_PROVIDER",
+            "DEFAULT_CHAT_MODEL_ID",
+        ],
+    },
 }

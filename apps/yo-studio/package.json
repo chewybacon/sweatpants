@@ -4,7 +4,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "vite",
+        "dev": "tsx ../../scripts/dev-app.ts yo-studio vite --strictPort --force",
         "check": "tsc --noEmit",
         "build": "vite build",
         "test": "vitest run"

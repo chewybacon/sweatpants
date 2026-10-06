@@ -128,6 +128,9 @@ export interface DurableKernel {
     key: DurableKey,
   ): Operation<StoredImmutableRecord | null>;
   scan(request: BoundedScan): Operation<StoredScanPage>;
+  /** Wake-up hint; callers must read authority before and after waiting.
+   * Backends without notifications may wait the full timeout without polling.
+   */
   waitForChange(request: ChangeWait): Operation<void>;
   apply(mutation: DurableMutation): Operation<DurableMutationOutcome>;
 }

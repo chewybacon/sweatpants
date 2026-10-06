@@ -43,7 +43,8 @@ export default defineConfig({
       command: "pnpm dev",
       port: 3001, // Wait for this port to be listening
       reuseExistingServer,
-      timeout: 30000,
+      // Includes the workspace dependency build before the server starts.
+      timeout: 120000,
       stdout: "pipe", // Show server output
     },
     {

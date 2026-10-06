@@ -1,12 +1,9 @@
+import { openChatStorageDatabase } from "@sweatpants/agent-host/node";
 import { createSqliteThreadMetadataStore } from "@/lib/sqlite-thread-metadata-store";
 import { createPostgresThreadMetadataStore } from "@/lib/postgres-thread-metadata-store";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import {
-  createChatEndpoints,
-  openChatStorageDatabase,
-  type DurableChatHandlerConfig,
-} from "@sweatpants/agent-host/server";
+import { createChatEndpoints, type DurableChatHandlerConfig } from "@sweatpants/agent-host/server";
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
 import { createYoChatStorageConfig } from "./storage-config";
