@@ -1,12 +1,11 @@
 import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { call, type Operation } from "effection";
 import { DurableKernelError, type DurableKernel } from "@sweatpants/durable-storage-kernel";
 import { createSqliteStorageComposition, type SqliteStorage } from "./repository.ts";
 import { SqliteBindingError } from "./contract.ts";
-import { sqliteMigrationFolder } from "./migrations.ts";
+import { initializeSqliteStorage } from "./initialize.ts";
 import { sqliteSchema, type SqliteSchema } from "./schema.ts";
 
 export type SqliteFaultPoint =
@@ -26,7 +25,7 @@ export type BetterSqliteBinding = Database.Database;
 export { Database as BetterSqliteDatabase };
 
 export type BetterSqliteStorageOptions = {
-  migrate?: boolean;
+  initialize?: boolean;
   wal?: boolean;
   /** Path mode only: open read-only. */
   readonly?: boolean;
@@ -36,10 +35,6 @@ export type BetterSqliteStorageOptions = {
 type BetterSqliteStorageTestOptions = BetterSqliteStorageOptions & {
   faultInjection?: SqliteFaultPoint;
 };
-
-export function runSqliteMigrations(database: BetterSQLite3Database<SqliteSchema>): void {
-  migrate(database, { migrationsFolder: sqliteMigrationFolder });
-}
 
 export interface BetterSqliteStorageHandle {
   readonly storage: SqliteStorage;
@@ -116,7 +111,7 @@ export function createSqliteReaderBinding(path: string): Database.Database {
 
 let managedNamespaceNamesCache: ReadonlySet<string> | undefined;
 
-/** Every `sp_`-prefixed name the kernel schema and migrations manage. */
+/** Every `sp_`-prefixed name the kernel schema manages. */
 function managedNamespaceNames(): ReadonlySet<string> {
   if (!managedNamespaceNamesCache) {
     const names = new Set<string>();
@@ -135,7 +130,7 @@ function managedNamespaceNames(): ReadonlySet<string> {
 /**
  * The `sp_` prefix is reserved. Objects outside the kernel's managed set
  * (tables, views, indexes, triggers) could collide with future kernel tables,
- * so opening fails closed before any migration or write.
+ * so opening fails closed before any initialization or write.
  */
 function assertReservedNamespace(client: Database.Database): void {
   const managed = managedNamespaceNames();
@@ -201,18 +196,18 @@ function* openBetterSqliteStorageInternal(
     }
     assertReservedNamespace(client);
     database = drizzle(client, { schema: sqliteSchema });
-    if (options.migrate === true) {
-      runSqliteMigrations(database);
+    if (options.initialize === true) {
+      initializeSqliteStorage(client);
     }
   } catch (error) {
     if (owned) {
       try {
         client.close();
       } catch {
-        // Opening or migration already failed; preserve the original cause.
+        // Opening or initialization already failed; preserve the original cause.
       }
     }
-    if (error instanceof SqliteBindingError) {
+    if (error instanceof SqliteBindingError || error instanceof DurableKernelError) {
       throw error;
     }
     throw new DurableKernelError("durable_kernel_unavailable", "SQLite storage open failed", {

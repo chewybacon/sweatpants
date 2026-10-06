@@ -56,7 +56,7 @@ describe("SQLite durable kernel conformance", () => {
   it("checks claims before authority guards", async () => {
     const path = await databasePath();
     const handle = await run(() =>
-      openBetterSqliteStorageForTest(path, { migrate: true, wal: false }),
+      openBetterSqliteStorageForTest(path, { initialize: true, wal: false }),
     );
     try {
       await run(function* () {
@@ -102,7 +102,7 @@ describe("SQLite durable kernel conformance", () => {
   it("rolls back immutable ensures when an authority guard conflicts", async () => {
     const path = await databasePath();
     const handle = await run(() =>
-      openBetterSqliteStorageForTest(path, { migrate: true, wal: false }),
+      openBetterSqliteStorageForTest(path, { initialize: true, wal: false }),
     );
     try {
       await run(function* () {

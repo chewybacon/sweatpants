@@ -22,7 +22,8 @@
         "server": "node dist/express-server.js",
         "server:dev": "tsx express-server.ts",
         "dev:metadata": "wrangler dev --config wrangler.metadata.jsonc --port 8788",
-        "metadata:migrate:local": "wrangler d1 migrations apply THREAD_METADATA --local --config wrangler.metadata.jsonc"
+        "metadata:init:local": "wrangler d1 execute THREAD_METADATA --local --config wrangler.metadata.jsonc --file schema/thread-metadata.sql",
+        "task": "tsx ../../scripts/dev-app.ts yo-chat cf-task --config wrangler.tasks.jsonc --persist-to .wrangler/worker-state"
     },
     "dependencies": {
         "@ag-ui/core": "1.0.1",
@@ -94,6 +95,7 @@
         "@cloudflare/workers-types": "5.20261005.1",
         "@playwright/test": "^1.57.0",
         "@sweatpants/cli": "workspace:*",
+        "@sweatpants/cloudflare-tasks": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@tailwindcss/typography": "0.5.0-alpha.3",

@@ -66,17 +66,6 @@
             "default": "./src/better-sqlite3.ts"
         },
         "./package.json": "./package.json",
-        "./migrations": {
-            "development": {
-                "import": "./src/migrations.ts",
-                "types": "./src/migrations.ts"
-            },
-            "import": {
-                "types": "./dist/migrations.d.ts",
-                "default": "./dist/migrations.js"
-            },
-            "default": "./src/migrations.ts"
-        },
         "./inspection": {
             "development": {
                 "import": "./src/inspection.ts",
@@ -109,6 +98,17 @@
                 "default": "./dist/metrics.js"
             },
             "default": "./src/metrics.ts"
+        },
+        "./initialize": {
+            "development": {
+                "import": "./src/initialize.ts",
+                "types": "./src/initialize.ts"
+            },
+            "import": {
+                "types": "./dist/initialize.d.ts",
+                "default": "./dist/initialize.js"
+            },
+            "default": "./src/initialize.ts"
         }
     },
     "scripts": {
@@ -116,7 +116,8 @@
         "check": "tsc -b",
         "typecheck": "tsc -b",
         "lint": "oxlint src",
-        "test": "vitest run"
+        "test": "vitest run",
+        "db:generate": "drizzle-kit generate"
     },
     "dependencies": {
         "@sweatpants/durable-storage-kernel": "workspace:*",

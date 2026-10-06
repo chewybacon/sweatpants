@@ -192,7 +192,7 @@ export async function createStorageInspectorApi(
   if (existsSync(databasePath)) {
     try {
       handle = await run(() =>
-        openBetterSqliteStorage(databasePath, { migrate: false, wal: false, readonly: true }),
+        openBetterSqliteStorage(databasePath, { initialize: false, wal: false, readonly: true }),
       );
     } catch (error) {
       openError = error;

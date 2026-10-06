@@ -101,11 +101,11 @@ Five rules, ratified 2026-08-31 (spec:
 3. **One-change vocabulary renames.** When understanding renames a concept,
    the old name is deleted across code, tests, error codes, and ratified
    docs in the same change. One concept, one name.
-4. **Hard-fail journal policy is the only compat story.** While the
-   pre-release license holds, persisted data that cannot be parsed under the
-   current schema fails fast with a reset message naming the data directory.
-   No migrations, no dual-read schemas, no best-effort recovery. Format
-   changes stay free.
+4. **Reset-and-rebuild is the prerelease data policy.** Generated Drizzle
+   migrations and their runners are useful schema tooling, but do not promise
+   compatibility with old data. Local databases and migration baselines may be
+   destroyed and regenerated. No legacy version guards, dual-read schemas,
+   preservation migrations, or best-effort recovery. Format changes stay free.
 5. **Consumer-or-parked.** Every workspace member either has a source-level
    consumer or carries an annotation in the tracked `docs/workspace/INDEX.md`
    member ledger (product / docs / parked / infrastructure). The gate

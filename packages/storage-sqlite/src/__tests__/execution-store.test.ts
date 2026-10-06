@@ -74,7 +74,7 @@ afterEach(async () => {
 describe("SQLite ExecutionStore", () => {
   it("commits bounded control with journal and replay segments atomically", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const committed = await run(() =>
@@ -127,7 +127,7 @@ describe("SQLite ExecutionStore", () => {
     const path = await temporaryDatabase();
     const handle = await run(() =>
       openBetterSqliteStorageForTest(path, {
-        migrate: true,
+        initialize: true,
         wal: false,
         faultInjection: "execution-after-segment-insert",
       }),
@@ -156,7 +156,7 @@ describe("SQLite ExecutionStore", () => {
     const path = await temporaryDatabase();
     const handle = await run(() =>
       openBetterSqliteStorageForTest(path, {
-        migrate: true,
+        initialize: true,
         wal: false,
         faultInjection: "execution-before-commit",
       }),
@@ -219,7 +219,7 @@ describe("SQLite ExecutionStore", () => {
 
   it("round-trips JSON and exact binary execution objects with immutable retry", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const jsonBody = canonicalSnapshot({ result: "ok", count: 2 });

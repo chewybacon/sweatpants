@@ -1,13 +1,12 @@
 import { Pool, type PoolClient } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { sql } from "drizzle-orm";
 import { call, type Operation } from "effection";
 import type { DurableKernel } from "@sweatpants/durable-storage-kernel";
 import { DurableKernelError } from "@sweatpants/durable-storage-kernel";
 import { createPostgresStorageComposition, type PostgresStorage } from "./repository.ts";
 import { PostgresBindingError } from "./contract.ts";
-import { pgMigrationFolder } from "./migrations.ts";
+import { initializePostgresStorage } from "./initialize.ts";
 import { postgresSchema, type PostgresSchema } from "./schema.ts";
 
 export const DEFAULT_POSTGRES_URL = "postgres://postgres:postgres@localhost:55432/sweatpants";
@@ -26,12 +25,12 @@ export interface PostgresStorageTestHandle extends PostgresStorageHandle {
 }
 
 export interface PostgresStorageOptions {
-  /** Caller-owned drizzle database; skips pool creation and migrations. */
+  /** Caller-owned drizzle database; skips pool creation. */
   database?: NodePgDatabase<PostgresSchema>;
   /** Caller-owned pool; closed only when created here. */
   pool?: Pool;
   connectionString?: string;
-  migrate?: boolean;
+  initialize?: boolean;
   maxPoolSize?: number;
   /**
    * Postgres commit-wait policy. `off` keeps atomicity and CAS guarantees;
@@ -45,12 +44,6 @@ export interface PostgresStorageOptions {
 
 function unavailable(message: string, cause?: unknown): DurableKernelError {
   return new DurableKernelError("durable_kernel_unavailable", message, { cause });
-}
-
-export async function runPostgresMigrations(
-  database: NodePgDatabase<PostgresSchema>,
-): Promise<void> {
-  await migrate(database, { migrationsFolder: pgMigrationFolder });
 }
 
 export async function openPostgresStorage(
@@ -79,8 +72,8 @@ export async function openPostgresStorage(
     database = options.database ?? drizzle(pool, { schema: postgresSchema });
     // Fail fast on an unreachable backend instead of on the first mutation.
     await database.execute(sql`select 1`);
-    if (options.migrate !== false) {
-      await runPostgresMigrations(database);
+    if (options.initialize !== false) {
+      await initializePostgresStorage(database);
     }
   } catch (error) {
     if (owned) {
@@ -90,7 +83,7 @@ export async function openPostgresStorage(
         // Opening already failed; preserve the original cause.
       }
     }
-    if (error instanceof PostgresBindingError) {
+    if (error instanceof PostgresBindingError || error instanceof DurableKernelError) {
       throw error;
     }
     throw unavailable("Postgres storage open failed", error);

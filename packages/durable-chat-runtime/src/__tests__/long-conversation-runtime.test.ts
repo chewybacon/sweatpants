@@ -28,7 +28,9 @@ describe("long conversation bounded hydration", () => {
   it("hydrates 10,000 retained 4 KiB messages with one head/checkpoint read and no archive body read", async () => {
     const root = await mkdtemp(join(tmpdir(), "long-conversation-sqlite-"));
     const handle = await run(function* () {
-      return yield* openBetterSqliteStorage(join(root, "conversation.sqlite"), { migrate: true });
+      return yield* openBetterSqliteStorage(join(root, "conversation.sqlite"), {
+        initialize: true,
+      });
     });
     try {
       await run(function* () {

@@ -1,11 +1,36 @@
 import {
+  headFromRow,
+  headToRow,
+  receiptFromRow,
+  checkpointFromRow,
+  publicFromRow,
+  publicRootIndexFromRow,
+  terminalFromRow,
+  receiptToRow,
+  checkpointToRow,
+  publicToRow,
+  publicRootIndexToRow,
+  terminalToRow,
+} from "@sweatpants/history-store/sql-codec";
+import {
+  controlFromRow,
+  controlToRow,
+  privateEnvelopeFromRow,
+  objectFromRow,
+  privateToRow,
+  objectToRow,
+} from "@sweatpants/journal-authority/sql-codec";
+import {
   DurableCollections,
-  DurableIndexes,
-  authorityMismatch,
+  sqlNatural as numberValue,
+  evaluateImmutableEnsure,
+  evaluateMutation,
+  evaluateMutationPreconditions,
   decodeDurableKey,
   decodeJsonValue,
   validateMutationStructure,
   validateScan,
+  planScanPage,
   DurableKernelError,
   type AuthorityCollectionId,
   type BoundedScan,
@@ -18,7 +43,7 @@ import {
   type StoredScanPage,
   type TransactionRunner,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalJson, canonicalSnapshot, parseJsonText, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
 import {
   conversationKeys,
   decodeArchivedPublicRootIndex,
@@ -34,24 +59,16 @@ import {
   encodePublicSegment,
   encodeTerminalSegment,
 } from "@sweatpants/history-store/persistence";
-import type {
-  ArchivedPublicRootIndex,
-  CommandReceipt,
-  ConversationHead,
-  StoredCheckpoint,
-  StoredPublicArchiveSegment,
-  StoredTerminalSegment,
-} from "@sweatpants/history-store/contract";
+import type { ConversationHead } from "@sweatpants/history-store/contract";
 import {
   decodeExecutionControl,
   decodeExecutionObject,
   decodePrivateSegment,
   encodeExecutionControl,
   encodeExecutionObjectEnvelope,
-  encodePrivateSegmentEnvelopeFromCanonical,
   executionKeys,
 } from "@sweatpants/journal-authority/store-persistence";
-import type { ExecutionControl, StoredExecutionObject } from "@sweatpants/journal-authority/store";
+import type { StoredExecutionObject } from "@sweatpants/journal-authority/store";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { call, sleep, type Operation } from "effection";
@@ -94,17 +111,6 @@ function invalid(message: string): never {
   throw new DurableKernelError("durable_kernel_persisted_data_invalid", message);
 }
 
-function numberValue(value: number | bigint, field: string): number {
-  const result = typeof value === "bigint" ? Number(value) : value;
-  return Number.isSafeInteger(result) && result >= 0
-    ? result
-    : invalid(`${field} is outside the safe integer range`);
-}
-
-function nullableJson(value: string | null, field: string): Json | null {
-  return value === null ? null : parseJsonText(value, field);
-}
-
 function requireKey(key: string, lengths: readonly number[]): readonly string[] {
   const parts = decodeDurableKey(key);
   if (!lengths.includes(parts.length)) {
@@ -132,45 +138,20 @@ async function selectHead(
 async function selectTerminal(
   database: Database,
   segmentId: string,
-): Promise<TerminalRow | undefined> {
+): Promise<{ lastPosition: string } | undefined> {
   return await resolved(
     database
-      .select()
+      .select({ lastPosition: spConversationTerminalSegments.lastPosition })
       .from(spConversationTerminalSegments)
       .where(eq(spConversationTerminalSegments.segmentId, segmentId))
-      .get() as TerminalRow | undefined | Promise<TerminalRow | undefined>,
+      .get() as TerminalRow | undefined | Promise<{ lastPosition: string } | undefined>,
   );
 }
 
-async function headFromRow(database: Database, row: HeadRow): Promise<ConversationHead> {
+async function loadHeadFromRow(database: Database, row: HeadRow): Promise<ConversationHead> {
   const terminal =
-    row.terminalSegmentId === null
-      ? undefined
-      : await selectTerminal(database, row.terminalSegmentId);
-  if (row.terminalSegmentId !== null && terminal === undefined) {
-    return invalid(`Head ${row.conversationId} points to missing terminal segment`);
-  }
-  return decodeConversationHead(
-    encodeConversationHead({
-      conversationId: row.conversationId,
-      revision: row.revision,
-      ownerEpoch: row.ownerEpoch,
-      ownerRoute: nullableJson(row.ownerRouteJson, "owner_route_json"),
-      state: row.state as ConversationHead["state"],
-      checkpoint: row.checkpointId === null ? null : { checkpointId: row.checkpointId },
-      terminalHistory:
-        row.terminalSegmentId === null
-          ? null
-          : { segmentId: row.terminalSegmentId, lastPosition: terminal!.lastPosition },
-      activeLogicalTurnId: row.activeLogicalTurnId,
-      activeExecutionId: row.activeExecutionId,
-      latestCompletedExecutionId: row.latestCompletedExecutionId,
-      activeSegment: nullableJson(row.activeSegmentJson, "active_segment_json"),
-      activeCommand: nullableJson(row.activeCommandJson, "active_command_json"),
-      deletedAt: row.deletedAt === null ? null : numberValue(row.deletedAt, "deleted_at"),
-      updatedAt: numberValue(row.updatedAt, "updated_at"),
-    }),
-  );
+    row.terminalSegmentId === null ? null : await selectTerminal(database, row.terminalSegmentId);
+  return headFromRow(row, terminal);
 }
 
 async function selectControl(
@@ -186,22 +167,6 @@ async function selectControl(
   );
 }
 
-function controlFromRow(row: ControlRow): ExecutionControl {
-  return decodeExecutionControl(
-    encodeExecutionControl({
-      executionId: row.executionId,
-      controlRevision: row.controlRevision,
-      ownerFence: row.ownerFence,
-      status: row.status as ExecutionControl["status"],
-      rootTaskId: row.rootTaskId,
-      stopGeneration: row.stopGeneration,
-      requestedDisposition: row.requestedDisposition as ExecutionControl["requestedDisposition"],
-      control: parseJsonText(row.controlJson, "control_json"),
-      updatedAt: numberValue(row.updatedAt, "updated_at"),
-    }),
-  );
-}
-
 async function readAuthorityIn(
   database: Database,
   collection: AuthorityCollectionId,
@@ -213,7 +178,7 @@ async function readAuthorityIn(
     if (!row) {
       return null;
     }
-    const head = await headFromRow(database, row);
+    const head = await loadHeadFromRow(database, row);
     return {
       collection,
       key,
@@ -234,131 +199,6 @@ async function readAuthorityIn(
     fence: control.ownerFence,
     value: encodeExecutionControl(control),
   };
-}
-
-function receiptFromRow(row: ReceiptRow): CommandReceipt {
-  return {
-    conversationId: row.conversationId,
-    commandId: row.commandId,
-    commandDigest: row.commandDigest,
-    participantId: row.participantId,
-    acceptedAt: numberValue(row.acceptedAt, "accepted_at"),
-    retainUntil: numberValue(row.retainUntil, "retain_until"),
-    admittedRevision: row.admittedRevision,
-    resultingRevision: row.resultingRevision,
-    ...(row.logicalTurnId === null ? {} : { logicalTurnId: row.logicalTurnId }),
-    ...(row.executionId === null ? {} : { executionId: row.executionId }),
-  };
-}
-
-function checkpointFromRow(row: CheckpointRow): StoredCheckpoint {
-  const value: StoredCheckpoint = {
-    checkpointId: row.checkpointId,
-    conversationId: row.conversationId,
-    causeKey: row.causeKey,
-    cause: parseJsonText(row.causeJson, "cause_json"),
-    contentHash: row.contentHash,
-    lineageId: row.lineageId,
-    archiveHead: row.archiveHeadSegmentId === null ? null : { segmentId: row.archiveHeadSegmentId },
-    archiveFrontierOrdinal: row.archiveFrontierOrdinal,
-    nextPublicPosition: row.nextPublicPosition,
-    payload: parseJsonText(row.payloadJson, "payload_json"),
-    encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
-    createdAt: numberValue(row.createdAt, "created_at"),
-  };
-  return value;
-}
-
-function priorPosition(first: string): string {
-  return (BigInt(first) > 0n ? BigInt(first) - 1n : 0n).toString(10);
-}
-
-function publicFromRow(row: PublicRow): StoredPublicArchiveSegment {
-  const value: StoredPublicArchiveSegment = {
-    segmentId: row.segmentId,
-    conversationId: row.conversationId,
-    previous: row.previousSegmentId === null ? null : { segmentId: row.previousSegmentId },
-    minPosition: row.minPosition,
-    maxPosition: row.maxPosition,
-    roots: parseJsonText(row.rootsJson, "roots_json") as readonly Json[],
-    contentHash: row.contentHash,
-    encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
-    createdAt: numberValue(row.createdAt, "created_at"),
-  };
-  return value;
-}
-
-function publicRootIndexFromRow(row: PublicRootIndexRow): ArchivedPublicRootIndex {
-  return {
-    conversationId: row.conversationId,
-    position: row.position,
-    rootId: row.rootId,
-    segmentId: row.segmentId,
-    segmentRootIndex: numberValue(row.segmentRootIndex, "segment_root_index"),
-    archiveOrdinal: row.archiveOrdinal,
-    contentHash: row.contentHash,
-    encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
-  };
-}
-
-function terminalFromRow(row: TerminalRow): StoredTerminalSegment {
-  const value: StoredTerminalSegment = {
-    segmentId: row.segmentId,
-    conversationId: row.conversationId,
-    logicalTurnId: row.logicalTurnId,
-    executionId: row.executionId,
-    publicationKey: row.publicationKey,
-    previous:
-      row.previousSegmentId === null
-        ? null
-        : { segmentId: row.previousSegmentId, lastPosition: priorPosition(row.firstPosition) },
-    firstPosition: row.firstPosition,
-    lastPosition: row.lastPosition,
-    entries: parseJsonText(row.entriesJson, "entries_json") as readonly Json[],
-    contentHash: row.contentHash,
-    createdAt: numberValue(row.createdAt, "created_at"),
-  };
-  return value;
-}
-
-function privateEnvelopeFromRow(row: PrivateRow): Uint8Array {
-  return encodePrivateSegmentEnvelopeFromCanonical(
-    {
-      segmentId: row.segmentId,
-      executionId: row.executionId,
-      taskId: row.taskId,
-      previous:
-        row.previousSegmentId === null
-          ? null
-          : { segmentId: row.previousSegmentId, lastSequence: priorPosition(row.firstSequence) },
-      firstSequence: row.firstSequence,
-      lastSequence: row.lastSequence,
-      contentHash: row.contentHash,
-      encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
-      createdAt: numberValue(row.createdAt, "created_at"),
-    },
-    row.entriesJson,
-  );
-}
-
-function objectFromRow(row: ObjectRow): StoredExecutionObject {
-  if ((row.jsonBody === null) === (row.blobBody === null)) {
-    return invalid(`Execution object ${row.objectId} has invalid body cardinality`);
-  }
-  const value: StoredExecutionObject = {
-    objectId: row.objectId,
-    lifetimeScope: row.lifetimeScope as StoredExecutionObject["lifetimeScope"],
-    scopeOwnerId: row.scopeOwnerId,
-    objectKind: row.objectKind,
-    contentHash: row.contentHash,
-    byteLength: numberValue(row.byteLength, "byte_length"),
-    body:
-      row.jsonBody === null
-        ? new Uint8Array(row.blobBody!)
-        : parseJsonText(row.jsonBody, "json_body"),
-    createdAt: numberValue(row.createdAt, "created_at"),
-  };
-  return value;
 }
 
 function immutableRecord(
@@ -582,105 +422,35 @@ async function insertImmutable(
     case DurableCollections.conversationCommandReceipts: {
       const value = decodeCommandReceipt(record.value);
       await resolved(
-        database
-          .insert(spConversationCommandReceipts)
-          .values({
-            conversationId: value.conversationId,
-            commandId: value.commandId,
-            commandDigest: value.commandDigest,
-            participantId: value.participantId,
-            acceptedAt: value.acceptedAt,
-            retainUntil: value.retainUntil,
-            admittedRevision: value.admittedRevision,
-            resultingRevision: value.resultingRevision,
-            logicalTurnId: value.logicalTurnId ?? null,
-            executionId: value.executionId ?? null,
-          })
-          .run(),
+        database.insert(spConversationCommandReceipts).values(receiptToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationCheckpoints: {
       const value = decodeCheckpoint(record.value);
       await resolved(
-        database
-          .insert(spConversationCheckpoints)
-          .values({
-            checkpointId: value.checkpointId,
-            conversationId: value.conversationId,
-            causeKey: value.causeKey,
-            causeJson: canonicalJson(value.cause),
-            contentHash: value.contentHash,
-            lineageId: value.lineageId,
-            archiveHeadSegmentId: value.archiveHead?.segmentId ?? null,
-            archiveFrontierOrdinal: value.archiveFrontierOrdinal,
-            nextPublicPosition: value.nextPublicPosition,
-            payloadJson: canonicalJson(value.payload),
-            encodedBytes: value.encodedBytes,
-            createdAt: value.createdAt,
-          })
-          .run(),
+        database.insert(spConversationCheckpoints).values(checkpointToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationPublicSegments: {
       const value = decodePublicSegment(record.value);
       await resolved(
-        database
-          .insert(spConversationPublicSegments)
-          .values({
-            segmentId: value.segmentId,
-            conversationId: value.conversationId,
-            previousSegmentId: value.previous?.segmentId ?? null,
-            minPosition: value.minPosition,
-            maxPosition: value.maxPosition,
-            rootsJson: canonicalJson(value.roots),
-            contentHash: value.contentHash,
-            encodedBytes: value.encodedBytes,
-            createdAt: value.createdAt,
-          })
-          .run(),
+        database.insert(spConversationPublicSegments).values(publicToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationPublicRootIndex: {
       const value = decodeArchivedPublicRootIndex(record.value);
       await resolved(
-        database
-          .insert(spConversationPublicRootIndex)
-          .values({
-            conversationId: value.conversationId,
-            position: value.position,
-            rootId: value.rootId,
-            segmentId: value.segmentId,
-            segmentRootIndex: value.segmentRootIndex,
-            archiveOrdinal: value.archiveOrdinal,
-            contentHash: value.contentHash,
-            encodedBytes: value.encodedBytes,
-          })
-          .run(),
+        database.insert(spConversationPublicRootIndex).values(publicRootIndexToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationTerminalSegments: {
       const value = decodeTerminalSegment(record.value);
       await resolved(
-        database
-          .insert(spConversationTerminalSegments)
-          .values({
-            segmentId: value.segmentId,
-            conversationId: value.conversationId,
-            logicalTurnId: value.logicalTurnId,
-            executionId: value.executionId,
-            publicationKey: value.publicationKey,
-            previousSegmentId: value.previous?.segmentId ?? null,
-            firstPosition: value.firstPosition,
-            lastPosition: value.lastPosition,
-            entriesJson: canonicalJson(value.entries),
-            contentHash: value.contentHash,
-            createdAt: value.createdAt,
-          })
-          .run(),
+        database.insert(spConversationTerminalSegments).values(terminalToRow(value)).run(),
       );
       return;
     }
@@ -694,23 +464,7 @@ async function insertImmutable(
         record.collection === DurableCollections.executionJournalSegments
           ? spExecutionJournalSegments
           : spExecutionReplaySegments;
-      await resolved(
-        database
-          .insert(table)
-          .values({
-            segmentId: value.segmentId,
-            executionId: value.executionId,
-            taskId: value.taskId,
-            previousSegmentId: value.previous?.segmentId ?? null,
-            firstSequence: value.firstSequence,
-            lastSequence: value.lastSequence,
-            entriesJson: canonicalJson(value.entries),
-            contentHash: value.contentHash,
-            encodedBytes: value.encodedBytes,
-            createdAt: value.createdAt,
-          })
-          .run(),
-      );
+      await resolved(database.insert(table).values(privateToRow(value)).run());
       return;
     }
     case DurableCollections.executionObjects: {
@@ -730,23 +484,7 @@ async function insertImmutable(
               createdAt: envelope["createdAt"],
             } as StoredExecutionObject)
           : decodeExecutionObject(record.value);
-      const binary = value.body instanceof Uint8Array;
-      await resolved(
-        database
-          .insert(spExecutionObjects)
-          .values({
-            objectId: value.objectId,
-            lifetimeScope: value.lifetimeScope,
-            scopeOwnerId: value.scopeOwnerId,
-            objectKind: value.objectKind,
-            contentHash: value.contentHash,
-            byteLength: value.byteLength,
-            jsonBody: binary ? null : canonicalJson(value.body),
-            blobBody: binary ? value.body : null,
-            createdAt: value.createdAt,
-          })
-          .run(),
-      );
+      await resolved(database.insert(spExecutionObjects).values(objectToRow(value)).run());
     }
   }
 }
@@ -758,21 +496,7 @@ async function replaceAuthority(
 ): Promise<void> {
   if (next.collection === DurableCollections.conversationHeads) {
     const value = decodeConversationHead(next.value);
-    const row = {
-      revision: value.revision,
-      ownerEpoch: value.ownerEpoch,
-      ownerRouteJson: value.ownerRoute === null ? null : canonicalJson(value.ownerRoute),
-      state: value.state,
-      checkpointId: value.checkpoint?.checkpointId ?? null,
-      terminalSegmentId: value.terminalHistory?.segmentId ?? null,
-      activeLogicalTurnId: value.activeLogicalTurnId,
-      activeExecutionId: value.activeExecutionId,
-      latestCompletedExecutionId: value.latestCompletedExecutionId,
-      activeSegmentJson: value.activeSegment === null ? null : canonicalJson(value.activeSegment),
-      activeCommandJson: value.activeCommand === null ? null : canonicalJson(value.activeCommand),
-      deletedAt: value.deletedAt,
-      updatedAt: value.updatedAt,
-    };
+    const row = headToRow(value);
     if (current === null) {
       await resolved(
         database
@@ -792,16 +516,7 @@ async function replaceAuthority(
     return;
   }
   const value = decodeExecutionControl(next.value);
-  const row = {
-    controlRevision: value.controlRevision,
-    ownerFence: value.ownerFence,
-    status: value.status,
-    rootTaskId: value.rootTaskId,
-    stopGeneration: value.stopGeneration,
-    requestedDisposition: value.requestedDisposition,
-    controlJson: canonicalJson(value.control),
-    updatedAt: value.updatedAt,
-  };
+  const row = controlToRow(value);
   if (current === null) {
     await resolved(
       database
@@ -843,16 +558,14 @@ async function prefetchPrivateCandidates(
     DurableCollections.executionJournalSegments,
     DurableCollections.executionReplaySegments,
   ] as const) {
-    const selected = ensures.filter((ensure) => ensure.collection === collection);
+    const selected = ensures.filter(
+      (ensure) => ensure.collection === collection && ensure.alternateKeys?.length === 1,
+    );
     if (selected.length < 4) {
       continue;
     }
     const ranges = selected.map((ensure) => requireKey(ensure.alternateKeys?.[0] ?? "", [4]));
     const segmentIds = selected.map((ensure) => requireKey(ensure.key, [1])[0]!);
-    const executionIds = [...new Set(ranges.map((range) => range[0]!))];
-    const taskIds = [...new Set(ranges.map((range) => range[1]!))];
-    const firstSequences = [...new Set(ranges.map((range) => range[2]!))];
-    const lastSequences = [...new Set(ranges.map((range) => range[3]!))];
     const table =
       collection === DurableCollections.executionJournalSegments
         ? spExecutionJournalSegments
@@ -864,11 +577,13 @@ async function prefetchPrivateCandidates(
         .where(
           or(
             inArray(table.segmentId, segmentIds),
-            and(
-              inArray(table.executionId, executionIds),
-              inArray(table.taskId, taskIds),
-              inArray(table.firstSequence, firstSequences),
-              inArray(table.lastSequence, lastSequences),
+            ...ranges.map(([executionId, taskId, firstSequence, lastSequence]) =>
+              and(
+                eq(table.executionId, executionId!),
+                eq(table.taskId, taskId!),
+                eq(table.firstSequence, firstSequence!),
+                eq(table.lastSequence, lastSequence!),
+              ),
             ),
           ),
         )
@@ -915,21 +630,7 @@ async function insertPrivateBatch(
     collection === DurableCollections.executionJournalSegments
       ? spExecutionJournalSegments
       : spExecutionReplaySegments;
-  const values = ensures.map((ensure) => {
-    const value = decodePrivateSegment(ensure.value);
-    return {
-      segmentId: value.segmentId,
-      executionId: value.executionId,
-      taskId: value.taskId,
-      previousSegmentId: value.previous?.segmentId ?? null,
-      firstSequence: value.firstSequence,
-      lastSequence: value.lastSequence,
-      entriesJson: canonicalJson(value.entries),
-      contentHash: value.contentHash,
-      encodedBytes: value.encodedBytes,
-      createdAt: value.createdAt,
-    };
-  });
+  const values = ensures.map((ensure) => privateToRow(decodePrivateSegment(ensure.value)));
   await resolved(database.insert(table).values(values).run());
 }
 
@@ -991,51 +692,35 @@ async function applyIn(
   faultInjection?: (point: string) => void,
 ): Promise<DurableMutationOutcome> {
   validateMutationStructure(mutation);
-  if (mutation.claim) {
-    const existing = await readImmutableIn(database, mutation.claim.collection, mutation.claim.key);
-    if (existing) {
-      return { status: "claim_exists", claim: mutation.claim.name, existing };
-    }
+  const claim = mutation.claim
+    ? await readImmutableIn(database, mutation.claim.collection, mutation.claim.key)
+    : null;
+  const current =
+    !claim && mutation.authority
+      ? await readAuthorityIn(database, mutation.authority.collection, mutation.authority.key)
+      : null;
+  const preconditions = { claim, authority: current };
+  const preconditionConflict = evaluateMutationPreconditions(mutation, preconditions);
+  if (preconditionConflict) {
+    return preconditionConflict;
   }
-  let current: StoredAuthorityRecord | null = null;
-  if (mutation.authority) {
-    current = await readAuthorityIn(
-      database,
-      mutation.authority.collection,
-      mutation.authority.key,
-    );
-    const mismatch = authorityMismatch(mutation.authority, current);
-    if (mismatch) {
-      return {
-        status: "authority_conflict",
-        authority: mutation.authority.name,
-        mismatch,
-        current,
-      };
-    }
-  }
-  const resolvedRecords = new Map<string, StoredImmutableRecord>();
-  const prefetchedPrivate = await prefetchPrivateCandidates(database, mutation.ensures);
+
+  const candidates = new Map(await prefetchPrivateCandidates(database, mutation.ensures));
   for (const ensure of mutation.ensures) {
-    const candidates =
-      prefetchedPrivate.get(ensure.name) ?? (await readEnsureCandidates(database, ensure));
-    if (candidates.length > 1) {
-      return {
-        status: "immutable_conflict",
-        write: ensure.name,
-        existing: candidates[1]!,
-      };
+    if (!candidates.has(ensure.name)) {
+      candidates.set(ensure.name, await readEnsureCandidates(database, ensure));
     }
-    const existing = candidates[0] ?? null;
-    if (existing) {
-      if (
-        existing.fingerprint !== ensure.fingerprint ||
-        (mutation.authority !== undefined && existing.key !== ensure.key)
-      ) {
-        return { status: "immutable_conflict", write: ensure.name, existing };
-      }
-      resolvedRecords.set(ensure.name, existing);
+    const conflict = evaluateImmutableEnsure(mutation, ensure, candidates.get(ensure.name)!);
+    if (conflict) {
+      return conflict;
     }
+  }
+  const plan = evaluateMutation(mutation, {
+    ...preconditions,
+    candidates: (ensure) => candidates.get(ensure.name)!,
+  });
+  if (plan.status !== "ready") {
+    return plan;
   }
   if (mutation.claim) {
     await insertImmutable(database, mutation.claim);
@@ -1043,7 +728,7 @@ async function applyIn(
       faultInjection?.("command-after-receipt");
     }
   }
-  const missing = mutation.ensures.filter((ensure) => !resolvedRecords.has(ensure.name));
+  const missing = plan.inserts;
   for (const collection of [
     DurableCollections.executionJournalSegments,
     DurableCollections.executionReplaySegments,
@@ -1061,10 +746,6 @@ async function applyIn(
     ) {
       await insertImmutable(database, ensure);
     }
-    resolvedRecords.set(
-      ensure.name,
-      immutableRecord(ensure.collection, ensure.key, ensure.fingerprint, ensure.value),
-    );
   }
   if (
     mutation.authority?.collection === DurableCollections.executionControls &&
@@ -1072,182 +753,100 @@ async function applyIn(
   ) {
     faultInjection?.("execution-after-segment-insert");
   }
-  let authority: StoredAuthorityRecord | null = null;
-  if (mutation.authority) {
-    authority = {
-      collection: mutation.authority.collection,
-      key: mutation.authority.key,
-      revision: mutation.authority.next.revision,
-      fence: mutation.authority.next.fence ?? current?.fence ?? null,
-      value: mutation.authority.next.value,
-    };
+  const authority = plan.outcome.authority;
+  if (authority) {
     await replaceAuthority(database, authority, current);
-    if (mutation.authority.collection === DurableCollections.conversationHeads && mutation.claim) {
+    if (authority.collection === DurableCollections.conversationHeads && mutation.claim) {
       faultInjection?.("command-before-commit");
     }
-    if (mutation.authority.collection === DurableCollections.executionControls) {
+    if (authority.collection === DurableCollections.executionControls) {
       faultInjection?.("execution-before-commit");
     }
   }
-  return { status: "committed", authority, ensured: Object.fromEntries(resolvedRecords) };
+  return plan.outcome;
 }
 
 async function scanIn(database: Database, request: BoundedScan): Promise<StoredScanPage> {
   validateScan(request);
   const scope = decodeDurableKey(request.scope);
-  let rows: Array<PublicRow | PublicRootIndexRow | TerminalRow | PrivateRow>;
-  if (
-    request.index === DurableIndexes.conversationPosition &&
-    request.collection === DurableCollections.conversationPublicRootIndex
-  ) {
-    const [conversationId] = scope;
-    const conditions: SQL[] = [eq(spConversationPublicRootIndex.conversationId, conversationId!)];
-    if (request.after !== null) {
-      conditions.push(
-        request.direction === "forward"
-          ? gt(spConversationPublicRootIndex.position, request.after)
-          : lt(spConversationPublicRootIndex.position, request.after),
-      );
-    }
-    if (request.through !== undefined) {
-      conditions.push(
-        request.direction === "forward"
-          ? lte(spConversationPublicRootIndex.position, request.through)
-          : gte(spConversationPublicRootIndex.position, request.through),
-      );
-    }
-    rows = await resolved(
-      database
-        .select()
-        .from(spConversationPublicRootIndex)
-        .where(and(...conditions))
-        .orderBy(
-          request.direction === "forward"
-            ? asc(spConversationPublicRootIndex.position)
-            : desc(spConversationPublicRootIndex.position),
-        )
-        .limit(request.maxRecords + 1)
-        .all() as PublicRootIndexRow[] | Promise<PublicRootIndexRow[]>,
-    );
-  } else if (
-    request.index === DurableIndexes.conversationPosition &&
-    request.collection === DurableCollections.conversationPublicSegments
-  ) {
-    const [conversationId] = scope;
-    const conditions: SQL[] = [eq(spConversationPublicSegments.conversationId, conversationId!)];
-    if (request.after !== null) {
-      conditions.push(
-        request.direction === "forward"
-          ? gt(spConversationPublicSegments.minPosition, request.after)
-          : lt(spConversationPublicSegments.minPosition, request.after),
-      );
-    }
-    if (request.through !== undefined) {
-      conditions.push(
-        request.direction === "forward"
-          ? lte(spConversationPublicSegments.minPosition, request.through)
-          : gte(spConversationPublicSegments.minPosition, request.through),
-      );
-    }
-    rows = await resolved(
-      database
-        .select()
-        .from(spConversationPublicSegments)
-        .where(and(...conditions))
-        .orderBy(
-          request.direction === "forward"
-            ? asc(spConversationPublicSegments.minPosition)
-            : desc(spConversationPublicSegments.minPosition),
-        )
-        .limit(request.maxRecords + 1)
-        .all() as PublicRow[] | Promise<PublicRow[]>,
-    );
-  } else if (request.index === DurableIndexes.conversationPosition) {
-    const [conversationId] = scope;
-    const conditions: SQL[] = [eq(spConversationTerminalSegments.conversationId, conversationId!)];
-    if (request.after !== null) {
-      conditions.push(
-        request.direction === "forward"
-          ? gt(spConversationTerminalSegments.firstPosition, request.after)
-          : lt(spConversationTerminalSegments.firstPosition, request.after),
-      );
-    }
-    if (request.through !== undefined) {
-      conditions.push(
-        request.direction === "forward"
-          ? lte(spConversationTerminalSegments.firstPosition, request.through)
-          : gte(spConversationTerminalSegments.firstPosition, request.through),
-      );
-    }
-    rows = await resolved(
-      database
-        .select()
-        .from(spConversationTerminalSegments)
-        .where(and(...conditions))
-        .orderBy(
-          request.direction === "forward"
-            ? asc(spConversationTerminalSegments.firstPosition)
-            : desc(spConversationTerminalSegments.firstPosition),
-        )
-        .limit(request.maxRecords + 1)
-        .all() as TerminalRow[] | Promise<TerminalRow[]>,
-    );
-  } else {
-    const [executionId, taskId] = scope;
-    const table =
-      request.collection === DurableCollections.executionJournalSegments
-        ? spExecutionJournalSegments
-        : spExecutionReplaySegments;
-    const conditions: SQL[] = [eq(table.executionId, executionId!), eq(table.taskId, taskId!)];
-    if (request.after !== null) {
-      conditions.push(
-        request.direction === "forward"
-          ? gt(table.firstSequence, request.after)
-          : lt(table.firstSequence, request.after),
-      );
-    }
-    if (request.through !== undefined) {
-      conditions.push(
-        request.direction === "forward"
-          ? lte(table.firstSequence, request.through)
-          : gte(table.firstSequence, request.through),
-      );
-    }
-    rows = await resolved(
-      database
-        .select()
-        .from(table)
-        .where(and(...conditions))
-        .orderBy(
-          request.direction === "forward" ? asc(table.firstSequence) : desc(table.firstSequence),
-        )
-        .limit(request.maxRecords + 1)
-        .all() as PrivateRow[] | Promise<PrivateRow[]>,
+  const rootIndex = request.collection === DurableCollections.conversationPublicRootIndex;
+  const table = rootIndex
+    ? spConversationPublicRootIndex
+    : request.collection === DurableCollections.conversationPublicSegments
+      ? spConversationPublicSegments
+      : request.collection === DurableCollections.conversationTerminalSegments
+        ? spConversationTerminalSegments
+        : request.collection === DurableCollections.executionJournalSegments
+          ? spExecutionJournalSegments
+          : spExecutionReplaySegments;
+  const positionColumn =
+    "position" in table
+      ? table.position
+      : "minPosition" in table
+        ? table.minPosition
+        : "firstPosition" in table
+          ? table.firstPosition
+          : table.firstSequence;
+  const idColumn = rootIndex ? spConversationPublicRootIndex.position : table.segmentId;
+  const conditions: SQL[] =
+    "conversationId" in table
+      ? [eq(table.conversationId, scope[0]!)]
+      : [eq(table.executionId, scope[0]!), eq(table.taskId, scope[1]!)];
+  if (request.after !== null) {
+    conditions.push(
+      request.direction === "forward"
+        ? gt(positionColumn, request.after)
+        : lt(positionColumn, request.after),
     );
   }
-  const after = request.after === null ? null : BigInt(request.after);
-  const through = request.through === undefined ? null : BigInt(request.through);
-  const records = [];
-  let bytes = 0;
-  let more = false;
-  for (const row of rows) {
-    const position =
-      "position" in row
-        ? row.position
-        : "minPosition" in row
-          ? row.minPosition
-          : "firstPosition" in row
-            ? row.firstPosition
-            : row.firstSequence;
-    const numeric = BigInt(position);
-    if (after !== null && (request.direction === "forward" ? numeric <= after : numeric >= after)) {
-      continue;
-    }
-    if (
-      through !== null &&
-      (request.direction === "forward" ? numeric > through : numeric < through)
-    ) {
-      continue;
+  if (request.through !== undefined) {
+    conditions.push(
+      request.direction === "forward"
+        ? lte(positionColumn, request.through)
+        : gte(positionColumn, request.through),
+    );
+  }
+  const metadataRows = await resolved(
+    database
+      .select({ id: idColumn, position: positionColumn, storedBytes: table.storedBytes })
+      .from(table)
+      .where(and(...conditions))
+      .orderBy(request.direction === "forward" ? asc(positionColumn) : desc(positionColumn))
+      .limit(request.maxRecords + 1)
+      .all() as
+      | { id: string; position: string; storedBytes: number }[]
+      | Promise<{ id: string; position: string; storedBytes: number }[]>,
+  );
+  const page = planScanPage(
+    request,
+    metadataRows.map((row) => ({
+      key: row.id,
+      position: row.position,
+      storedBytes: numberValue(row.storedBytes, "stored_bytes"),
+    })),
+  );
+  if (page.selected.length === 0) {
+    return { records: [], nextCursor: page.nextCursor };
+  }
+  // Immutable rows cannot change between the metadata seek and this bounded payload read.
+  // The root index has a composite identity, so retain its conversation scope.
+  const selected = inArray(
+    idColumn,
+    page.selected.map((row) => row.key),
+  );
+  const where = rootIndex
+    ? and(eq(spConversationPublicRootIndex.conversationId, scope[0]!), selected)
+    : selected;
+  const rows = await resolved(
+    database.select().from(table).where(where).all() as
+      | Array<PublicRow | PublicRootIndexRow | TerminalRow | PrivateRow>
+      | Promise<Array<PublicRow | PublicRootIndexRow | TerminalRow | PrivateRow>>,
+  );
+  const byKey = new Map(rows.map((row) => ["position" in row ? row.position : row.segmentId, row]));
+  const records = page.selected.map((metadata) => {
+    const row = byKey.get(metadata.key);
+    if (!row) {
+      return invalid("Missing indexed journal record");
     }
     const record =
       request.collection === DurableCollections.conversationPublicRootIndex
@@ -1280,17 +879,12 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
                 row.contentHash,
                 privateEnvelopeFromRow(row as PrivateRow),
               );
-    if (
-      records.length >= request.maxRecords ||
-      bytes + record.value.byteLength > request.maxStoredBytes
-    ) {
-      more = true;
-      break;
+    if (record.value.byteLength !== metadata.storedBytes) {
+      return invalid("Indexed record byte count disagrees with payload");
     }
-    records.push({ ...record, position, storedBytes: record.value.byteLength });
-    bytes += record.value.byteLength;
-  }
-  return { records, nextCursor: more && records.length > 0 ? records.at(-1)!.position : null };
+    return { ...record, position: metadata.position, storedBytes: metadata.storedBytes };
+  });
+  return { records, nextCursor: page.nextCursor };
 }
 
 export function createSqliteDurableKernel<

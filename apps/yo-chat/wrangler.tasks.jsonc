@@ -1,0 +1,19 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "yo-chat-tasks",
+    "compatibility_date": "2026-10-05",
+    "d1_databases": [
+        { "binding": "JOURNAL", "database_name": "yo-chat-worker-journal" },
+        { "binding": "THREAD_METADATA", "database_name": "yo-chat-worker-metadata" },
+    ],
+    "durable_objects": {
+        "bindings": [
+            {
+                "name": "RESPONSE_STREAMS",
+                "class_name": "ResponseStream",
+                "script_name": "yo-chat",
+            },
+            { "name": "TOOL_SESSIONS", "class_name": "ToolSessions", "script_name": "yo-chat" },
+        ],
+    },
+}

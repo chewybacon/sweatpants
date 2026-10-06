@@ -33,7 +33,7 @@ function createReplacementFactory(databasePath: string): {
     async createApplication(context) {
       generation += 1;
       const handle = await run(function* () {
-        return yield* openBetterSqliteStorage(databasePath, { migrate: true, wal: true });
+        return yield* openBetterSqliteStorage(databasePath, { initialize: true, wal: true });
       });
       const application = createAcceptanceApplication(
         context,

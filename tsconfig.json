@@ -42,6 +42,9 @@
             "path": "./packages/cli"
         },
         {
+            "path": "./packages/cloudflare-tasks"
+        },
+        {
             "path": "./packages/agent-host"
         },
         {

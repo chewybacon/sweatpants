@@ -14,7 +14,7 @@ function postgresConversationCase() {
   return {
     name: "postgres",
     async create() {
-      const handle = await openPostgresStorage({ connectionString, migrate: true });
+      const handle = await openPostgresStorage({ connectionString, initialize: true });
       return {
         store: handle.storage.conversationStore as ConversationStore,
         close: () => run(() => handle.close()),
@@ -27,7 +27,7 @@ function postgresExecutionCase() {
   return {
     name: "postgres",
     async create() {
-      const handle = await openPostgresStorage({ connectionString, migrate: true });
+      const handle = await openPostgresStorage({ connectionString, initialize: true });
       return {
         store: handle.storage.executionStore as ExecutionStore,
         close: () => run(() => handle.close()),

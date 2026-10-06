@@ -104,7 +104,9 @@ describe("native ConversationWindow production", () => {
   it("uses reset initially and continue with complete prior-hot and newly allocated spill catch-up", async () => {
     const root = await mkdtemp(join(tmpdir(), "conversation-window-sqlite-"));
     const handle = await run(function* () {
-      return yield* openBetterSqliteStorage(join(root, "conversation.sqlite"), { migrate: true });
+      return yield* openBetterSqliteStorage(join(root, "conversation.sqlite"), {
+        initialize: true,
+      });
     });
     try {
       await run(function* () {

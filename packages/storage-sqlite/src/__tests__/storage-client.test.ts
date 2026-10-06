@@ -13,7 +13,9 @@ import {
   type ThreadSummary,
   type TranscriptPage,
 } from "../client.ts";
-import { sqliteSchema } from "../schema.ts";
+import { canonicalSnapshot } from "@sweatpants/foundation";
+import { terminalToRow } from "@sweatpants/history-store/sql-codec";
+import { spConversationTerminalSegments, sqliteSchema } from "../schema.ts";
 
 const roots: string[] = [];
 const closables: Array<{ close(): void }> = [];
@@ -40,9 +42,9 @@ function track<T extends { close(): void }>(closable: T): T {
   return closable;
 }
 
-async function migrateFile(path: string): Promise<void> {
+async function initializeFile(path: string): Promise<void> {
   await run(function* () {
-    const handle = yield* openBetterSqliteStorage(path, { migrate: true });
+    const handle = yield* openBetterSqliteStorage(path, { initialize: true });
     yield* handle.close();
   });
 }
@@ -63,32 +65,27 @@ function seedAuthorityData(path: string): void {
   // Soft-deleted head: the tombstone check requires every pointer to be NULL.
   insertHead.run("conv-deleted", "deleted", 250, 250);
 
-  const insertSegment = raw.prepare(
-    `INSERT INTO sp_conversation_terminal_segments
-       (segment_id, conversation_id, logical_turn_id, execution_id, publication_key,
-        first_position, last_position, entries_json, content_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'seed-hash', 1)`,
-  );
-  insertSegment.run(
-    "conv-new-seg-1",
-    "conv-new",
-    "turn-1",
-    "exec-conv-new-1",
-    "pub-conv-new-1",
-    0,
-    2,
-    JSON.stringify(["a", "b", "c"]),
-  );
-  insertSegment.run(
-    "conv-new-seg-2",
-    "conv-new",
-    "turn-2",
-    "exec-conv-new-2",
-    "pub-conv-new-2",
-    3,
-    3,
-    JSON.stringify(["d"]),
-  );
+  const database = clientDrizzle(raw);
+  for (const [index, entries] of [["a", "b", "c"], ["d"]].entries()) {
+    database
+      .insert(spConversationTerminalSegments)
+      .values(
+        terminalToRow({
+          segmentId: `conv-new-seg-${index + 1}`,
+          conversationId: "conv-new",
+          logicalTurnId: `turn-${index + 1}`,
+          executionId: `exec-conv-new-${index + 1}`,
+          publicationKey: `pub-conv-new-${index + 1}`,
+          previous: null,
+          firstPosition: index === 0 ? "0" : "3",
+          lastPosition: index === 0 ? "2" : "3",
+          entries,
+          contentHash: canonicalSnapshot(entries).sha,
+          createdAt: 1,
+        }),
+      )
+      .run();
+  }
   raw.close();
 }
 
@@ -112,7 +109,7 @@ describe("storage schema surface", () => {
     );
 
     const path = tempFile("schema.sqlite");
-    await migrateFile(path);
+    await initializeFile(path);
     const binding = track(createSqliteWriterBinding(path));
     const rows = clientDrizzle(binding).select().from(sqliteSchema.spConversationHeads).all();
     expect(rows).toEqual([]);
@@ -121,7 +118,7 @@ describe("storage schema surface", () => {
   it("derives thread summaries from authority tables (TC-011)", async () => {
     roots.push(mkdtempSync(join(tmpdir(), "storage-client-")));
     const path = tempFile("threads.sqlite");
-    await migrateFile(path);
+    await initializeFile(path);
     seedAuthorityData(path);
 
     const binding = track(createSqliteWriterBinding(path));
@@ -167,7 +164,7 @@ describe("storage schema surface", () => {
   it("serves identical reads through a reader binding (TC-011, TC-015)", async () => {
     roots.push(mkdtempSync(join(tmpdir(), "storage-client-")));
     const path = tempFile("reader.sqlite");
-    await migrateFile(path);
+    await initializeFile(path);
     seedAuthorityData(path);
 
     const reader = openChatStorageReader(path);

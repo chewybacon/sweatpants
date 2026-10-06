@@ -35,7 +35,6 @@
         {
             "binding": "THREAD_METADATA",
             "database_name": "yo-chat-worker-metadata",
-            "migrations_dir": "migrations/thread-metadata",
         },
     ],
     "secrets": {

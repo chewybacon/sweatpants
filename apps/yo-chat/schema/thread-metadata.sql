@@ -1,4 +1,4 @@
-CREATE TABLE thread_metadata (
+CREATE TABLE IF NOT EXISTS thread_metadata (
     id TEXT PRIMARY KEY NOT NULL,
     namespace TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -7,6 +7,6 @@ CREATE TABLE thread_metadata (
     last_message_preview TEXT NOT NULL,
     message_count INTEGER NOT NULL
 );
-CREATE INDEX idx_thread_metadata_namespace_updated
+CREATE INDEX IF NOT EXISTS idx_thread_metadata_namespace_updated
     ON thread_metadata (namespace, updated_at DESC, id DESC);
-CREATE INDEX idx_thread_metadata_updated_id ON thread_metadata (updated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_thread_metadata_updated_id ON thread_metadata (updated_at DESC, id DESC);

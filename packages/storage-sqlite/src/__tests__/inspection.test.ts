@@ -22,7 +22,7 @@ afterEach(async () => {
 describe("SQLite inspection", () => {
   it("reports real table counts and bytes without exposing bodies", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const payload = canonicalSnapshot({

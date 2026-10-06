@@ -391,7 +391,7 @@ export async function createSqliteAcceptanceApplication(
   const root = await mkdtemp(join(tmpdir(), "platform-acceptance-sqlite-"));
   const handle = await run(function* () {
     return yield* openBetterSqliteStorage(join(root, "authority.sqlite"), {
-      migrate: true,
+      initialize: true,
       wal: true,
     });
   });

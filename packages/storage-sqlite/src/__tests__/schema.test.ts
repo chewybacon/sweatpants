@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import Database from "better-sqlite3";
 import { sql } from "drizzle-orm";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
@@ -22,7 +21,7 @@ afterEach(async () => {
 describe("SQLite spine schema", () => {
   it("creates the required indexes, checks, and exact pre-release domain shape", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const indexes = handle.database.all(
@@ -71,29 +70,6 @@ describe("SQLite spine schema", () => {
       );
     } finally {
       await run(() => handle.close());
-    }
-  });
-
-  it("fails closed on a superseded pre-release schema without deleting it", async () => {
-    const path = await temporaryDatabase();
-    const legacy = new Database(path);
-    legacy.exec(
-      "CREATE TABLE sp_conversation_heads (legacy_marker TEXT NOT NULL); " +
-        "INSERT INTO sp_conversation_heads (legacy_marker) VALUES ('preserve-me')",
-    );
-    legacy.close();
-
-    await expect(
-      run(() => openBetterSqliteStorage(path, { migrate: true, wal: false })),
-    ).rejects.toMatchObject({ code: "durable_kernel_unavailable" });
-
-    const inspection = new Database(path, { readonly: true, fileMustExist: true });
-    try {
-      expect(inspection.prepare("SELECT legacy_marker FROM sp_conversation_heads").get()).toEqual({
-        legacy_marker: "preserve-me",
-      });
-    } finally {
-      inspection.close();
     }
   });
 });

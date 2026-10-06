@@ -1,7 +1,7 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "e8cd52a6-5996-47c2-8339-67dd32555cd6",
+    "id": "d26747ae-cad4-41a6-a06d-5e34acc00e61",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "tables": {
         "sp_conversation_checkpoints": {
@@ -396,6 +396,13 @@
                     "notNull": true,
                     "autoincrement": false
                 },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
                 "content_hash": {
                     "name": "content_hash",
                     "type": "text",
@@ -496,6 +503,13 @@
                 "roots_json": {
                     "name": "roots_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
@@ -609,6 +623,13 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
@@ -796,6 +817,13 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
@@ -997,6 +1025,13 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "stored_bytes": {
+                    "name": "stored_bytes",
+                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false

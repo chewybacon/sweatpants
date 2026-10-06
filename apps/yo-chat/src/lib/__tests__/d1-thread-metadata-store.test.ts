@@ -44,7 +44,7 @@ beforeAll(async () => {
   await worker.ready;
   const db = await worker.getD1Database("THREAD_METADATA");
   const schema = await readFile(
-    new URL("../../../migrations/thread-metadata/0001_thread_metadata.sql", import.meta.url),
+    new URL("../../../schema/thread-metadata.sql", import.meta.url),
     "utf8",
   );
   await db.batch(

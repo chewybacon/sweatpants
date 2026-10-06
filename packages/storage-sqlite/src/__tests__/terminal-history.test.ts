@@ -46,7 +46,7 @@ afterEach(async () => {
 describe("SQLite terminal history", () => {
   it("stores one immutable publication and pages ordered chat turns", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const first = segment("terminal-1", "publication-1", "0", [
@@ -107,7 +107,7 @@ describe("SQLite terminal history", () => {
 
   it("makes a same-publication retry idempotent and conflicts on changed content", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const first = segment("terminal-1", "publication-1", "0", [{ event: "done" }]);

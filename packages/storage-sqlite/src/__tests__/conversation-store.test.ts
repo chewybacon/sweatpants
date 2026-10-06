@@ -37,7 +37,7 @@ afterEach(async () => {
 describe("SQLite ConversationStore", () => {
   it("assigns initial and subsequent head counters inside the store", async () => {
     const path = await temporaryDatabase();
-    const handle = await run(() => openBetterSqliteStorage(path, { migrate: true, wal: false }));
+    const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
     try {
       const first = await run(() =>

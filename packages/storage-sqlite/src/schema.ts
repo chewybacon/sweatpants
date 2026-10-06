@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import { DurableKernelError } from "@sweatpants/durable-storage-kernel";
+import { sqlCounter } from "@sweatpants/durable-storage-kernel";
 
 export const durableCounter = customType<{
   data: string;
@@ -19,36 +19,10 @@ export const durableCounter = customType<{
     return "integer";
   },
   toDriver(value) {
-    if (!/^\d+$/.test(value)) {
-      throw new DurableKernelError(
-        "durable_kernel_integer_out_of_range",
-        `Invalid durable counter: ${value}`,
-      );
-    }
-    const parsed = BigInt(value);
-    if (parsed > 9_223_372_036_854_775_807n) {
-      throw new DurableKernelError(
-        "durable_kernel_integer_out_of_range",
-        `Durable counter is outside the backend integer range: ${value}`,
-      );
-    }
-    return parsed;
+    return sqlCounter(value);
   },
   fromDriver(value) {
-    if (typeof value === "number" && !Number.isSafeInteger(value)) {
-      throw new DurableKernelError(
-        "durable_kernel_integer_out_of_range",
-        `Unsafe durable counter returned by the backend driver: ${value}`,
-      );
-    }
-    const parsed = typeof value === "bigint" ? value : BigInt(value);
-    if (parsed < 0n || parsed > 9_223_372_036_854_775_807n) {
-      throw new DurableKernelError(
-        "durable_kernel_integer_out_of_range",
-        `Durable counter is outside the backend integer range: ${parsed}`,
-      );
-    }
-    return parsed.toString(10);
+    return sqlCounter(value).toString(10);
   },
 });
 
@@ -142,6 +116,7 @@ export const spConversationPublicSegments = sqliteTable(
     minPosition: durableCounter("min_position").notNull(),
     maxPosition: durableCounter("max_position").notNull(),
     rootsJson: text("roots_json").notNull(),
+    storedBytes: integer("stored_bytes").notNull(),
     contentHash: text("content_hash").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
     createdAt: integer("created_at").notNull(),
@@ -167,6 +142,7 @@ export const spConversationPublicRootIndex = sqliteTable(
     segmentId: text("segment_id").notNull(),
     segmentRootIndex: integer("segment_root_index").notNull(),
     archiveOrdinal: durableCounter("archive_ordinal").notNull(),
+    storedBytes: integer("stored_bytes").notNull(),
     contentHash: text("content_hash").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
   },
@@ -194,6 +170,7 @@ export const spConversationTerminalSegments = sqliteTable(
     firstPosition: durableCounter("first_position").notNull(),
     lastPosition: durableCounter("last_position").notNull(),
     entriesJson: text("entries_json").notNull(),
+    storedBytes: integer("stored_bytes").notNull(),
     contentHash: text("content_hash").notNull(),
     createdAt: integer("created_at").notNull(),
   },
@@ -270,6 +247,7 @@ const privateSegmentColumns = {
   firstSequence: durableCounter("first_sequence").notNull(),
   lastSequence: durableCounter("last_sequence").notNull(),
   entriesJson: text("entries_json").notNull(),
+  storedBytes: integer("stored_bytes").notNull(),
   contentHash: text("content_hash").notNull(),
   encodedBytes: integer("encoded_bytes").notNull(),
   createdAt: integer("created_at").notNull(),

@@ -11,7 +11,6 @@
         {
             "binding": "THREAD_METADATA",
             "database_name": "yo-chat-thread-metadata",
-            "migrations_dir": "migrations/thread-metadata",
         },
     ],
 }
