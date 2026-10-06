@@ -201,15 +201,18 @@ function MessageBubble({ message }: { message: ReactChatUIMessage }) {
   );
 }
 
-async function listThreads(namespace: string): Promise<ThreadSummary[]> {
-  const response = await fetch(
-    `/api/threaded-chat/threads?namespace=${encodeURIComponent(namespace)}`,
-  );
+interface ThreadPage {
+  threads: ThreadSummary[];
+  nextCursor: string | null;
+}
+async function listThreads(namespace: string, before?: string): Promise<ThreadPage> {
+  const params = new URLSearchParams({ namespace });
+  if (before) params.set("before", before);
+  const response = await fetch(`/api/threaded-chat/threads?${params}`);
   if (!response.ok) {
     throw new Error(`Failed to list ${namespace} threads (${response.status})`);
   }
-  const data = (await response.json()) as { threads: ThreadSummary[] };
-  return data.threads;
+  return response.json() as Promise<ThreadPage>;
 }
 
 async function createThread(namespace: string): Promise<ThreadSummary> {
@@ -426,6 +429,8 @@ function DemoThreadPanel({
 
 export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDefinition }) {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -473,9 +478,21 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
         setLoading(true);
         setError(null);
         try {
-          let nextThreads = await listThreads(definition.namespace);
+          const page = await listThreads(definition.namespace);
+          let nextThreads = page.threads;
           let nextSelected =
             typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+          // Restore an older selected thread with a point lookup, never by paging through the whole list.
+          if (nextSelected && !nextThreads.some((thread) => thread.id === nextSelected)) {
+            const response = await fetch(
+              `/api/threaded-chat/threads/${encodeURIComponent(nextSelected)}`,
+            );
+            if (response.ok) {
+              const { thread } = (await response.json()) as { thread: ThreadSummary };
+              if (thread.namespace === definition.namespace) nextThreads = [thread, ...nextThreads];
+            } else if (response.status !== 404)
+              throw new Error(`Failed to restore thread (${response.status})`);
+          }
           if (nextThreads.length === 0 || (isolateTestBrowserSession && !nextSelected)) {
             const created = await createThread(definition.namespace);
             nextThreads = [created, ...nextThreads];
@@ -488,6 +505,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
             return;
           }
           setThreads(nextThreads);
+          setNextCursor(page.nextCursor);
           setSelectedThreadId(nextSelected);
           persistSelection(nextSelected);
           setSessionMountKey((current) => current + 1);
@@ -516,6 +534,25 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
     setHydrated(true);
     void hydrate();
   }, [hydrate]);
+
+  const handleLoadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    const generation = selectionGenerationRef.current;
+    setLoadingMore(true);
+    try {
+      const page = await listThreads(definition.namespace, nextCursor);
+      if (selectionGenerationRef.current !== generation) return;
+      setThreads((current) => [
+        ...current,
+        ...page.threads.filter((thread) => !current.some((existing) => existing.id === thread.id)),
+      ]);
+      setNextCursor(page.nextCursor);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleNewThread = useCallback(async () => {
     const generation = selectionGenerationRef.current + 1;
@@ -673,6 +710,15 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
                 </div>
               </button>
             ))}
+            {nextCursor && (
+              <Button
+                disabled={loadingMore || loading}
+                onClick={() => void handleLoadMore()}
+                className="w-full"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            )}
           </div>
         </aside>
 

@@ -1,5 +1,9 @@
 import { Pool } from "pg";
-import { createThreadSummary, type ThreadMetadataStore } from "./thread-metadata-store";
+import {
+  createThreadSummary,
+  threadListLimit,
+  type ThreadMetadataStore,
+} from "./thread-metadata-store";
 import type { ThreadSummary } from "./threaded-chat-types";
 
 const columns = `id, namespace, title, created_at AS "createdAt", updated_at AS "updatedAt",
@@ -26,15 +30,27 @@ export function createPostgresThreadMetadataStore(connectionString: string): Thr
       last_message_preview text NOT NULL, message_count integer NOT NULL
     );
     CREATE INDEX IF NOT EXISTS thread_metadata_namespace_updated
-      ON thread_metadata(namespace, updated_at DESC);
+      ON thread_metadata(namespace, updated_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS thread_metadata_updated_id ON thread_metadata(updated_at DESC, id DESC);
   `));
   return {
-    async list(namespace) {
+    async list(namespace, options = {}) {
+      const limit = threadListLimit(options);
       await ensureSchema();
+      const args: (string | number)[] = [];
+      const clauses: string[] = [];
+      if (namespace !== undefined) {
+        args.push(createThreadSummary({ namespace }).namespace);
+        clauses.push(`namespace = $${args.length}`);
+      }
+      if (options.before) {
+        args.push(options.before.updatedAt, options.before.id);
+        clauses.push(`(updated_at, id) < ($${args.length - 1}, $${args.length})`);
+      }
+      args.push(limit);
       const result = await pool.query<ThreadRow>(
-        `SELECT ${columns} FROM thread_metadata
-         ${namespace === undefined ? "" : "WHERE namespace = $1"} ORDER BY updated_at DESC`,
-        namespace === undefined ? [] : [createThreadSummary({ namespace }).namespace],
+        `SELECT ${columns} FROM thread_metadata ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY updated_at DESC, id DESC LIMIT $${args.length}`,
+        args,
       );
       return result.rows.map(summary);
     },

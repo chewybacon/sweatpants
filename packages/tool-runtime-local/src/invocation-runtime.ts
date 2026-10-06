@@ -21,7 +21,7 @@ import {
   parseToolParameters,
   requireToolParameterResult,
 } from "@sweatpants/tool-session/tool-parameters";
-import { createToolInvocationExecution } from "./tool-invocation-execution.ts";
+import { createToolInvocationExecution } from "@sweatpants/tool-session/invocation-execution";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
 
 export interface LocalToolInvocationRuntimeOptions {

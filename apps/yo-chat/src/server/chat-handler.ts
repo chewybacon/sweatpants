@@ -1,3 +1,4 @@
+import { createSqliteThreadMetadataStore } from "@/lib/sqlite-thread-metadata-store";
 import { createPostgresThreadMetadataStore } from "@/lib/postgres-thread-metadata-store";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -12,7 +13,6 @@ import { createYoChatStorageConfig } from "./storage-config";
 import {
   configureThreadMetadataStore,
   createInMemoryThreadMetadataStore,
-  createSqliteThreadMetadataStore,
 } from "@/lib/thread-metadata-store";
 import { pickCard } from "../tools/pick-card/durable";
 import { playTttTool } from "../tools/play-ttt/tool";

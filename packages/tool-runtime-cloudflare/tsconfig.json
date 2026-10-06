@@ -1,0 +1,14 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.package.json",
+    "compilerOptions": {
+        "composite": true,
+        "lib": ["ES2022", "DOM", "DOM.Iterable", "ESNext.Disposable"],
+        "emitDeclarationOnly": true,
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "customConditions": ["development"],
+        "types": ["@cloudflare/workers-types"]
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": ["dist", "node_modules", "**/__tests__/**"]
+}

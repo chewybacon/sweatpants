@@ -1,11 +1,14 @@
 import {
   getThreadMetadataStore,
+  threadListLimit,
+  type ThreadListOptions,
+  type ThreadMetadataStore,
   type CreateThreadMetadataInput,
   type UpdateThreadMetadataInput,
 } from "@/lib/thread-metadata-store";
 
 function parseJsonBody<T>(request: Request): Promise<T | null> {
-  return request.json().catch(() => null);
+  return (request.json() as Promise<T>).catch(() => null);
 }
 
 function extractThreadId(pathname: string): string | null {
@@ -13,16 +16,46 @@ function extractThreadId(pathname: string): string | null {
   return match ? decodeURIComponent(match[1] as string) : null;
 }
 
-export async function handleThreadMetadataRequest(request: Request): Promise<Response> {
-  const store = getThreadMetadataStore();
+export async function handleThreadMetadataRequest(
+  request: Request,
+  store: ThreadMetadataStore = getThreadMetadataStore(),
+): Promise<Response> {
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/$/, "");
   const method = request.method.toUpperCase();
 
   if (pathname === "/api/threaded-chat/threads") {
     if (method === "GET") {
+      const options: ThreadListOptions = {};
+      try {
+        if (url.searchParams.has("limit")) options.limit = Number(url.searchParams.get("limit"));
+        options.limit = threadListLimit(options);
+        const cursor = url.searchParams.get("before");
+        if (cursor !== null) {
+          if (cursor.length > 1024) throw new Error("Invalid thread cursor");
+          const value = JSON.parse(cursor);
+          if (
+            !value ||
+            !Number.isSafeInteger(value.updatedAt) ||
+            value.updatedAt < 0 ||
+            typeof value.id !== "string" ||
+            !value.id ||
+            value.id.length > 512
+          )
+            throw new Error("Invalid thread cursor");
+          options.before = { updatedAt: value.updatedAt, id: value.id };
+        }
+      } catch {
+        return new Response("Invalid thread pagination", { status: 400 });
+      }
+      const threads = await store.list(url.searchParams.get("namespace") ?? undefined, options);
+      const last = threads.at(-1);
       return Response.json({
-        threads: await store.list(url.searchParams.get("namespace") ?? undefined),
+        threads,
+        nextCursor:
+          threads.length === options.limit && last
+            ? JSON.stringify({ updatedAt: last.updatedAt, id: last.id })
+            : null,
       });
     }
 

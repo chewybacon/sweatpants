@@ -1,4 +1,5 @@
 import { builtinModules } from "node:module";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig } from "vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
@@ -21,74 +22,104 @@ const workspacePackages = [
   "@sweatpants/tool-session",
 ];
 
-const config = defineConfig({
-  // Prevent Vite from pre-bundling workspace packages (allows HMR)
-  optimizeDeps: {
-    exclude: isProd ? [] : workspacePackages,
-  },
-
-  // SSR: Don't externalize workspace packages so they get processed
-  ssr: {
-    noExternal: isProd ? [] : workspacePackages,
-    external: [...externalPackages, ...nodeBuiltins],
-  },
-
-  plugins: [
-    // Derive browser-safe interaction contracts from statically imported authored tools.
-    clientContractPlugin(),
-    // Node.js worker_threads support with ?nodeWorker and ?modulePath imports.
-    // Skipped under Vitest: its resolveId rewrites the worker id (appending
-    // &importer=...), which defeats vitest's module mocking of the `?modulePath`
-    // import and makes esbuild choke on the query-laden .ts path. Tests mock the
-    // worker URL directly; real dev/prod builds keep the plugin.
-    ...(process.env["VITEST"] ? [] : [nodeWorkerPlugin()]),
-    // The devtools event bus binds a fixed auxiliary port; omit it from the
-    // isolated Playwright server so it can run beside a developer instance.
-    ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" ? [] : [devtools()]),
-    viteTsConfigPaths({
-      projects: ["./tsconfig.json"],
-    }),
-    tailwindcss(),
-    imagetools(),
-    tanstackStart(),
-    viteReact(),
-  ],
-
-  build: {
-    rollupOptions: {
-      // Browser renderer imports must become lazy chunks; SSR externals are above.
-      external: ["@earendil-works/pi-ai", ...nodeBuiltins],
+const config = defineConfig(({ mode }) => {
+  const isCloudflare = mode === "cloudflare";
+  return {
+    resolve: {
+      alias:
+        mode === "d1-local"
+          ? [
+              {
+                find: /^\.\/storage-config$/,
+                replacement: new URL("./src/server/local-d1-storage-config.ts", import.meta.url)
+                  .pathname,
+              },
+              {
+                find: /^\.\/durable-streams$/,
+                replacement: new URL("./src/server/local-cloudflare-streams.ts", import.meta.url)
+                  .pathname,
+              },
+            ]
+          : [],
     },
-  },
-
-  // Enable nodeWorkerPlugin in dev mode for worker HMR
-  worker: {
-    plugins: () => [nodeWorkerPlugin()],
-  },
-
-  test: {
-    // Real worker-thread acceptance fixtures are stable under the fork pool;
-    // the default threads pool can lose Vitest task-update heartbeats during
-    // long deterministic runtime-invariance tests.
-    pool: "forks",
-    fileParallelism: false,
-    // Use jsdom for DOM testing with Interactors
-    environment: "jsdom",
-    env: {
-      DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.6",
+    // Local workerd owns both the journal binding and metadata endpoints.
+    server:
+      mode === "d1-local"
+        ? {
+            proxy: {
+              "/api/threaded-chat/threads": { target: "http://127.0.0.1:8788", changeOrigin: true },
+            },
+          }
+        : undefined,
+    // Prevent Vite from pre-bundling workspace packages (allows HMR)
+    optimizeDeps: {
+      exclude: [...(isProd ? [] : workspacePackages), "wrangler"],
     },
-    // Exclude Playwright e2e tests from Vitest.
-    // The outside-in HTTP tier is excluded from the default (hermetic) run and
-    // is run selectively via vitest.outside-in.config.ts.
-    exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/e2e/**",
-      "**/outside-in/**",
-      "**/*.external.acceptance.test.ts",
+
+    // SSR: Don't externalize workspace packages so they get processed
+    ssr: {
+      noExternal: isCloudflare ? true : isProd ? [] : workspacePackages,
+      external: isCloudflare ? [] : [...externalPackages, ...nodeBuiltins],
+    },
+
+    plugins: [
+      ...(isCloudflare ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
+      // Derive browser-safe interaction contracts from statically imported authored tools.
+      clientContractPlugin(),
+      // Node.js worker_threads support with ?nodeWorker and ?modulePath imports.
+      // Skipped under Vitest: its resolveId rewrites the worker id (appending
+      // &importer=...), which defeats vitest's module mocking of the `?modulePath`
+      // import and makes esbuild choke on the query-laden .ts path. Tests mock the
+      // worker URL directly; real dev/prod builds keep the plugin.
+      ...(process.env["VITEST"] || isCloudflare ? [] : [nodeWorkerPlugin()]),
+      // The devtools event bus binds a fixed auxiliary port; omit it from the
+      // isolated Playwright server so it can run beside a developer instance.
+      ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" || isCloudflare ? [] : [devtools()]),
+      viteTsConfigPaths({
+        projects: ["./tsconfig.json"],
+      }),
+      tailwindcss(),
+      imagetools(),
+      tanstackStart(),
+      viteReact(),
     ],
-  },
+
+    build: {
+      rollupOptions: {
+        // Browser renderer imports must become lazy chunks; SSR externals are above.
+        external: isCloudflare ? [] : ["@earendil-works/pi-ai", ...nodeBuiltins],
+      },
+    },
+
+    // Enable nodeWorkerPlugin in dev mode for worker HMR
+    worker: {
+      plugins: () => (isCloudflare ? [] : [nodeWorkerPlugin()]),
+    },
+
+    test: {
+      // Real worker-thread acceptance fixtures are stable under the fork pool;
+      // the default threads pool can lose Vitest task-update heartbeats during
+      // long deterministic runtime-invariance tests.
+      pool: "forks",
+      fileParallelism: false,
+      // Use jsdom for DOM testing with Interactors
+      environment: "jsdom",
+      env: {
+        DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+        DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.6",
+      },
+      // Exclude Playwright e2e tests from Vitest.
+      // The outside-in HTTP tier is excluded from the default (hermetic) run and
+      // is run selectively via vitest.outside-in.config.ts.
+      exclude: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/e2e/**",
+        "**/outside-in/**",
+        "**/*.external.acceptance.test.ts",
+      ],
+    },
+  };
 });
 
 export default config;

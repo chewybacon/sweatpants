@@ -1,0 +1,7 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "yo-chat-tools",
+    "main": "src/server/cloudflare-tool-executor.ts",
+    "compatibility_date": "2026-10-05",
+    "compatibility_flags": ["nodejs_compat"],
+}

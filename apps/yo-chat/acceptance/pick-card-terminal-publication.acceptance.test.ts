@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { createChatApplication, createChatEndpoints } from "@sweatpants/agent-host/server";
 import { durableEffectKey } from "@sweatpants/durable-effects";
@@ -29,10 +30,15 @@ import {
   type TestApplicationFactoryContext,
   type TestRigOptions,
 } from "@sweatpants/test-rig";
-import { race, type Operation } from "effection";
+import { call, race, type Operation } from "effection";
 import { pickCard } from "../src/tools/pick-card/durable.ts";
 import { createDrawPickCardsRegistration } from "../src/tools/pick-card/durable-effects.ts";
 import { routeNativeChatApplication } from "./fixtures/native-chat-router.ts";
+
+import { cloudflare } from "@sweatpants/tool-runtime-cloudflare";
+import { startCloudflareExecutor } from "./fixtures/cloudflare-executor.ts";
+
+type CloudflareExecutor = Awaited<ReturnType<typeof startCloudflareExecutor>>;
 
 const MODEL_ID = "yo-chat-pick-card-acceptance";
 type Binding = TestRigOptions["binding"];
@@ -55,6 +61,7 @@ function pickCardWorkerUrl(): URL {
 function createPickCardApplication(
   context: TestApplicationFactoryContext,
   inspect: (conversationStore: ConversationStore) => void,
+  executor?: CloudflareExecutor,
 ) {
   const executionStore = createMemoryExecutionStore();
   const conversationStore = createMemoryConversationStore();
@@ -70,11 +77,15 @@ function createPickCardApplication(
     executionStore,
   });
   const registry = createDurableToolRegistry([pickCard]);
+  const prepared = executor
+    ? cloudflare({ worker: executor.worker }).prepare([pickCard], "tools")
+    : undefined;
+  const driverKind = executor ? "cloudflare:tools" : "worker";
   const drawCards = createDrawPickCardsRegistration();
   const schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog);
   const available = projectAvailableToolContracts([pickCard], {
     ordinaryTools: new Set(),
-    drivers: new Set(["worker"]),
+    drivers: new Set([driverKind]),
     programs: new Set([
       exactProgramKey({
         id: pickCard.manifest.programId,
@@ -88,13 +99,15 @@ function createPickCardApplication(
       ),
     ),
     schemas: schemaRegistry,
-    durableDrivers: new Map([[pickCard.name, "worker"]]),
+    durableDrivers: new Map([[pickCard.name, driverKind]]),
   });
-  const driver = createLocalWorkerDurableProgramDriver({
-    workerUrl: pickCardWorkerUrl(),
-    name: "yo-chat-pick-card-acceptance",
-    registry,
-  });
+  const driver =
+    prepared?.drivers?.[0][1] ??
+    createLocalWorkerDurableProgramDriver({
+      workerUrl: pickCardWorkerUrl(),
+      name: "yo-chat-pick-card-acceptance",
+      registry,
+    });
 
   const endpoints = createChatEndpoints({
     storage: { kind: "custom", executionStore, conversationStore },
@@ -122,11 +135,12 @@ function createPickCardApplication(
             {
               publicName: pickCard.name,
               tool: pickCard,
-              route: { driverKind: "worker", profile: "pick-card-acceptance" },
+              route: { driverKind, profile: "pick-card-acceptance" },
+              activation: executor ? "fenced" : undefined,
             },
           ],
         ]),
-        drivers: [["worker", driver]],
+        drivers: [[driverKind, driver]],
         effects: [drawCards],
       });
     },
@@ -135,16 +149,20 @@ function createPickCardApplication(
   return routeNativeChatApplication(application, endpoints);
 }
 
-async function runScenario(binding: Binding): Promise<void> {
+async function runScenario(binding: Binding, executor?: CloudflareExecutor): Promise<void> {
   let conversationStore: ConversationStore | undefined;
   await withTestScenario(
     {
       binding,
       modelId: MODEL_ID,
       createApplication(context) {
-        return createPickCardApplication(context, (store) => {
-          conversationStore = store;
-        });
+        return createPickCardApplication(
+          context,
+          (store) => {
+            conversationStore = store;
+          },
+          executor,
+        );
       },
       scenarioTimeoutMs: 20_000,
     },
@@ -167,6 +185,8 @@ async function runScenario(binding: Binding): Promise<void> {
       ]);
 
       const choice = yield* first.elicit("pickCard");
+      // Destroy all evaluator memory while the journal remains with the host.
+      if (executor) yield* call(() => executor.replace());
       const reconnected = yield* conversation.reopen();
       expect(JSON.stringify(reconnected.snapshot())).toContain(choice.elicitId);
       const resumed = reconnected.resumePendingElicit("pickCard");
@@ -228,6 +248,20 @@ describe.each<Binding>(["in-process", "http"])(
   (binding) => {
     it("admits the next ordinary message after the fulfilled turn completes", async () => {
       await runScenario(binding);
+    }, 30_000);
+  },
+);
+
+describe.each<Binding>(["in-process", "http"])(
+  "yo-chat pick_card with a Cloudflare Dynamic Worker through %s",
+  (binding) => {
+    it("rehydrates the picker after executor replacement and completes the same turn", async () => {
+      const executor = await startCloudflareExecutor();
+      try {
+        await runScenario(binding, executor);
+      } finally {
+        await executor.close();
+      }
     }, 30_000);
   },
 );
