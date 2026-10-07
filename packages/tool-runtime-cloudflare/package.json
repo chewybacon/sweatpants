@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/tool-runtime-cloudflare",
     "version": "0.1.0",
-    "description": "Cloudflare Dynamic Worker execution placement for durable tools",
+    "description": "Cloudflare Worker and Durable Object execution placement for tools",
     "license": "MIT",
     "files": [
         "dist",

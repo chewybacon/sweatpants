@@ -8,21 +8,18 @@ export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
 export { ToolSessions } from "../../src/server/cloudflare-tool-sessions";
 
 interface Env extends CloudflareChatBindings {
-  CODE: string;
   MODEL: string;
 }
 export default {
   fetch(request: Request, env: Env) {
     const configured = JSON.parse(env.MODEL) as Pick<ChatModel, "model" | "streamOptions">;
     return createChatFetchHandler(() =>
-      createCloudflareChatApplication(
-        env,
-        {
-          ...configured,
-          driver: createPiAiModelProvider().driver,
-        },
-        env.CODE,
-      ),
+      createCloudflareChatApplication(env, {
+        ...configured,
+        driver: createPiAiModelProvider().driver,
+      }),
     )(request);
   },
 };
+
+export { ToolExecutors } from "../../src/server/cloudflare-tool-objects";

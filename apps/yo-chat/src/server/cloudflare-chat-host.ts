@@ -1,4 +1,4 @@
-import type { D1Database, WorkerLoader } from "@cloudflare/workers-types";
+import type { D1Database } from "@cloudflare/workers-types";
 import { createChatApp, type ChatModel } from "@sweatpants/agent-host/server";
 import { createD1Storage } from "@sweatpants/storage-d1";
 import {
@@ -8,10 +8,9 @@ import {
 import { setupDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import {
   cloudflare,
-  type ToolExecutorEntrypoint,
+  type ToolExecutorNamespace,
   type ToolSessionNamespace,
 } from "@sweatpants/tool-runtime-cloudflare";
-import type { ToolExecutorClass } from "@sweatpants/tool-runtime-cloudflare/executor";
 import { allTools, setupYoChatBaseContexts } from "./tools";
 import { createDrawPickCardsRegistration } from "../tools/pick-card/durable-effects";
 
@@ -20,7 +19,7 @@ export interface CloudflareChatBindings {
   THREAD_METADATA: D1Database;
   RESPONSE_STREAMS: ResponseStreamNamespace;
   TOOL_SESSIONS: ToolSessionNamespace;
-  LOADER: WorkerLoader;
+  TOOL_EXECUTORS: ToolExecutorNamespace;
   PROGRAM_DRIVER_CAPABILITY_SECRET: string;
 }
 
@@ -28,26 +27,17 @@ export interface CloudflareChatBindings {
 export function createCloudflareChatApplication(
   bindings: CloudflareChatBindings,
   model: ChatModel,
-  executorCode: string,
 ) {
   if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET)
     throw new Error("PROGRAM_DRIVER_CAPABILITY_SECRET is required");
-  const worker = bindings.LOADER.load({
-    compatibilityDate: "2026-10-05",
-    compatibilityFlags: ["nodejs_compat"],
-    mainModule: "executor.js",
-    modules: { "executor.js": executorCode },
-    globalOutbound: null,
-  }).getEntrypoint<InstanceType<ToolExecutorClass>>();
   return createChatApp({
     name: "yo-chat",
     secret: bindings.PROGRAM_DRIVER_CAPABILITY_SECRET,
     storage: createD1Storage(bindings.JOURNAL),
     tools: allTools,
     effects: [createDrawPickCardsRegistration()],
-    // Workers types and the host TS lib declare distinct Symbol.dispose identities.
     execution: cloudflare({
-      worker: worker as unknown as ToolExecutorEntrypoint,
+      executors: bindings.TOOL_EXECUTORS,
       sessions: bindings.TOOL_SESSIONS,
     }),
     model,

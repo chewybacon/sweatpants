@@ -98,7 +98,7 @@ it("keeps the ordinary flight generator in a DO across request-owned hosts", asy
   );
 }, 30_000);
 
-it("finishes tic-tac-toe through Dynamic Workers with a refreshed board", async () => {
+it("finishes tic-tac-toe through DO executors with a refreshed board", async () => {
   await withTestScenario(
     {
       binding: "in-process",

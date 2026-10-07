@@ -1,5 +1,5 @@
 /// <reference types="@cloudflare/workers-types" preserve="true" />
-import { WorkerEntrypoint, RpcTarget } from "cloudflare:workers";
+import { WorkerEntrypoint, DurableObject, RpcTarget } from "cloudflare:workers";
 import { run, type Operation } from "effection";
 import {
   CrankError,
@@ -24,6 +24,23 @@ export function createToolExecutor(options: {
 }): ToolExecutorClass {
   const registry = createDurableToolRegistry([...options.tools]);
   return class ToolExecutor extends WorkerEntrypoint<unknown> {
+    createExecutor() {
+      return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
+    }
+  };
+}
+
+export type ToolExecutorObjectClass = new (
+  ctx: DurableObjectState,
+  env: unknown,
+) => DurableObject<unknown> & { createExecutor(): ExecutorTarget };
+
+/** Disposable replay compute in a DO; durable truth stays in the host journal. */
+export function createToolExecutorObject(options: {
+  tools: readonly DurableTool<any, any>[];
+}): ToolExecutorObjectClass {
+  const registry = createDurableToolRegistry([...options.tools]);
+  return class ToolExecutorObject extends DurableObject<unknown> {
     createExecutor() {
       return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
     }
