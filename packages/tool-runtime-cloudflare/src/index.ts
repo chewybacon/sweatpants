@@ -18,10 +18,11 @@ import type {
   AttachmentMetadata,
   ExecutorResult,
   ToolExecutorEntrypoint,
+  ToolExecutorNamespace,
   ToolExecutorRpc,
 } from "./protocol.ts";
 
-export type { ToolExecutorEntrypoint, ToolExecutorRpc } from "./protocol.ts";
+export type { ToolExecutorEntrypoint, ToolExecutorRpc, ToolExecutorNamespace } from "./protocol.ts";
 
 function unwrap<T>(wire: string): T {
   const result = JSON.parse(wire) as ExecutorResult<T>;
@@ -98,19 +99,31 @@ export function createCloudflareProgramDriver(
   };
 }
 
-/** Request-scoped Dynamic Worker placement; replay recovers the next activation. */
+/** Request-scoped remote compute; replay recovers the next activation. */
 export function cloudflare(options: {
   worker?: ToolExecutorEntrypoint;
+  executors?: ToolExecutorNamespace;
   sessions?: ToolSessionNamespace;
 }): ToolExecutionAdapter {
+  if (options.worker && options.executors)
+    throw new Error("Choose either a worker entrypoint or an executors DO binding");
+  const entrypoint =
+    options.worker ??
+    (options.executors
+      ? {
+          createExecutor: () => options.executors!.getByName(crypto.randomUUID()).createExecutor(),
+        }
+      : undefined);
   return {
     prepare(tools, routeId) {
       const durable = tools.filter(isChatDurableTool);
       const ordinary = tools.filter((tool) => !isChatDurableTool(tool));
       if (ordinary.length && !options.sessions)
         throw new Error("Cloudflare ordinary tools require a sessions DO binding");
-      if (durable.length && !options.worker)
-        throw new Error("Cloudflare durable tools require a worker entrypoint");
+      if (durable.length && !entrypoint)
+        throw new Error(
+          "Cloudflare durable tools require a worker entrypoint or executors DO binding",
+        );
       const driverKind = `cloudflare:${routeId}`;
       return {
         runtimeId: "cloudflare",
@@ -129,7 +142,7 @@ export function cloudflare(options: {
           ? [
               [
                 driverKind,
-                createCloudflareProgramDriver(options.worker!, createDurableToolRegistry(durable)),
+                createCloudflareProgramDriver(entrypoint!, createDurableToolRegistry(durable)),
               ],
             ]
           : [],

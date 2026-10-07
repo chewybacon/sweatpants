@@ -1,7 +1,6 @@
-import { build as bundleWorker } from "esbuild";
 import { builtinModules } from "node:module";
 import { cloudflare } from "@cloudflare/vite-plugin";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -73,34 +72,6 @@ const config = defineConfig(({ mode }) => {
     },
 
     plugins: [
-      ...(isCloudflare
-        ? [
-            {
-              name: "yo-chat-tool-executor",
-              resolveId(id: string) {
-                if (id === "virtual:yo-chat-tool-executor") return "\0" + id;
-                return undefined;
-              },
-              async load(id: string) {
-                if (id !== "\0virtual:yo-chat-tool-executor") return;
-                const result = await bundleWorker({
-                  entryPoints: [
-                    new URL("./src/server/cloudflare-tool-executor.ts", import.meta.url).pathname,
-                  ],
-                  metafile: true,
-                  bundle: true,
-                  write: false,
-                  format: "esm",
-                  platform: "browser",
-                  conditions: ["development"],
-                  external: ["cloudflare:workers", "node:*"],
-                });
-                for (const path of Object.keys(result.metafile!.inputs)) this.addWatchFile(path);
-                return "export default " + JSON.stringify(result.outputFiles[0]!.text);
-              },
-            } satisfies Plugin,
-          ]
-        : []),
       ...(isCloudflare
         ? [
             cloudflare({

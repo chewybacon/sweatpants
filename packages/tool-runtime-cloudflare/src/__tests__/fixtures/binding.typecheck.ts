@@ -6,3 +6,7 @@ cloudflare({ worker: worker.getEntrypoint<InstanceType<ToolExecutorClass>>() });
 import type { ToolSessionsClass } from "../../sessions.ts";
 declare const sessions: DurableObjectNamespace<InstanceType<ToolSessionsClass>>;
 cloudflare({ sessions });
+
+import type { ToolExecutorObjectClass } from "../../executor.ts";
+declare const executors: DurableObjectNamespace<InstanceType<ToolExecutorObjectClass>>;
+cloudflare({ executors, sessions });

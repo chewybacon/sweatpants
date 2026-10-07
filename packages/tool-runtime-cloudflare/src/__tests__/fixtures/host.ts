@@ -8,8 +8,16 @@ import {
 import { createCloudflareProgramDriver } from "../../index.ts";
 import type { ToolExecutorRpc } from "../../index.ts";
 import type { ToolExecutorClass } from "../../executor.ts";
-export default class Host extends WorkerEntrypoint<{ LOADER: WorkerLoader; CODE: string }> {
+import { createToolExecutorObject } from "../../executor.ts";
+export const Executor = createToolExecutorObject({ tools: DURABLE_DRIVER_FIXTURE_TOOLS });
+export default class Host extends WorkerEntrypoint<{
+  LOADER: WorkerLoader;
+  CODE: string;
+  EXECUTORS: DurableObjectNamespace<InstanceType<typeof Executor>>;
+  PLACEMENT: string;
+}> {
   private loadWorker() {
+    if (this.env.PLACEMENT === "do") return this.env.EXECUTORS.getByName(crypto.randomUUID());
     return this.env.LOADER.load({
       compatibilityDate: "2026-10-05",
       compatibilityFlags: ["nodejs_compat"],

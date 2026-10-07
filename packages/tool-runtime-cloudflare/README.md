@@ -1,8 +1,35 @@
 # Cloudflare tool execution
 
-Runs journal-backed tools in Dynamic Workers behind the existing
+Runs journal-backed tools in Dynamic Workers or Durable Objects behind the existing
 `ToolExecutionAdapter` / `ProgramDriver` contracts. The host owns the journal,
 effect resolution and activation fencing. The executor owns only a live generator.
+
+## Durable Object placement
+
+```ts
+import { createToolExecutorObject } from "@sweatpants/tool-runtime-cloudflare/executor";
+
+export const ToolExecutors = createToolExecutorObject({ tools: [pickCard] });
+
+// Host setup, with a TOOL_EXECUTORS namespace bound to the exported class:
+const execution = cloudflare({ executors: env.TOOL_EXECUTORS });
+// Mixed inventory:
+const mixed = cloudflare({ executors: env.TOOL_EXECUTORS, sessions: env.TOOL_SESSIONS });
+```
+
+Register `ToolExecutors` with a `new_sqlite_classes` Wrangler migration and bind
+its namespace. Each activation selects a fresh DO and receives its own RPC target.
+The same executor protocol handles attach, step and shutdown in both placements.
+The DO stores no journal and does not keep a parked generator: park closes the
+attachment, and the next request replays from the host journal. Ordinary tool
+sessions keep their separate live-session semantics.
+
+Choose either `executors` or `worker` for durable placement. DO placement does not
+require a Worker Loader or runtime bundling. It runs statically deployed trusted
+code with the DO's configured bindings and network access; it does not provide the
+Dynamic Worker's `globalOutbound: null` sandbox.
+
+## Dynamic Worker placement
 
 The dynamically loaded module exports an executor for its pinned tool inventory:
 

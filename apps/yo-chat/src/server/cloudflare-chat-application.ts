@@ -8,7 +8,6 @@ import {
   createCloudflareChatApplication,
   type CloudflareChatBindings,
 } from "./cloudflare-chat-host";
-import executorCode from "virtual:yo-chat-tool-executor";
 export { withDefaultSystemPrompt } from "./default-system-prompt";
 
 // Pi’s bundled-flow entry replaces filesystem dynamic imports in bundled runtimes.
@@ -38,7 +37,6 @@ async function createApplication() {
       model: bindings.DEFAULT_CHAT_MODEL_ID,
       models,
     }),
-    executorCode,
   );
 }
 

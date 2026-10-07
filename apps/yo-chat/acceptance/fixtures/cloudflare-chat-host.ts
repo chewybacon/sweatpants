@@ -31,10 +31,7 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
         ),
       })
     ).outputFiles[0]!.text;
-  const [host, executor] = await Promise.all([
-    bundle("./cloudflare-chat-worker.ts"),
-    bundle("../../src/server/cloudflare-tool-executor.ts"),
-  ]);
+  const host = await bundle("./cloudflare-chat-worker.ts");
   const options: MiniflareOptions = {
     resourcePersistencePath: directory,
     workers: [
@@ -48,6 +45,7 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
             modules: { "index.js": { type: "esm", contents: host } },
           },
           exports: {
+            ToolExecutors: { type: "durable-object", storage: "sqlite" },
             ResponseStream: { type: "durable-object", storage: "sqlite" },
             ToolSessions: { type: "durable-object", storage: "sqlite" },
           },
@@ -64,8 +62,11 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
               worker: "yo-chat-host",
               exportName: "ToolSessions",
             },
-            LOADER: { type: "worker-loader" },
-            CODE: { type: "text", value: executor },
+            TOOL_EXECUTORS: {
+              type: "durable-object",
+              worker: "yo-chat-host",
+              exportName: "ToolExecutors",
+            },
             MODEL: {
               type: "text",
               value: JSON.stringify({ model: model.model, streamOptions: model.streamOptions }),

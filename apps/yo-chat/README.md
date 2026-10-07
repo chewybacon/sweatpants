@@ -59,7 +59,7 @@ Slidev commands.
 
 ## Cloudflare execution preparation
 
-The first Cloudflare adapter runs the existing durable pick-card and play-ttt
+The optional Dynamic Worker placement runs the existing durable pick-card and play-ttt
 programs in request-scoped Dynamic Workers, using returned RPC targets for live
 generator attachments. Its entry is `src/server/cloudflare-tool-executor.ts`.
 `wrangler.tools.jsonc` bundles that entry for the Worker Loader. Check the bundle
@@ -76,12 +76,15 @@ the executor process while parked, reconnects, and completes the same turn:
 pnpm -C apps/yo-chat exec vitest run acceptance/pick-card-terminal-publication.acceptance.test.ts
 ```
 
-That executor-only test keeps ingress on Node. The main `cloudflare` mode now
+That executor-only test keeps ingress on Node. The main `cloudflare` mode uses
+`ToolExecutors = createToolExecutorObject({ tools })` and
+`cloudflare({ executors: env.TOOL_EXECUTORS, sessions: env.TOOL_SESSIONS })`,
+without a Worker Loader or dynamically bundled tool code. It
 runs yo-chat SSR, HTTP ingress, and the chat host inside workerd. It combines:
 
 - D1 conversation/execution journals and separate thread metadata.
 - Durable Objects for response buffers, writer fences, and registry entries.
-- Dynamic Workers for durable tools (`pick_card`, `play_ttt`).
+- Disposable Durable Object executors for durable tools (`pick_card`, `play_ttt`).
 - Durable Objects for ordinary tool sessions (`book_flight`, `tictactoe`, etc.).
 
 ```sh

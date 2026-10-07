@@ -20,3 +20,8 @@ export interface ToolExecutorRpc {
 export interface ToolExecutorEntrypoint {
   createExecutor(): Promise<ToolExecutorRpc>;
 }
+
+/** One disposable DO per attachment; no journal or live session is stored here. */
+export interface ToolExecutorNamespace {
+  getByName(name: string): ToolExecutorEntrypoint;
+}
