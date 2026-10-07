@@ -1,10 +1,10 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  canonicalSnapshot,
   failure,
   success,
   type ParseResult,
   type Parser,
+  canonicalDigest,
 } from "@sweatpants/foundation";
 import {
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
@@ -60,7 +60,7 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
             return snapshotFailure(path, "pull indexes have a gap");
           if (
             action.pull.request.proposedDescriptorDigest !==
-              canonicalSnapshot(action.pull.request.proposedDescriptor).sha ||
+              canonicalDigest(action.pull.request.proposedDescriptor) ||
             action.pull.request.resultSchemaDigest !==
               (action.pull.request.resultDescriptor as unknown as Record<string, unknown>)["digest"]
           )
@@ -68,7 +68,7 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
           if (
             action.pull.resolution.status === "settled" &&
             action.pull.resolution.settlement.outcomeDigest !==
-              canonicalSnapshot(action.pull.resolution.settlement.outcome).sha
+              canonicalDigest(action.pull.resolution.settlement.outcome)
           )
             return snapshotFailure(path, "pull settlement digest differs");
         } else if (action.emissionIndex !== emissionIndex++) {
@@ -107,7 +107,17 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
     if (new TextEncoder().encode(serialized).byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
       throw invalidSnapshot();
     }
-    const parsed = durableAuthoritySnapshotParser.parse(JSON.parse(serialized) as unknown);
+    return decodeDurableAuthoritySnapshot(JSON.parse(serialized) as unknown);
+  } catch (error) {
+    if (error instanceof CrankError && error.code === "invalid_journal") throw error;
+    throw invalidSnapshot();
+  }
+}
+
+/** Validate an already decoded value; the storage/text boundary owns the byte limit. */
+export function decodeDurableAuthoritySnapshot(value: unknown): DurableAuthoritySnapshot {
+  try {
+    const parsed = durableAuthoritySnapshotParser.parse(value);
     if (!parsed.ok) throw invalidSnapshot();
     return parsed.value;
   } catch (error) {

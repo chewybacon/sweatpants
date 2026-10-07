@@ -1,5 +1,5 @@
 import { createContext, type Operation } from "effection";
-import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
+import { stableTupleHash, cloneJson } from "@sweatpants/foundation";
 
 import { CrankError } from "./errors.ts";
 import type { AttachProgramRequest, ProgramRoute } from "./program-driver-contract.ts";
@@ -44,7 +44,7 @@ export function createProgramExecutionValue(
   request: AttachProgramRequest,
   attachmentId: string,
 ): ProgramExecutionValue {
-  const route = canonicalSnapshot(request.route).value;
+  const route = cloneJson(request.route);
   assertNoAuthorityMaterial(route);
   const affinity = acceptedAffinity(request, route);
   let callIndex = 0;

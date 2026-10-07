@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, cloneJson } from "@sweatpants/foundation";
 import type { ResolutionReceipt } from "@sweatpants/durable-execution";
 
 /** MCP extension identifier for durable effect authorization and commit. */
@@ -85,14 +85,14 @@ export function commitToMrtrResponse(key: string, result: Json): DurableEffectsM
 
 /** Minimizes a resolution receipt to stable, canonical transport fields. */
 export function normalizeResolutionReceipt(receipt: ResolutionReceipt): Json {
-  return canonicalSnapshot({
+  return cloneJson({
     sessionId: receipt.sessionId,
     taskId: receipt.taskId,
     pullId: receipt.pullId,
     resolutionOffset: receipt.resolutionOffset,
     outcomeDigest: receipt.outcomeDigest,
     status: receipt.status,
-  }).value;
+  });
 }
 
 /** Deployment-owned authenticated encryption port bound to caller and invocation identity. */

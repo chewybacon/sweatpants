@@ -523,7 +523,7 @@ const activationLeaseValueSchema = z.strictObject({
   expiresAtMs: nonNegativeIntegerSchema,
   leaseDurationMs: nonNegativeIntegerSchema,
   claimedTaskRevision: nonNegativeIntegerSchema,
-  claimedHeadDigest: z.string(),
+  claimedHeadId: z.string(),
   restoreNonce: z.string(),
 });
 const taskOriginSchema = z.discriminatedUnion("kind", [
@@ -696,6 +696,7 @@ const taskSchema = z.strictObject({
 const sessionSchema = z.strictObject({
   execution: z.strictObject({ tasks: z.array(taskSchema).max(MAX_SNAPSHOT_TASKS) }),
   control: z.strictObject({
+    journalHeadId: z.string().uuid().nullable(),
     runnable: z.boolean(),
     revision: nonNegativeIntegerSchema,
     nextRootOrdinal: nonNegativeIntegerSchema.optional(),

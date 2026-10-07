@@ -207,6 +207,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       );
     },
     *putObject(object): Operation<ExecutionObjectPointer> {
+      const objectId = object.objectId;
       const existing = yield* kernel.readImmutable(
         DurableCollections.executionObjects,
         executionKeys.object(object.objectId),
@@ -245,7 +246,9 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       if (!record) {
         throw new ExecutionStoreError("persisted_data_invalid", "Object ensure omitted its result");
       }
-      return { objectId: decodeExecutionObject(record.value).objectId };
+      // This ensure has one primary key and no aliases. A successful commit
+      // acknowledges that identity; decoding its body adds no identity evidence.
+      return { objectId };
     },
     *getObject(pointer): Operation<StoredExecutionObject | null> {
       const record = yield* kernel.readImmutable(

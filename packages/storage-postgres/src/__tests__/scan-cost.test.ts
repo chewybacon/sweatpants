@@ -4,7 +4,7 @@ import { postgresSchema } from "../schema.ts";
 import { openPostgresStorageForTest } from "../pg-binding.ts";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { durableKey, type BoundedScan } from "@sweatpants/durable-storage-kernel";
 import { encodePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
 
@@ -23,7 +23,8 @@ const request: BoundedScan = {
 };
 function segment(position: string, body: string, executionId = "scan-budget") {
   const entries = [body];
-  const encoded = canonicalSnapshot(entries);
+  const encoded = canonicalJson(entries);
+  const encodedDigest = sha256(encoded);
   const value = encodePrivateSegment({
     segmentId: `${executionId}-${position}`,
     executionId,
@@ -32,15 +33,15 @@ function segment(position: string, body: string, executionId = "scan-budget") {
     firstSequence: position,
     lastSequence: position,
     entries,
-    contentHash: encoded.sha,
-    encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+    contentHash: encodedDigest,
+    encodedBytes: new TextEncoder().encode(encoded).byteLength,
     createdAt: 1,
   });
   return {
     name: "segment",
     collection: "execution-journal-segments" as const,
     key: durableKey(`${executionId}-${position}`),
-    fingerprint: encoded.sha,
+    fingerprint: encodedDigest,
     value,
   };
 }

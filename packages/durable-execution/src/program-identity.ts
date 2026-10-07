@@ -11,16 +11,9 @@ import {
   type ProgramIdentityProvenanceV1,
 } from "./program-contract.ts";
 import type { DurableProgramFactory, DurableTool } from "./program-authoring.ts";
-import {
-  canonicalJson,
-  canonicalSnapshot,
-  failure,
-  parser,
-  sha256,
-  success,
-} from "@sweatpants/foundation";
+import { canonicalJson, failure, parser, sha256, success, type Json } from "@sweatpants/foundation";
 import { createPinnedDurableProgram, parseDurableManifest } from "./program-authoring-runtime.ts";
-import type { Json } from "@sweatpants/foundation";
+
 import { CrankError } from "./errors.ts";
 import { z } from "zod";
 
@@ -95,12 +88,11 @@ export function generateProgramInterfaceIdentity(
   manifest: Omit<DurableProgramManifest, "digest">,
 ): GeneratedProgramInterfaceIdentityV1 {
   parseDurableManifest({ ...manifest, digest: "0".repeat(64) });
-  const input = canonicalSnapshot({
+  const serialized = canonicalJson({
     format: PROGRAM_INTERFACE_IDENTITY_FORMAT,
     generatorVersion: PROGRAM_INTERFACE_GENERATOR_VERSION,
     manifest,
-  }).value;
-  const serialized = canonicalJson(input);
+  });
   return deepFreeze({
     digest: sha256(PROGRAM_INTERFACE_IDENTITY_DOMAIN + serialized),
     provenance: {
@@ -117,8 +109,9 @@ export function generateProgramArtifactIdentity(
   input: ProgramArtifactIdentityInputV1,
 ): GeneratedProgramArtifactIdentityV1 {
   const normalized = normalizeProgramArtifactIdentityInput(input);
-  const digest = sha256(PROGRAM_ARTIFACT_IDENTITY_DOMAIN + canonicalJson(normalized));
-  const identityInputDigest = sha256(canonicalJson(normalized));
+  const canonical = canonicalJson(normalized);
+  const digest = sha256(PROGRAM_ARTIFACT_IDENTITY_DOMAIN + canonical);
+  const identityInputDigest = sha256(canonical);
   return deepFreeze({
     digest,
     input: normalized,

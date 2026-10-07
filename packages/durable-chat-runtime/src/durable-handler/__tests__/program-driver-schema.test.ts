@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { manifest, programDriverChatEngineSchemaEntries } from "../program-driver-schema.ts";
 
 async function validateInput(value: unknown): Promise<unknown> {
@@ -14,7 +14,7 @@ function catalog(): { version: 1; digest: string; entries: Record<string, never>
   const entries: Record<string, never> = {};
   return {
     version: 1,
-    digest: canonicalSnapshot({ version: 1, entries }).sha,
+    digest: canonicalDigest({ version: 1, entries }),
     entries,
   };
 }

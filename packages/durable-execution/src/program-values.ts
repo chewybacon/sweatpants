@@ -1,7 +1,8 @@
 import {
-  canonicalSnapshot,
   type Json,
   type SerializedApplicationError,
+  canonicalJson,
+  cloneJson,
 } from "@sweatpants/foundation";
 
 import { CrankError, PullApplicationError } from "./errors.ts";
@@ -13,7 +14,7 @@ export function assertReplayedCanonicalValue<T extends Json = Json>(
   errorCode = "invalid_descriptor",
 ): T {
   try {
-    return canonicalSnapshot(value as T).value;
+    return cloneJson(value as T);
   } catch (error) {
     throw new CrankError(errorCode, "Recorded value is not canonical JSON", undefined, {
       cause: error,
@@ -23,7 +24,7 @@ export function assertReplayedCanonicalValue<T extends Json = Json>(
 
 /** Enforces a canonical UTF-8 payload limit before persistence or transport. */
 export function assertInlineSize(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTES): void {
-  const bytes = new TextEncoder().encode(canonicalSnapshot(value).canonical).byteLength;
+  const bytes = new TextEncoder().encode(canonicalJson(value)).byteLength;
   if (bytes > maxBytes) {
     throw new CrankError("payload_too_large", `Canonical payload is ${bytes} bytes`);
   }

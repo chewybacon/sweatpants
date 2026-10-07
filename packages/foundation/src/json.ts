@@ -24,12 +24,27 @@ export function canonicalJson(value: unknown): string {
 }
 
 /** Validate, canonicalize, and JSON-clone a JSON-representable value. */
-export function canonicalSnapshot<T>(value: T): { value: T; canonical: string; sha: string } {
-  const canonical = encode(assertJson(value));
-  const snapshot: unknown = JSON.parse(canonical);
-  // SAFETY: assertJson rejects every value that cannot survive this canonical
-  // JSON round trip; parsing therefore preserves T's JSON-representable shape.
-  return { value: snapshot as T, canonical, sha: sha256(canonical) };
+export function canonicalSnapshot<T>(value: T): { value: T; canonical: string } {
+  const snapshot = parseJson(value, "$", new Set<object>(), true);
+  const canonical = encode(snapshot);
+  // SAFETY: The parser validates, normalizes, and orders this independent copy
+  // exactly as a canonical JSON round trip, preserving T's representable shape.
+  return { value: snapshot as T, canonical };
+}
+
+/** Validates and hashes canonical JSON without parsing an additional copy. */
+export function canonicalDigest(value: unknown): string {
+  return sha256(canonicalJson(value));
+}
+
+/**
+ * Validates and deeply copies JSON with canonical object-key order, without
+ * serializing, parsing, or hashing it. Normalization matches canonicalSnapshot.
+ */
+export function cloneJson<T>(value: T): T {
+  // SAFETY: The same parser constructs canonicalSnapshot's value, preserving
+  // its independent, normalized JSON-representable shape.
+  return parseJson(value, "$", new Set<object>(), true) as T;
 }
 
 /** Returns lowercase SHA-256 hex for a UTF-8 string. */
@@ -122,6 +137,10 @@ export function requireJsonObject(value: Json, path = "$"): JsonObject {
  * accessors, sparse arrays, invalid Unicode, prototypes, and non-finite numbers.
  */
 export function assertJson(value: unknown, path = "$", seen = new Set<object>()): Json {
+  return parseJson(value, path, seen, false);
+}
+
+function parseJson(value: unknown, path: string, seen: Set<object>, orderKeys: boolean): Json {
   if (value === null || typeof value === "boolean") {
     return value;
   }
@@ -149,7 +168,7 @@ export function assertJson(value: unknown, path = "$", seen = new Set<object>())
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
           throw invalid(`${path}[${index}]`, "sparse array slot");
         }
-        output.push(assertJson(value[index], `${path}[${index}]`, seen));
+        output.push(parseJson(value[index], `${path}[${index}]`, seen, orderKeys));
       }
       const extraKeys = Reflect.ownKeys(value).filter(
         (key) =>
@@ -176,9 +195,9 @@ export function assertJson(value: unknown, path = "$", seen = new Set<object>())
       if (!descriptor?.enumerable || !("value" in descriptor)) {
         throw invalid(`${path}.${key}`, "non-enumerable or accessor property");
       }
-      output[key] = assertJson(descriptor.value, `${path}.${key}`, seen);
+      output[key] = parseJson(descriptor.value, `${path}.${key}`, seen, orderKeys);
     }
-    return output;
+    return orderKeys ? Object.fromEntries(sortedEntries(output)) : output;
   } finally {
     seen.delete(value);
   }

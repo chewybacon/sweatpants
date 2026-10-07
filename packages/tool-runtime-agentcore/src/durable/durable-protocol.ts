@@ -11,13 +11,13 @@ import {
 } from "@sweatpants/durable-execution";
 import {
   canonicalJson,
-  canonicalSnapshot,
   failure,
   parser,
   sha256,
   success,
   type ParseResult,
   type Parser,
+  cloneJson,
 } from "@sweatpants/foundation";
 import { z } from "zod";
 
@@ -493,7 +493,7 @@ function verifyHostProgramMessage(value: unknown): ParseResult<HostProgramMessag
     case "shutdown":
       break;
   }
-  return success(canonicalSnapshot(envelope).value);
+  return success(cloneJson(envelope));
 }
 
 function verifyRuntimeProgramMessage(value: unknown): ParseResult<RuntimeProgramMessage> {
@@ -522,7 +522,7 @@ function verifyRuntimeProgramMessage(value: unknown): ParseResult<RuntimeProgram
     case "shutdown_complete":
       break;
   }
-  return success(canonicalSnapshot(envelope).value);
+  return success(cloneJson(envelope));
 }
 
 function verifyProtocolVersion(version: number): ParseResult<never> | { readonly ok: true } {
@@ -550,7 +550,7 @@ export interface ReplayChainSeedInput {
   readonly taskId: string;
   readonly program: { readonly id: string; readonly version: string; readonly digest: string };
   readonly activationEpoch: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
   readonly restoreNonce: string;
 }
 

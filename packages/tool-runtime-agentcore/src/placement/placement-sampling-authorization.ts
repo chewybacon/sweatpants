@@ -5,7 +5,7 @@ import {
   verifyPrivateAuthorityToken,
   type CapabilityKeyring,
 } from "@sweatpants/journal-authority";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalJson } from "@sweatpants/foundation";
 import { z } from "zod";
 
 import type {
@@ -123,12 +123,12 @@ export function verifyPlacementSamplingAuthorization(options: {
     claims.requestDigest !== options.expected.requestDigest ||
     claims.effectContractDigest !== options.expected.effectContractDigest ||
     Date.parse(claims.expiresAt) <= now() ||
-    canonicalSnapshot(claims.identity as unknown as Json).sha !==
-      canonicalSnapshot(options.expected.identity as unknown as Json).sha ||
-    canonicalSnapshot(claims.classifications as Json).sha !==
-      canonicalSnapshot(options.expected.classifications as Json).sha ||
-    canonicalSnapshot(claims.permissions as unknown as Json).sha !==
-      canonicalSnapshot(PERMISSIONS as unknown as Json).sha
+    canonicalJson(claims.identity as unknown as Json) !==
+      canonicalJson(options.expected.identity as unknown as Json) ||
+    canonicalJson(claims.classifications as Json) !==
+      canonicalJson(options.expected.classifications as Json) ||
+    canonicalJson(claims.permissions as unknown as Json) !==
+      canonicalJson(PERMISSIONS as unknown as Json)
   ) {
     throw unauthorized();
   }

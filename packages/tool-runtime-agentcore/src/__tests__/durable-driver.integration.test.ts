@@ -3,7 +3,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { type ProgramAttachment, type ProgramShutdownReason } from "@sweatpants/durable-execution";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import {
   normalizeSemanticJournal,
   runDurableDriverCancellationFixture,
@@ -76,7 +76,7 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
         if (step.type !== "operation" && step.type !== "emission") {
           throw new Error("fixture replay returned before history ended");
         }
-        expect(canonicalSnapshot(step.descriptor).sha).toBe(entry.descriptorDigest);
+        expect(canonicalDigest(step.descriptor)).toBe(entry.descriptorDigest);
         step =
           entry.type === "operation"
             ? yield* evaluator.step(attachment, {

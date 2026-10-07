@@ -6,7 +6,7 @@ import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory
 import type { ModelSamplingService } from "@sweatpants/model-sampling";
 import { createDurableEffectRegistry } from "@sweatpants/durable-effects/runtime";
 import { createDurableToolRegistry } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { sha256, canonicalDigest } from "@sweatpants/foundation";
 import type { ModelContext } from "@sweatpants/model-provider";
 import { z } from "zod";
 
@@ -432,13 +432,13 @@ describe("ProgramWorkflowHost", () => {
     let storedDigest = "";
     const host = createProgramWorkflowHost({
       *modelContextSourceStager(context) {
-        const snapshot = canonicalSnapshot(context);
+        const snapshot = canonicalDigest(context);
         storedContext = context;
-        storedDigest = snapshot.sha;
+        storedDigest = snapshot;
         return {
           type: "object",
           object: { objectId: "local-host-context" },
-          digest: snapshot.sha,
+          digest: snapshot,
         };
       },
       *modelContextSourceResolver(source) {

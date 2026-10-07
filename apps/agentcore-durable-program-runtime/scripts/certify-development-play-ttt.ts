@@ -28,7 +28,7 @@ import {
 } from "@sweatpants/durable-effects/runtime";
 import { type AdvancementResult } from "@sweatpants/durable-execution";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json, canonicalDigest } from "@sweatpants/foundation";
 import type { PullResolver } from "@sweatpants/journal-authority";
 import {
   createProgramDriverRegistry,
@@ -132,13 +132,13 @@ async function main(): Promise<void> {
   >();
   const stageSampleInput = function* (input: Json) {
     const request = decodeModelSampleRequest(input);
-    const snapshot = canonicalSnapshot(request.invocation.context);
-    const objectId = `certification-context:${snapshot.sha}`;
+    const snapshot = canonicalDigest(request.invocation.context);
+    const objectId = `certification-context:${snapshot}`;
     contexts.set(objectId, request.invocation.context);
     return encodeModelSampleSourceRequest({
       ...request,
       invocation: {
-        context: { type: "object", object: { objectId }, digest: snapshot.sha },
+        context: { type: "object", object: { objectId }, digest: snapshot },
         ...(request.invocation.options === undefined
           ? {}
           : { options: request.invocation.options }),
@@ -157,7 +157,7 @@ async function main(): Promise<void> {
         throw new Error("certification requires an object model context source");
       }
       const context = contexts.get(source.invocation.context.object.objectId);
-      if (!context || canonicalSnapshot(context).sha !== source.invocation.context.digest) {
+      if (!context || canonicalDigest(context) !== source.invocation.context.digest) {
         throw new Error("certification model context source is unavailable");
       }
       const request = resolveModelSampleSourceRequest(source, context);

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { canonicalSnapshot, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
+import { sha256, sha256Bytes, type Json, canonicalJson } from "@sweatpants/foundation";
 import { persistConversationCheckpoint } from "@sweatpants/durable-chat-runtime";
 import type {
   ConversationHead,
@@ -164,7 +164,7 @@ function publicOrphanAfter(row: PublicSegmentRow): StoredPublicArchiveSegment {
       placement: { type: "root", sequence: Number(position) },
     },
   ];
-  const encoded = canonicalSnapshot(roots);
+  const encoded = canonicalJson(roots);
   return {
     segmentId: "orphan-public-segment",
     conversationId: row.conversation_id,
@@ -172,15 +172,15 @@ function publicOrphanAfter(row: PublicSegmentRow): StoredPublicArchiveSegment {
     minPosition: position.toString(10),
     maxPosition: position.toString(10),
     roots,
-    contentHash: sha256(encoded.canonical),
-    encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+    contentHash: sha256(encoded),
+    encodedBytes: new TextEncoder().encode(encoded).byteLength,
     createdAt: Number(row.created_at) + 1,
   };
 }
 
 function terminalOrphanAfter(row: TerminalSegmentRow): StoredTerminalSegment {
   const entries: readonly Json[] = [{ kind: "orphan-terminal-entry", marker: "not-authoritative" }];
-  const encoded = canonicalSnapshot(entries);
+  const encoded = canonicalJson(entries);
   const firstPosition = BigInt(row.last_position) + 1n;
   return {
     segmentId: "orphan-terminal-segment",
@@ -195,7 +195,7 @@ function terminalOrphanAfter(row: TerminalSegmentRow): StoredTerminalSegment {
     firstPosition: firstPosition.toString(10),
     lastPosition: firstPosition.toString(10),
     entries,
-    contentHash: sha256(encoded.canonical),
+    contentHash: sha256(encoded),
     createdAt: Number(row.created_at) + 1,
   };
 }

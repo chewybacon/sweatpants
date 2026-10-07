@@ -13,7 +13,6 @@ import {
   type SandboxAffinity,
 } from "@sweatpants/durable-execution";
 import {
-  canonicalSnapshot,
   failure,
   parser,
   stableTupleHash,
@@ -21,6 +20,7 @@ import {
   type ParseIssue,
   type ParseResult,
   type Parser,
+  cloneJson,
 } from "@sweatpants/foundation";
 
 export const AGENTCORE_DURABLE_PROTOCOL_VERSION = 1 as const;
@@ -83,7 +83,7 @@ const agentCoreRuntimeReleaseStructureParser = parser(agentCoreRuntimeReleaseSch
 const agentCoreTaskPlacementStructureParser = parser(agentCoreTaskPlacementSchema);
 
 export const sandboxAffinityParser: Parser<SandboxAffinity> = parser(sandboxAffinitySchema).map(
-  (value) => canonicalSnapshot(value).value,
+  (value) => cloneJson(value),
 );
 export const agentCoreRuntimeReleaseParser: Parser<AgentCoreRuntimeRelease> =
   agentCoreRuntimeReleaseStructureParser.andThen((value) =>
@@ -95,9 +95,7 @@ export const agentCoreTaskPlacementParser: Parser<AgentCoreTaskPlacement> =
     if (!release.ok) {
       return prefixFailure(release.issues, ["release"]);
     }
-    return success(
-      canonicalSnapshot({ ...value, release: release.value }).value as AgentCoreTaskPlacement,
-    );
+    return success(cloneJson({ ...value, release: release.value }) as AgentCoreTaskPlacement);
   });
 
 /** Parses a closed affinity value at an AgentCore adapter ingress. */
@@ -152,7 +150,7 @@ export function verifyAgentCoreRuntimeRelease(
   if (maximum < idle || maximum > 28_800) {
     throw new CrankError("placement_unavailable", "AgentCore maximum lifetime is invalid");
   }
-  return canonicalSnapshot(release).value;
+  return cloneJson(release);
 }
 
 function verifyRuntimeReleaseResult(
@@ -202,7 +200,7 @@ export function createInvocationAgentCorePlacement(
     affinity,
     runtimeSessionId,
     release,
-    program: canonicalSnapshot(request.program).value,
+    program: cloneJson(request.program),
     createdAt: (request.now?.() ?? new Date()).toISOString(),
   };
 }

@@ -24,7 +24,7 @@ const REPLAY_DOMAIN = "sweatpants.forest-replay.v2";
 /**
  * Pure breadth-first forest planner (REQ-007..REQ-011).
  *
- * It reads one immutable Authority state plus its journal-head digest, classifies
+ * It reads one immutable Authority state plus its persisted journal-head identity, classifies
  * every row before producing work, and returns no command surface, lease, venue,
  * capability, or selection. Rows are parent-before-child and every row appears
  * in exactly one class.
@@ -32,7 +32,7 @@ const REPLAY_DOMAIN = "sweatpants.forest-replay.v2";
 export function planForestReplay(
   state: AuthorityState,
   sessionId: string,
-  journalHeadDigest: string,
+  journalHeadId: string,
   nowMs = 0,
 ): ForestReplayPlan {
   const session = state.sessions.get(sessionId);
@@ -97,7 +97,7 @@ export function planForestReplay(
   return {
     sessionId,
     forestRevision: session.control.revision,
-    journalHeadDigest,
+    journalHeadId,
     rows,
     replay,
     peers,

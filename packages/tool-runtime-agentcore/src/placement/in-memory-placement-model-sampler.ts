@@ -2,7 +2,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
 import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
 
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
@@ -143,7 +143,7 @@ export function createInMemoryPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalSnapshot(request.request).sha !== request.requestDigest) {
+      if (canonicalDigest(request.request) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];
@@ -162,7 +162,7 @@ export function createInMemoryPlacementModelSampler(options: {
 
       const key = identityKey(request.identity);
       const existing = samples.get(key);
-      const classificationsDigest = canonicalSnapshot(classifications as Json).sha;
+      const classificationsDigest = canonicalDigest(classifications as Json);
       if (existing) {
         classifyOrphan(existing);
         if (
@@ -256,7 +256,7 @@ export function createInMemoryPlacementModelSampler(options: {
         state: "cancelled",
         terminalLsn: sample.events.length,
         disposition,
-        dispositionDigest: canonicalSnapshot(disposition).sha,
+        dispositionDigest: canonicalDigest(disposition),
       };
       sample.signal.send();
     },
@@ -343,7 +343,7 @@ export function createInMemoryPlacementModelSampler(options: {
         state,
         terminalLsn: sample.events.length,
         disposition,
-        dispositionDigest: canonicalSnapshot(disposition).sha,
+        dispositionDigest: canonicalDigest(disposition),
       };
       sample.signal.send();
     },

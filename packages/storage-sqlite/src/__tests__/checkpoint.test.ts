@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json, sha256 } from "@sweatpants/foundation";
 import { checkpointPayloadFromHotRoots } from "@sweatpants/history-store";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
@@ -31,13 +31,14 @@ function root(id: string, content: string): Json {
 
 function checkpoint(hotRoot: Json = root("message-1", "hello")): StoredCheckpoint {
   const snapshot = canonicalSnapshot(checkpointPayloadFromHotRoots([hotRoot], { ready: true }));
+  const snapshotDigest = sha256(snapshot.canonical);
   return {
     checkpointId: "checkpoint-1",
     conversationId: "conversation-1",
     lineageId: "lineage-1",
     causeKey: "cause:turn-1",
     cause: { kind: "turn", turnId: "turn-1" },
-    contentHash: snapshot.sha,
+    contentHash: snapshotDigest,
     archiveHead: null,
     archiveFrontierOrdinal: "0",
     nextPublicPosition: "1",

@@ -515,6 +515,8 @@ export interface TaskState {
 export interface AuthoritySessionState {
   readonly execution: { readonly tasks: ReadonlyMap<string, TaskState> };
   readonly control: {
+    /** Persisted freshness identity; null until the first semantic append. */
+    readonly journalHeadId: string | null;
     readonly runnable: boolean;
     readonly revision: number;
     /** Protocol-owned root address ordinal; task-id text is never parsed. */
@@ -558,8 +560,8 @@ export interface KernelContext {
   readonly nowMs: number;
   readonly journalIdentity: { readonly id: string; readonly incarnation: string };
   readonly appendCursor: JournalAppendCursor;
-  /** Current semantic frontier bound into restore tickets and proofs. */
-  readonly journalHeadDigest: string;
+  /** Current persisted semantic-head identity bound into restore tickets and proofs. */
+  readonly journalHeadId: string;
   readonly keyring: CapabilityKeyring;
   readonly schemas: DurableSchemaRegistry;
   readonly maxOutcomeBytes?: number;

@@ -7,7 +7,7 @@ import {
   type ReplayEntry,
   type ReplayItem,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { canonicalJson, sha256, canonicalDigest } from "@sweatpants/foundation";
 
 /**
  * Reconstructs one planned strand and stops at its head (REQ-008..REQ-011).
@@ -227,16 +227,13 @@ function assertExpectedFrontier(step: ProgramStep, entry: ReplayEntry): void {
       step.type !== "operation" ||
       step.descriptor.kind !== entry.descriptorKind ||
       (step.descriptor.kind !== "sample" &&
-        canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest)
+        canonicalDigest(step.descriptor) !== entry.descriptorDigest)
     ) {
       throw new CrankError("replay_diverged", "Evaluator operation differs from history");
     }
     return;
   }
-  if (
-    step.type !== "emission" ||
-    canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest
-  ) {
+  if (step.type !== "emission" || canonicalDigest(step.descriptor) !== entry.descriptorDigest) {
     throw new CrankError("replay_diverged", "Evaluator emission differs from history");
   }
 }

@@ -1,12 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
-import {
-  assertJson,
-  canonicalJson,
-  canonicalSnapshot,
-  sha256,
-  type Json,
-} from "@sweatpants/foundation";
+import { assertJson, canonicalJson, sha256, type Json, cloneJson } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor, SchemaBinding } from "@sweatpants/foundation/schema";
 import {
   createDurableEffectRegistration,
@@ -180,7 +174,7 @@ export function classifiedToolResult(
   }
   return Object.freeze({
     kind: "sweatpants.classified-tool-result",
-    value: canonicalSnapshot(value).value,
+    value: cloneJson(value),
     provenance: Object.freeze({
       classifications: Object.freeze(classifications),
       sourceDigests: Object.freeze(sourceDigests),

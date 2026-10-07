@@ -1,4 +1,4 @@
-import { canonicalSnapshot, sha256, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { sha256, stableTupleHash, type Json, canonicalJson } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import {
   CrankError,
@@ -69,7 +69,7 @@ function terminalSegment(
   previous: HistoryPointer | null,
   entries: readonly Json[],
 ): StoredTerminalSegment {
-  const encoded = canonicalSnapshot(entries);
+  const encoded = canonicalJson(entries);
   const firstPosition = previous === null ? 0n : counter(previous.lastPosition) + 1n;
   const lastPosition = firstPosition + BigInt(Math.max(0, entries.length - 1));
   return {
@@ -82,7 +82,7 @@ function terminalSegment(
     firstPosition: firstPosition.toString(10),
     lastPosition: lastPosition.toString(10),
     entries,
-    contentHash: sha256(encoded.canonical),
+    contentHash: sha256(encoded),
     createdAt: capsule.completedAt,
   };
 }

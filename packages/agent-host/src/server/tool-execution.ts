@@ -6,7 +6,7 @@ import {
   type ToolExecutionAdapter,
   type ToolExecutionBinding,
 } from "@sweatpants/tool-session/execution";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson } from "@sweatpants/foundation";
 import { durableEffectKey, type DurableEffectRegistration } from "@sweatpants/durable-effects";
 import {
   ProgramDriverNativeToolsContext,
@@ -54,7 +54,7 @@ export function prepareChatTools(
       const registration = effects.find(
         (entry) => durableEffectKey(entry.definition.name, entry.definition.version) === key,
       )!;
-      if (canonicalSnapshot(registration.definition).sha !== canonicalSnapshot(effect).sha)
+      if (canonicalJson(registration.definition) !== canonicalJson(effect))
         throw new Error(
           `Effect handler contract mismatch for ${tool.name}: ${effect.name}@${effect.version}`,
         );

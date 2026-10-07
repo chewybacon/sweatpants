@@ -1,8 +1,12 @@
 import { MCP_PROTOCOL_VERSION } from "@sweatpants/tool-session/mcp";
 import { CrankError } from "@sweatpants/durable-execution";
-import { hasControlCharacter } from "@sweatpants/foundation";
+import {
+  hasControlCharacter,
+  canonicalDigest,
+  sortStrings,
+  type Json,
+} from "@sweatpants/foundation";
 import { type SandboxCapabilities, type WorkspacePersistence } from "@sweatpants/workspace-runtime";
-import { canonicalSnapshot, sortStrings, type Json } from "@sweatpants/foundation";
 
 export type WorkspaceNetworkPolicy = "deny" | "trusted-development";
 export type WorkspaceWritePolicy = "deny" | "approval" | "allow";
@@ -496,7 +500,7 @@ function pins(input: Readonly<Record<string, ProgramDefinition>>): Json {
 }
 
 function digest(domain: string, value: unknown): string {
-  return canonicalSnapshot({ domain, value }).sha;
+  return canonicalDigest({ domain, value });
 }
 
 function exactKeys(value: unknown, allowed: readonly string[], label: string): void {

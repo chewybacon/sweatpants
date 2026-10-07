@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, cloneJson } from "@sweatpants/foundation";
 import type { EffectDefinition, OperationOutcome, RetrySafety } from "@sweatpants/durable-effects";
 import { assertEffectDefinition } from "@sweatpants/durable-effects/authoring";
 import { z } from "zod";
@@ -90,7 +90,7 @@ export function createTestDurableProgramContext(
           kind: "effect",
           name: requireId(name, "effect name"),
           version: requireId(version, "effect version"),
-          input: canonicalSnapshot(input).value,
+          input: cloneJson(input),
           resolver: {
             audience: requireId(resolver.audience, "resolver audience"),
             ...(resolver.route === undefined
@@ -131,7 +131,7 @@ export function createTestDurableProgramContext(
 
   return Object.freeze({
     *pull(descriptor: Json): Operation<Json> {
-      const canonical = canonicalSnapshot(descriptor).value;
+      const canonical = cloneJson(descriptor);
       if (
         canonical === null ||
         typeof canonical !== "object" ||
@@ -154,7 +154,7 @@ export function createTestDurableProgramContext(
         type: "emission",
         descriptor: {
           eventType: requireId(eventType, "emission eventType"),
-          payload: canonicalSnapshot(payload).value,
+          payload: cloneJson(payload),
         },
       });
     },

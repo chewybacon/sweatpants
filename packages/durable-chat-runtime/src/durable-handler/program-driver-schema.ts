@@ -8,11 +8,11 @@ import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
 import {
   assertJson,
-  canonicalSnapshot,
   requireJsonObject,
   sha256,
   type Json,
   type JsonObject,
+  canonicalDigest,
 } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
@@ -254,7 +254,7 @@ const chatRootInputDescriptor = chatEngineSchema(
     }
     if (
       parsed.data.catalog.digest !==
-      canonicalSnapshot({ version: 1, entries: parsed.data.catalog.entries }).sha
+      canonicalDigest({ version: 1, entries: parsed.data.catalog.entries })
     ) {
       return "catalog digest differs from entries";
     }

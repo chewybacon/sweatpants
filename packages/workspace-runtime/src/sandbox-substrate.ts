@@ -1,12 +1,13 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   canonicalJson,
-  canonicalSnapshot,
   parser,
   sha256Bytes,
   stableTupleHash,
+  cloneJson,
+  type Json,
 } from "@sweatpants/foundation";
-import { type Json } from "@sweatpants/foundation";
+
 import type { Operation } from "effection";
 import { z } from "zod";
 
@@ -411,7 +412,7 @@ export class FiniteHttpRestoreProtocol {
     }
     const expiresAt = this.now() + this.limits.lifetimeMs;
     this.restores.set(restoreId, {
-      create: canonicalSnapshot(request).value,
+      create: cloneJson(request),
       expiresAt,
       pages: [],
     });
@@ -453,7 +454,7 @@ export class FiniteHttpRestoreProtocol {
     if (page.pageDigest !== expectedDigest) {
       throw new CrankError("restore_page_mismatch", "Replay page digest mismatch");
     }
-    state.pages.push(canonicalSnapshot(page).value);
+    state.pages.push(cloneJson(page));
     return { status: "accepted" };
   }
 
@@ -481,7 +482,7 @@ export class FiniteHttpRestoreProtocol {
       entries: state.pages.flatMap((page) => structuredClone(page.entries)),
       ...(request.currentCommand === undefined
         ? {}
-        : { currentCommand: canonicalSnapshot(request.currentCommand).value }),
+        : { currentCommand: cloneJson(request.currentCommand) }),
     };
   }
 

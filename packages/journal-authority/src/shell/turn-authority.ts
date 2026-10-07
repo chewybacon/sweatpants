@@ -1,6 +1,7 @@
 import {
   assertJson,
   canonicalSnapshot,
+  canonicalJson,
   sha256,
   stableTupleHash,
   type Json,
@@ -362,14 +363,15 @@ function* putExecutionObject(
   integrity: { algorithm: "sha256"; value: string };
 }> {
   const encoded = canonicalSnapshot(body);
-  const objectId = stableTupleHash([executionId, kind, encoded.sha]);
+  const contentHash = sha256(encoded.canonical);
+  const objectId = stableTupleHash([executionId, kind, contentHash]);
   const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
   yield* ExecutionStoreApi.operations.putObject({
     objectId,
     lifetimeScope: "execution",
     scopeOwnerId: executionId,
     objectKind: kind,
-    contentHash: encoded.sha,
+    contentHash,
     byteLength,
     body: encoded.value,
     createdAt: Date.now(),
@@ -378,7 +380,7 @@ function* putExecutionObject(
     id: objectId,
     byteLength,
     version: "1",
-    integrity: { algorithm: "sha256", value: encoded.sha },
+    integrity: { algorithm: "sha256", value: contentHash },
   };
 }
 
@@ -396,8 +398,8 @@ function privateSegments(
   for (const batch of segmentPrivateEntries(entries, target)) {
     const first = cursor === null ? 1n : BigInt(cursor.lastSequence) + 1n;
     const last = first + BigInt(batch.entries.length - 1);
-    const encoded = canonicalSnapshot(batch.entries);
-    const contentHash = sha256(encoded.canonical);
+    const canonical = canonicalJson(batch.entries);
+    const contentHash = sha256(canonical);
     const segment: StoredPrivateSegment = {
       segmentId: stableTupleHash([executionId, taskId, first.toString(10), contentHash]),
       executionId,
@@ -407,7 +409,7 @@ function privateSegments(
       lastSequence: last.toString(10),
       entries: batch.entries,
       contentHash,
-      encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+      encodedBytes: new TextEncoder().encode(canonical).byteLength,
       createdAt,
     };
     segments.push(segment);

@@ -4,7 +4,7 @@ import {
   type RecordedOperationDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json, canonicalDigest, canonicalJson } from "@sweatpants/foundation";
 
 import type { TaskOrigin } from "../contract/authority-contract.ts";
 import {
@@ -168,7 +168,7 @@ function validateRecordHistory(records: readonly DurableSemanticRecord[]): void 
       if (payload.parentTaskId !== undefined || payload.parentPullId !== undefined) {
         invalid("The record vertical proof accepts root tasks only");
       }
-      if (canonicalSnapshot(payload.input).sha !== payload.inputDigest) {
+      if (canonicalDigest(payload.input) !== payload.inputDigest) {
         invalid(`Task ${payload.taskId} has a conflicting input digest`);
       }
       tasks.set(payload.taskId, { pulls: new Map(), closed: false });
@@ -186,7 +186,7 @@ function validateRecordHistory(records: readonly DurableSemanticRecord[]): void 
         if (pulls.has(payload.pullId)) {
           invalid(`Pull ${payload.pullId} is not unique`);
         }
-        if (canonicalSnapshot(payload.descriptor).sha !== payload.descriptorDigest) {
+        if (canonicalDigest(payload.descriptor) !== payload.descriptorDigest) {
           invalid(`Pull ${payload.pullId} has a conflicting descriptor digest`);
         }
         if (payload.actionIndex !== task.pulls.size || payload.pullIndex !== task.pulls.size) {
@@ -268,7 +268,7 @@ function validateRecordHistory(records: readonly DurableSemanticRecord[]): void 
         if (pull.settled) {
           invalid(`Pull ${payload.pullId} settled twice`);
         }
-        if (canonicalSnapshot(payload.outcome).sha !== payload.outcomeDigest) {
+        if (canonicalDigest(payload.outcome) !== payload.outcomeDigest) {
           invalid(`Pull ${payload.pullId} has a conflicting outcome digest`);
         }
         if (payload.attemptId) {
@@ -371,10 +371,7 @@ export function assertRecordExecutionIndexMatchesForest(
   index: RecordExecutionIndex,
   forest: ExecutionForest,
 ): void {
-  if (
-    canonicalSnapshot(normalizedIndex(index)).sha !==
-    canonicalSnapshot(normalizedForest(forest)).sha
-  ) {
+  if (canonicalJson(normalizedIndex(index)) !== canonicalJson(normalizedForest(forest))) {
     invalid("Record execution index differs from the execution forest");
   }
 }

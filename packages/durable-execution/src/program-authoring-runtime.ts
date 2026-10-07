@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { canonicalSnapshot } from "@sweatpants/foundation";
-import type { Json } from "@sweatpants/foundation";
+import { assertJson, cloneJson, type Json } from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
 import {
   parsePortableSchemaDescriptor,
@@ -86,7 +85,7 @@ export function parseDurableManifest(value: unknown): DurableProgramManifest {
     throw new CrankError("invalid_manifest", "Invalid durable manifest shape");
   }
   verifyDurableManifest(parsed);
-  return canonicalSnapshot(parsed).value as unknown as DurableProgramManifest;
+  return cloneJson(parsed) as unknown as DurableProgramManifest;
 }
 
 /** Verifies semantic descriptor roles, effect identity, and canonical manifest form. */
@@ -115,7 +114,7 @@ export function verifyDurableManifest(manifest: DurableProgramManifest): void {
     assertDescriptorField(declaration.input, "pull_input", `pulls.${kind}.input`);
     assertDescriptorField(declaration.output, "pull_output", `pulls.${kind}.output`);
   }
-  canonicalSnapshot(manifest);
+  assertJson(manifest);
 }
 
 function assertDescriptorField(

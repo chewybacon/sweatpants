@@ -15,7 +15,7 @@ import {
   type ReplayEntry,
   type RestoredProgramAttachment,
 } from "@sweatpants/durable-execution";
-import { assertJson, canonicalSnapshot, parser } from "@sweatpants/foundation";
+import { assertJson, parser, canonicalDigest, cloneJson } from "@sweatpants/foundation";
 import type { AgentCoreDurableProgramTransport } from "./durable-driver.ts";
 import {
   computeFrontierDigest,
@@ -217,7 +217,7 @@ function* openAndBegin(
         }),
         affinity: placement.affinity,
       },
-      programInputDigest: canonicalSnapshot(request.input).sha,
+      programInputDigest: canonicalDigest(request.input),
       replayedThroughActionIndex,
       replayChainSeed,
     },
@@ -300,7 +300,7 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
   const developmentObject = jsonRecordParser.parse(development);
   if (developmentObject.ok) {
     return Object.assign(normalizedResult, {
-      development: canonicalSnapshot(developmentObject.value).value,
+      development: cloneJson(developmentObject.value),
     });
   }
   return normalizedResult;

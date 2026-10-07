@@ -69,7 +69,12 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
       );
       break;
     case "forest.replay-plan":
-      result = planForestReplay(state, query.sessionId, context.journalHeadDigest, context.nowMs);
+      result = planForestReplay(
+        state,
+        query.sessionId,
+        state.sessions.get(query.sessionId)?.control.journalHeadId ?? "",
+        context.nowMs,
+      );
       break;
     case "session.root-task-count":
       result = rootTaskCount(state, query.sessionId);

@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { ConversationStoreError, type ConversationHeadProposal } from "../contract.ts";
@@ -20,7 +20,7 @@ const idle: ConversationHeadProposal = {
 describe("memory conversation store", () => {
   it("writes immutable terminal content before a head CAS and pages by cursor", async () => {
     const store = createMemoryConversationStore();
-    const contentHash = canonicalSnapshot([{ turn: "one" }, { turn: "two" }]).sha;
+    const contentHash = canonicalDigest([{ turn: "one" }, { turn: "two" }]);
     await run(function* () {
       const initial = yield* store.compareAndSwapHead("conversation", null, null, idle);
       expect(initial.status).toBe("committed");

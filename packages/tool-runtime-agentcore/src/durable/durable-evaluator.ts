@@ -8,7 +8,7 @@ import {
   type ReplayEntry,
 } from "@sweatpants/durable-execution";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest } from "@sweatpants/foundation";
 import {
   computeFrontierDigest,
   verifyReplayEntry,
@@ -59,8 +59,7 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
             throw protocol("Attach identity mismatch");
           }
           if (
-            canonicalSnapshot(message.payload.attach.input).sha !==
-            message.payload.programInputDigest
+            canonicalDigest(message.payload.attach.input) !== message.payload.programInputDigest
           ) {
             throw protocol("Canonical input digest mismatch");
           }
@@ -229,7 +228,7 @@ function compareReplayStep(step: ProgramStep, entry: ReplayEntry): void {
   const descriptorKind = step.type === "operation" ? step.descriptor.kind : "emission";
   if (
     descriptorKind !== entry.descriptorKind ||
-    canonicalSnapshot(step.descriptor).sha !== entry.descriptorDigest
+    canonicalDigest(step.descriptor) !== entry.descriptorDigest
   ) {
     throw new CrankError("replay_diverged", "Replay descriptor mismatch");
   }

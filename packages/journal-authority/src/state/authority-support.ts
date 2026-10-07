@@ -7,7 +7,13 @@ import {
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition, OperationOutcome } from "@sweatpants/durable-effects";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  canonicalJson,
+  cloneJson,
+} from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
@@ -18,7 +24,7 @@ import type { RestoreTicketClaims } from "../contract/authority-types.ts";
 export const MAX_OPEN_ELICITATIONS = 64;
 
 export function effectContractDigest(definition: EffectDefinition<Json, Json, Json>): string {
-  return canonicalSnapshot({
+  return canonicalDigest({
     kind: "sweatpants.effect-contract",
     digestVersion: 1,
     name: definition.name,
@@ -27,7 +33,7 @@ export function effectContractDigest(definition: EffectDefinition<Json, Json, Js
     outputSchemaDigest: definition.outputSchema.digest,
     cancellationPartialSchemaDigest: definition.cancellation?.partialSchema.digest ?? null,
     retrySafety: definition.retrySafety,
-  }).sha;
+  });
 }
 
 export function isModelSampleDescriptor(descriptor: DurableOperationDescriptor): boolean {
@@ -40,7 +46,7 @@ export function modelPullOwnerFence(pullId: string, executionEpoch: number): str
 }
 
 export function canonicalByteLength(value: Json): number {
-  return new TextEncoder().encode(canonicalSnapshot(value).canonical).byteLength;
+  return new TextEncoder().encode(canonicalJson(value)).byteLength;
 }
 
 export function normalizeEmissionPolicy(
@@ -213,14 +219,8 @@ export function parseProgramElicitResult(
   return parsed.ok ? parsed.value : undefined;
 }
 
-export function snapshotDescriptor(
-  descriptor: DurableOperationDescriptor,
-): DurableOperationDescriptor {
-  return canonicalSnapshot(descriptor).value;
-}
-
 export function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
-  return canonicalSnapshot(outcome).value;
+  return cloneJson(outcome);
 }
 
 export function pendingReason(
@@ -272,7 +272,7 @@ export function sortedStrings(values: Iterable<string>): string[] {
 }
 
 export function terminalOutcomeDigest(outcome: OperationOutcome): string {
-  return canonicalSnapshot(outcome).sha;
+  return canonicalDigest(outcome);
 }
 
 export function identityConflict(
@@ -297,7 +297,7 @@ const restoreTicketClaimsSchema = z.strictObject({
   replayDomain: z.string().min(1).optional(),
   frontierDomain: z.string().min(1).optional(),
   taskRevision: z.number().int().nonnegative(),
-  journalHeadDigest: z.string().min(1),
+  journalHeadId: z.string().min(1),
   replayedThroughActionIndex: z.number().int().min(-1),
   replayChainDigest: z.string().min(1),
   restoreNonce: z.string().min(1),
@@ -317,7 +317,7 @@ export const restoreTicketClaimsParser = parser(restoreTicketClaimsSchema).map(
     ...(value.replayDomain === undefined ? {} : { replayDomain: value.replayDomain }),
     ...(value.frontierDomain === undefined ? {} : { frontierDomain: value.frontierDomain }),
     taskRevision: value.taskRevision,
-    journalHeadDigest: value.journalHeadDigest,
+    journalHeadId: value.journalHeadId,
     replayedThroughActionIndex: value.replayedThroughActionIndex,
     replayChainDigest: value.replayChainDigest,
     restoreNonce: value.restoreNonce,

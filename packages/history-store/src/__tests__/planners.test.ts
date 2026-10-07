@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import type { ConversationHeadProposal } from "../contract.ts";
 import { nextConversationHead, planConversationCommit } from "../planners.ts";
@@ -39,7 +39,7 @@ describe("conversation planners", () => {
       firstPosition: "0",
       lastPosition: "0",
       entries,
-      contentHash: canonicalSnapshot(entries).sha,
+      contentHash: canonicalDigest(entries),
       createdAt: 2,
     } as const;
     const decision = planConversationCommit({

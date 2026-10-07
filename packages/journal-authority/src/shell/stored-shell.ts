@@ -1,9 +1,11 @@
 import {
   assertJson,
   canonicalSnapshot,
-  sha256,
   stableTupleHash,
+  uuidv7,
+  sha256,
   type Json,
+  canonicalJson,
 } from "@sweatpants/foundation";
 import { CrankError, type DurableReference } from "@sweatpants/durable-execution";
 import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
@@ -24,7 +26,11 @@ import {
   segmentPrivateEntries,
   type PrivateSegmentTarget,
 } from "../store/segmentation.ts";
-import { parseDurableAuthoritySnapshot } from "../store/snapshot-codec.ts";
+import {
+  decodeDurableAuthoritySnapshot,
+  DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
+  parseDurableAuthoritySnapshot,
+} from "../store/snapshot-codec.ts";
 import type {
   DecisionStageDiagnostic,
   DurableAuthoritySnapshot,
@@ -49,6 +55,7 @@ import {
 } from "../state/authority-state.ts";
 import { decideAuthorityTransition } from "../decisions/decision-pipeline.ts";
 import { queryAuthorityState } from "../decisions/authority-decisions.ts";
+import { advanceJournalHeadIdentities } from "./journal-head-identity.ts";
 import { structuralCommandSessionId } from "../contract/authority-command-address.ts";
 
 export interface StoredJournalAuthorityOptions {
@@ -96,6 +103,9 @@ export function createStoredShellDrivers(
     readonly snapshot: DurableAuthoritySnapshot;
     readonly authorityControl: AuthorityControl | null;
   }
+
+  // One disposable validated view per driver, never an authority or a cross-host cache.
+  let validated: { identity: string; snapshot: DurableAuthoritySnapshot } | undefined;
 
   function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
     if (value === null) return null;
@@ -192,6 +202,7 @@ export function createStoredShellDrivers(
   function* load(supplied?: ExecutionControl | null): Operation<LoadedAuthority> {
     const current = supplied === undefined ? yield* store.loadControl(executionId) : supplied;
     if (!current) {
+      validated = undefined;
       return {
         control: null,
         snapshot: options.initialSnapshot ?? empty,
@@ -199,6 +210,11 @@ export function createStoredShellDrivers(
       };
     }
     const authorityControl = parseAuthorityControl(current.control);
+    const identity = JSON.stringify(authorityControl);
+    if (validated?.identity === identity) {
+      return { control: current, authorityControl, snapshot: structuredClone(validated.snapshot) };
+    }
+
     const payload = yield* store.getObject({ objectId: authorityControl.snapshot.id });
     if (!payload || payload.body instanceof Uint8Array) {
       throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
@@ -217,7 +233,12 @@ export function createStoredShellDrivers(
     // journal segments before the authority is handed to the in-memory engine.
     let base: DurableAuthoritySnapshot;
     try {
-      base = parseDurableAuthoritySnapshot(JSON.stringify({ ...payload.body, records: [] }));
+      // getObject has verified this byte count against the stored body. Enforce
+      // the serialized boundary limit without serializing that body again.
+      if (payload.byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
+        throw new CrankError("invalid_journal", "Authority snapshot exceeds its byte limit");
+      }
+      base = decodeDurableAuthoritySnapshot({ ...payload.body, records: [] });
     } catch (error) {
       throw resetFailure(
         "restoring the stored authority snapshot",
@@ -239,17 +260,12 @@ export function createStoredShellDrivers(
           return values;
         })
       : [];
-    return {
-      control: current,
-      authorityControl,
-      snapshot: {
-        ...base,
-        records: parseJournalCollections(
-          entries,
-          authorityControl.journalHead?.segmentId ?? "none",
-        ),
-      },
+    const snapshot = {
+      ...base,
+      records: parseJournalCollections(entries, authorityControl.journalHead?.segmentId ?? "none"),
     };
+    validated = { identity, snapshot: structuredClone(snapshot) };
+    return { control: current, authorityControl, snapshot };
   }
 
   function control(
@@ -284,10 +300,10 @@ export function createStoredShellDrivers(
     const segments: StoredPrivateSegment[] = [];
     let cursor = previous;
     for (const batch of segmentPrivateEntries(entries, target)) {
-      const encoded = canonicalSnapshot(batch.entries);
+      const canonical = canonicalJson(batch.entries);
       const first = cursor === null ? 1n : BigInt(cursor.lastSequence) + 1n;
       const last = first + BigInt(batch.entries.length - 1);
-      const contentHash = sha256(encoded.canonical);
+      const contentHash = sha256(canonical);
       const segment: StoredPrivateSegment = {
         segmentId: stableTupleHash([executionId, taskId, first.toString(10), contentHash]),
         executionId,
@@ -297,7 +313,7 @@ export function createStoredShellDrivers(
         lastSequence: last.toString(10),
         entries: batch.entries,
         contentHash,
-        encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+        encodedBytes: new TextEncoder().encode(canonical).byteLength,
         createdAt,
       };
       segments.push(segment);
@@ -307,11 +323,15 @@ export function createStoredShellDrivers(
   }
 
   function* mutateCommand<C extends AuthorityCommand>(command: C): Operation<CommandResult<C>> {
+    // Retry identical staged payloads under the same identity. Different CAS
+    // candidates are bounded by the commit loop, as with content-addressed staging.
+    const stagedSnapshots = new Map<string, string>();
     let cancellationTargets: ReadonlyArray<{
       taskId: string;
       pullId: string;
       reason: string | undefined;
     }> = [];
+    const proposedHeads = new Map<string, string>();
     const committed = (yield* runExecutionCommitLoop(store, executionId, function* (current) {
       const loaded = yield* load(current);
       const history = loaded.snapshot.records.flatMap(([, records]) => records);
@@ -327,7 +347,9 @@ export function createStoredShellDrivers(
           sessionId,
           nextOffset: nextOffset(sessionRecords),
         },
-        journalHeadDigest: canonicalSnapshot(sessionRecords).sha,
+        journalHeadId:
+          loaded.snapshot.sessions.find(([id]) => id === sessionId)?.[1].control.journalHeadId ??
+          "",
         keyring: options.keyring,
         schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
         maxOutcomeBytes: options.maxOutcomeBytes,
@@ -362,14 +384,13 @@ export function createStoredShellDrivers(
           : [];
       const allRecords = [...history, ...transition.entries];
       const exported = snapshotFromAuthorityState(
-        transition.state,
+        advanceJournalHeadIdentities(transition.state, transition.entries, proposedHeads),
         groupJournalRecords(allRecords),
       );
       const compacted = compactAuthoritySnapshot(exported);
       if (
         transition.entries.length === 0 &&
-        canonicalSnapshot(compacted).sha ===
-          canonicalSnapshot(compactAuthoritySnapshot(loaded.snapshot)).sha
+        canonicalJson(compacted) === canonicalJson(compactAuthoritySnapshot(loaded.snapshot))
       ) {
         return { status: "return", result: transition.result };
       }
@@ -389,25 +410,35 @@ export function createStoredShellDrivers(
       );
       const snapshot = assertJson({ ...compacted, records: [] });
       const encoded = canonicalSnapshot(snapshot);
-      const snapshotId = stableTupleHash([executionId, "authority-snapshot", encoded.sha]);
-      yield* store.putObject({
-        objectId: snapshotId,
-        lifetimeScope: "execution",
-        scopeOwnerId: executionId,
-        objectKind: "authority-snapshot",
-        contentHash: encoded.sha,
-        byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
-        body: encoded.value,
-        createdAt: options.now?.() ?? Date.now(),
-      });
+      const contentHash = sha256(encoded.canonical);
+      const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
+      const currentSnapshot = loaded.authorityControl?.snapshot;
+      let snapshotId =
+        currentSnapshot?.integrity?.value === contentHash
+          ? currentSnapshot.id
+          : stagedSnapshots.get(contentHash);
+      if (snapshotId === undefined) {
+        snapshotId = uuidv7();
+        yield* store.putObject({
+          objectId: snapshotId,
+          lifetimeScope: "execution",
+          scopeOwnerId: executionId,
+          objectKind: "authority-snapshot",
+          contentHash,
+          byteLength,
+          body: encoded.value,
+          createdAt: options.now?.() ?? Date.now(),
+        });
+        stagedSnapshots.set(contentHash, snapshotId);
+      }
       return {
         status: "commit",
         next: control(
           {
             id: snapshotId,
-            byteLength: new TextEncoder().encode(encoded.canonical).byteLength,
+            byteLength,
             version: "1",
-            integrity: { algorithm: "sha256", value: encoded.sha },
+            integrity: { algorithm: "sha256", value: contentHash },
           },
           journal.at(-1)
             ? {
@@ -450,7 +481,7 @@ export function createStoredShellDrivers(
         incarnation: options.journalIncarnation ?? "1",
       },
       appendCursor: { sessionId, nextOffset: 0 },
-      journalHeadDigest: "",
+      journalHeadId: "",
       keyring: options.keyring,
       schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
       maxOutcomeBytes: options.maxOutcomeBytes,
@@ -467,38 +498,9 @@ export function createStoredShellDrivers(
     );
   }
 
-  function parseRecords(sessionId: string, entries: readonly Json[]): DurableSemanticRecord[] {
-    const records = entries.filter(
-      (entry) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        !Array.isArray(entry) &&
-        entry["sessionId"] === sessionId,
-    );
-    const parsed = parseDurableAuthoritySnapshot(
-      JSON.stringify({ ...empty, records: [[sessionId, records]] }),
-    );
-    return parsed.records[0]?.[1] ?? [];
-  }
-
   function* readJournalRecords(sessionId: string): Operation<DurableSemanticRecord[]> {
+    // load() already reconstructs and validates the complete immutable journal.
     const loaded = yield* load();
-    const current = loaded.authorityControl?.journalHead
-      ? yield* store.readJournal({
-          executionId,
-          taskId: "authority",
-          head: loaded.authorityControl.journalHead,
-        })
-      : null;
-    const currentEntries = current
-      ? yield* call(async () => {
-          const values: Json[] = [];
-          for await (const chunk of current) values.push(...chunk);
-          return values;
-        })
-      : [];
-    const journalRecords = parseRecords(sessionId, currentEntries);
-    if (journalRecords.length > 0) return journalRecords;
     return (
       loaded.snapshot.records.find(([storedSessionId]) => storedSessionId === sessionId)?.[1] ?? []
     );

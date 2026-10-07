@@ -4,7 +4,13 @@ import {
   type DurableProgramManifest,
   type Mandate,
 } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  canonicalJson,
+  cloneJson,
+} from "@sweatpants/foundation";
 import type { AuthorityState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
@@ -47,8 +53,7 @@ export function openTask(
       "Catalog and catalog digest must be supplied together",
     );
   }
-  const catalog =
-    request.catalog === undefined ? undefined : canonicalSnapshot(request.catalog).value;
+  const catalog = request.catalog === undefined ? undefined : cloneJson(request.catalog);
   if (
     catalog !== undefined &&
     (typeof catalog !== "object" ||
@@ -120,7 +125,7 @@ export function openTask(
     programVersion: request.manifest.version,
     programDigest: request.manifest.digest,
     input,
-    inputDigest: canonicalSnapshot(input).sha,
+    inputDigest: canonicalDigest(input),
     ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
     ...(request.parentTaskId === undefined ? {} : { parentTaskId: request.parentTaskId }),
     ...(request.parentPullId === undefined ? {} : { parentPullId: request.parentPullId }),
@@ -191,7 +196,7 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
   const planned = planForestReplay(
     draft.state,
     request.address.sessionId,
-    draft.context.journalHeadDigest,
+    draft.context.journalHeadId,
     draft.context.nowMs,
   );
   const row = planned.rows.find((candidate) => candidate.address.taskId === task.taskId);
@@ -324,7 +329,7 @@ export function ensureChild(
     expected.id !== request.child.id ||
     expected.version !== request.child.version ||
     expected.digest !== request.child.digest ||
-    canonicalSnapshot(expected.input).sha !== canonicalSnapshot(request.child.input).sha
+    canonicalJson(expected.input) !== canonicalJson(request.child.input)
   )
     throw new CrankError("nondeterminism_detected", "Child descriptor differs from parent pull");
   const existing = [...draft.session(request.sessionId).execution.tasks.values()].find(

@@ -5,6 +5,7 @@
     "license": "MIT",
     "scripts": {
         "dev": "pnpm dev:yo-chat",
+        "profile:yo-chat": "node scripts/profiling/yo-chat.mjs",
         "dev:yo-chat": "tsx scripts/dev-yo-chat.ts",
         "dev:yo-chat:local": "MCP_TOOL_RUNTIME=local pnpm dev:yo-chat",
         "dev:yo-chat:agentcore": "DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm dev:yo-chat",

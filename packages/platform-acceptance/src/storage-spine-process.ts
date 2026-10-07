@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { canonicalJson, canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { checkpointHotRoots } from "@sweatpants/history-store";
 import { ConversationStoreApi, installConversationStore } from "@sweatpants/history-store/port";
 import { ExecutionStoreApi, installExecutionStore } from "@sweatpants/journal-authority/api";
@@ -120,11 +120,11 @@ function verifyPrivateSegments(
     for (const row of rows) {
       const entries = JSON.parse(row.entries_json) as unknown;
       if (!Array.isArray(entries)) throw new Error(`${table} ${row.segment_id} is not an array`);
-      const encoded = canonicalSnapshot(entries);
-      if (sha256(encoded.canonical) !== row.content_hash) {
+      const encoded = canonicalJson(entries);
+      if (sha256(encoded) !== row.content_hash) {
         throw new Error(`${table} ${row.segment_id} has an invalid content hash`);
       }
-      if (new TextEncoder().encode(encoded.canonical).byteLength !== Number(row.encoded_bytes)) {
+      if (new TextEncoder().encode(encoded).byteLength !== Number(row.encoded_bytes)) {
         throw new Error(`${table} ${row.segment_id} has an invalid encoded byte count`);
       }
       const key = JSON.stringify([row.execution_id, row.task_id]);

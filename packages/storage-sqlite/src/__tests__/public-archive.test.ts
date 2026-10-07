@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json, sha256 } from "@sweatpants/foundation";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
 import type { StoredPublicArchiveSegment } from "../contract.ts";
@@ -34,6 +34,7 @@ function segment(
   previous: StoredPublicArchiveSegment["previous"] = null,
 ): StoredPublicArchiveSegment {
   const snapshot = canonicalSnapshot(roots);
+  const snapshotDigest = sha256(snapshot.canonical);
   const positions = roots.map((value) =>
     BigInt((value as Record<string, Json>)["position"] as string),
   );
@@ -44,7 +45,7 @@ function segment(
     minPosition: positions.reduce((left, right) => (left < right ? left : right)).toString(10),
     maxPosition: positions.reduce((left, right) => (left > right ? left : right)).toString(10),
     roots: snapshot.value,
-    contentHash: snapshot.sha,
+    contentHash: snapshotDigest,
     encodedBytes: new TextEncoder().encode(snapshot.canonical).byteLength,
     createdAt: 100,
   };

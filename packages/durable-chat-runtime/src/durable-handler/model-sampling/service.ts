@@ -6,6 +6,9 @@ import {
   replaceControlCharacters,
   stableTupleHash,
   type Json,
+  canonicalDigest,
+  cloneJson,
+  sha256,
 } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -90,7 +93,7 @@ export function preparedModelContextByteLimit(contextWindow: number): number {
 
 function semanticOptions(value: Record<string, unknown>): Json {
   const { signal: _signal, apiKey: _apiKey, env: _env, ...semantic } = value;
-  return canonicalSnapshot(semantic as Json).value;
+  return cloneJson(semantic as Json);
 }
 
 function decodePreparedInvocation(value: unknown): PreparedModelInvocation {
@@ -126,10 +129,10 @@ function decodePreparedInvocation(value: unknown): PreparedModelInvocation {
     version: 1,
     model: { provider: modelRecord["provider"], id: modelRecord["id"] },
     context: decodeModelContext(input["context"]),
-    options: canonicalSnapshot(input["options"] as Json).value,
-    response: canonicalSnapshot(input["response"] as Json).value,
-    delivery: canonicalSnapshot(input["delivery"] as Json).value,
-    decisions: canonicalSnapshot(input["decisions"] as Json).value,
+    options: cloneJson(input["options"] as Json),
+    response: cloneJson(input["response"] as Json),
+    delivery: cloneJson(input["delivery"] as Json),
+    decisions: cloneJson(input["decisions"] as Json),
   };
 }
 
@@ -150,8 +153,8 @@ function* loadPreparedInvocation(
     prepared.model.id !== fact.model.id ||
     prepared.model.provider !== model.provider ||
     prepared.model.id !== model.id ||
-    canonicalSnapshot(prepared.context).sha !== fact.contextDigest ||
-    canonicalSnapshot(prepared).sha !== fact.invocationDigest
+    canonicalDigest(prepared.context) !== fact.contextDigest ||
+    canonicalDigest(prepared) !== fact.invocationDigest
   ) {
     throw new CrankError(
       "model_context_identity_conflict",
@@ -166,19 +169,20 @@ export function* stageModelContextSource(
   conversationId: string,
 ): Operation<ModelContextSource> {
   const context = canonicalSnapshot(value);
+  const contextDigest = sha256(context.canonical);
   const byteLength = new TextEncoder().encode(context.canonical).byteLength;
-  const objectId = stableTupleHash(["model-context-source", conversationId, context.sha]);
+  const objectId = stableTupleHash(["model-context-source", conversationId, contextDigest]);
   const object = yield* ExecutionStoreApi.operations.putObject({
     objectId,
     lifetimeScope: "conversation",
     scopeOwnerId: conversationId,
     objectKind: "model-context-source.v1",
-    contentHash: context.sha,
+    contentHash: contextDigest,
     byteLength,
     body: assertJson(context.value),
     createdAt: Date.now(),
   });
-  return { type: "object", object, digest: context.sha };
+  return { type: "object", object, digest: contextDigest };
 }
 
 /**
@@ -349,7 +353,7 @@ export function* resolveModelContextSource(
     );
   }
   const context = decodeModelContext(stored.body);
-  if (canonicalSnapshot(context).sha !== source.digest) {
+  if (canonicalDigest(context) !== source.digest) {
     throw new CrankError("model_context_source_invalid", "Model context source digest differs");
   }
   return context;
@@ -433,17 +437,18 @@ export function createHostModelSamplingService(options: {
         };
       } else if (options.journal && options.conversationStore && options.conversationId) {
         // The constructor guard guarantees this triple is all-or-nothing.
-        const contextSnapshot = canonicalSnapshot(plan.providerRequest.context);
+        const contextDigest = canonicalDigest(plan.providerRequest.context);
         const prepared: PreparedModelInvocation = {
           version: 1,
           model: { provider: options.model.provider, id: options.model.id },
           context: plan.providerRequest.context,
           options: semanticOptions(plan.providerRequest.options as Record<string, unknown>),
-          response: canonicalSnapshot(assertJson(plan.response)).value,
-          delivery: canonicalSnapshot(assertJson(plan.delivery)).value,
-          decisions: canonicalSnapshot(assertJson(plan.decisions)).value,
+          response: cloneJson(assertJson(plan.response)),
+          delivery: cloneJson(assertJson(plan.delivery)),
+          decisions: cloneJson(assertJson(plan.decisions)),
         };
         const invocation = canonicalSnapshot(prepared);
+        const invocationDigest = sha256(invocation.canonical);
         const maxCanonicalBytes = preparedModelContextByteLimit(options.model.contextWindow);
         const byteLength = new TextEncoder().encode(invocation.canonical).byteLength;
         if (byteLength > maxCanonicalBytes) {
@@ -479,14 +484,14 @@ export function createHostModelSamplingService(options: {
           head.activeExecutionId,
           attempt.taskId,
           attempt.pullId,
-          invocation.sha,
+          invocationDigest,
         ]);
         const contextObject = yield* ExecutionStoreApi.operations.putObject({
           objectId,
           lifetimeScope: "execution",
           scopeOwnerId: head.activeExecutionId,
           objectKind: "prepared-model-context.v1",
-          contentHash: invocation.sha,
+          contentHash: invocationDigest,
           byteLength,
           body: assertJson(invocation.value),
           createdAt: Date.now(),
@@ -502,10 +507,10 @@ export function createHostModelSamplingService(options: {
           taskId: attempt.taskId,
           pullId: attempt.pullId,
           contextObject,
-          contextDigest: contextSnapshot.sha,
-          invocationDigest: invocation.sha,
-          responseModeDigest: canonicalSnapshot(assertJson(plan.response)).sha,
-          generationOptionsDigest: canonicalSnapshot(prepared.options).sha,
+          contextDigest,
+          invocationDigest,
+          responseModeDigest: canonicalDigest(assertJson(plan.response)),
+          generationOptionsDigest: canonicalDigest(prepared.options),
           sourceCheckpoint: head.checkpoint,
           sourceArchiveHeadSegmentId: checkpoint.archiveHead?.segmentId ?? null,
           sourceArchiveFrontierOrdinal: checkpoint.archiveFrontierOrdinal,
@@ -514,7 +519,7 @@ export function createHostModelSamplingService(options: {
           policyId: options.historyPolicy?.name ?? "complete-causal-history",
           policyDecisions: contextPolicyDecisions(plan.decisions),
           budgetId: budget.id,
-          budgetDigest: canonicalSnapshot(budget).sha,
+          budgetDigest: canonicalDigest(budget),
           toolCatalogDigest:
             options.catalog?.digest ?? stableTupleHash(["model-tools", request.tools]),
           model: { provider: options.model.provider, id: options.model.id },

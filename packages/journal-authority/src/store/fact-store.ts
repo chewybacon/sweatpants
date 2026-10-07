@@ -1,4 +1,10 @@
-import { canonicalSnapshot, parser, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  canonicalSnapshot,
+  parser,
+  sha256,
+  stableTupleHash,
+  type Json,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 import type {
   DurableReference,
@@ -53,7 +59,8 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
         payload: fact.payload,
       }));
       const encoded = canonicalSnapshot(factsValue);
-      const objectId = stableTupleHash([request.executionId, "projection-facts", encoded.sha]);
+      const contentHash = sha256(encoded.canonical);
+      const objectId = stableTupleHash([request.executionId, "projection-facts", contentHash]);
       const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
       const store = yield* useExecutionStore();
       yield* store.putObject({
@@ -61,7 +68,7 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
         lifetimeScope: "execution",
         scopeOwnerId: request.executionId,
         objectKind: "projection-facts",
-        contentHash: encoded.sha,
+        contentHash,
         byteLength,
         body: encoded.value,
         createdAt: Date.now(),
@@ -70,7 +77,7 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
         id: objectId,
         byteLength,
         version: "1",
-        integrity: { algorithm: "sha256", value: encoded.sha },
+        integrity: { algorithm: "sha256", value: contentHash },
       };
     },
 

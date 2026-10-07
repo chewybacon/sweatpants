@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson } from "@sweatpants/foundation";
 import { run } from "effection";
 import { installConversationStore } from "@sweatpants/history-store/port";
 import { describe, expect, it } from "vitest";
@@ -146,9 +146,9 @@ describe("long conversation bounded hydration", () => {
         expect(historyReads).toBe(0);
         expect(window.hotRoots).toHaveLength(256);
         expect(window.olderHistoryCursor).not.toBeNull();
-        expect(
-          new TextEncoder().encode(canonicalSnapshot(window).canonical).byteLength,
-        ).toBeLessThanOrEqual(CHECKPOINT_LIMIT);
+        expect(new TextEncoder().encode(canonicalJson(window)).byteLength).toBeLessThanOrEqual(
+          CHECKPOINT_LIMIT,
+        );
 
         let budgetError: unknown;
         try {

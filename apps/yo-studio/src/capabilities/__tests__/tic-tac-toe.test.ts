@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDurableToolRegistry, type ProgramStep } from "@sweatpants/durable-execution";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { encodeModelSampleResult } from "@sweatpants/model-sampling";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import {
   createWorkspaceService,
   installLocalWorkspaceFilesProvider,
@@ -128,7 +128,7 @@ describe("yo-studio play_ttt capability", () => {
               taskId: fence.taskId,
               pullId: `pull-${resolution}`,
               resolutionOffset: String(resolution),
-              outcomeDigest: canonicalSnapshot(outcome).sha,
+              outcomeDigest: canonicalDigest(outcome),
               status: "accepted",
             },
             replayed: !attemptedInDriver,

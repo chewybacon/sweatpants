@@ -2,7 +2,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { createScope, run, suspend, withResolvers, type Task } from "effection";
 import { isExecutableToolContract, type AnyToolContract } from "@sweatpants/agent-sdk";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest } from "@sweatpants/foundation";
 import type { ToolSession, ToolInvocationResume, ToolSessionEvent } from "@sweatpants/tool-session";
 import { createToolInvocationExecution } from "@sweatpants/tool-session/invocation-execution";
 import type { SessionMetadata, ToolSessionRpc } from "./session-protocol.ts";
@@ -52,7 +52,7 @@ export function createToolSessions(options: {
 
     private async initialize(wire: string): Promise<string> {
       const request = JSON.parse(wire) as { invocationId: string; toolName: string; input: Json };
-      const digest = canonicalSnapshot(request).sha;
+      const digest = canonicalDigest(request);
       const previous = await this.ctx.storage.get<{ digest: string; metadata: SessionMetadata }>(
         "invocation",
       );

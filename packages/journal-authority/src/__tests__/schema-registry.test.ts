@@ -81,6 +81,40 @@ describe("authority runtime schema registry", () => {
     ]);
   });
 
+  it("detaches validated output from objects retained by the schema", () => {
+    const schemaDescriptor = createPortableSchemaDescriptor({
+      identity: "test/retained-output",
+      role: "program_input",
+      version: "1",
+      vendor: "test",
+      inputProjection: { type: "string" },
+      outputProjection: { type: "object" },
+      fidelity: { input: "explicit", output: "explicit" },
+    });
+    const retained = { nested: { choice: "first" }, choices: ["first", "second"] };
+    const registry = createDurableSchemaRegistry([
+      {
+        descriptor: schemaDescriptor,
+        schema: {
+          "~standard": {
+            version: 1,
+            vendor: "test",
+            validate: () => ({ value: retained }),
+          },
+        },
+      },
+    ]);
+
+    const parsed = parseRegisteredSchema(registry, schemaDescriptor.digest, "choose");
+    retained.nested.choice = "changed";
+    retained.choices.push("third");
+
+    expect(parsed).toEqual({
+      status: "ok",
+      value: { nested: { choice: "first" }, choices: ["first", "second"] },
+    });
+  });
+
   it("uses the generic descriptor's complete digest identity", () => {
     const value = descriptor("test/digest");
     expect(value.digest).toBe(

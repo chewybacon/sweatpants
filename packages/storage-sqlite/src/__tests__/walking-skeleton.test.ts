@@ -117,12 +117,13 @@ describe("SQLite durability spine walking skeleton", () => {
           placement: { type: "root", sequence: 0 },
         };
         const payload = canonicalSnapshot(checkpointPayloadFromHotRoots([root]));
+        const payloadDigest = sha256(payload.canonical);
         const pointer = yield* store.putCheckpoint({
           checkpointId: "checkpoint-1",
           conversationId: "conversation_spine_001",
           causeKey: "command-1",
           cause: { kind: "command", commandId: "command-1" },
-          contentHash: payload.sha,
+          contentHash: payloadDigest,
           lineageId: "lineage-1",
           archiveHead: null,
           archiveFrontierOrdinal: "0",
@@ -141,7 +142,7 @@ describe("SQLite durability spine walking skeleton", () => {
           status: "committed",
           head: { state: "idle", activeExecutionId: null },
         });
-        expect(sha256(payload.canonical)).toBe(payload.sha);
+        expect(sha256(payload.canonical)).toBe(payloadDigest);
       });
     } finally {
       await run(() => handle.close());
