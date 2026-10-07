@@ -4,7 +4,7 @@ import { startWorkerCpuProfile } from "./worker-cpu-profile";
 import { builtinModules } from "node:module";
 import { build } from "esbuild";
 import { Miniflare, type MiniflareOptions } from "miniflare";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -34,8 +34,14 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
         ),
       })
     ).outputFiles[0]!.text;
-  const host = await bundle("./cloudflare-chat-worker.ts");
   const profileDirectory = process.env.YO_CHAT_CPU_PROFILE_DIRECTORY;
+  const frozenBundle = process.env.YO_CHAT_CPU_PROFILE_BUNDLE;
+  if (frozenBundle && !profileDirectory) {
+    throw new Error("Frozen worker bundles are only supported during CPU profiling");
+  }
+  const host = frozenBundle
+    ? await readFile(frozenBundle, "utf8")
+    : await bundle("./cloudflare-chat-worker.ts");
   // Reserve an available inspector port; simultaneous benchmark runs stay isolated.
   let inspectorPort: number | undefined;
   if (profileDirectory) {
@@ -52,6 +58,8 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
     await promisify(server.close.bind(server))();
     await writeFile(join(profileDirectory, "worker.js"), host);
   }
+  const workerModule = { type: "esm" as const, contents: host };
+  let clockOffsetMs = 0;
   const options: MiniflareOptions = {
     inspectorPort,
     resourcePersistencePath: directory,
@@ -63,7 +71,7 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
           compatibilityFlags: ["nodejs_compat"],
           manifest: {
             mainModule: "index.js",
-            modules: { "index.js": { type: "esm", contents: host } },
+            modules: { "index.js": workerModule },
           },
           exports: {
             ToolExecutors: { type: "durable-object", storage: "sqlite" },
@@ -126,13 +134,20 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
         signal: request.signal,
       })) as unknown as Response;
     },
-    async replace() {
+    async replace({ elapsedMs = 0 }: { elapsedMs?: number } = {}) {
       try {
         await stopProfile?.();
       } finally {
         stopProfile = undefined;
         await worker.dispose();
       }
+      // Simulate downtime after a crashed host without sleeping through leases.
+      // This clock exists only in the bundled Test Rig Worker.
+      clockOffsetMs += elapsedMs;
+      workerModule.contents =
+        clockOffsetMs === 0
+          ? host
+          : `const fixtureNow = Date.now; Date.now = () => fixtureNow() + ${clockOffsetMs};\n${host}`;
       worker = new Miniflare(options);
       await worker.ready;
       if (profileDirectory) {

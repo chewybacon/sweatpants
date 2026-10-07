@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { summarizeProfile } from "./summarize-profile.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -13,9 +13,18 @@ if (!Number.isSafeInteger(runs) || runs < 1 || runs > 100) {
 const output = join(root, ".artifacts", "profiles", new Date().toISOString().replaceAll(":", "-"));
 await mkdir(output, { recursive: true });
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+const frozenBundle = process.env.YO_CHAT_CPU_PROFILE_BUNDLE
+    ? resolve(process.env.YO_CHAT_CPU_PROFILE_BUNDLE)
+    : undefined;
 const metadata = {
     scenario: "replays a parked card after the entire Worker host is replaced",
     runs,
+    frozenBundle: frozenBundle ?? null,
+    frozenBundleSha256: frozenBundle
+        ? createHash("sha256")
+              .update(await readFile(frozenBundle))
+              .digest("hex")
+        : null,
     node: process.version,
     commit: git("rev-parse", "HEAD"),
     status: git("status", "--short"),
@@ -49,7 +58,11 @@ for (let run = 1; run <= runs; run++) {
             encoding: "utf8",
             timeout: 90_000,
             maxBuffer: 8 * 1024 * 1024,
-            env: { ...process.env, YO_CHAT_CPU_PROFILE_DIRECTORY: directory },
+            env: {
+                ...process.env,
+                ...(frozenBundle ? { YO_CHAT_CPU_PROFILE_BUNDLE: frozenBundle } : {}),
+                YO_CHAT_CPU_PROFILE_DIRECTORY: directory,
+            },
         },
     );
     await writeFile(join(directory, "test.log"), (result.stdout ?? "") + (result.stderr ?? ""));

@@ -48,7 +48,15 @@ export function* presentProgramDriverChatActivation(
     report;
   const events: StreamEvent[] = [];
   const projection = indexChatJournal(after);
-  const projected = projectRecords(after.slice(before.length), projection);
+  // A previous host may have accepted a response without publishing it. These
+  // state-replacement deltas are idempotent; replay them so the checkpoint and
+  // client retire answered controls even when acceptance predates this host.
+  const acceptedElicits = before.filter(
+    ({ payload }) =>
+      payload.type === "PullResolved" &&
+      projection.pullRequests.get(payload.pullId)?.descriptor.kind === "elicit",
+  );
+  const projected = projectRecords([...acceptedElicits, ...after.slice(before.length)], projection);
   events.push(
     ...projected.filter((event) => {
       if (

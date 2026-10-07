@@ -493,8 +493,10 @@ export async function readJournal(
   store: ProgramDriverJournalStore,
   conversationId: string,
 ): Promise<DurableSemanticRecord[]> {
-  const journal = await run(() => store.open(conversationId));
-  return await run(() => journal.readJournal(conversationId));
+  return await run(function* () {
+    const journal = yield* store.open(conversationId);
+    return yield* journal.readJournal(conversationId);
+  });
 }
 
 /** Chooses the next board position answering the newest unresolved elicitation. */

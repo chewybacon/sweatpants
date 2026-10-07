@@ -28,6 +28,7 @@ import {
   createHostModelSamplingService,
   resolveModelContextSource,
   stageProgramDriverModelSampleInput,
+  stageModelContextSource,
 } from "../model-sampling/service.ts";
 
 const model: Model = {
@@ -171,6 +172,42 @@ function journalAuthority(state: {
 }
 
 describe("accepted model-context preparation", () => {
+  it("reattaches current credentials on replay without persisting them", async () => {
+    const credentials: unknown[] = [];
+    const state: { preparation: ModelContextPreparedFact | null } = { preparation: null };
+    const objects = createMemoryExecutionStore();
+    await run(function* () {
+      yield* installExecutionStore(objects);
+      yield* installModelProvider({
+        *stream(input) {
+          credentials.push({ apiKey: input.options?.apiKey, env: input.options?.env });
+          return completedResponse();
+        },
+        *sample() {
+          throw new Error("stream seam only");
+        },
+      });
+      for (const apiKey of ["initial-test-key", "refreshed-test-key"]) {
+        const service = createHostModelSamplingService({
+          model,
+          streamOptions: { apiKey, env: { TEST_PROVIDER_TOKEN: apiKey } },
+          journal: journalAuthority(state),
+          conversationStore: conversationStore(),
+          conversationId: "conversation-1",
+          emitLiveEvents: false,
+        });
+        expect((yield* service.sample(request, attempt)).status).toBe("ok");
+      }
+      const stored = yield* objects.getObject(state.preparation!.contextObject);
+      expect(JSON.stringify(stored)).not.toContain("initial-test-key");
+      expect(JSON.stringify(stored)).not.toContain("refreshed-test-key");
+      expect(credentials).toEqual([
+        { apiKey: "initial-test-key", env: { TEST_PROVIDER_TOKEN: "initial-test-key" } },
+        { apiKey: "refreshed-test-key", env: { TEST_PROVIDER_TOKEN: "refreshed-test-key" } },
+      ]);
+    });
+  });
+
   it("resolves a conversation source against the selected authoritative checkpoint", async () => {
     await run(function* () {
       yield* installConversationStore(conversationStore());
@@ -235,6 +272,51 @@ describe("accepted model-context preparation", () => {
     });
   });
 
+  it("detaches the prepared invocation before conversation-store suspension", async () => {
+    const mutableRequest = structuredClone(request);
+    const objects = createMemoryExecutionStore();
+    const state: { preparation: ModelContextPreparedFact | null } = { preparation: null };
+    const conversations = conversationStore();
+    const observed: ConversationStore = {
+      ...conversations,
+      *loadHead(id) {
+        Object.assign(mutableRequest.response, { changedAfterCapture: true });
+        Object.assign(mutableRequest.invocation.context.messages[0]!, {
+          content: "changed after capture",
+        });
+        return yield* conversations.loadHead(id);
+      },
+    };
+    await run(function* () {
+      yield* installExecutionStore(objects);
+      yield* installModelProvider({
+        *stream() {
+          return completedResponse();
+        },
+        *sample() {
+          throw new Error("stream seam only");
+        },
+      });
+      const service = createHostModelSamplingService({
+        model,
+        journal: journalAuthority(state),
+        conversationStore: observed,
+        conversationId: "conversation-1",
+        emitLiveEvents: false,
+      });
+      expect((yield* service.sample(mutableRequest, attempt)).status).toBe("ok");
+      expect(state.preparation).not.toBeNull();
+      const stored = yield* objects.getObject(state.preparation!.contextObject);
+      expect(stored?.body).toMatchObject({
+        context: request.invocation.context,
+        response: { type: "message" },
+        delivery: { type: "none" },
+        decisions: [],
+      });
+      expect((stored?.body as { response: unknown }).response).toEqual({ type: "message" });
+    });
+  });
+
   it("fails an over-budget context before prepared-object insertion or provider dispatch", async () => {
     let providerCalls = 0;
     let objectWrites = 0;
@@ -287,6 +369,28 @@ describe("accepted model-context preparation", () => {
 });
 
 describe("ProgramDriver model-context composition", () => {
+  it("captures caller-owned context before the object store can suspend or mutate the source", async () => {
+    const context = {
+      messages: [{ role: "user" as const, content: "captured input" }],
+      tools: [],
+    };
+    const store = createMemoryExecutionStore();
+    const observed: ExecutionStore = {
+      ...store,
+      *putObject(object) {
+        context.messages[0]!.content = "changed during persistence";
+        return yield* store.putObject(object);
+      },
+    };
+    await run(function* () {
+      yield* installExecutionStore(observed);
+      const source = yield* stageModelContextSource(context, "conversation-1");
+      const resolved = yield* resolveModelContextSource(source);
+      expect(context.messages[0]!.content).toBe("changed during persistence");
+      expect(resolved.messages).toEqual([{ role: "user", content: "captured input" }]);
+    });
+  });
+
   it("stores embedded context before the journal boundary and preserves staged input", async () => {
     const store = createMemoryExecutionStore();
     const evidence = await run(function* () {

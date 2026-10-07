@@ -7,6 +7,13 @@ pnpm profile:yo-chat      # three repetitions
 pnpm profile:yo-chat 5    # five repetitions
 ```
 
+To compare exact saved builds, set `YO_CHAT_CPU_PROFILE_BUNDLE` to a captured
+`run-N/worker.js` path and run one repetition at a time, alternating before and
+after (reverse their order in successive pairs). The fixture uses that bundle
+with fresh storage and the same assertions. Metadata records its path and SHA;
+the working-tree revision then describes the harness, not the frozen worker.
+This override exists only in the profiling test fixture, never in product apps.
+
 Runs the existing card acceptance scenario through Test Rig with real local
 workerd, D1, and Durable Objects. Test Rig controls model responses; no model
 credentials, provider charges, product app overrides, or running dev server are

@@ -155,3 +155,66 @@ it("finishes tic-tac-toe through DO executors with a refreshed board", async () 
     },
   );
 }, 30_000);
+
+it("recovers a refreshed game when its nested model request loses the Worker", async () => {
+  let host: Awaited<ReturnType<typeof startCloudflareChatHost>>;
+  await withTestScenario(
+    {
+      binding: "in-process",
+      modelId: "worker-host-test",
+      async createApplication({ model }) {
+        host = await startCloudflareChatHost(model);
+        return host;
+      },
+      scenarioTimeoutMs: 20_000,
+    },
+    function* (s) {
+      const conversation = s.conversation();
+      const first = yield* conversation.send("Play tic-tac-toe");
+      const outer = yield* s.model.request();
+      yield* outer.respond.toolCalls([{ id: "game-recovery", name: "play_ttt", arguments: {} }]);
+      let holdNextSample = false;
+      const pendingSample = yield* spawn(function* () {
+        while (true) {
+          const request = yield* s.model.request();
+          expect(JSON.stringify(request.body.input)).toContain("Empty positions:");
+          if (holdNextSample) return request;
+          // If the recorded coin flip puts the model first, choose the center.
+          yield* request.respond.text('{"cell":4}');
+        }
+      });
+      const original = yield* first.elicit("pickMove");
+      const refreshed = yield* conversation.reopen();
+      const resumed = refreshed.resumePendingElicit("pickMove");
+      const move = yield* resumed.elicit("pickMove");
+      expect(move.context).toEqual(original.context);
+      holdNextSample = true;
+      yield* move.accept({ position: 0 });
+      const interrupted = yield* pendingSample;
+      // Hold the provider boundary open while replacing compute. No timer or
+      // model guess determines when the host is lost.
+      yield* call(() => host.replace({ elapsedMs: 30_001 }));
+      // A late provider answer belongs to the dead host, not its replacement.
+      yield* interrupted.respond.text('{"cell":2}');
+      const reopening = yield* spawn(() => refreshed.reopen());
+      const replayed = yield* s.model.request();
+      expect(replayed.body.input).toEqual(interrupted.body.input);
+      yield* replayed.respond.text('{"cell":2}');
+      const recovered = yield* reopening;
+      const game = recovered.resumePendingElicit("pickMove");
+      const next = yield* game.elicit("pickMove");
+      const board = next.context as {
+        board: Array<string | null>;
+        userSymbol: string;
+        modelSymbol: string;
+      };
+      expect(next.elicitId).not.toBe(move.elicitId);
+      expect(board.board[0]).toBe(board.userSymbol);
+      expect(board.board[2]).toBe(board.modelSymbol);
+      yield* next.cancel();
+      const final = yield* s.model.request();
+      yield* final.respond.text("Game cancelled.");
+      expect((yield* game.settled()).text).toContain("Game cancelled.");
+    },
+  );
+}, 30_000);

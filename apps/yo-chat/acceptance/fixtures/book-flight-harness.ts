@@ -504,8 +504,10 @@ export async function readJournal(
   store: ProgramDriverJournalStore,
   conversationId: string,
 ): Promise<DurableSemanticRecord[]> {
-  const journal = await run(() => store.open(conversationId));
-  return await run(() => journal.readJournal(conversationId));
+  return await run(function* () {
+    const journal = yield* store.open(conversationId);
+    return yield* journal.readJournal(conversationId);
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

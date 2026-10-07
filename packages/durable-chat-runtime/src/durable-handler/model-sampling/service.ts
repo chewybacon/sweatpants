@@ -179,7 +179,8 @@ export function* stageModelContextSource(
     objectKind: "model-context-source.v1",
     contentHash: contextDigest,
     byteLength,
-    body: assertJson(context.value),
+    // SAFETY: canonicalSnapshot validated and detached this private body.
+    body: context.value as unknown as Json,
     createdAt: Date.now(),
   });
   return { type: "object", object, digest: contextDigest };
@@ -422,6 +423,8 @@ export function createHostModelSamplingService(options: {
             context: prepared.context,
             options: {
               ...(prepared.options as Record<string, unknown>),
+              apiKey: plan.providerRequest.options?.apiKey,
+              env: plan.providerRequest.options?.env,
               signal: attempt.cancellation,
               sessionId: attempt.pullId,
             },
@@ -443,9 +446,9 @@ export function createHostModelSamplingService(options: {
           model: { provider: options.model.provider, id: options.model.id },
           context: plan.providerRequest.context,
           options: semanticOptions(plan.providerRequest.options as Record<string, unknown>),
-          response: cloneJson(assertJson(plan.response)),
-          delivery: cloneJson(assertJson(plan.delivery)),
-          decisions: cloneJson(assertJson(plan.decisions)),
+          response: assertJson(plan.response),
+          delivery: assertJson(plan.delivery),
+          decisions: assertJson(plan.decisions),
         };
         const invocation = canonicalSnapshot(prepared);
         const invocationDigest = sha256(invocation.canonical);
@@ -493,7 +496,8 @@ export function createHostModelSamplingService(options: {
           objectKind: "prepared-model-context.v1",
           contentHash: invocationDigest,
           byteLength,
-          body: assertJson(invocation.value),
+          // SAFETY: This canonical snapshot stays private until this store call.
+          body: invocation.value as unknown as Json,
           createdAt: Date.now(),
         });
         const budget = {
@@ -570,6 +574,8 @@ export function createHostModelSamplingService(options: {
               context: prepared.context,
               options: {
                 ...(prepared.options as Record<string, unknown>),
+                apiKey: plan.providerRequest.options?.apiKey,
+                env: plan.providerRequest.options?.env,
                 signal: attempt.cancellation,
                 sessionId: attempt.pullId,
               },
