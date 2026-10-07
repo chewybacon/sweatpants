@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { parser, type Parser } from "./parser.ts";
-import { assertJson, canonicalJson, cloneJson, sha256 } from "./json.ts";
+import { canonicalJson, canonicalSnapshot, sha256 } from "./json.ts";
 import type { Json } from "./json.ts";
 export class SchemaDescriptorError extends Error {
   readonly code = "invalid_schema_descriptor";
@@ -104,6 +104,15 @@ export function createPortableSchemaDescriptor(
 export function createPortableSchemaDescriptor<Role extends string>(
   fields: PortableSchemaDescriptorFields<Role>,
 ): PortableSchemaDescriptor<Role> {
+  return buildPortableSchemaDescriptor(fields);
+}
+
+function buildPortableSchemaDescriptor<Role extends string>(
+  fields: Omit<PortableSchemaDescriptorFields<Role>, "inputProjection" | "outputProjection"> & {
+    readonly inputProjection: unknown;
+    readonly outputProjection: unknown;
+  },
+): PortableSchemaDescriptor<Role> {
   requireNonEmpty(fields.identity, "identity");
   requireBoundedRole(fields.role);
   requireNonEmpty(fields.version, "version");
@@ -111,21 +120,23 @@ export function createPortableSchemaDescriptor<Role extends string>(
   if (!isFidelityValue(fields.fidelity.input) || !isFidelityValue(fields.fidelity.output)) {
     throw invalidDescriptor("fidelity must be lossless or explicit");
   }
-  const inputProjection = cloneJson(assertJson(fields.inputProjection));
-  const outputProjection = cloneJson(assertJson(fields.outputProjection));
-  const normalized: PortableSchemaDescriptorFields<Role> = {
+  // One snapshot validates and detaches the fields while producing the exact
+  // canonical bytes committed by the digest. Do not reparse that owned copy.
+  const { value: normalized, canonical } = canonicalSnapshot({
     identity: fields.identity,
     role: fields.role,
     version: fields.version,
     vendor: fields.vendor,
-    inputProjection,
-    outputProjection,
+    inputProjection: fields.inputProjection,
+    outputProjection: fields.outputProjection,
     fidelity: { input: fields.fidelity.input, output: fields.fidelity.output },
-  };
+  });
+  // SAFETY: canonicalSnapshot validated both unknown projections as JSON and
+  // copied them; the descriptor owns the deeply frozen result.
   return deepFreeze({
     ...normalized,
-    digest: computePortableSchemaDigest(normalized),
-  });
+    digest: sha256(`${SCHEMA_DESCRIPTOR_DIGEST_DOMAIN}\n${canonical}`),
+  }) as PortableSchemaDescriptor<Role>;
 }
 
 /**
@@ -163,14 +174,14 @@ function parsePortableSchemaDescriptorValue(value: unknown): PortableSchemaDescr
   ) {
     throw invalidDescriptor("descriptor field types are invalid");
   }
-  const descriptor = createPortableSchemaDescriptor({
+  const descriptor = buildPortableSchemaDescriptor({
     identity: value["identity"],
     // Owning domains refine the generic role after this structural parse.
     role: value["role"],
     version: value["version"],
     vendor: value["vendor"],
-    inputProjection: assertJson(value["inputProjection"]),
-    outputProjection: assertJson(value["outputProjection"]),
+    inputProjection: value["inputProjection"],
+    outputProjection: value["outputProjection"],
     fidelity: { input: fidelity["input"], output: fidelity["output"] },
   });
   if (descriptor.digest !== value["digest"]) {

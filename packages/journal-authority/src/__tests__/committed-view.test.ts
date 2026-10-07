@@ -150,3 +150,78 @@ it("retains cold snapshot depth validation on the first read after its own commi
     }
   });
 });
+
+it("isolates warm query results and observes a peer mutation before the next command", async () => {
+  const store = createMemoryExecutionStore();
+  await run(function* () {
+    const drivers = createStoredShellDrivers(store, options);
+    const peer = createStoredShellDrivers(store, options);
+    const opened = yield* drivers.authority.command({
+      type: "execution.open-task",
+      request: { ...request, input: { nested: { value: "original" } } },
+    });
+    const query = { type: "task.input", sessionId: "session", taskId: "root" } as const;
+    const input = yield* drivers.authority.query(query);
+    expect(input).toEqual({ nested: { value: "original" } });
+    Reflect.set(input as object, "nested", { value: "changed by reader" });
+    expect(yield* drivers.authority.query(query)).toEqual({ nested: { value: "original" } });
+    yield* peer.authority.command({
+      type: "execution.append-emission",
+      request: {
+        sessionId: "session",
+        taskId: "root",
+        actionIndex: 0,
+        descriptor: { eventType: "progress", payload: "peer" },
+        programCapability: opened.programCapability,
+      },
+    });
+    yield* drivers.authority.command({
+      type: "execution.complete-task",
+      request: {
+        sessionId: "session",
+        taskId: "root",
+        actionIndex: 1,
+        outcome: { status: "ok", value: "done" },
+        programCapability: opened.programCapability,
+      },
+    });
+    expect(yield* drivers.snapshot.exportSnapshot()).toEqual(
+      yield* createStoredShellDrivers(store, options).snapshot.exportSnapshot(),
+    );
+    expect(yield* drivers.authority.query(query)).toEqual({ nested: { value: "original" } });
+  });
+});
+
+it("detaches committed payloads from command inputs before retaining them", async () => {
+  const store = createMemoryExecutionStore();
+  await run(function* () {
+    const drivers = createStoredShellDrivers(store, options);
+    const input = { nested: { value: "original" } };
+    const opened = yield* drivers.authority.command({
+      type: "execution.open-task",
+      request: { ...request, input },
+    });
+    input.nested.value = "mutated after commit";
+    const payload = { value: "accepted emission" };
+    yield* drivers.authority.command({
+      type: "execution.append-emission",
+      request: {
+        sessionId: "session",
+        taskId: "root",
+        actionIndex: 0,
+        descriptor: { eventType: "progress", payload },
+        programCapability: opened.programCapability,
+      },
+    });
+    payload.value = "mutated after commit";
+    const retained = yield* drivers.snapshot.exportSnapshot();
+    expect(retained).toEqual(
+      yield* createStoredShellDrivers(store, options).snapshot.exportSnapshot(),
+    );
+    expect(
+      yield* drivers.authority.query({ type: "task.input", sessionId: "session", taskId: "root" }),
+    ).toEqual({ nested: { value: "original" } });
+    expect(JSON.stringify(retained)).toContain("accepted emission");
+    expect(JSON.stringify(retained)).not.toContain("mutated after commit");
+  });
+});

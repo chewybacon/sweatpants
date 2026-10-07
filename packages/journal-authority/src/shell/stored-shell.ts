@@ -117,6 +117,18 @@ export function createStoredShellDrivers(
     | CommittedView
     | undefined;
 
+  // Snapshots stay private to this driver. Decisions clone into a transaction
+  // draft; only results crossing the public boundary need independent copies.
+  const materialized = new WeakMap<DurableAuthoritySnapshot, AuthorityState>();
+  function stateFor(snapshot: DurableAuthoritySnapshot): AuthorityState {
+    let state = materialized.get(snapshot);
+    if (!state) {
+      state = authorityStateFromSnapshot(snapshot);
+      materialized.set(snapshot, state);
+    }
+    return state;
+  }
+
   function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
     if (value === null) return null;
     if (
@@ -223,7 +235,7 @@ export function createStoredShellDrivers(
     const identity = canonicalJson(authorityControl);
     const cached = view?.identity === identity ? view : undefined;
     if (cached?.kind === "validated") {
-      return { control: current, authorityControl, snapshot: structuredClone(cached.snapshot) };
+      return { control: current, authorityControl, snapshot: cached.snapshot };
     }
 
     // Own commits can supply bytes-equivalent data, but still cross the same
@@ -288,7 +300,7 @@ export function createStoredShellDrivers(
       ...base,
       records: parseJournalCollections(entries, authorityControl.journalHead?.segmentId ?? "none"),
     };
-    view = { kind: "validated", identity, snapshot: structuredClone(snapshot) };
+    view = { kind: "validated", identity, snapshot };
     return { control: current, authorityControl, snapshot };
   }
 
@@ -361,7 +373,7 @@ export function createStoredShellDrivers(
       // A retry may return without committing; never publish its predecessor.
       committedView = undefined;
       const loaded = yield* load(current);
-      const loadedState = authorityStateFromSnapshot(loaded.snapshot);
+      const loadedState = stateFor(loaded.snapshot);
       const history = loaded.snapshot.records.flatMap(([, records]) => records);
       const sessionId = commandSessionId(command, loadedState, options);
       const sessionRecords = history.filter((record) => record.sessionId === sessionId);
@@ -497,10 +509,11 @@ export function createStoredShellDrivers(
         result: transition.result,
       };
     })) as CommandResult<C>;
-    // Only the winning candidate reaches here. Keep caller-owned references out
-    // of the disposable cache; every later operation still reads durable control.
+    // Only the winning candidate reaches here. Its canonical snapshot and
+    // normalized entries are already privately owned; retain them directly.
+    // Every later operation still reads durable control before reusing the view.
     if (committedView) {
-      view = structuredClone(committedView);
+      view = committedView;
     }
     if (command.type === "execution.request-cancellation") {
       for (const target of cancellationTargets) {
@@ -535,18 +548,14 @@ export function createStoredShellDrivers(
 
   function* readQuery<Q extends AuthorityQuery>(query: Q): Operation<QueryResult<Q>> {
     const loaded = yield* load();
-    return queryAuthorityState(
-      authorityStateFromSnapshot(loaded.snapshot),
-      queryContext(""),
-      query,
-    );
+    return structuredClone(queryAuthorityState(stateFor(loaded.snapshot), queryContext(""), query));
   }
 
   function* readJournalRecords(sessionId: string): Operation<DurableSemanticRecord[]> {
     // load() already reconstructs and validates the complete immutable journal.
     const loaded = yield* load();
-    return (
-      loaded.snapshot.records.find(([storedSessionId]) => storedSessionId === sessionId)?.[1] ?? []
+    return structuredClone(
+      loaded.snapshot.records.find(([storedSessionId]) => storedSessionId === sessionId)?.[1] ?? [],
     );
   }
 
@@ -578,7 +587,7 @@ export function createStoredShellDrivers(
   const snapshot: AuthoritySnapshotContract = {
     *exportSnapshot() {
       const loaded = yield* load();
-      return loaded.snapshot;
+      return structuredClone(loaded.snapshot);
     },
   };
   const authorityDriver: JournalAuthorityContract = {
