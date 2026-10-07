@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { parser, type Parser } from "./parser.ts";
-import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "./json.ts";
+import { assertJson, canonicalJson, cloneJson, sha256 } from "./json.ts";
 import type { Json } from "./json.ts";
 export class SchemaDescriptorError extends Error {
   readonly code = "invalid_schema_descriptor";
@@ -111,8 +111,8 @@ export function createPortableSchemaDescriptor<Role extends string>(
   if (!isFidelityValue(fields.fidelity.input) || !isFidelityValue(fields.fidelity.output)) {
     throw invalidDescriptor("fidelity must be lossless or explicit");
   }
-  const inputProjection = canonicalSnapshot(assertJson(fields.inputProjection)).value;
-  const outputProjection = canonicalSnapshot(assertJson(fields.outputProjection)).value;
+  const inputProjection = cloneJson(assertJson(fields.inputProjection));
+  const outputProjection = cloneJson(assertJson(fields.outputProjection));
   const normalized: PortableSchemaDescriptorFields<Role> = {
     identity: fields.identity,
     role: fields.role,

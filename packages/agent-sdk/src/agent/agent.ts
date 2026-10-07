@@ -3,10 +3,10 @@ import { type EffectDefinition } from "@sweatpants/durable-effects";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   canonicalJson,
-  canonicalSnapshot,
   sha256,
   stableTupleHash,
   type Json,
+  cloneJson,
 } from "@sweatpants/foundation";
 import {
   verifyProgramIdentityProvenance,
@@ -99,10 +99,10 @@ export function defineAgent(options: DefineAgentOptions): AgentDefinition {
   };
   const manifestDigest = sha256(AGENT_MANIFEST_DOMAIN + canonicalJson(projection));
   const manifest = deepFreeze(
-    canonicalSnapshot({
+    cloneJson({
       ...projection,
       identity: { name, version, digest: manifestDigest },
-    }).value as unknown as AgentManifestV1,
+    }) as unknown as AgentManifestV1,
   );
   const bindings = Object.freeze({
     ...(conversation ? { conversation } : {}),
@@ -176,8 +176,10 @@ export function parseAgentManifest(value: unknown): AgentManifestV1 {
     invalidAgent("agent digest mismatch");
   }
   return deepFreeze(
-    canonicalSnapshot({ ...projection, identity: { name, version, digest: computed } })
-      .value as unknown as AgentManifestV1,
+    cloneJson({
+      ...projection,
+      identity: { name, version, digest: computed },
+    }) as unknown as AgentManifestV1,
   );
 }
 
@@ -310,7 +312,7 @@ function pinned(tool: ErasedDurableTool): PinnedAgentProgramV1 {
     id: tool.manifest.programId,
     version: tool.manifest.version,
     digest: tool.manifest.digest,
-    provenance: canonicalSnapshot(tool.identityProvenance).value as ProgramIdentityProvenanceV1,
+    provenance: cloneJson(tool.identityProvenance) as ProgramIdentityProvenanceV1,
   });
 }
 
@@ -342,7 +344,7 @@ function freezeCapability(input: AdvertisedCapabilityV1): AdvertisedCapabilityV1
     outputModes: stringList(input.outputModes, 32, 256, "output modes"),
     authorization: stableId(input.authorization, "authorization policy"),
   };
-  return deepFreeze(canonicalSnapshot(value).value as unknown as AdvertisedCapabilityV1);
+  return deepFreeze(cloneJson(value) as unknown as AdvertisedCapabilityV1);
 }
 
 function parseCapability(value: unknown): AdvertisedCapabilityV1 {

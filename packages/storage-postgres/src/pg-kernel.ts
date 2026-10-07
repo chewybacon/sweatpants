@@ -45,7 +45,7 @@ import {
 } from "@sweatpants/durable-storage-kernel";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest } from "@sweatpants/foundation";
 import { call, sleep, type Operation } from "effection";
 import {
   conversationKeys,
@@ -316,7 +316,7 @@ async function readImmutableIn(
       return immutableRecord(
         collection,
         conversationKeys.publicRootIndex(entry.conversationId, entry.position),
-        canonicalSnapshot(entry).sha,
+        canonicalDigest(entry),
         encodeArchivedPublicRootIndex(entry),
       );
     }
@@ -855,7 +855,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
             return immutableRecord(
               request.collection,
               conversationKeys.publicRootIndex(entry.conversationId, entry.position),
-              canonicalSnapshot(entry).sha,
+              canonicalDigest(entry),
               encodeArchivedPublicRootIndex(entry),
             );
           })()

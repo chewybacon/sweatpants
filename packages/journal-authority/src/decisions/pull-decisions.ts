@@ -6,7 +6,13 @@ import {
   type ResolutionReceipt,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  canonicalSnapshot,
+  sha256,
+} from "@sweatpants/foundation";
 import type { AuthorityState, ResolutionAuthority } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
@@ -38,7 +44,6 @@ import {
   parseProgramElicitResult,
   pendingReason,
   sanitizeCancellationReason,
-  snapshotDescriptor,
   snapshotOutcome,
   terminalOutcomeDigest,
 } from "../state/authority-support.ts";
@@ -167,8 +172,9 @@ export function reservePull(
   draft.assertActive(task);
   if (request.turnId !== task.turnId)
     throw new CrankError("invalid_descriptor", "Turn identity mismatch");
-  const descriptor = snapshotDescriptor(request.descriptor);
-  const descriptorDigest = canonicalSnapshot(descriptor).sha;
+  const encoded = canonicalSnapshot(request.descriptor);
+  const descriptor = encoded.value;
+  const descriptorDigest = sha256(encoded.canonical);
   const existingAction = task.actions.find(
     (action) => action.kind === "pull" && action.actionIndex === request.actionIndex,
   );
@@ -375,7 +381,7 @@ export function acceptPreparation(
     return { status: "identity_conflict" };
   if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
     return { status: "stale_owner" };
-  const digest = canonicalSnapshot(request.fact).sha;
+  const digest = canonicalDigest(request.fact);
   if (pull.acceptedFacts.preparation)
     return pull.acceptedFacts.preparationDigest === digest
       ? { status: "duplicate" }
@@ -429,7 +435,7 @@ export function acceptAssistantPartial(
     request.fact.text.length > 32_768
   )
     return { status: "identity_conflict" };
-  const digest = canonicalSnapshot(request.fact).sha;
+  const digest = canonicalDigest(request.fact);
   if (pull.acceptedFacts.assistantPartial)
     return pull.acceptedFacts.assistantPartialDigest === digest
       ? { status: "duplicate" }
@@ -597,7 +603,7 @@ export function resolvePull(
     return { status: "rejected", code: "wait_not_due" };
   const post = reject();
   if (post) return post;
-  const digest = canonicalSnapshot(outcome).sha;
+  const digest = canonicalDigest(outcome);
   if (pull.resolution.status === "settled") {
     if (pull.resolution.settlement.outcomeDigest === digest)
       return {
@@ -677,8 +683,9 @@ export function appendEmission(
   draft.assertActive(task);
   if (!task.program.manifest.capabilities.durableEmissions)
     throw new CrankError("invalid_descriptor", "Program does not declare durable emissions");
-  const descriptor = canonicalSnapshot(request.descriptor).value;
-  const digest = canonicalSnapshot(descriptor).sha;
+  const encoded = canonicalSnapshot(request.descriptor);
+  const descriptor = encoded.value;
+  const digest = sha256(encoded.canonical);
   const existing = emissionByAction(task, request.actionIndex);
   if (existing) {
     if (existing.descriptorDigest !== digest)
@@ -771,7 +778,7 @@ export function completeTask(
     }
   }
   assertInlineSize(outcome, draft.maxOutcomeBytes);
-  const digest = canonicalSnapshot(outcome).sha;
+  const digest = canonicalDigest(outcome);
   if (task.lifecycle.status === "closed" || task.lifecycle.status === "cancelled") {
     const receipt = task.lifecycle.receipt;
     const oldDigest = terminalOutcomeDigest(task.lifecycle.outcome);

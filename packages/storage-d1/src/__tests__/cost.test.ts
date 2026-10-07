@@ -291,3 +291,116 @@ it("performs no billable writes for an ensure-only replay", async () => {
   expect(meter.queries.reduce((sum, query) => sum + query.rowsWritten, 0)).toBe(0);
   expect(meter.queries.some((query) => query.sql.includes("UPDATE sp_d1_meta"))).toBe(false);
 });
+
+it("fetches a selected scan page in bounded batches, preserving direction and byte limits", async () => {
+  const meter = meterD1(db);
+  const kernel = createD1DurableKernel(meter.database);
+  const seed = createD1DurableKernel(db);
+  for (let position = 0; position < 105; position++) {
+    await run(() =>
+      seed.apply({
+        ensures: [
+          {
+            name: "segment",
+            collection: "conversation-public-segments",
+            key: durableKey("batched", String(position)),
+            alternateKeys: [durableKey("batched", String(position), String(position))],
+            fingerprint: String(position),
+            value: new Uint8Array([position]),
+          },
+        ],
+      }),
+    );
+  }
+  for (const direction of ["forward", "backward"] as const) {
+    meter.queries.length = 0;
+    const page = await run(() =>
+      kernel.scan({
+        collection: "conversation-public-segments",
+        index: "conversation-position",
+        scope: durableKey("batched"),
+        after: null,
+        direction,
+        maxRecords: 105,
+        maxStoredBytes: 105,
+      }),
+    );
+    const positions = Array.from({ length: 105 }, (_, i) =>
+      direction === "forward" ? i : 104 - i,
+    );
+    expect(page.records.map((record) => Number(record.position))).toEqual(positions);
+    expect(page.records.map((record) => record.value[0])).toEqual(positions);
+    expect(page.nextCursor).toBeNull();
+    // One metadata seek, then two payload queries, including the parameter-limit boundary.
+    expect(meter.queries).toHaveLength(3);
+    expect(meter.queries.every((query) => query.bindings.length <= 100)).toBe(true);
+    for (const query of meter.queries) {
+      const plan = await db
+        .prepare(`EXPLAIN QUERY PLAN ${query.sql}`)
+        .bind(...query.bindings)
+        .all<{ detail: string }>();
+      expect(plan.results.map((row) => row.detail).join("\n")).not.toMatch(
+        /\bSCAN\b|USE TEMP B-TREE/,
+      );
+    }
+    // D1 counts index probes as well as record/chunk rows (six per selected record).
+    expect(meter.queries.reduce((sum, query) => sum + query.rowsRead, 0)).toBeLessThanOrEqual(
+      6 * 105 + 1,
+    );
+  }
+  meter.queries.length = 0;
+  const bounded = await run(() =>
+    kernel.scan({
+      collection: "conversation-public-segments",
+      index: "conversation-position",
+      scope: durableKey("batched"),
+      after: null,
+      direction: "forward",
+      maxRecords: 105,
+      maxStoredBytes: 2,
+    }),
+  );
+  expect(bounded.records.map((record) => record.position)).toEqual(["0", "1"]);
+  expect(bounded.nextCursor).toBe("1");
+  expect(meter.queries).toHaveLength(2);
+  expect(meter.queries[1]!.bindings).toEqual([
+    "conversation-public-segments",
+    durableKey("batched", "0"),
+    durableKey("batched", "1"),
+  ]);
+});
+
+it("assembles batched scan chunks and rejects a missing chunk", async () => {
+  const kernel = createD1DurableKernel(db);
+  const key = durableKey("scan-chunks", "0");
+  const value = new Uint8Array(1024 * 1024 + 3).fill(7);
+  await run(() =>
+    kernel.apply({
+      ensures: [
+        {
+          name: "segment",
+          collection: "conversation-public-segments",
+          key,
+          alternateKeys: [durableKey("scan-chunks", "0", "0")],
+          fingerprint: "chunks",
+          value,
+        },
+      ],
+    }),
+  );
+  const request = {
+    collection: "conversation-public-segments" as const,
+    index: "conversation-position" as const,
+    scope: durableKey("scan-chunks"),
+    after: null,
+    direction: "forward" as const,
+    maxRecords: 2,
+    maxStoredBytes: value.byteLength,
+  };
+  expect((await run(() => kernel.scan(request))).records[0]?.value).toEqual(value);
+  await db
+    .prepare("DELETE FROM sp_d1_chunks WHERE collection=? AND key=? AND part=0")
+    .bind(request.collection, key)
+    .run();
+  await expect(run(() => kernel.scan(request))).rejects.toThrow("Missing journal chunk");
+});

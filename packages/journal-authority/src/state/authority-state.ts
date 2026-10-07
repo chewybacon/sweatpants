@@ -15,6 +15,14 @@ export function authorityStateFromSnapshot(snapshot: DurableAuthoritySnapshot): 
   const sessions = new Map<string, AuthoritySessionState>();
   for (const [sessionId, value] of snapshot.sessions) {
     if (sessions.has(sessionId)) invalid(`Duplicate session ${sessionId}`);
+    const headId = value.control.journalHeadId;
+    if (
+      (value.control.revision === 0 && headId !== null) ||
+      (value.control.revision > 0 &&
+        (typeof headId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(headId)))
+    )
+      invalid(`Session ${sessionId} has an invalid journal head identity`);
     const tasks = new Map<string, TaskState>();
     for (const task of value.execution.tasks) {
       if (tasks.has(task.taskId)) invalid(`Duplicate task ${task.taskId}`);

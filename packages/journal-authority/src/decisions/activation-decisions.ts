@@ -42,7 +42,7 @@ export function claimActivation(
     expiresAtMs: now + duration,
     leaseDurationMs: duration,
     claimedTaskRevision: session.control.revision,
-    claimedHeadDigest: draft.context.journalHeadDigest,
+    claimedHeadId: draft.context.journalHeadId,
     restoreNonce,
   };
   session.control.activationLease = lease;
@@ -52,7 +52,7 @@ export function claimActivation(
     epoch,
     expiresAtMs: lease.expiresAtMs,
     taskRevision: session.control.revision,
-    journalHeadDigest: draft.context.journalHeadDigest,
+    journalHeadId: draft.context.journalHeadId,
   };
 }
 

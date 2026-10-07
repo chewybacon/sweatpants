@@ -10,7 +10,7 @@ import {
 import { run } from "effection";
 
 import { type ProgramRoute, type ReplayOperationEntry } from "@sweatpants/durable-execution";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import {
   computeReplayChainSeed,
   createAgentCoreDurableProgramDriver,
@@ -162,7 +162,7 @@ async function replayPickCard(): Promise<{
         taskId,
         pullId: "live-effect-pull",
         resolutionOffset: "2",
-        outcomeDigest: canonicalSnapshot(outcome).sha,
+        outcomeDigest: canonicalDigest(outcome),
         status: "accepted" as const,
       };
       const frontier = yield* driver.step(attachment, {
@@ -186,14 +186,14 @@ async function replayPickCard(): Promise<{
     taskId,
     program,
     activationEpoch: 2,
-    journalHeadDigest: "a".repeat(64),
+    journalHeadId: "a".repeat(64),
     restoreNonce: randomUUID(),
   });
   const replayEntry = linkReplayEntry(replayChainSeed, replayChainSeed, {
     type: "operation",
     actionIndex: first.effectStep.actionIndex,
     descriptorKind: first.effectStep.descriptor.kind,
-    descriptorDigest: canonicalSnapshot(first.effectStep.descriptor).sha,
+    descriptorDigest: canonicalDigest(first.effectStep.descriptor),
     outcome: first.outcome,
     receipt: first.receipt,
   }) as ReplayOperationEntry;
@@ -228,14 +228,14 @@ async function replayPickCard(): Promise<{
     taskId,
     program,
     activationEpoch: 3,
-    journalHeadDigest: "a".repeat(64),
+    journalHeadId: "a".repeat(64),
     restoreNonce: randomUUID(),
   });
   const coldEntry = linkReplayEntry(coldSeed, coldSeed, {
     type: "operation",
     actionIndex: first.effectStep.actionIndex,
     descriptorKind: first.effectStep.descriptor.kind,
-    descriptorDigest: canonicalSnapshot(first.effectStep.descriptor).sha,
+    descriptorDigest: canonicalDigest(first.effectStep.descriptor),
     outcome: first.outcome,
     receipt: first.receipt,
   }) as ReplayOperationEntry;

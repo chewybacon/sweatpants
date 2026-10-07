@@ -118,7 +118,8 @@
     "dependencies": {
         "@noble/hashes": "^2.2.0",
         "@standard-schema/spec": "catalog:",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "uuid": "11.1.0"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

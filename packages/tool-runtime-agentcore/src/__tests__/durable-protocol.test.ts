@@ -1,7 +1,7 @@
 import type { AgentCoreRuntimeRelease } from "../placement/placement-types.ts";
 import { describe, expect, it } from "vitest";
 import { type ReplayOperationEntry } from "@sweatpants/durable-execution";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 
 import {
   agentCoreRuntimeReleaseParser,
@@ -97,7 +97,7 @@ describe("AgentCore durable placement and protocol", () => {
       activationEpoch: attach.executionEpoch,
       payload: {
         attach: { ...attach, affinity: { kind: "invocation" as const, key: attach.taskId } },
-        programInputDigest: canonicalSnapshot(attach.input).sha,
+        programInputDigest: canonicalDigest(attach.input),
         replayedThroughActionIndex: 0,
         replayChainSeed: "b".repeat(64),
       },
@@ -145,7 +145,7 @@ describe("AgentCore durable placement and protocol", () => {
       taskId: attach.taskId,
       program: attach.program,
       activationEpoch: attach.executionEpoch,
-      journalHeadDigest: "c".repeat(64),
+      journalHeadId: "c".repeat(64),
       restoreNonce: nonce,
     });
     expect(seed).toMatch(/^[0-9a-f]{64}$/);

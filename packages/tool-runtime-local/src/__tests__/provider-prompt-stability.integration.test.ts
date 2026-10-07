@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import type { ChatMessage } from "@sweatpants/chat-contract";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
@@ -124,7 +124,7 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
       }),
     ]);
     const sample: Parameters<typeof withModelSampleTestBoundary>[0] = function* (sampleRequest) {
-      contexts.push(canonicalSnapshot(sampleRequest.invocation.context).canonical);
+      contexts.push(canonicalJson(sampleRequest.invocation.context));
       return {
         message: {
           message: {

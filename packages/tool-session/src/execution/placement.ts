@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import type { AnyToolContract, ToolContract } from "@sweatpants/agent-sdk";
 import type { DurableTool, ProgramDriver, ProgramRoute } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
@@ -63,8 +63,7 @@ export function routeTools(options: ToolRoutes): ToolExecutionAdapter {
       const prepared: { tools: readonly ChatTool[]; execution: PreparedToolExecution }[] = [];
       const routeNames = new Set<string>();
       options.routes.forEach((route) => {
-        const name =
-          route.name ?? canonicalSnapshot(route.tools.map((tool) => tool.name).sort()).sha;
+        const name = route.name ?? canonicalDigest(route.tools.map((tool) => tool.name).sort());
         for (const tool of route.tools) {
           if (!known.has(tool)) throw new Error(`Route references unregistered tool: ${tool.name}`);
           if (!remaining.delete(tool))

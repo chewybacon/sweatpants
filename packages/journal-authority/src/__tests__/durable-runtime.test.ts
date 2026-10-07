@@ -28,7 +28,7 @@ import {
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
 import { createAuthorityScenarioDriver } from "../testing/testing.ts";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json, canonicalDigest } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -387,8 +387,8 @@ describe("crank-native durable runtime", () => {
           domain: "assistant-partial",
           key: `execution-1/${attach.taskId}/${reserved.pullId}`,
           guard: "identity",
-          expected: canonicalSnapshot(conflictingPartialFact).sha,
-          observed: canonicalSnapshot(partial.fact).sha,
+          expected: canonicalDigest(conflictingPartialFact),
+          observed: canonicalDigest(partial.fact),
         },
       });
       expect(yield* authority.acceptPullPreparation(request)).toEqual({ status: "duplicate" });
@@ -404,8 +404,8 @@ describe("crank-native durable runtime", () => {
           domain: "model-context",
           key: `execution-1/${attach.taskId}/${reserved.pullId}`,
           guard: "identity",
-          expected: canonicalSnapshot(conflictingPreparationFact).sha,
-          observed: canonicalSnapshot(fact).sha,
+          expected: canonicalDigest(conflictingPreparationFact),
+          observed: canonicalDigest(fact),
         },
       });
       expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual(
@@ -585,7 +585,7 @@ describe("crank-native durable runtime", () => {
           taskId: "turn-0/root",
           pullId: "pull",
           resolutionOffset: "4",
-          outcomeDigest: canonicalSnapshot({ status: "ok", value: "world" }).sha,
+          outcomeDigest: canonicalDigest({ status: "ok", value: "world" }),
           status: "accepted",
         },
         replayed: true,

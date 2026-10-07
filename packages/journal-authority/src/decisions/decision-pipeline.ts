@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest, canonicalJson } from "@sweatpants/foundation";
 
 import type {
   AuthorityCommand,
@@ -360,7 +360,7 @@ function validateEntryEvidence(
     case "TaskClosed":
       if (
         (task.lifecycle.status !== "closed" && task.lifecycle.status !== "cancelled") ||
-        canonicalSnapshot(task.lifecycle.outcome).sha !== canonicalSnapshot(payload.outcome).sha
+        canonicalJson(task.lifecycle.outcome) !== canonicalJson(payload.outcome)
       )
         throw new AuthorityCompositionError("Closure proposal differs from replacement state");
       return;
@@ -378,7 +378,7 @@ function validateEntryEvidence(
     case "ForkGroupResolved":
       if (
         task.forkGroup?.resolution === undefined ||
-        canonicalSnapshot(task.forkGroup.resolution).sha !== payload.terminalDigest
+        canonicalDigest(task.forkGroup.resolution) !== payload.terminalDigest
       )
         throw new AuthorityCompositionError("Fork-resolve proposal differs from replacement state");
       return;
@@ -405,7 +405,7 @@ function canonicalState(state: AuthorityState): string {
     sessionId,
     { control: session.control, tasks: [...session.execution.tasks] },
   ]);
-  return canonicalSnapshot({ nextNonce: state.nextNonce, sessions }).canonical;
+  return canonicalJson({ nextNonce: state.nextNonce, sessions });
 }
 
 function sessionIdOf(command: AuthorityCommand): string | undefined {

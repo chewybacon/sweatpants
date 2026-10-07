@@ -113,7 +113,7 @@ export interface PeerReadyTarget {
 export interface ForestReplayPlan {
   readonly sessionId: string;
   readonly forestRevision: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
   readonly rows: readonly PlannedForestRow[];
   readonly replay: readonly ReplayItem[];
   readonly peers: readonly PeerReadyTarget[];

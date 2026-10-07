@@ -1,6 +1,6 @@
 import { call, run } from "effection";
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest, canonicalJson } from "@sweatpants/foundation";
 import { createMemoryExecutionStore } from "../store/memory.ts";
 import type { StoredPrivateSegment } from "../store/store.ts";
 
@@ -35,8 +35,8 @@ function privateSegment(
     firstSequence: String(index + 1),
     lastSequence: String(index + 1),
     entries,
-    contentHash: canonicalSnapshot(entries).sha,
-    encodedBytes: new TextEncoder().encode(canonicalSnapshot(entries).canonical).byteLength,
+    contentHash: canonicalDigest(entries),
+    encodedBytes: new TextEncoder().encode(canonicalJson(entries)).byteLength,
     createdAt: index,
   };
 }

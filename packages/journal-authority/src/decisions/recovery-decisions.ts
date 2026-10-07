@@ -47,7 +47,7 @@ export function issueRestoreTicket(
   return {
     restoreTicket: signPrivateAuthorityToken("restore-ticket", claims, draft.context.keyring),
     taskRevision: claims.taskRevision,
-    journalHeadDigest: claims.journalHeadDigest,
+    journalHeadId: claims.journalHeadId,
   };
 }
 
@@ -69,7 +69,7 @@ export function prepareRestore(
       taskId: request.taskId,
       program: task.program.artifact,
       activationEpoch: request.activationEpoch,
-      journalHeadDigest: draft.context.journalHeadDigest,
+      journalHeadId: draft.context.journalHeadId,
       restoreNonce,
     }),
   );
@@ -125,7 +125,7 @@ export function prepareRestore(
     replayChainSeed,
     replayChainDigest: previousEntryDigest,
     taskRevision: claims.taskRevision,
-    journalHeadDigest: claims.journalHeadDigest,
+    journalHeadId: claims.journalHeadId,
   };
 }
 
@@ -154,7 +154,7 @@ export function bindFrontier(
     claims.ownerId !== request.ownerId ||
     claims.activationEpoch !== request.activationEpoch ||
     claims.taskRevision !== session.control.revision ||
-    claims.journalHeadDigest !== draft.context.journalHeadDigest ||
+    claims.journalHeadId !== draft.context.journalHeadId ||
     claims.restoreNonce !== session.control.restoreNonce
   )
     return { status: "restore_stale" };
@@ -195,7 +195,7 @@ export function consumeTicket(
     lease.epoch === request.activationEpoch &&
     draft.context.nowMs < lease.expiresAtMs &&
     claims.taskRevision === session.control.revision &&
-    claims.journalHeadDigest === draft.context.journalHeadDigest &&
+    claims.journalHeadId === draft.context.journalHeadId &&
     claims.restoreNonce === session.control.restoreNonce &&
     request.proof.frontierDigest === session.control.restoreFrontierDigest;
   if (!valid) return recordRestoreStale(draft, request.sessionId);
@@ -300,7 +300,7 @@ function restoreClaims(
     ...(request.replayDomain === undefined ? {} : { replayDomain: request.replayDomain }),
     ...(request.frontierDomain === undefined ? {} : { frontierDomain: request.frontierDomain }),
     taskRevision: session.control.revision,
-    journalHeadDigest: draft.context.journalHeadDigest,
+    journalHeadId: draft.context.journalHeadId,
     replayedThroughActionIndex,
     replayChainDigest,
     restoreNonce,

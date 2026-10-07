@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { action, spawn, type Operation, type Task } from "effection";
 import type { ToolSessionEvent } from "./contract.ts";
 import type { InteractionBinding } from "@sweatpants/agent-sdk";
@@ -72,12 +72,12 @@ export function createToolInvocationHost(
   }
 
   function startDigest(request: StartToolInvocation): string {
-    return canonicalSnapshot({
+    return canonicalDigest({
       invocationId: request.invocationId,
       tool: request.tool.name,
       input: request.input,
       model: request.model ?? null,
-    }).sha;
+    });
   }
 
   function settleCommand(command: CommandState, outcome: CommandOutcome): void {
@@ -103,11 +103,11 @@ export function createToolInvocationHost(
   }
 
   function turnDigest(request: TurnToolInvocation): string {
-    return canonicalSnapshot({
+    return canonicalDigest({
       invocationId: request.invocationId,
       cursor: request.cursor,
       resume: request.resume ?? null,
-    }).sha;
+    });
   }
 
   return {

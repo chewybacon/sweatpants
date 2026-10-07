@@ -9,7 +9,7 @@ import {
   type ProgramShutdownReason,
   type ResolutionReceipt,
 } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest } from "@sweatpants/foundation";
 
 import { createCapabilityKeyring } from "../../contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "../../contract/schema-registry.ts";
@@ -161,7 +161,7 @@ function receipt(
     taskId: request.taskId,
     pullId,
     resolutionOffset: "2",
-    outcomeDigest: canonicalSnapshot(outcome).sha,
+    outcomeDigest: canonicalDigest(outcome),
     status: "accepted",
   };
 }
@@ -1067,7 +1067,7 @@ describe("authority-backed Effection Workflow proof", () => {
         programVersion: manifest.version,
         programDigest: manifest.digest,
         input: "input",
-        inputDigest: canonicalSnapshot("input").sha,
+        inputDigest: canonicalDigest("input"),
       },
     };
     const requested: DurableSemanticRecord = {
@@ -1082,11 +1082,11 @@ describe("authority-backed Effection Workflow proof", () => {
         pullIndex: 0,
         pullId: "pull-0",
         descriptor: { kind: "record", key: "fold", retrySafety: { mode: "repeatable" } },
-        descriptorDigest: canonicalSnapshot({
+        descriptorDigest: canonicalDigest({
           kind: "record",
           key: "fold",
           retrySafety: { mode: "repeatable" },
-        }).sha,
+        }),
       },
     };
     expect(() => foldRecordExecutionIndex([opened, requested])).toThrowError(

@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import {
   HistoryStoreReadObservationContext,
@@ -96,10 +96,10 @@ export function* installStorageReadMetrics(): Operation<StorageReadMetricsRecord
       const stream = yield* next(task);
       return (async function* () {
         for await (const entries of stream) {
-          const encoded = canonicalSnapshot(entries);
+          const encoded = canonicalJson(entries);
           peakMaterializedReplayBytes = Math.max(
             peakMaterializedReplayBytes,
-            new TextEncoder().encode(encoded.canonical).byteLength,
+            new TextEncoder().encode(encoded).byteLength,
           );
           yield entries;
         }

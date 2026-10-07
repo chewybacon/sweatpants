@@ -7,7 +7,7 @@ import {
   type AttachProgramRequest,
   type PinnedProgram,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalJson, type Json, canonicalDigest } from "@sweatpants/foundation";
 
 import type { ProgramDriverJournal } from "../program-driver-journal.ts";
 import {
@@ -194,7 +194,7 @@ function createChatToolCatalog(request: ChatAdmissionRequest): ChatToolCatalog {
   }
   return {
     version: 1,
-    digest: canonicalSnapshot({ version: 1, entries }).sha,
+    digest: canonicalDigest({ version: 1, entries }),
     entries,
   };
 }

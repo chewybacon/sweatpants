@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import type { Operation } from "effection";
 import type { DurableEffectDisposition, EffectDefinition } from "./contract.ts";
@@ -55,7 +55,7 @@ export function assertEffectDefinition(definition: EffectDefinition<Json, Json, 
   ) {
     invalid(`${definition.name}.retrySafety`);
   }
-  canonicalSnapshot(definition);
+  assertJson(definition);
 }
 
 function assertEffectSchemaDescriptor(

@@ -1,4 +1,4 @@
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalJson } from "@sweatpants/foundation";
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
@@ -231,9 +231,7 @@ describe("accepted model-context preparation", () => {
       expect((yield* service.sample(request, attempt)).status).toBe("ok");
       expect(objectWrites).toBe(1);
       expect(contexts).toHaveLength(2);
-      expect(canonicalSnapshot(contexts[1]).canonical).toBe(
-        canonicalSnapshot(contexts[0]).canonical,
-      );
+      expect(canonicalJson(contexts[1])).toBe(canonicalJson(contexts[0]));
     });
   });
 

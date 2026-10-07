@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalSnapshot, canonicalJson, sha256 } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import type {
@@ -41,7 +41,8 @@ describe("accepted public root-position index", () => {
       const created = yield* store.compareAndSwapHead("conversation", null, null, initial);
       if (created.status !== "committed") throw new Error("failed to create head");
       const roots = [root("root-0", "0"), root("root-1", "1")];
-      const segmentSnapshot = canonicalSnapshot(roots);
+      const segmentSnapshot = canonicalJson(roots);
+      const segmentSnapshotDigest = sha256(segmentSnapshot);
       const segment: StoredPublicArchiveSegment = {
         segmentId: "segment-1",
         conversationId: "conversation",
@@ -49,12 +50,13 @@ describe("accepted public root-position index", () => {
         minPosition: "0",
         maxPosition: "1",
         roots,
-        contentHash: segmentSnapshot.sha,
-        encodedBytes: new TextEncoder().encode(segmentSnapshot.canonical).byteLength,
+        contentHash: segmentSnapshotDigest,
+        encodedBytes: new TextEncoder().encode(segmentSnapshot).byteLength,
         createdAt: 1,
       };
       const index: ArchivedPublicRootIndex[] = roots.map((value, slot) => {
-        const snapshot = canonicalSnapshot(value);
+        const snapshot = canonicalJson(value);
+        const snapshotDigest = sha256(snapshot);
         return {
           conversationId: "conversation",
           position: value.position,
@@ -62,18 +64,19 @@ describe("accepted public root-position index", () => {
           segmentId: segment.segmentId,
           segmentRootIndex: slot,
           archiveOrdinal: String(slot),
-          contentHash: snapshot.sha,
-          encodedBytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+          contentHash: snapshotDigest,
+          encodedBytes: new TextEncoder().encode(snapshot).byteLength,
         };
       });
       const payloadValue = checkpointPayloadFromHotRoots([]);
       const payload = canonicalSnapshot(payloadValue);
+      const payloadDigest = sha256(payload.canonical);
       const checkpoint = {
         checkpointId: "checkpoint-1",
         conversationId: "conversation",
         causeKey: "cause-1",
         cause: { kind: "test" } as const,
-        contentHash: payload.sha,
+        contentHash: payloadDigest,
         lineageId: "lineage",
         archiveHead: { segmentId: segment.segmentId },
         archiveFrontierOrdinal: "2",

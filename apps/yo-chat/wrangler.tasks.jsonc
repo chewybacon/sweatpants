@@ -3,8 +3,16 @@
     "name": "yo-chat-tasks",
     "compatibility_date": "2026-10-05",
     "d1_databases": [
-        { "binding": "JOURNAL", "database_name": "yo-chat-worker-journal" },
-        { "binding": "THREAD_METADATA", "database_name": "yo-chat-worker-metadata" },
+        {
+            "binding": "JOURNAL",
+            "database_name": "yo-chat-worker-journal",
+            "database_id": "267d8420-c4b3-4b15-94ee-412bd42b5326",
+        },
+        {
+            "binding": "THREAD_METADATA",
+            "database_name": "yo-chat-worker-metadata",
+            "database_id": "16a43a25-6887-4dad-b21a-686abef4a947",
+        },
     ],
     "durable_objects": {
         "bindings": [

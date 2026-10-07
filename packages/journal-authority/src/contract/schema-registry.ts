@@ -1,6 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json, cloneJson } from "@sweatpants/foundation";
 import {
   safeSchemaIssues,
   validateStandardSchema,
@@ -138,7 +138,7 @@ export function parseRegisteredSchema(
     return { status: "invalid", issues: safeSchemaIssues(result.issues) };
   }
   try {
-    return { status: "ok", value: canonicalSnapshot(assertJson(result.value)).value };
+    return { status: "ok", value: cloneJson(assertJson(result.value)) };
   } catch {
     return {
       status: "invalid",

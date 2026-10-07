@@ -23,7 +23,7 @@ import {
   type InMemoryJournalAuthorityOptions,
 } from "../testing/testing.ts";
 import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest, canonicalJson } from "@sweatpants/foundation";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -69,7 +69,7 @@ function manifest(
   return {
     programId: id,
     version: "1",
-    digest: canonicalSnapshot({ id }).sha,
+    digest: canonicalDigest({ id }),
     inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
     outputSchema: NULL_RESULT_SCHEMA_DESCRIPTOR,
     elicits: {},
@@ -262,7 +262,7 @@ describe("semantic emission policy", () => {
   it("counts canonical UTF-8 payload bytes and preserves task policy across restore", async () => {
     await run(function* () {
       const payload = "é";
-      const exactBytes = new TextEncoder().encode(canonicalSnapshot(payload).canonical).byteLength;
+      const exactBytes = new TextEncoder().encode(canonicalJson(payload)).byteLength;
       const selected = authority({
         emissionPolicy: {
           maxEmissionsPerTask: 2,

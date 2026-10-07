@@ -1,6 +1,12 @@
 import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
-import { canonicalSnapshot, sha256, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  canonicalSnapshot,
+  sha256,
+  stableTupleHash,
+  type Json,
+  canonicalJson,
+} from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
@@ -75,7 +81,7 @@ function validTaskOpenedRecord(sessionId: string, offset: string): Json {
       programVersion: "1.0.0",
       programDigest: "a".repeat(64),
       input: null,
-      inputDigest: sha256(canonicalSnapshot(null).canonical),
+      inputDigest: sha256(canonicalJson(null)),
     },
   };
 }
@@ -93,7 +99,7 @@ function makeDrivers(store: ExecutionStore): Drivers {
 
 function* seedStoredJournal(store: ExecutionStore, entries: readonly Json[]): Operation<void> {
   const body = { version: 1, nextNonce: 0, sessions: [], records: [] };
-  const canonicalBody = canonicalSnapshot(body).canonical;
+  const canonicalBody = canonicalJson(body);
   const objectPointer = yield* store.putObject({
     objectId: "snap-fixture",
     lifetimeScope: "execution",

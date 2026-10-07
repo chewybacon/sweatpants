@@ -10,7 +10,6 @@ import {
 import type { ModelSampleDisposition } from "@sweatpants/model-sampling";
 import {
   canonicalJson,
-  canonicalSnapshot,
   failure,
   parser,
   stableTupleHash,
@@ -18,6 +17,8 @@ import {
   type Json,
   type ParseResult,
   type Parser,
+  canonicalDigest,
+  cloneJson,
 } from "@sweatpants/foundation";
 
 import {
@@ -83,7 +84,7 @@ return 'ok'
 `;
 
 function keyFor(prefix: string, identity: RemoteSampleIdentity): string {
-  return `${prefix}${canonicalSnapshot(identity as unknown as Json).sha}`;
+  return `${prefix}${canonicalDigest(identity as unknown as Json)}`;
 }
 const remoteSampleIdentitySchema = z
   .object({
@@ -139,14 +140,14 @@ function verifyRemoteSampleRecord(record: RemoteSampleRecord): ParseResult<Remot
   }
   if (
     record.disposition !== undefined &&
-    record.dispositionDigest !== canonicalSnapshot(record.disposition).sha
+    record.dispositionDigest !== canonicalDigest(record.disposition)
   ) {
     return invalidRemoteSampleRecord("disposition digest differs");
   }
   if ((record.acknowledgedOutcomeDigest === undefined) !== (record.acknowledgedAt === undefined)) {
     return invalidRemoteSampleRecord("acknowledgement fields differ");
   }
-  return success(canonicalSnapshot(record).value);
+  return success(cloneJson(record));
 }
 
 function invalidRemoteSampleRecord(message: string): ParseResult<never> {
@@ -262,7 +263,7 @@ export function createRedisPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalSnapshot(request.request).sha !== request.requestDigest) {
+      if (canonicalDigest(request.request) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];
@@ -280,7 +281,7 @@ export function createRedisPlacementModelSampler(options: {
       }
       const key = keyFor(prefix, request.identity);
       const existing = yield* readRecord(request.identity);
-      const classificationsDigest = canonicalSnapshot(classifications as Json).sha;
+      const classificationsDigest = canonicalDigest(classifications as Json);
       if (existing) {
         if (
           existing.releaseId !== request.releaseId ||
@@ -388,7 +389,7 @@ export function createRedisPlacementModelSampler(options: {
         producerEpoch: cancelFence.producerEpoch,
         terminalLsn: terminalPage.lsn,
         disposition,
-        dispositionDigest: canonicalSnapshot(disposition).sha,
+        dispositionDigest: canonicalDigest(disposition),
       };
       yield* cas(
         requested.identity,
@@ -493,7 +494,7 @@ export function createRedisPlacementModelSampler(options: {
               : "failed",
         terminalLsn,
         disposition,
-        dispositionDigest: canonicalSnapshot(disposition).sha,
+        dispositionDigest: canonicalDigest(disposition),
       };
       yield* cas(identity, fence, next);
       yield* writer.complete();

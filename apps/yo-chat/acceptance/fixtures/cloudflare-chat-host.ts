@@ -1,7 +1,10 @@
+import { createServer } from "node:net";
+import { promisify } from "node:util";
+import { startWorkerCpuProfile } from "./worker-cpu-profile";
 import { builtinModules } from "node:module";
 import { build } from "esbuild";
 import { Miniflare, type MiniflareOptions } from "miniflare";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -32,7 +35,25 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
       })
     ).outputFiles[0]!.text;
   const host = await bundle("./cloudflare-chat-worker.ts");
+  const profileDirectory = process.env.YO_CHAT_CPU_PROFILE_DIRECTORY;
+  // Reserve an available inspector port; simultaneous benchmark runs stay isolated.
+  let inspectorPort: number | undefined;
+  if (profileDirectory) {
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Missing inspector port");
+    }
+    inspectorPort = address.port;
+    await promisify(server.close.bind(server))();
+    await writeFile(join(profileDirectory, "worker.js"), host);
+  }
   const options: MiniflareOptions = {
+    inspectorPort,
     resourcePersistencePath: directory,
     workers: [
       {
@@ -81,9 +102,16 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
     ],
   };
   let worker = new Miniflare(options);
+  let stopProfile: (() => Promise<void>) | undefined;
   try {
     await worker.ready;
     await initializeD1Storage((await worker.getD1Database("JOURNAL")) as unknown as D1Database);
+    if (profileDirectory) {
+      stopProfile = await startWorkerCpuProfile(
+        worker,
+        join(profileDirectory, "initial.cpuprofile"),
+      );
+    }
   } catch (error) {
     await worker.dispose();
     await rm(directory, { recursive: true, force: true });
@@ -99,13 +127,31 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
       })) as unknown as Response;
     },
     async replace() {
-      await worker.dispose();
+      try {
+        await stopProfile?.();
+      } finally {
+        stopProfile = undefined;
+        await worker.dispose();
+      }
       worker = new Miniflare(options);
       await worker.ready;
+      if (profileDirectory) {
+        stopProfile = await startWorkerCpuProfile(
+          worker,
+          join(profileDirectory, "restarted.cpuprofile"),
+        );
+      }
     },
     async close() {
-      await worker.dispose();
-      await rm(directory, { recursive: true, force: true });
+      try {
+        await stopProfile?.();
+      } finally {
+        try {
+          await worker.dispose();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
     },
   };
 }

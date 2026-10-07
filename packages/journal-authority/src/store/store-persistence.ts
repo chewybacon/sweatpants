@@ -6,7 +6,6 @@ import {
 } from "@sweatpants/durable-storage-kernel";
 import {
   canonicalJson,
-  canonicalSnapshot,
   parseJsonText,
   sha256,
   sha256Bytes,
@@ -151,14 +150,14 @@ export function encodePrivateSegmentEnvelope(value: StoredPrivateSegment): Uint8
 
 export function encodePrivateSegment(value: StoredPrivateSegment): Uint8Array {
   validatePrivateEntryBounds(value);
-  const encoded = canonicalSnapshot(value.entries);
-  if (encoded.sha !== value.contentHash) {
+  const canonical = canonicalJson(value.entries);
+  if (sha256(canonical) !== value.contentHash) {
     return invalid(`Private segment ${value.segmentId} content hash is invalid`);
   }
-  if (privateEnvelopeEncoder.encode(encoded.canonical).byteLength !== value.encodedBytes) {
+  if (privateEnvelopeEncoder.encode(canonical).byteLength !== value.encodedBytes) {
     return invalid(`Private segment ${value.segmentId} encoded byte count is invalid`);
   }
-  return encodePrivateSegmentEnvelopeFromCanonical(value, encoded.canonical);
+  return encodePrivateSegmentEnvelopeFromCanonical(value, canonical);
 }
 
 export function decodePrivateSegment(value: Uint8Array): StoredPrivateSegment {
@@ -267,10 +266,10 @@ export function encodeExecutionObject(value: StoredExecutionObject): Uint8Array 
     value.body instanceof Uint8Array
       ? { hash: sha256Bytes(value.body), bytes: value.body.byteLength }
       : (() => {
-          const snapshot = canonicalSnapshot(value.body);
+          const canonical = canonicalJson(value.body);
           return {
-            hash: snapshot.sha,
-            bytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+            hash: sha256(canonical),
+            bytes: new TextEncoder().encode(canonical).byteLength,
           };
         })();
   if (content.hash !== value.contentHash || content.bytes !== value.byteLength) {
@@ -310,10 +309,10 @@ export function decodeExecutionObject(value: Uint8Array): StoredExecutionObject 
     result.body instanceof Uint8Array
       ? { hash: sha256Bytes(result.body), bytes: result.body.byteLength }
       : (() => {
-          const snapshot = canonicalSnapshot(result.body);
+          const canonical = canonicalJson(result.body);
           return {
-            hash: snapshot.sha,
-            bytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+            hash: sha256(canonical),
+            bytes: new TextEncoder().encode(canonical).byteLength,
           };
         })();
   if (content.hash !== result.contentHash || content.bytes !== result.byteLength) {

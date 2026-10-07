@@ -1,6 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import { sortedResourceValues } from "@sweatpants/agent-sdk";
-import { canonicalJson, canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
+import { canonicalJson, sha256, type Json, cloneJson } from "@sweatpants/foundation";
 import { DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import {
   type AuthoredChatContextPolicy,
@@ -215,14 +215,14 @@ function baseView(
   messages: AuthoredChatMessage[],
   truncation: AuthoredChatContextView["truncation"],
 ): AuthoredChatContextView {
-  return canonicalSnapshot({
+  return cloneJson({
     policyDigest: policy.digest,
     frontier,
     referenceTaskIds,
     referencedTasks,
     messages,
     truncation,
-  }).value;
+  });
 }
 function verifyChatContextPolicy(policy: AuthoredChatContextPolicy): void {
   const rebuilt = latestContextWindow({

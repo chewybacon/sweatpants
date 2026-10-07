@@ -6,7 +6,7 @@ import {
   type DurableRaceDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
+import { stableTupleHash, canonicalDigest, canonicalJson } from "@sweatpants/foundation";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
 import type { DeepMutable, DraftTask } from "./decision-state.ts";
@@ -94,7 +94,7 @@ export function openForkGroup(
       expected.id !== member.child.id ||
       expected.version !== member.child.version ||
       expected.digest !== member.child.digest ||
-      canonicalSnapshot(expected.input).sha !== canonicalSnapshot(member.child.input).sha
+      canonicalJson(expected.input) !== canonicalJson(member.child.input)
     ) {
       throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
     }
@@ -236,7 +236,7 @@ export function breachForkGroup(
       pullId: group.pullId,
       groupId: group.groupId,
       terminal: resolution,
-      terminalDigest: canonicalSnapshot(resolution).sha,
+      terminalDigest: canonicalDigest(resolution),
     });
     kernel.settlePull(
       request.sessionId,
@@ -299,7 +299,7 @@ export function forceOrphanForkGroup(
     pullId: group.pullId,
     groupId: group.groupId,
     terminal: resolution,
-    terminalDigest: canonicalSnapshot(resolution).sha,
+    terminalDigest: canonicalDigest(resolution),
   });
   kernel.settlePull(
     request.sessionId,
@@ -392,7 +392,7 @@ export function bindDeliveryMandate(
   const planned = planForestReplay(
     draft.state,
     ready.address.sessionId,
-    draft.context.journalHeadDigest,
+    draft.context.journalHeadId,
     draft.context.nowMs,
   );
   if (!planned.peers.some((candidate) => candidate.address.taskId === task.taskId)) {

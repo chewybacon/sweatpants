@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { advanceJournalHeadIdentities } from "./journal-head-identity.ts";
 import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
 import { verifyResolutionCapability } from "../contract/capabilities.ts";
 import type { Operation } from "effection";
@@ -52,9 +52,7 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           nowMs: options.now?.() ?? Date.now(),
           journalIdentity: identity,
           appendCursor: { sessionId, nextOffset: nextOffset(selectedHistory, sessionId) },
-          journalHeadDigest: canonicalSnapshot(
-            selectedHistory.filter((record) => record.sessionId === sessionId),
-          ).sha,
+          journalHeadId: selectedState.sessions.get(sessionId)?.control.journalHeadId ?? "",
           keyring: options.keyring,
           schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
           maxOutcomeBytes: options.maxOutcomeBytes,
@@ -68,7 +66,7 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           command,
         }) as KernelTransition<C>;
         if (state !== selectedState || history !== selectedHistory) continue;
-        state = transition.state;
+        state = advanceJournalHeadIdentities(transition.state, transition.entries);
         history = [...selectedHistory, ...structuredClone(transition.entries)];
         signalCommittedCancellation(command, transition.state);
         return transition.result;
@@ -81,7 +79,7 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           nowMs: options.now?.() ?? Date.now(),
           journalIdentity: identity,
           appendCursor: { sessionId: "", nextOffset: 0 },
-          journalHeadDigest: "",
+          journalHeadId: "",
           keyring: options.keyring,
           schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
           maxOutcomeBytes: options.maxOutcomeBytes,

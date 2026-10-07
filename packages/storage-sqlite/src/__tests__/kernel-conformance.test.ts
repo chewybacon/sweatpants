@@ -1,7 +1,7 @@
 import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
 import { encodeCommandReceipt, encodeConversationHead } from "@sweatpants/history-store";
 import { encodeExecutionControl, encodeExecutionObject } from "@sweatpants/journal-authority";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -117,14 +117,15 @@ describe("SQLite durable kernel conformance", () => {
           },
         });
         const body = { payload: true };
-        const snapshot = canonicalSnapshot(body);
+        const snapshot = canonicalJson(body);
+        const snapshotDigest = sha256(snapshot);
         const object = {
           objectId: "object",
           lifetimeScope: "execution" as const,
           scopeOwnerId: "execution",
           objectKind: "test",
-          contentHash: snapshot.sha,
-          byteLength: new TextEncoder().encode(snapshot.canonical).byteLength,
+          contentHash: snapshotDigest,
+          byteLength: new TextEncoder().encode(snapshot).byteLength,
           body,
           createdAt: 1,
         };

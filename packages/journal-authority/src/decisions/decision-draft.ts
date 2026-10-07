@@ -47,6 +47,7 @@ export class DecisionDraft {
       session = {
         execution: { tasks: new Map() },
         control: {
+          journalHeadId: null,
           runnable: false,
           revision: 0,
           nextRootOrdinal: 0,

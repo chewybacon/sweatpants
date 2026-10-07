@@ -1,6 +1,6 @@
 import { CrankError, assertInlineSize, type ProgramStep } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
+import { stableTupleHash, canonicalDigest } from "@sweatpants/foundation";
 import type { PullState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import {
@@ -259,7 +259,7 @@ export function settlePullWithOutcome(
   ownerEpoch: number,
   outcome: OperationOutcome,
 ): void {
-  const digest = canonicalSnapshot(outcome).sha;
+  const digest = canonicalDigest(outcome);
   if (pull.resolution.status === "settled") {
     if (pull.resolution.settlement.outcomeDigest !== digest)
       throw new CrankError("nondeterminism_detected");
@@ -336,7 +336,7 @@ function settleForkGroupMember(
       pullId: pull.pullId,
       groupId: group.groupId,
       terminal,
-      terminalDigest: canonicalSnapshot(terminal).sha,
+      terminalDigest: canonicalDigest(terminal),
     });
     settlePullWithOutcome(
       draft,
@@ -380,7 +380,7 @@ function settlePull(
   pull: DraftPull,
   outcome: OperationOutcome,
 ): void {
-  const digest = canonicalSnapshot(outcome).sha;
+  const digest = canonicalDigest(outcome);
   const offset = draft.append(sessionId, undefined, {
     type: "PullResolved",
     taskId: task.taskId,

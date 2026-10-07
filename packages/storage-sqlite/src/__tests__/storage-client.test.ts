@@ -13,7 +13,7 @@ import {
   type ThreadSummary,
   type TranscriptPage,
 } from "../client.ts";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { terminalToRow } from "@sweatpants/history-store/sql-codec";
 import { spConversationTerminalSegments, sqliteSchema } from "../schema.ts";
 
@@ -80,7 +80,7 @@ function seedAuthorityData(path: string): void {
           firstPosition: index === 0 ? "0" : "3",
           lastPosition: index === 0 ? "2" : "3",
           entries,
-          contentHash: canonicalSnapshot(entries).sha,
+          contentHash: canonicalDigest(entries),
           createdAt: 1,
         }),
       )

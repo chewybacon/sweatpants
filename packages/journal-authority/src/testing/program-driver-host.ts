@@ -17,7 +17,7 @@ import {
   DurableEffects,
   DurableEffectRouting,
 } from "@sweatpants/durable-effects/runtime";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import { createPullResolverRegistry, type PullResolver } from "../pull-kinds/registry.ts";
@@ -160,7 +160,7 @@ export function driveTestProgramTree(
                     taskId: authorization.taskId,
                     pullId: authorization.pullId,
                     attemptId: authorization.attemptId,
-                    outcomeDigest: canonicalSnapshot(outcome).sha,
+                    outcomeDigest: canonicalDigest(outcome),
                   });
                 },
               },

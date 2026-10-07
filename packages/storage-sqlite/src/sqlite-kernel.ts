@@ -43,7 +43,7 @@ import {
   type StoredScanPage,
   type TransactionRunner,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest } from "@sweatpants/foundation";
 import {
   conversationKeys,
   decodeArchivedPublicRootIndex,
@@ -325,7 +325,7 @@ async function readImmutableIn(
       return immutableRecord(
         collection,
         conversationKeys.publicRootIndex(entry.conversationId, entry.position),
-        canonicalSnapshot(entry).sha,
+        canonicalDigest(entry),
         encodeArchivedPublicRootIndex(entry),
       );
     }
@@ -855,7 +855,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
             return immutableRecord(
               request.collection,
               conversationKeys.publicRootIndex(entry.conversationId, entry.position),
-              canonicalSnapshot(entry).sha,
+              canonicalDigest(entry),
               encodeArchivedPublicRootIndex(entry),
             );
           })()

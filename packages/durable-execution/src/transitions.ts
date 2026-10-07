@@ -1,4 +1,4 @@
-import { canonicalSnapshot, sortStrings } from "@sweatpants/foundation";
+import { sortStrings, cloneJson } from "@sweatpants/foundation";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
 import type { OperationOutcome } from "@sweatpants/durable-effects/contract";
@@ -104,7 +104,7 @@ export function completeChild(
     taskId: parent.taskId,
     pullId: child.parentPullId,
     childTaskId: child.taskId,
-    outcome: canonicalSnapshot(command.outcome).value,
+    outcome: cloneJson(command.outcome),
   };
 
   return {
@@ -154,7 +154,7 @@ export function completeRoot(
     turnId: current.turnId,
     rootTaskId: current.rootTaskId,
     rootProgram: current.rootProgram,
-    outcome: canonicalSnapshot(command.outcome).value,
+    outcome: cloneJson(command.outcome),
     disposition: command.disposition,
     finalRevision: command.finalRevision,
     completedAt: command.completedAt,
@@ -173,7 +173,7 @@ export function completeRoot(
 
 /** Strict result-oriented parser for a persisted Terminal Capsule. */
 export const terminalCapsuleParser = parser(terminalCapsuleSchema).map(
-  (value): TerminalCapsule => canonicalSnapshot(value).value,
+  (value): TerminalCapsule => cloneJson(value),
 );
 
 function task(snapshot: ExecutionTreeSnapshot, taskId: string): TaskControlState {

@@ -2,8 +2,7 @@ import { run, scoped } from "effection";
 import { describe, expect, it } from "vitest";
 import type { AttachProgramRequest, DurableProgramManifest } from "@sweatpants/durable-execution";
 import { stableProgramAttachmentId } from "@sweatpants/durable-execution";
-import type { Json } from "@sweatpants/foundation";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { cloneJson, type Json } from "@sweatpants/foundation";
 import { createAuthorityScenarioDriver, withProgramDriverTestScope } from "../testing/testing.ts";
 import { pullOperation, type Workflow } from "../workflow/runtime.ts";
 import { driveActivation } from "../workflow/host-drive.ts";
@@ -294,7 +293,7 @@ describe("workflow runtime ephemeral boundaries", () => {
           .find((e) => e.payload.type === "PullRequested");
         expect(pull?.payload.type).toBe("PullRequested");
         if (pull?.payload.type === "PullRequested") {
-          expect(canonicalSnapshot(pull.payload.descriptor).value).toMatchObject({
+          expect(cloneJson(pull.payload.descriptor)).toMatchObject({
             kind: "ephemeral",
             driver: "tool-session",
             tool: "weather",

@@ -74,6 +74,13 @@ constantly; the record sequence is where progress lives.
 artifact every other word serves. Offsets order it; snapshots serialize it;
 replay walks it; boundaries protect it (`AuthorityJournalContract`).
 
+**journal head identity** — The persisted UUIDv7 (`journalHeadId`) identifying
+the current semantic journal tip of a session. An append publishes a new identity
+atomically with its records; control-only updates, retries of accepted work, and
+cold restoration preserve it. Restore tickets bind to this identity to reject
+stale work. It is not a content checksum or an ordering mechanism: segment hashes,
+replay-frontier checks, signatures, and journal offsets keep those responsibilities.
+
 **replay** — Reconstructing execution by walking journal records instead of
 re-running code: a fresh attachment starts each activation and is fed settled
 outcomes until it reaches the live frontier. Strict replay is a manifest
@@ -113,8 +120,16 @@ do to durable state is one of these typed commands — no side doors.
 **snapshot** — Kernel state as verifiable data. Whole-state:
 `DurableAuthoritySnapshot`, parsed and verified (chain, indexes, semantic
 consistency) before a restored process trusts it. Encoding sense:
-`canonicalSnapshot` — hash-stable canonical JSON underlying digests.
+`canonicalSnapshot` — canonical JSON plus a detached value. `cloneJson` only
+validates and copies; `canonicalJson` only validates and encodes;
+`canonicalDigest` explicitly fingerprints canonical content.
 State you can check instead of state you must believe.
+
+Stored authority snapshots and conversation checkpoints use UUIDv7 object IDs,
+separate from their content hashes. Checkpoint `causeKey` identifies the logical
+operation for retry deduplication; a duplicate cause reuses the accepted checkpoint
+and its ID. IDs are minted at authority boundaries and persisted, never regenerated
+by replay to guess an existing object.
 
 **boundary** — Dependency rules with a test attached: package-boundary tests
 (forbid journal-authority depending on hosts/tool-runtimes/transports),

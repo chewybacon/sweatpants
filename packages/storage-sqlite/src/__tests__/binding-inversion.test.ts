@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import Database from "better-sqlite3";
 import { run, type Operation } from "effection";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createSqliteReaderBinding,
@@ -75,14 +75,15 @@ async function attemptUse(
 
 function putObjectBody(kind: string) {
   const body = { ok: true, kind };
-  const snapshot = canonicalSnapshot(body);
+  const snapshot = canonicalJson(body);
+  const snapshotDigest = sha256(snapshot);
   return {
     objectId: `object-${kind}`,
     lifetimeScope: "execution" as const,
     scopeOwnerId: "execution-test",
     objectKind: "test",
-    contentHash: snapshot.sha,
-    byteLength: new TextEncoder().encode(snapshot.canonical).byteLength,
+    contentHash: snapshotDigest,
+    byteLength: new TextEncoder().encode(snapshot).byteLength,
     body,
     createdAt: 1,
   };

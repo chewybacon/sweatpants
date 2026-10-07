@@ -1,12 +1,12 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import {
-  canonicalSnapshot,
   failure,
   parser,
   success,
   type Json,
   type JsonObject,
   type Parser,
+  cloneJson,
 } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
@@ -303,7 +303,7 @@ function normalizePart(part: StructuralPart): AuthoredChatContentPart {
     invalid("provenance must be sorted and duplicate-free");
   }
   return snapshot({
-    value: canonicalSnapshot(part.value).value,
+    value: cloneJson(part.value),
     provenance: { classifications, sourceDigests },
   });
 }
@@ -313,9 +313,9 @@ function normalizeModelSampleRequest(
   return snapshot({
     messages: input.messages.map(normalizeMessage),
     systemPrompt: normalizePart(input.systemPrompt),
-    tools: input.tools.map((tool) => canonicalSnapshot(tool).value),
+    tools: input.tools.map((tool) => cloneJson(tool)),
     classifications: input.classifications,
-    sampling: canonicalSnapshot(input.sampling).value,
+    sampling: cloneJson(input.sampling),
   });
 }
 function normalizeModelSampleResult(output: StructuralModelResult): AuthoredChatModelSampleResult {
@@ -325,7 +325,7 @@ function normalizeModelSampleResult(output: StructuralModelResult): AuthoredChat
       invalid("duplicate model tool call ID");
     }
     callIds.add(call.id);
-    return { id: call.id, target: call.target, input: canonicalSnapshot(call.input).value };
+    return { id: call.id, target: call.target, input: cloneJson(call.input) };
   });
   return snapshot({
     message: normalizeMessage(output.message),
@@ -384,7 +384,7 @@ function uniqueSorted<T extends string>(values: readonly T[]): T[] {
   return sortedResourceValues(new Set(values), (a, b) => a.localeCompare(b));
 }
 function snapshot<T>(value: T): T {
-  return deepFreeze(canonicalSnapshot(value as unknown as Json).value as unknown as T);
+  return deepFreeze(cloneJson(value as unknown as Json) as unknown as T);
 }
 function invalid(message: string): never {
   throw new CrankError("invalid_chat_program", message);

@@ -2,7 +2,7 @@ import { privateToRow } from "@sweatpants/journal-authority/sql-codec";
 import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { run } from "effection";
-import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
+import { sha256, canonicalJson } from "@sweatpants/foundation";
 import { openBetterSqliteStorage } from "../../better-sqlite3.ts";
 
 const databasePath = resolve(process.argv[2] ?? "");
@@ -15,7 +15,7 @@ const handle = await run(() =>
 );
 try {
   const entries = [{ effect: "cycle" }];
-  const encoded = canonicalSnapshot(entries);
+  const encoded = canonicalJson(entries);
   const segment = {
     segmentId: "cycle-journal",
     executionId: "cycle-execution",
@@ -24,8 +24,8 @@ try {
     firstSequence: "0",
     lastSequence: "0",
     entries,
-    contentHash: sha256(encoded.canonical),
-    encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+    contentHash: sha256(encoded),
+    encodedBytes: new TextEncoder().encode(encoded).byteLength,
     createdAt: 1,
   } as const;
   const pointer = await run(() => handle.storage.executionStore.appendJournalSegment(segment));

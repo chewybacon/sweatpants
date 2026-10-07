@@ -8,7 +8,7 @@
 import { run } from "effection";
 import { randomUUID } from "node:crypto";
 import type { QueryConfig } from "pg";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { encodePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
 import { describe, expect, it } from "vitest";
 import {
@@ -239,13 +239,14 @@ it.each(["conflicting", "identical"] as const)(
     }) as typeof handle.pool.connect;
     function segment(id: string, sequence: string, body: string, name: string) {
       const entries = [body];
-      const snapshot = canonicalSnapshot(entries);
+      const snapshot = canonicalJson(entries);
+      const snapshotDigest = sha256(snapshot);
       return {
         name,
         collection: DurableCollections.executionJournalSegments,
         key: durableKey(id),
         alternateKeys: [durableKey(executionId, "task", sequence, sequence)],
-        fingerprint: snapshot.sha,
+        fingerprint: snapshotDigest,
         value: encodePrivateSegment({
           segmentId: id,
           executionId,
@@ -254,8 +255,8 @@ it.each(["conflicting", "identical"] as const)(
           firstSequence: sequence,
           lastSequence: sequence,
           entries,
-          contentHash: snapshot.sha,
-          encodedBytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+          contentHash: snapshotDigest,
+          encodedBytes: new TextEncoder().encode(snapshot).byteLength,
           createdAt: 1,
         }),
       };

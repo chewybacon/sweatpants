@@ -4,7 +4,7 @@ import {
   type ImmutableEnsure,
   type StoredAuthorityRecord,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
 import type {
   ArchivedPublicRootIndex,
   CommandAdmissionRequest,
@@ -191,7 +191,7 @@ export function publicRootIndexEnsure(entry: ArchivedPublicRootIndex): Immutable
     collection: DurableCollections.conversationPublicRootIndex,
     key: conversationKeys.publicRootIndex(entry.conversationId, entry.position),
     alternateKeys: [conversationKeys.publicRootIdentity(entry.conversationId, entry.rootId)],
-    fingerprint: canonicalSnapshot(entry).sha,
+    fingerprint: canonicalDigest(entry),
     value: encodeArchivedPublicRootIndex(entry),
   };
 }
@@ -263,12 +263,13 @@ export function planConversationCommit(input: {
     }
     const rootObject =
       root !== null && typeof root === "object" && !Array.isArray(root) ? root : null;
-    const rootSnapshot = canonicalSnapshot(root);
-    const rootBytes = new TextEncoder().encode(rootSnapshot.canonical).byteLength;
+    const rootSnapshot = canonicalJson(root);
+    const rootSnapshotDigest = sha256(rootSnapshot);
+    const rootBytes = new TextEncoder().encode(rootSnapshot).byteLength;
     if (
       rootObject?.["rootId"] !== entry.rootId ||
       rootObject?.["position"] !== entry.position ||
-      rootSnapshot.sha !== entry.contentHash ||
+      rootSnapshotDigest !== entry.contentHash ||
       rootBytes !== entry.encodedBytes
     ) {
       throw new Error("public root index disagrees with its archive root");

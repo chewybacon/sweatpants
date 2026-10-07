@@ -1,4 +1,4 @@
-import { assertJson, canonicalSnapshot, stableTupleHash } from "@sweatpants/foundation";
+import { assertJson, canonicalSnapshot, stableTupleHash, sha256 } from "@sweatpants/foundation";
 import { ExecutionStoreApi, installExecutionStore } from "@sweatpants/journal-authority/api";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import { withProgramDriverTestPullResolvers } from "@sweatpants/journal-authority/testing";
@@ -20,17 +20,18 @@ const executionStore = createMemoryExecutionStore();
 
 function* stageModelContext(context: ModelContext): Operation<ModelContextSource> {
   const snapshot = canonicalSnapshot(context);
+  const snapshotDigest = sha256(snapshot.canonical);
   const object = yield* ExecutionStoreApi.operations.putObject({
-    objectId: stableTupleHash(["tool-runtime-local-model-context", snapshot.sha]),
+    objectId: stableTupleHash(["tool-runtime-local-model-context", snapshotDigest]),
     lifetimeScope: "conversation",
     scopeOwnerId: "tool-runtime-local-tests",
     objectKind: "model-context-source.v1",
-    contentHash: snapshot.sha,
+    contentHash: snapshotDigest,
     byteLength: new TextEncoder().encode(snapshot.canonical).byteLength,
     body: assertJson(snapshot.value),
     createdAt: Date.now(),
   });
-  return { type: "object", object, digest: snapshot.sha };
+  return { type: "object", object, digest: snapshotDigest };
 }
 
 function* resolveModelSampleSource(source: ModelContextSource): Operation<ModelContext> {

@@ -39,7 +39,7 @@ export interface ActivationLeaseState {
   readonly expiresAtMs: number;
   readonly leaseDurationMs: number;
   readonly claimedTaskRevision: number;
-  readonly claimedHeadDigest: string;
+  readonly claimedHeadId: string;
   readonly restoreNonce: string;
 }
 
@@ -55,7 +55,7 @@ export type ClaimActivationResult =
       readonly epoch: number;
       readonly expiresAtMs: number;
       readonly taskRevision: number;
-      readonly journalHeadDigest: string;
+      readonly journalHeadId: string;
     }
   | { readonly status: "busy"; readonly retryAfterMs: number }
   | { readonly status: "not_runnable" };
@@ -101,7 +101,7 @@ export interface RestoreTicketClaims {
   readonly replayDomain?: string;
   readonly frontierDomain?: string;
   readonly taskRevision: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
   readonly replayedThroughActionIndex: number;
   readonly replayChainDigest: string;
   readonly restoreNonce: string;
@@ -124,7 +124,7 @@ export interface IssueRestoreTicketRequest {
 export interface IssueRestoreTicketResult {
   readonly restoreTicket: string;
   readonly taskRevision: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
 }
 
 export interface PrepareProgramRestoreRequest {
@@ -145,7 +145,7 @@ export interface PreparedProgramRestore {
   readonly replayChainSeed: string;
   readonly replayChainDigest: string;
   readonly taskRevision: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
 }
 
 export interface BindRestoreFrontierRequest {

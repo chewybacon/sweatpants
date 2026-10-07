@@ -9,7 +9,7 @@ import {
   type StoredImmutableRecord,
   type StoredScanPage,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 import {
   ConversationStoreError,
@@ -130,10 +130,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
     return record === null ? null : decodeAuthorityHead(record);
   }
 
-  function* applyHeadMutation(
-    mutation: Parameters<DurableKernel["apply"]>[0],
-  ): Operation<HeadCommitResult> {
-    const outcome = yield* kernel.apply(mutation);
+  function headMutationResult(outcome: DurableMutationOutcome): HeadCommitResult {
     if (outcome.status === "committed") {
       if (outcome.authority === null) {
         throw new ConversationStoreError(
@@ -156,6 +153,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       );
     }
     return unexpected(outcome);
+  }
+
+  function* applyHeadMutation(
+    mutation: Parameters<DurableKernel["apply"]>[0],
+  ): Operation<HeadCommitResult> {
+    return headMutationResult(yield* kernel.apply(mutation));
   }
 
   function* readTerminalChain(
@@ -286,15 +289,52 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       if (decision.kind === "complete") {
         return decision.result;
       }
-      const committed = yield* applyHeadMutation(decision.mutation);
+      let outcome = yield* kernel.apply(decision.mutation);
+      if (
+        outcome.status === "immutable_conflict" &&
+        outcome.write === "checkpoint" &&
+        request.checkpoint &&
+        outcome.existing.fingerprint === request.checkpoint.contentHash &&
+        outcome.existing.key !== conversationKeys.checkpoint(request.checkpoint.checkpointId)
+      ) {
+        // The cause is the retry identity; a freshly minted storage ID must
+        // never replace the checkpoint already accepted for that cause. The
+        // kernel rejects the first mutation atomically, before changing its
+        // head or inserting any archive records.
+        const checkpoint = decodeCheckpoint(outcome.existing.value);
+        if (
+          checkpoint.conversationId !== request.conversationId ||
+          checkpoint.causeKey !== request.checkpoint.causeKey
+        ) {
+          throw new ConversationStoreError(
+            "persisted_data_invalid",
+            "Checkpoint cause alias resolved to another conversation or cause",
+          );
+        }
+        const retry = planConversationCommit({
+          request: {
+            ...request,
+            checkpoint,
+            proposal: {
+              ...request.proposal,
+              checkpoint: { checkpointId: checkpoint.checkpointId },
+            },
+          },
+          currentRecord,
+          updatedAt: request.updatedAt ?? Date.now(),
+        });
+        if (retry.kind === "complete") return retry.result;
+        // Keep the original CAS basis: another publisher may have won while
+        // this duplicate was being reconciled.
+        outcome = yield* kernel.apply(retry.mutation);
+      }
+      const committed = headMutationResult(outcome);
       if (committed.status !== "committed") {
         return committed;
       }
       return {
         ...committed,
-        ...(request.checkpoint
-          ? { checkpoint: { checkpointId: request.checkpoint.checkpointId } }
-          : {}),
+        ...(request.checkpoint ? { checkpoint: committed.head.checkpoint! } : {}),
         ...(request.terminalHistorySegment
           ? {
               terminalHistory: {
@@ -590,12 +630,13 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         }
         const rootObject =
           root !== null && typeof root === "object" && !Array.isArray(root) ? root : null;
-        const snapshot = canonicalSnapshot(root);
-        const bytes = new TextEncoder().encode(snapshot.canonical).byteLength;
+        const snapshot = canonicalJson(root);
+        const snapshotDigest = sha256(snapshot);
+        const bytes = new TextEncoder().encode(snapshot).byteLength;
         if (
           rootObject?.["rootId"] !== entry.rootId ||
           rootObject?.["position"] !== entry.position ||
-          snapshot.sha !== entry.contentHash ||
+          snapshotDigest !== entry.contentHash ||
           bytes !== entry.encodedBytes
         ) {
           throw new ConversationStoreError(

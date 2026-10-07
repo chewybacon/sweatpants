@@ -17,7 +17,7 @@ describe("activation lease coordinator", () => {
             epoch: 7,
             expiresAtMs: 100,
             taskRevision: 1,
-            journalHeadDigest: "a".repeat(64),
+            journalHeadId: "a".repeat(64),
           };
         }
         if (command.type === "control.renew-activation") {

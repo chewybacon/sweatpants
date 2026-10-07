@@ -1,4 +1,4 @@
-import { canonicalSnapshot, parser } from "@sweatpants/foundation";
+import { parser, cloneJson } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   InvalidExecutionTransition,
@@ -189,12 +189,12 @@ export function proposeQuiescentCut(
     projection: current.unpublishedProjection,
   };
 
-  return { status: "checkpointed", checkpoint: canonicalSnapshot(checkpoint).value };
+  return { status: "checkpointed", checkpoint: cloneJson(checkpoint) };
 }
 
 /** Result-oriented parser for malformed or incomplete persisted checkpoints. */
 export const recoveryCheckpointParser = parser(recoveryCheckpointSchema).map(
-  (value): RecoveryCheckpoint => canonicalSnapshot(value).value,
+  (value): RecoveryCheckpoint => cloneJson(value),
 );
 
 /** Caller-owned throwing mapping for the checkpoint restoration boundary. */

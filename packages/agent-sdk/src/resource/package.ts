@@ -1,7 +1,6 @@
 import {
   assertJson,
   canonicalJson,
-  canonicalSnapshot,
   failure,
   parser,
   sha256,
@@ -9,6 +8,7 @@ import {
   success,
   type ParseResult,
   type Parser,
+  cloneJson,
 } from "@sweatpants/foundation";
 import { z } from "zod";
 
@@ -214,10 +214,10 @@ export function defineResourcePackage(options: DefineResourcePackageOptions): Re
     files,
   };
   const manifest = deepFreeze(
-    canonicalSnapshot({
+    cloneJson({
       ...projection,
       digest: sha256(RESOURCE_PACKAGE_DOMAIN + canonicalJson(projection)),
-    }).value as ResourcePackageManifestV1,
+    }) as ResourcePackageManifestV1,
   );
   return createPackage(manifest, bytes, limits);
 }
@@ -277,10 +277,7 @@ function verifyResourcePackageManifest(
       });
     }
     return success(
-      deepFreeze(
-        canonicalSnapshot({ ...projection, digest: value.digest })
-          .value as ResourcePackageManifestV1,
-      ),
+      deepFreeze(cloneJson({ ...projection, digest: value.digest }) as ResourcePackageManifestV1),
     );
   } catch (error) {
     if (error instanceof ResourceError) {

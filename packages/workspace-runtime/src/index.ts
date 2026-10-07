@@ -6,13 +6,13 @@ import { dirname, relative, resolve } from "node:path";
 import {
   assertJson,
   canonicalJson,
-  canonicalSnapshot,
   hasControlCharacter,
   parser,
   sha256,
   sortStrings,
   stableTupleHash,
   type Json,
+  canonicalDigest,
 } from "@sweatpants/foundation";
 
 import { useProgramExecution } from "@sweatpants/durable-execution";
@@ -500,7 +500,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
     execution: WorkspaceOperationExecution,
   ): { requestDigest: string; previous?: CommittedOperation } {
     assertExecution(execution);
-    const requestDigest = canonicalSnapshot(assertJson({ kind, input, execution })).sha;
+    const requestDigest = canonicalDigest(assertJson({ kind, input, execution }));
     const previous = committed.get(execution.operationId);
     if (previous && previous.requestDigest !== requestDigest) {
       throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");

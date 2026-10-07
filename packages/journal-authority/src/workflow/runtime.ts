@@ -43,11 +43,12 @@ import {
   type ResolutionReceipt,
 } from "@sweatpants/durable-execution";
 import {
-  canonicalSnapshot,
   parser,
   type Json,
   type Parser,
   type SerializedApplicationError,
+  canonicalDigest,
+  canonicalJson,
 } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
@@ -1247,7 +1248,7 @@ function stale(): CrankError {
 }
 
 function sameCanonical<T>(left: T, right: T): boolean {
-  return canonicalSnapshot(left).sha === canonicalSnapshot(right).sha;
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 function verifyResumeReceipt(
@@ -1257,7 +1258,7 @@ function verifyResumeReceipt(
   if (
     command.receipt.sessionId !== state.request.sessionId ||
     command.receipt.taskId !== state.request.taskId ||
-    command.receipt.outcomeDigest !== canonicalSnapshot(command.outcome).sha
+    command.receipt.outcomeDigest !== canonicalDigest(command.outcome)
   ) {
     throw protocol("resume receipt mismatch");
   }

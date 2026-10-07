@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { run } from "effection";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { assertJson } from "@sweatpants/foundation";
 import { tictactoeTool } from "../tool.ts";
 import type { Board } from "../types.ts";
 
@@ -66,7 +66,7 @@ describe("tic-tac-toe terminal results", () => {
         winner: draw ? null : "X",
       });
       // Canonical recording rejects present undefined fields; JSON.stringify would hide the bug.
-      expect(() => canonicalSnapshot(result)).not.toThrow();
+      expect(() => assertJson(result)).not.toThrow();
       if (draw) {
         expect(result).not.toHaveProperty("winningLine");
       } else {

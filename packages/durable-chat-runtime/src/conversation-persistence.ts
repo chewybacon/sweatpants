@@ -11,7 +11,16 @@ import {
   type PublicProjectionBasis,
   type PublicProjectionRoot,
 } from "@sweatpants/chat-core";
-import { assertJson, canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  canonicalSnapshot,
+  stableTupleHash,
+  type Json,
+  canonicalJson,
+  cloneJson,
+  sha256,
+  uuidv7,
+} from "@sweatpants/foundation";
 import {
   assertCheckpointBounds,
   checkpointHotRoots,
@@ -634,21 +643,23 @@ function planArchiveSegments(
     const positions = typed.map((root) => counter(root.position));
     const minPosition = positions.reduce((left, right) => (left < right ? left : right));
     const maxPosition = positions.reduce((left, right) => (left > right ? left : right));
-    const encoded = canonicalSnapshot(batch.entries);
+    const encoded = canonicalJson(batch.entries);
+    const encodedDigest = sha256(encoded);
     const segment: StoredPublicArchiveSegment = {
-      segmentId: stableTupleHash([conversationId, archiveOrdinal.toString(10), encoded.sha]),
+      segmentId: stableTupleHash([conversationId, archiveOrdinal.toString(10), encodedDigest]),
       conversationId,
       previous: archiveHead,
       minPosition: minPosition.toString(10),
       maxPosition: maxPosition.toString(10),
       roots: batch.entries,
-      contentHash: encoded.sha,
-      encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+      contentHash: encodedDigest,
+      encodedBytes: new TextEncoder().encode(encoded).byteLength,
       createdAt,
     };
     segments.push(segment);
     typed.forEach((root, segmentRootIndex) => {
-      const snapshot = canonicalSnapshot(root as unknown as Json);
+      const snapshot = canonicalJson(root as unknown as Json);
+      const snapshotDigest = sha256(snapshot);
       index.push({
         conversationId,
         position: root.position,
@@ -656,8 +667,8 @@ function planArchiveSegments(
         segmentId: segment.segmentId,
         segmentRootIndex,
         archiveOrdinal: archiveOrdinal.toString(10),
-        contentHash: snapshot.sha,
-        encodedBytes: new TextEncoder().encode(snapshot.canonical).byteLength,
+        contentHash: snapshotDigest,
+        encodedBytes: new TextEncoder().encode(snapshot).byteLength,
       });
       archiveOrdinal += 1n;
     });
@@ -715,7 +726,7 @@ export function* preflightConversationCheckpoint(params: {
     executionId: params.executionId,
   });
   const { hotRoots } = spillRoots(compacted.roots, targets.spill);
-  const payload = canonicalSnapshot(
+  const payload = canonicalJson(
     checkpointPayloadFromHotRoots(
       hotRoots.map((root) => assertJson(root)),
       compacted.applicationState,
@@ -723,13 +734,11 @@ export function* preflightConversationCheckpoint(params: {
   );
   const largestInlineRootBytes = Math.max(
     0,
-    ...hotRoots.map(
-      (root) => new TextEncoder().encode(canonicalSnapshot(assertJson(root)).canonical).byteLength,
-    ),
+    ...hotRoots.map((root) => new TextEncoder().encode(canonicalJson(assertJson(root))).byteLength),
   );
   try {
     assertCheckpointBounds({
-      encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
+      encodedBytes: new TextEncoder().encode(payload).byteLength,
       totalRoots: hotRoots.length,
       mutableRoots: hotRoots.filter((root) => root.state === "mutable").length,
       openInterrupts: params.openInterrupts ?? 0,
@@ -790,24 +799,27 @@ export function* persistConversationCheckpoint(
     compacted.applicationState,
   );
   const payload = canonicalSnapshot(payloadValue);
-  const cause = canonicalSnapshot(request.cause);
-  const lineageId =
-    previousCheckpoint?.lineageId ??
-    stableTupleHash(["sweatpants.conversation-lineage", request.conversationId, request.causeKey]);
-  const checkpoint: StoredCheckpoint = {
-    checkpointId: stableTupleHash([request.conversationId, request.causeKey, payload.sha]),
-    conversationId: request.conversationId,
-    lineageId,
-    causeKey: request.causeKey,
-    cause: cause.value,
-    contentHash: payload.sha,
-    archiveHead: archive.archiveHead,
-    archiveFrontierOrdinal: archive.archiveFrontierOrdinal.toString(10),
-    nextPublicPosition: compacted.nextPosition.toString(10),
-    payload: payload.value,
-    encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
-    createdAt: request.createdAt,
-  };
+  const payloadDigest = sha256(payload.canonical);
+  const cause = cloneJson(request.cause);
+  const duplicateCurrent =
+    previousCheckpoint?.causeKey === request.causeKey &&
+    previousCheckpoint.contentHash === payloadDigest;
+  const checkpoint: StoredCheckpoint = duplicateCurrent
+    ? previousCheckpoint
+    : {
+        checkpointId: uuidv7(),
+        conversationId: request.conversationId,
+        lineageId: previousCheckpoint?.lineageId ?? uuidv7(),
+        causeKey: request.causeKey,
+        cause,
+        contentHash: payloadDigest,
+        archiveHead: archive.archiveHead,
+        archiveFrontierOrdinal: archive.archiveFrontierOrdinal.toString(10),
+        nextPublicPosition: compacted.nextPosition.toString(10),
+        payload: payload.value,
+        encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
+        createdAt: request.createdAt,
+      };
   const proposal: ConversationHeadProposal = {
     ...request.proposal,
     checkpoint: { checkpointId: checkpoint.checkpointId },
@@ -832,7 +844,20 @@ export function* persistConversationCheckpoint(
       `Conversation ${request.conversationId} checkpoint head CAS lost`,
     );
   }
-  return { checkpoint, head: committed.head };
+  const acceptedPointer = committed.head.checkpoint;
+  if (!acceptedPointer) {
+    throw new Error(`Conversation ${request.conversationId} committed without a checkpoint`);
+  }
+  // A prior attempt may have staged this cause under another UUID. The store
+  // selects its persisted identity atomically instead of publishing a new alias.
+  const acceptedCheckpoint =
+    acceptedPointer.checkpointId === checkpoint.checkpointId
+      ? checkpoint
+      : yield* store.getCheckpoint(acceptedPointer);
+  if (!acceptedCheckpoint) {
+    throw new Error(`Conversation ${request.conversationId} committed an absent checkpoint`);
+  }
+  return { checkpoint: acceptedCheckpoint, head: committed.head };
 }
 
 /** Returns only the bounded current hot window. */
@@ -858,7 +883,7 @@ export function* readAllPublicRootsForModel(
     (root) => decodePublicProjectionRoot(root).kind === "message",
   );
   let materializedBytes = hotMessages.reduce<number>(
-    (total, root) => total + new TextEncoder().encode(canonicalSnapshot(root).canonical).byteLength,
+    (total, root) => total + new TextEncoder().encode(canonicalJson(root)).byteLength,
     0,
   );
   if (materializedBytes > maxCanonicalBytes) {
@@ -888,7 +913,7 @@ export function* readAllPublicRootsForModel(
       (root) => decodePublicProjectionRoot(root).kind === "message",
     );
     for (const root of pageMessages) {
-      materializedBytes += new TextEncoder().encode(canonicalSnapshot(root).canonical).byteLength;
+      materializedBytes += new TextEncoder().encode(canonicalJson(root)).byteLength;
       if (materializedBytes > maxCanonicalBytes) {
         throw new CrankError(
           "model_context_limit_exceeded",

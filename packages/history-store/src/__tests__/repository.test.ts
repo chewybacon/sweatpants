@@ -1,8 +1,15 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest, canonicalJson } from "@sweatpants/foundation";
+import { createMemoryDurableKernel } from "@sweatpants/durable-storage-kernel/memory";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "../memory.ts";
-import type { CommandAdmissionRequest, ConversationHeadProposal } from "../contract.ts";
+import type {
+  CommandAdmissionRequest,
+  ConversationHeadProposal,
+  StoredCheckpoint,
+} from "../contract.ts";
+import { checkpointPayloadFromHotRoots } from "../checkpoint-payload.ts";
+import { createKernelConversationStore } from "../repository.ts";
 
 const idle: ConversationHeadProposal = {
   state: "idle",
@@ -70,7 +77,7 @@ describe("kernel conversation repository", () => {
         firstPosition: "0",
         lastPosition: "0",
         entries,
-        contentHash: canonicalSnapshot(entries).sha,
+        contentHash: canonicalDigest(entries),
         createdAt: 2,
       } as const;
       const committed = yield* store.commitConversation({
@@ -95,7 +102,112 @@ describe("kernel conversation repository", () => {
       });
     });
   });
+
+  it("selects the persisted checkpoint identity when retrying an already staged cause", async () => {
+    const store = createMemoryConversationStore();
+    const accepted = checkpoint("accepted-id", "original-lineage");
+    const retry = checkpoint("new-attempt-id", "new-attempt-lineage");
+    await run(function* () {
+      yield* store.compareAndSwapHead("conversation", null, null, idle);
+      yield* store.putCheckpoint(accepted);
+      const committed = yield* store.commitConversation({
+        conversationId: "conversation",
+        expectedRevision: "0",
+        expectedOwnerEpoch: "0",
+        checkpoint: retry,
+        proposal: { ...idle, checkpoint: { checkpointId: retry.checkpointId } },
+      });
+      expect(committed).toMatchObject({
+        status: "committed",
+        checkpoint: { checkpointId: accepted.checkpointId },
+        head: { revision: "1", checkpoint: { checkpointId: accepted.checkpointId } },
+      });
+      expect(yield* store.getCheckpoint({ checkpointId: accepted.checkpointId })).toEqual(accepted);
+      expect(yield* store.getCheckpoint({ checkpointId: retry.checkpointId })).toBeNull();
+
+      const changed = checkpoint("changed-attempt-id", "new-attempt-lineage", "changed");
+      let conflict: unknown;
+      try {
+        yield* store.commitConversation({
+          conversationId: "conversation",
+          expectedRevision: "1",
+          expectedOwnerEpoch: "0",
+          checkpoint: changed,
+          proposal: { ...idle, checkpoint: { checkpointId: changed.checkpointId } },
+        });
+      } catch (error) {
+        conflict = error;
+      }
+      expect(conflict).toMatchObject({ code: "immutable_object_conflict" });
+      expect(yield* store.loadHead("conversation")).toMatchObject({
+        revision: "1",
+        checkpoint: { checkpointId: accepted.checkpointId },
+      });
+    });
+  });
+
+  it("retains the original head CAS when another writer wins during checkpoint reconciliation", async () => {
+    const kernel = createMemoryDurableKernel();
+    const competitor = createKernelConversationStore(kernel);
+    let raced = false;
+    const store = createKernelConversationStore({
+      ...kernel,
+      *apply(mutation) {
+        const outcome = yield* kernel.apply(mutation);
+        if (!raced && outcome.status === "immutable_conflict" && outcome.write === "checkpoint") {
+          raced = true;
+          yield* competitor.compareAndSwapHead("conversation", "0", "0", idle);
+        }
+        return outcome;
+      },
+    });
+    const accepted = checkpoint("accepted-id", "original-lineage");
+    const retry = checkpoint("new-attempt-id", "new-attempt-lineage");
+    await run(function* () {
+      yield* store.compareAndSwapHead("conversation", null, null, idle);
+      yield* store.putCheckpoint(accepted);
+      const committed = yield* store.commitConversation({
+        conversationId: "conversation",
+        expectedRevision: "0",
+        expectedOwnerEpoch: "0",
+        checkpoint: retry,
+        proposal: { ...idle, checkpoint: { checkpointId: retry.checkpointId } },
+      });
+      expect(raced).toBe(true);
+      expect(committed).toMatchObject({
+        status: "head_conflict",
+        current: { revision: "1", checkpoint: null },
+      });
+      expect(yield* store.getCheckpoint({ checkpointId: retry.checkpointId })).toBeNull();
+      expect(yield* store.loadHead("conversation")).toMatchObject({
+        revision: "1",
+        checkpoint: null,
+      });
+    });
+  });
 });
+
+function checkpoint(
+  checkpointId: string,
+  lineageId: string,
+  marker = "original",
+): StoredCheckpoint {
+  const payload = checkpointPayloadFromHotRoots([], { marker });
+  return {
+    checkpointId,
+    conversationId: "conversation",
+    lineageId,
+    causeKey: "same-cause",
+    cause: { kind: "test" },
+    contentHash: canonicalDigest(payload),
+    archiveHead: null,
+    archiveFrontierOrdinal: "0",
+    nextPublicPosition: "0",
+    payload,
+    encodedBytes: new TextEncoder().encode(canonicalJson(payload)).byteLength,
+    createdAt: 1,
+  };
+}
 
 function commandRequest(commandDigest = "digest-1"): CommandAdmissionRequest {
   return {

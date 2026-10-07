@@ -1,6 +1,6 @@
 import type { OperationOutcome, SerializedEffectError } from "@sweatpants/durable-effects";
 import { CrankError, type DurableForkExpiry } from "@sweatpants/durable-execution";
-import { canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
 
 /**
  * Fork-group core: closed policy union, expiry resolution, terminal algebra,
@@ -340,7 +340,7 @@ export function reduceForkMemberTerminal(
   if (member === undefined) {
     throw new CrankError("invalid_journal", `Task ${taskId} is not a fork group member`);
   }
-  const outcomeDigest = canonicalSnapshot(outcome).sha;
+  const outcomeDigest = canonicalDigest(outcome);
   if (member.terminal !== undefined) {
     if (member.terminal.outcomeDigest !== outcomeDigest) {
       throw new CrankError("nondeterminism_detected", "Fork member terminal differs");

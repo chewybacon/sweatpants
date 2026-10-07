@@ -8,7 +8,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { effectContractDigest } from "@sweatpants/durable-effects/runtime";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 
 import { createInMemoryPlacementModelSampler } from "../placement/in-memory-placement-model-sampler.ts";
 import { runPlacementModelSampleProducer } from "../placement/placement-model-producer.ts";
@@ -53,7 +53,7 @@ function sampled(text: string): ModelSampleResult {
     output: { type: "message" },
   };
 }
-const requestDigest = canonicalSnapshot(request).sha;
+const requestDigest = canonicalDigest(request);
 const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
 
 function attachRequest(overrides: Record<string, unknown> = {}) {
@@ -243,7 +243,7 @@ describe("in-memory placement model sampler", () => {
           expect(relayed[0]).toMatchObject({
             origin: { streamId: "remote-stream", lsn: 2, producerEpoch: 3 },
           });
-          const digest = canonicalSnapshot(disposition).sha;
+          const digest = canonicalDigest(disposition);
           yield* service.acknowledge(identity, digest);
           expect(acknowledged).toBe(digest);
           expect(attachCount).toBe(1);
@@ -282,7 +282,7 @@ describe("in-memory placement model sampler", () => {
       const terminal = yield* sampler.read({ version: 1, attachment: first, afterLsn: 2 });
       expect(terminal).toMatchObject({ state: "completed", terminalLsn: 2 });
       expect(yield* sampler.disposition({ version: 1, attachment: first })).toEqual(disposition);
-      const digest = canonicalSnapshot(disposition).sha;
+      const digest = canonicalDigest(disposition);
       yield* sampler.acknowledge({ version: 1, attachment: first, outcomeDigest: digest });
       expect((yield* sampler.inspect(identity))?.acknowledgedOutcomeDigest).toBe(digest);
     });

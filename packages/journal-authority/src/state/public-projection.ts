@@ -31,7 +31,7 @@ export interface PublicTaskProjection {
 
 export interface DurableExecutionProjection {
   readonly forestRevision: number;
-  readonly journalHeadDigest: string;
+  readonly journalHeadId: string;
   readonly tasks: readonly PublicTaskProjection[];
   readonly openSlots: readonly PublicOpenSlot[];
 }
@@ -76,7 +76,7 @@ export function projectDurableExecution(
   }
   return {
     forestRevision: plan.forestRevision,
-    journalHeadDigest: plan.journalHeadDigest,
+    journalHeadId: plan.journalHeadId,
     tasks,
     openSlots,
   };

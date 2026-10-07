@@ -1,4 +1,4 @@
-import { canonicalSnapshot } from "@sweatpants/foundation";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createMemoryConversationStore } from "@sweatpants/history-store/memory";
@@ -153,7 +153,7 @@ describe("terminal Turn publication", () => {
     await run(function* () {
       yield* installConversation(conversation);
       const key = publicationKey(capsule);
-      const encoded = canonicalSnapshot(entries);
+      const encoded = canonicalDigest(entries);
       yield* ConversationStoreApi.operations.putTerminalHistorySegment({
         segmentId: key,
         conversationId: "session-1",
@@ -164,7 +164,7 @@ describe("terminal Turn publication", () => {
         firstPosition: "0",
         lastPosition: "0",
         entries,
-        contentHash: encoded.sha,
+        contentHash: encoded,
         createdAt: 100,
       });
 

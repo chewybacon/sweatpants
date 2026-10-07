@@ -52,7 +52,13 @@ import {
 import type { ModelContext } from "@sweatpants/model-provider";
 import { assertDurableEffectBindings } from "@sweatpants/durable-effects/runtime";
 export type { NormalizedProgramOperationTrace, NormalizedProgramTaskTrace, NormalizedProgramTrace };
-import { assertJson, canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  type Json,
+  canonicalDigest,
+  cloneJson,
+  canonicalJson,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 import { EPHEMERAL_TOOL_ADAPTER_PROGRAM } from "@sweatpants/tool-session/ephemeral";
 
@@ -261,7 +267,7 @@ export function createProgramWorkflowHost(
       request.manifest.programId !== request.program.id ||
       request.manifest.version !== request.program.version ||
       request.manifest.digest !== request.program.digest ||
-      canonicalSnapshot(request.manifest).sha !== canonicalSnapshot(tool.manifest).sha
+      canonicalJson(request.manifest) !== canonicalJson(tool.manifest)
     ) {
       throw new CrankError("invalid_manifest", "Program pin and manifest differ");
     }
@@ -460,7 +466,7 @@ export function createProgramWorkflowHost(
         executionEpoch: execution.executionEpoch,
         attachmentId: stableProgramAttachmentId(attach),
         audience: "workflow-host",
-        catalog: canonicalSnapshot(assertJson(request.catalog)).value,
+        catalog: cloneJson(assertJson(request.catalog)),
         catalogDigest: request.catalog.digest,
         route,
       });
@@ -489,9 +495,9 @@ export function createProgramWorkflowHost(
       const outcome: OperationOutcome =
         request.response.action === "cancel"
           ? { status: "cancelled" }
-          : { status: "ok", value: canonicalSnapshot(request.response).value };
+          : { status: "ok", value: cloneJson(request.response) };
       if (operation.outcome !== undefined) {
-        if (canonicalSnapshot(operation.outcome).sha !== canonicalSnapshot(outcome).sha) {
+        if (canonicalJson(operation.outcome) !== canonicalJson(outcome)) {
           throw new CrankError("resolution_conflict", "Elicitation response conflicts");
         }
         return yield* resumeTask(request.sessionId);
@@ -524,16 +530,16 @@ export function createProgramWorkflowHost(
 export function createPinnedProgramCatalog(
   entries: Readonly<Record<string, ProgramCatalogEntry>>,
 ): PinnedProgramCatalog {
-  const canonicalEntries = programCatalogEntriesSchema.parse(canonicalSnapshot(entries).value);
+  const canonicalEntries = programCatalogEntriesSchema.parse(cloneJson(entries));
   return {
     version: 1,
-    digest: canonicalSnapshot({ version: 1, entries: canonicalEntries }).sha,
+    digest: canonicalDigest({ version: 1, entries: canonicalEntries }),
     entries: canonicalEntries,
   };
 }
 
 export function verifyPinnedProgramCatalog(catalog: PinnedProgramCatalog): void {
-  if (catalog.digest !== canonicalSnapshot({ version: 1, entries: catalog.entries }).sha) {
+  if (catalog.digest !== canonicalDigest({ version: 1, entries: catalog.entries })) {
     throw new CrankError("invalid_manifest", "Program catalog digest differs from entries");
   }
   for (const [target, entry] of Object.entries(catalog.entries)) {

@@ -1,4 +1,4 @@
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, type Json, canonicalJson, sha256 } from "@sweatpants/foundation";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { checkpointPayloadFromHotRoots } from "./checkpoint-payload.ts";
@@ -37,7 +37,8 @@ export function describeConversationStoreConformance(
       try {
         await run(function* () {
           const roots = [publicRoot("root-2", "2"), publicRoot("root-7", "7")];
-          const encoded = canonicalSnapshot(roots);
+          const encoded = canonicalJson(roots);
+          const encodedDigest = sha256(encoded);
           const pointer = yield* handle.store.putPublicArchiveSegment({
             segmentId: "public-sparse",
             conversationId: "conv",
@@ -45,8 +46,8 @@ export function describeConversationStoreConformance(
             minPosition: "2",
             maxPosition: "7",
             roots,
-            contentHash: encoded.sha,
-            encodedBytes: new TextEncoder().encode(encoded.canonical).byteLength,
+            contentHash: encodedDigest,
+            encodedBytes: new TextEncoder().encode(encoded).byteLength,
             createdAt: 1,
           });
           expect(pointer).toEqual({ segmentId: "public-sparse" });
@@ -84,7 +85,8 @@ export function describeConversationStoreConformance(
             placement: { type: "root", sequence: 0 },
           } as const;
           const roots = [root];
-          const rootsSnapshot = canonicalSnapshot(roots);
+          const rootsSnapshot = canonicalJson(roots);
+          const rootsSnapshotDigest = sha256(rootsSnapshot);
           const segment: StoredPublicArchiveSegment = {
             segmentId: "indexed-segment",
             conversationId: "indexed",
@@ -92,18 +94,20 @@ export function describeConversationStoreConformance(
             minPosition: "0",
             maxPosition: "0",
             roots,
-            contentHash: rootsSnapshot.sha,
-            encodedBytes: new TextEncoder().encode(rootsSnapshot.canonical).byteLength,
+            contentHash: rootsSnapshotDigest,
+            encodedBytes: new TextEncoder().encode(rootsSnapshot).byteLength,
             createdAt: 1,
           };
-          const rootSnapshot = canonicalSnapshot(root);
+          const rootSnapshot = canonicalJson(root);
+          const rootSnapshotDigest = sha256(rootSnapshot);
           const payload = canonicalSnapshot(checkpointPayloadFromHotRoots([]));
+          const payloadDigest = sha256(payload.canonical);
           const checkpoint = {
             checkpointId: "indexed-checkpoint",
             conversationId: "indexed",
             causeKey: "indexed-cause",
             cause: { kind: "test" } as const,
-            contentHash: payload.sha,
+            contentHash: payloadDigest,
             lineageId: "lineage",
             archiveHead: { segmentId: segment.segmentId },
             archiveFrontierOrdinal: "1",
@@ -126,8 +130,8 @@ export function describeConversationStoreConformance(
                 segmentId: segment.segmentId,
                 segmentRootIndex: 0,
                 archiveOrdinal: "0",
-                contentHash: rootSnapshot.sha,
-                encodedBytes: new TextEncoder().encode(rootSnapshot.canonical).byteLength,
+                contentHash: rootSnapshotDigest,
+                encodedBytes: new TextEncoder().encode(rootSnapshot).byteLength,
               },
             ],
             checkpoint,
@@ -161,13 +165,14 @@ export function describeConversationStoreConformance(
         await run(function* () {
           const firstRoot = publicRoot("message-1", "0", "one");
           const payload = canonicalSnapshot(checkpointPayloadFromHotRoots([firstRoot]));
+          const payloadDigest = sha256(payload.canonical);
           const checkpoint = {
             checkpointId: "c1",
             conversationId: "conv",
             lineageId: "lineage",
             causeKey: "cause",
             cause: { kind: "command", commandId: "one" },
-            contentHash: payload.sha,
+            contentHash: payloadDigest,
             archiveHead: null,
             archiveFrontierOrdinal: "0",
             nextPublicPosition: "1",
@@ -182,12 +187,13 @@ export function describeConversationStoreConformance(
           const other = canonicalSnapshot(
             checkpointPayloadFromHotRoots([publicRoot("message-2", "0", "two")]),
           );
+          const otherDigest = sha256(other.canonical);
           let conflict: unknown;
           try {
             yield* handle.store.putCheckpoint({
               ...checkpoint,
               checkpointId: "c2",
-              contentHash: other.sha,
+              contentHash: otherDigest,
               payload: other.value,
               encodedBytes: new TextEncoder().encode(other.canonical).byteLength,
             });

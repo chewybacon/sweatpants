@@ -1,4 +1,4 @@
-import { canonicalJson, canonicalSnapshot, sha256, stableTupleHash } from "@sweatpants/foundation";
+import { canonicalJson, sha256, stableTupleHash, cloneJson } from "@sweatpants/foundation";
 import { type PinnedProgram } from "@sweatpants/durable-execution";
 
 import {
@@ -376,9 +376,7 @@ function canonicalProgram(value: PinnedProgram): PinnedProgram {
     invalidMount();
   }
   requireDigest(value.digest);
-  return deepFreeze(
-    canonicalSnapshot({ id: value.id, version: value.version, digest: value.digest }).value,
-  );
+  return deepFreeze(cloneJson({ id: value.id, version: value.version, digest: value.digest }));
 }
 
 function rootsOverlap(left: string, right: string): boolean {

@@ -1,4 +1,11 @@
-import { assertJson, canonicalSnapshot, stableTupleHash, type Json } from "@sweatpants/foundation";
+import {
+  assertJson,
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  cloneJson,
+  canonicalSnapshot,
+} from "@sweatpants/foundation";
 import { z } from "zod";
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
@@ -119,10 +126,9 @@ const MAX_ERROR_DETAILS_BYTES = 64 * 1024;
 function safeErrorDetails(error: unknown): Json | undefined {
   if (error === null || typeof error !== "object" || !("details" in error)) return undefined;
   try {
-    const details = canonicalSnapshot(assertJson(error.details)).value;
-    return new TextEncoder().encode(canonicalSnapshot(details).canonical).byteLength <=
-      MAX_ERROR_DETAILS_BYTES
-      ? details
+    const details = canonicalSnapshot(assertJson(error.details));
+    return new TextEncoder().encode(details.canonical).byteLength <= MAX_ERROR_DETAILS_BYTES
+      ? details.value
       : undefined;
   } catch {
     return undefined;
@@ -148,7 +154,7 @@ export const DurableEffects = createApi("durable-effects:execute", {
         `Effect contract differs for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
       );
     }
-    const input = canonicalSnapshot(assertJson(authorization.descriptor.input)).value;
+    const input = cloneJson(assertJson(authorization.descriptor.input));
     const controller = new AbortController();
     const release = registerLiveDurablePull(
       authorization.sessionId,
@@ -174,21 +180,19 @@ export const DurableEffects = createApi("durable-effects:execute", {
       }
       const disposition = yield* operation;
       if (disposition.status === "ok") {
-        const value = canonicalSnapshot(assertJson(disposition.value)).value;
-        if (
-          new TextEncoder().encode(canonicalSnapshot(value).canonical).byteLength > MAX_INLINE_BYTES
-        ) {
+        const value = canonicalSnapshot(assertJson(disposition.value));
+        if (new TextEncoder().encode(value.canonical).byteLength > MAX_INLINE_BYTES) {
           throw new DurableEffectConfigurationError(
             "invalid_manifest",
             "Durable effect payload is too large",
           );
         }
-        return { status: "ok", value };
+        return { status: "ok", value: value.value };
       }
       if (disposition.status === "cancelled") {
         return disposition.partial === undefined
           ? { status: "cancelled" }
-          : { status: "cancelled", partial: canonicalSnapshot(disposition.partial).value };
+          : { status: "cancelled", partial: cloneJson(disposition.partial) };
       }
       return { status: "error", error: disposition.error };
     } catch (error) {
@@ -234,7 +238,7 @@ export function effectContractDigest(definition: EffectDefinition<Json, Json, Js
     cancellationPartialSchemaDigest: definition.cancellation?.partialSchema.digest ?? null,
     retrySafety: definition.retrySafety,
   };
-  return canonicalSnapshot(document).sha;
+  return canonicalDigest(document);
 }
 
 export type DurableEffectRoute =

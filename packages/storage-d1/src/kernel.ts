@@ -30,6 +30,8 @@ interface Row {
   value: number[] | ArrayBuffer | null;
 }
 const CHUNK_BYTES = 1024 * 1024;
+// Reserve one of D1's 100 bound parameters for the collection.
+const SCAN_KEYS_PER_QUERY = 99;
 const gate = "(SELECT token FROM sp_d1_meta WHERE id=1)=?";
 function readStatement(
   session: D1DatabaseSession,
@@ -319,17 +321,33 @@ export function createD1DurableKernel(
           storedBytes: row.byte_length,
         })),
       );
-      const records = [];
-      for (const row of page.selected) {
+      const payloads = new Map<string, Row[]>();
+      for (let start = 0; start < page.selected.length; start += SCAN_KEYS_PER_QUERY) {
+        const keys = page.selected.slice(start, start + SCAN_KEYS_PER_QUERY).map((row) => row.key);
         const result = yield* call(() =>
-          readStatement(session, request.collection, row.key, true).all<Row>(),
+          session
+            .prepare(`SELECT r.*, c.part, c.value FROM sp_d1_records r
+              LEFT JOIN sp_d1_chunks c ON c.collection=r.collection AND c.key=r.key
+              WHERE r.collection=? AND r.key IN (${keys.map(() => "?").join(",")})`)
+            .bind(request.collection, ...keys)
+            .all<Row>(),
         );
-        const stored = record(result.results) as StoredImmutableRecord | null;
+        for (const row of result.results) {
+          const chunks = payloads.get(row.key);
+          if (chunks) chunks.push(row);
+          else payloads.set(row.key, [row]);
+        }
+      }
+      const records = page.selected.map((row) => {
+        const chunks = payloads.get(row.key) ?? [];
+        // SQL result order is independent of scan direction and chunk order.
+        chunks.sort((left, right) => (left.part ?? 0) - (right.part ?? 0));
+        const stored = record(chunks) as StoredImmutableRecord | null;
         if (!stored) throw corrupt("Missing indexed journal record");
         if (stored.value.byteLength !== row.storedBytes)
           throw corrupt("Indexed record byte count disagrees with payload");
-        records.push({ ...stored, position: row.position, storedBytes: row.storedBytes });
-      }
+        return { ...stored, position: row.position, storedBytes: row.storedBytes };
+      });
       return { records, nextCursor: page.nextCursor };
     },
     *waitForChange(request) {

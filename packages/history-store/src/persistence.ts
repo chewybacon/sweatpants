@@ -5,7 +5,7 @@ import {
   type StoredAuthorityRecord,
   type StoredImmutableRecord,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalSnapshot, type Json } from "@sweatpants/foundation";
+import { type Json, canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
 import { assertCheckpointBounds } from "./checkpoint-bounds.ts";
 import { assertCheckpointPayload, checkpointHotRoots } from "./checkpoint-payload.ts";
 import { rootPayloadBytes } from "./segmentation.ts";
@@ -192,20 +192,19 @@ function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
     openInterrupts: Array.isArray(openInterrupts) ? openInterrupts.length : 0,
     largestInlineRootBytes: Math.max(
       0,
-      ...roots.map(
-        (root) => new TextEncoder().encode(canonicalSnapshot(root).canonical).byteLength,
-      ),
+      ...roots.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength),
     ),
   });
 }
 
 export function encodeCheckpoint(value: StoredCheckpoint): Uint8Array {
   assertCheckpointPayload(value.payload);
-  const payload = canonicalSnapshot(value.payload);
-  if (payload.sha !== value.contentHash) {
+  const payload = canonicalJson(value.payload);
+  const payloadDigest = sha256(payload);
+  if (payloadDigest !== value.contentHash) {
     return invalid(`Checkpoint ${value.checkpointId} content hash does not match payload`);
   }
-  if (new TextEncoder().encode(payload.canonical).byteLength !== value.encodedBytes) {
+  if (new TextEncoder().encode(payload).byteLength !== value.encodedBytes) {
     return invalid(`Checkpoint ${value.checkpointId} encoded byte count does not match payload`);
   }
   validateCheckpointBounds(value.payload, value.encodedBytes);
@@ -233,11 +232,12 @@ export function decodeCheckpoint(value: Uint8Array): StoredCheckpoint {
     encodedBytes: natural(object["encodedBytes"], "checkpoint.encodedBytes"),
     createdAt: natural(object["createdAt"], "checkpoint.createdAt"),
   };
-  const encoded = canonicalSnapshot(result.payload);
-  if (encoded.sha !== result.contentHash) {
+  const encoded = canonicalJson(result.payload);
+  const encodedDigest = sha256(encoded);
+  if (encodedDigest !== result.contentHash) {
     return invalid(`Checkpoint ${result.checkpointId} content hash does not match payload`);
   }
-  if (new TextEncoder().encode(encoded.canonical).byteLength !== result.encodedBytes) {
+  if (new TextEncoder().encode(encoded).byteLength !== result.encodedBytes) {
     return invalid(`Checkpoint ${result.checkpointId} encoded byte count is invalid`);
   }
   validateCheckpointBounds(result.payload, result.encodedBytes);
@@ -287,11 +287,12 @@ function validatePublicSegmentBounds(segment: StoredPublicArchiveSegment): void 
 
 export function encodePublicSegment(value: StoredPublicArchiveSegment): Uint8Array {
   validatePublicSegmentBounds(value);
-  const encoded = canonicalSnapshot(value.roots);
-  if (encoded.sha !== value.contentHash) {
+  const encoded = canonicalJson(value.roots);
+  const encodedDigest = sha256(encoded);
+  if (encodedDigest !== value.contentHash) {
     return invalid(`Public archive segment ${value.segmentId} content hash is invalid`);
   }
-  if (new TextEncoder().encode(encoded.canonical).byteLength !== value.encodedBytes) {
+  if (new TextEncoder().encode(encoded).byteLength !== value.encodedBytes) {
     return invalid(`Public archive segment ${value.segmentId} encoded byte count is invalid`);
   }
   return jsonEncode(value);
@@ -310,11 +311,12 @@ export function decodePublicSegment(value: Uint8Array): StoredPublicArchiveSegme
     encodedBytes: natural(object["encodedBytes"], "publicSegment.encodedBytes"),
     createdAt: natural(object["createdAt"], "publicSegment.createdAt"),
   };
-  const encoded = canonicalSnapshot(result.roots);
-  if (encoded.sha !== result.contentHash) {
+  const encoded = canonicalJson(result.roots);
+  const encodedDigest = sha256(encoded);
+  if (encodedDigest !== result.contentHash) {
     return invalid(`Public archive segment ${result.segmentId} content hash is invalid`);
   }
-  if (new TextEncoder().encode(encoded.canonical).byteLength !== result.encodedBytes) {
+  if (new TextEncoder().encode(encoded).byteLength !== result.encodedBytes) {
     return invalid(`Public archive segment ${result.segmentId} encoded byte count is invalid`);
   }
   validatePublicSegmentBounds(result);
@@ -373,7 +375,7 @@ export function decodeArchivedPublicRootIndex(value: Uint8Array): ArchivedPublic
 
 export function encodeTerminalSegment(value: StoredTerminalSegment): Uint8Array {
   validateTerminalRange(value);
-  if (canonicalSnapshot(value.entries).sha !== value.contentHash) {
+  if (canonicalDigest(value.entries) !== value.contentHash) {
     return invalid(`Terminal segment ${value.segmentId} content hash is invalid`);
   }
   return jsonEncode(value);
@@ -394,7 +396,7 @@ export function decodeTerminalSegment(value: Uint8Array): StoredTerminalSegment 
     contentHash: text(object["contentHash"], "terminalSegment.contentHash"),
     createdAt: natural(object["createdAt"], "terminalSegment.createdAt"),
   };
-  if (canonicalSnapshot(result.entries).sha !== result.contentHash) {
+  if (canonicalDigest(result.entries) !== result.contentHash) {
     return invalid(`Terminal segment ${result.segmentId} content hash is invalid`);
   }
   validateTerminalRange(result);
