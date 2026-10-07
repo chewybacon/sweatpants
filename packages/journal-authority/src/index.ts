@@ -212,6 +212,7 @@ export {
   JournalAuthorityUnavailable,
   installInMemoryJournalAuthority,
   installStoredJournalAuthority,
+  createStoredJournalAuthority,
 } from "./contract/authority-ports.ts";
 export type {
   AuthorityJournalFacade,

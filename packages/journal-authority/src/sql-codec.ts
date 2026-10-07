@@ -4,15 +4,14 @@ import {
   invalidStoredSqlValue as invalid,
   priorSqlPosition as priorPosition,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalJson, parseJsonText } from "@sweatpants/foundation";
+import { canonicalJson, cloneJson, parseJsonText } from "@sweatpants/foundation";
 import type {
   ExecutionControl,
   StoredExecutionObject,
   StoredPrivateSegment,
 } from "./store/store.ts";
 import {
-  decodeExecutionControl,
-  encodeExecutionControl,
+  decodeExecutionControlJson,
   encodePrivateSegmentEnvelopeFromCanonical,
 } from "./store/store-persistence.ts";
 type ControlRow = SqlNumbers<
@@ -28,8 +27,8 @@ type ObjectRow = SqlNumbers<Omit<StoredExecutionObject, "lifetimeScope" | "body"
   blobBody: Uint8Array | null;
 };
 export function controlFromRow(row: ControlRow): ExecutionControl {
-  return decodeExecutionControl(
-    encodeExecutionControl({
+  return decodeExecutionControlJson(
+    cloneJson({
       executionId: row.executionId,
       controlRevision: row.controlRevision,
       ownerFence: row.ownerFence,

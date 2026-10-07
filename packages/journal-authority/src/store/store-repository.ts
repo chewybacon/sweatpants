@@ -150,7 +150,8 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         expected = counter(segment.lastSequence, "last sequence") + 1n;
         previousSegmentId = segment.segmentId;
         finalSegment = segment;
-        chunks.push(structuredClone(segment.entries));
+        // Decoding created these entries; this read owns them until the iterable yields.
+        chunks.push(segment.entries);
       }
       after = page.nextCursor;
     } while (after !== null);

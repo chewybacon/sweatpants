@@ -69,7 +69,12 @@ export function encodeExecutionControl(value: ExecutionControl): Uint8Array {
 }
 
 export function decodeExecutionControl(value: Uint8Array): ExecutionControl {
-  const object = record(decodeJsonValue(value, "execution control"), "execution control");
+  return decodeExecutionControlJson(decodeJsonValue(value, "execution control"));
+}
+
+/** Validates owned decoded JSON; the returned control retains its nested value. */
+export function decodeExecutionControlJson(value: Json): ExecutionControl {
+  const object = record(value, "execution control");
   const status = text(object["status"], "control.status");
   if (!(["active", "parked", "cancelling", "terminal"] as const).includes(status as never)) {
     return invalid(`Unknown execution status ${status}`);
@@ -247,8 +252,10 @@ function decodeBase64(value: string): Uint8Array {
   return new Uint8Array(bytes);
 }
 
-export function encodeExecutionObjectEnvelope(value: StoredExecutionObject): Uint8Array {
-  return jsonEncode({
+// The body text is produced locally by canonicalJson, never supplied by a caller.
+// Reusing it avoids validating and encoding the whole body a second time.
+function executionObjectEnvelope(value: StoredExecutionObject, bodyJson: string): Uint8Array {
+  const metadata = canonicalJson({
     objectId: value.objectId,
     lifetimeScope: value.lifetimeScope,
     scopeOwnerId: value.scopeOwnerId,
@@ -256,26 +263,29 @@ export function encodeExecutionObjectEnvelope(value: StoredExecutionObject): Uin
     contentHash: value.contentHash,
     byteLength: value.byteLength,
     bodyKind: value.body instanceof Uint8Array ? "binary" : "json",
-    body: value.body instanceof Uint8Array ? encodeBase64(value.body) : value.body,
     createdAt: value.createdAt,
   });
+  // "body" sorts before every metadata key, preserving canonical envelope bytes.
+  return new TextEncoder().encode(`{"body":${bodyJson},${metadata.slice(1)}`);
+}
+
+export function encodeExecutionObjectEnvelope(value: StoredExecutionObject): Uint8Array {
+  const bodyJson = canonicalJson(
+    value.body instanceof Uint8Array ? encodeBase64(value.body) : value.body,
+  );
+  return executionObjectEnvelope(value, bodyJson);
 }
 
 export function encodeExecutionObject(value: StoredExecutionObject): Uint8Array {
-  const content =
-    value.body instanceof Uint8Array
-      ? { hash: sha256Bytes(value.body), bytes: value.body.byteLength }
-      : (() => {
-          const canonical = canonicalJson(value.body);
-          return {
-            hash: sha256(canonical),
-            bytes: new TextEncoder().encode(canonical).byteLength,
-          };
-        })();
-  if (content.hash !== value.contentHash || content.bytes !== value.byteLength) {
+  const body = value.body;
+  const bodyJson = canonicalJson(body instanceof Uint8Array ? encodeBase64(body) : body);
+  const hash = body instanceof Uint8Array ? sha256Bytes(body) : sha256(bodyJson);
+  const bytes =
+    body instanceof Uint8Array ? body.byteLength : new TextEncoder().encode(bodyJson).byteLength;
+  if (hash !== value.contentHash || bytes !== value.byteLength) {
     return invalid(`Execution object ${value.objectId} content metadata is invalid`);
   }
-  return encodeExecutionObjectEnvelope(value);
+  return executionObjectEnvelope(value, bodyJson);
 }
 
 export function decodeExecutionObject(value: Uint8Array): StoredExecutionObject {

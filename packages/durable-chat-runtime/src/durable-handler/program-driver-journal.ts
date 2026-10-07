@@ -4,7 +4,7 @@ import {
   AuthorityJournalPort,
   JournalAuthorityPort,
   createCapabilityKeyring,
-  installStoredJournalAuthority,
+  createStoredJournalAuthority,
   type AcceptAssistantPartialRequest,
   type AcceptAssistantPartialResult,
   type AcceptPullPreparationRequest,
@@ -92,6 +92,7 @@ export interface ProgramDriverJournal {
 }
 
 export interface ProgramDriverJournalStore {
+  /** Owns one authority view until the calling scope exits; children share it. */
   open(conversationId: string): Operation<ProgramDriverJournal>;
 }
 
@@ -136,9 +137,10 @@ export function createProgramDriverJournalStore(
         schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
       };
 
+      const authorityInstance = yield* createStoredJournalAuthority(authorityOptions);
       const install = function* (): Operation<void> {
         yield* installExecutionStore(executionStore);
-        yield* installStoredJournalAuthority(authorityOptions);
+        yield* authorityInstance.install();
       };
       const withAuthority = function* <T>(
         operation: (authority: JournalAuthorityContract) => Operation<T>,

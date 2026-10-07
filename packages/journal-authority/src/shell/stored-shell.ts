@@ -104,8 +104,18 @@ export function createStoredShellDrivers(
     readonly authorityControl: AuthorityControl | null;
   }
 
-  // One disposable validated view per driver, never an authority or a cross-host cache.
-  let validated: { identity: string; snapshot: DurableAuthoritySnapshot } | undefined;
+  // One disposable committed/validated view per driver, never a cross-host authority.
+  type CommittedView = {
+    kind: "committed";
+    identity: string;
+    body: Json;
+    byteLength: number;
+    entries: readonly Json[];
+  };
+  let view:
+    | { kind: "validated"; identity: string; snapshot: DurableAuthoritySnapshot }
+    | CommittedView
+    | undefined;
 
   function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
     if (value === null) return null;
@@ -202,20 +212,31 @@ export function createStoredShellDrivers(
   function* load(supplied?: ExecutionControl | null): Operation<LoadedAuthority> {
     const current = supplied === undefined ? yield* store.loadControl(executionId) : supplied;
     if (!current) {
-      validated = undefined;
+      view = undefined;
       return {
         control: null,
-        snapshot: options.initialSnapshot ?? empty,
+        snapshot: structuredClone(options.initialSnapshot ?? empty),
         authorityControl: null,
       };
     }
     const authorityControl = parseAuthorityControl(current.control);
-    const identity = JSON.stringify(authorityControl);
-    if (validated?.identity === identity) {
-      return { control: current, authorityControl, snapshot: structuredClone(validated.snapshot) };
+    const identity = canonicalJson(authorityControl);
+    const cached = view?.identity === identity ? view : undefined;
+    if (cached?.kind === "validated") {
+      return { control: current, authorityControl, snapshot: structuredClone(cached.snapshot) };
     }
 
-    const payload = yield* store.getObject({ objectId: authorityControl.snapshot.id });
+    // Own commits can supply bytes-equivalent data, but still cross the same
+    // snapshot/journal validation path on first use as a cold load.
+    const pending = cached?.kind === "committed" ? cached : undefined;
+    const payload = pending
+      ? {
+          body: pending.body,
+          byteLength: pending.byteLength,
+          lifetimeScope: "execution",
+          scopeOwnerId: executionId,
+        }
+      : yield* store.getObject({ objectId: authorityControl.snapshot.id });
     if (!payload || payload.body instanceof Uint8Array) {
       throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
     }
@@ -233,8 +254,8 @@ export function createStoredShellDrivers(
     // journal segments before the authority is handed to the in-memory engine.
     let base: DurableAuthoritySnapshot;
     try {
-      // getObject has verified this byte count against the stored body. Enforce
-      // the serialized boundary limit without serializing that body again.
+      // The local encoder computed this byte count, or getObject verified it.
+      // Enforce the same boundary limit without serializing that body again.
       if (payload.byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
         throw new CrankError("invalid_journal", "Authority snapshot exceeds its byte limit");
       }
@@ -246,25 +267,28 @@ export function createStoredShellDrivers(
         error,
       );
     }
-    const journal = authorityControl.journalHead
-      ? yield* store.readJournal({
-          executionId,
-          taskId: "authority",
-          head: authorityControl.journalHead,
-        })
-      : null;
-    const entries = journal
-      ? yield* call(async () => {
-          const values: Json[] = [];
-          for await (const chunk of journal) values.push(...chunk);
-          return values;
-        })
-      : [];
+    const journal =
+      !pending && authorityControl.journalHead
+        ? yield* store.readJournal({
+            executionId,
+            taskId: "authority",
+            head: authorityControl.journalHead,
+          })
+        : null;
+    const entries =
+      pending?.entries ??
+      (journal
+        ? yield* call(async () => {
+            const values: Json[] = [];
+            for await (const chunk of journal) values.push(...chunk);
+            return values;
+          })
+        : []);
     const snapshot = {
       ...base,
       records: parseJournalCollections(entries, authorityControl.journalHead?.segmentId ?? "none"),
     };
-    validated = { identity, snapshot: structuredClone(snapshot) };
+    view = { kind: "validated", identity, snapshot: structuredClone(snapshot) };
     return { control: current, authorityControl, snapshot };
   }
 
@@ -332,10 +356,14 @@ export function createStoredShellDrivers(
       reason: string | undefined;
     }> = [];
     const proposedHeads = new Map<string, string>();
+    let committedView: CommittedView | undefined;
     const committed = (yield* runExecutionCommitLoop(store, executionId, function* (current) {
+      // A retry may return without committing; never publish its predecessor.
+      committedView = undefined;
       const loaded = yield* load(current);
+      const loadedState = authorityStateFromSnapshot(loaded.snapshot);
       const history = loaded.snapshot.records.flatMap(([, records]) => records);
-      const sessionId = commandSessionId(command, loaded.snapshot, options);
+      const sessionId = commandSessionId(command, loadedState, options);
       const sessionRecords = history.filter((record) => record.sessionId === sessionId);
       const context: KernelContext = {
         nowMs: options.now?.() ?? Date.now(),
@@ -354,9 +382,8 @@ export function createStoredShellDrivers(
         schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
         maxOutcomeBytes: options.maxOutcomeBytes,
         decisionDiagnostics: options.decisionDiagnostics,
-        liveEffectTargets: liveEffectTargets(loaded.snapshot),
+        liveEffectTargets: liveEffectTargets(loadedState),
       };
-      const loadedState = authorityStateFromSnapshot(loaded.snapshot);
       const transition = decideAuthorityTransition({
         state: loadedState,
         context,
@@ -431,33 +458,50 @@ export function createStoredShellDrivers(
         });
         stagedSnapshots.set(contentHash, snapshotId);
       }
+      const next = control(
+        {
+          id: snapshotId,
+          byteLength,
+          version: "1",
+          integrity: { algorithm: "sha256", value: contentHash },
+        },
+        journal.at(-1)
+          ? {
+              segmentId: journal.at(-1)!.segmentId,
+              lastSequence: journal.at(-1)!.lastSequence,
+            }
+          : (loaded.authorityControl?.journalHead ?? null),
+        replay.at(-1)
+          ? {
+              segmentId: replay.at(-1)!.segmentId,
+              lastSequence: replay.at(-1)!.lastSequence,
+            }
+          : (loaded.authorityControl?.replayHead ?? null),
+      );
+      committedView = {
+        identity: canonicalJson(parseAuthorityControl(next.control)),
+        kind: "committed",
+        body: encoded.value,
+        byteLength,
+        // Retain complete history using the exact normalized entries staged for commit.
+        entries: [
+          ...(history as unknown as readonly Json[]),
+          ...journal.flatMap((segment) => segment.entries),
+        ],
+      };
       return {
         status: "commit",
-        next: control(
-          {
-            id: snapshotId,
-            byteLength,
-            version: "1",
-            integrity: { algorithm: "sha256", value: contentHash },
-          },
-          journal.at(-1)
-            ? {
-                segmentId: journal.at(-1)!.segmentId,
-                lastSequence: journal.at(-1)!.lastSequence,
-              }
-            : (loaded.authorityControl?.journalHead ?? null),
-          replay.at(-1)
-            ? {
-                segmentId: replay.at(-1)!.segmentId,
-                lastSequence: replay.at(-1)!.lastSequence,
-              }
-            : (loaded.authorityControl?.replayHead ?? null),
-        ),
+        next,
         ...(journal.length > 0 ? { journalSegments: journal } : {}),
         ...(replay.length > 0 ? { replaySegments: replay } : {}),
         result: transition.result,
       };
     })) as CommandResult<C>;
+    // Only the winning candidate reaches here. Keep caller-owned references out
+    // of the disposable cache; every later operation still reads durable control.
+    if (committedView) {
+      view = structuredClone(committedView);
+    }
     if (command.type === "execution.request-cancellation") {
       for (const target of cancellationTargets) {
         if (hasLiveDurablePull(command.request.sessionId, target.taskId, target.pullId)) {
@@ -534,7 +578,7 @@ export function createStoredShellDrivers(
   const snapshot: AuthoritySnapshotContract = {
     *exportSnapshot() {
       const loaded = yield* load();
-      return structuredClone(loaded.snapshot);
+      return loaded.snapshot;
     },
   };
   const authorityDriver: JournalAuthorityContract = {
@@ -549,10 +593,7 @@ export function createStoredShellDrivers(
   return { authority: authorityDriver, journal, snapshot };
 }
 
-function liveEffectTargets(
-  snapshot: DurableAuthoritySnapshot,
-): readonly { taskId: string; pullId: string }[] {
-  const state = authorityStateFromSnapshot(snapshot);
+function liveEffectTargets(state: AuthorityState): readonly { taskId: string; pullId: string }[] {
   const targets: { taskId: string; pullId: string }[] = [];
   for (const [sessionId, session] of state.sessions) {
     for (const task of session.execution.tasks.values()) {
@@ -593,7 +634,7 @@ function groupJournalRecords(
 
 function commandSessionId(
   command: AuthorityCommand,
-  snapshot: DurableAuthoritySnapshot,
+  state: AuthorityState,
   options: StoredJournalAuthorityOptions,
 ): string {
   const structural = structuralCommandSessionId(command);
@@ -613,7 +654,7 @@ function commandSessionId(
     command.type === "execution.accept-preparation" ||
     command.type === "execution.accept-assistant-partial"
   ) {
-    for (const [sessionId, session] of authorityStateFromSnapshot(snapshot).sessions) {
+    for (const [sessionId, session] of state.sessions) {
       if (session.execution.tasks.has(command.request.taskId)) return sessionId;
     }
     return "";
@@ -659,7 +700,6 @@ function newlyEvictedRecords(
 /** Retains active trees or only the latest terminal tree for each session. */
 function compactAuthoritySnapshot(snapshot: DurableAuthoritySnapshot): DurableAuthoritySnapshot {
   const state = authorityStateFromSnapshot(snapshot);
-  const sessions = new Map();
   const retainedBySession = new Map<string, Set<string>>();
   for (const [sessionId, session] of state.sessions) {
     const tasks = [...session.execution.tasks.values()];
@@ -683,18 +723,26 @@ function compactAuthoritySnapshot(snapshot: DurableAuthoritySnapshot): DurableAu
       }
     }
     retainedBySession.set(sessionId, retained);
-    sessions.set(sessionId, {
-      ...session,
-      execution: {
-        tasks: new Map([...session.execution.tasks].filter(([taskId]) => retained.has(taskId))),
-      },
-    });
   }
-  return snapshotFromAuthorityState(
-    { sessions, nextNonce: state.nextNonce },
-    snapshot.records.map(([sessionId, records]) => [
+  // Both callers own this snapshot. Keep the validation above, but reuse its
+  // values when selecting the retained topology instead of cloning them again.
+  return {
+    version: 1,
+    sessions: snapshot.sessions.map(([sessionId, session]) => [
+      sessionId,
+      {
+        control: session.control,
+        execution: {
+          tasks: session.execution.tasks.filter((task) =>
+            retainedBySession.get(sessionId)?.has(task.taskId),
+          ),
+        },
+      },
+    ]),
+    nextNonce: snapshot.nextNonce,
+    records: snapshot.records.map(([sessionId, records]) => [
       sessionId,
       records.filter((record) => retainedBySession.get(sessionId)?.has(record.payload.taskId)),
     ]),
-  );
+  };
 }

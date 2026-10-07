@@ -44,6 +44,7 @@ import { ConversationStoreError } from "@sweatpants/history-store/contract";
 import { call, type Operation } from "effection";
 import { useConversationStore } from "@sweatpants/history-store/port";
 import { CrankError } from "@sweatpants/durable-execution";
+import { spillRoots } from "./checkpoint-spill.ts";
 import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
   mintPublicHistoryCursor,
@@ -595,27 +596,6 @@ function* compactPublicRoots(params: {
         ? assertJson(latestState.snapshot)
         : params.applicationState,
   };
-}
-
-function spillRoots(
-  roots: readonly PublicProjectionRoot[],
-  target: CheckpointPublicationTargets["spill"],
-): {
-  readonly spilled: readonly PublicProjectionRoot[];
-  readonly hotRoots: readonly PublicProjectionRoot[];
-} {
-  const hot = [...roots];
-  const spilled: PublicProjectionRoot[] = [];
-  const over = () =>
-    hot.length > target.maxRoots ||
-    rootPayloadBytes(hot.map((root) => assertJson(root))) > target.maxEncodedBytes;
-  while (over()) {
-    const index = hot.findIndex((root) => root.state === "sealed");
-    if (index < 0) break;
-    spilled.push(hot[index]!);
-    hot.splice(index, 1);
-  }
-  return { spilled, hotRoots: hot };
 }
 
 function planArchiveSegments(

@@ -92,7 +92,7 @@ export function* executeChatTurn(
     typeof resolvedHead.activeCommand["commandId"] === "string"
       ? resolvedHead.activeCommand["commandId"]
       : resolvedHead?.activeExecutionId;
-  const sessionId = stableTupleHash([
+  let sessionId = stableTupleHash([
     "chat-response-tail",
     requestedConversationId,
     body.command?.commandId ?? activeResponseTailId ?? resolvedHead?.revision ?? "hydrate",
@@ -461,18 +461,28 @@ export function* executeChatTurn(
         resolvedHead.activeLogicalTurnId &&
         resolvedHead.activeExecutionId
       ) {
+        const recoveryCommandId = stableTupleHash([
+          "recover-writer",
+          sessionId,
+          resolvedHead.revision,
+          resolvedHead.activeExecutionId,
+        ]);
         yield* claimDetachedTurnRecovery({
           conversationId: requestedConversationId,
-          commandId: stableTupleHash([
-            "recover-writer",
-            sessionId,
-            resolvedHead.revision,
-            resolvedHead.activeExecutionId,
-          ]),
+          commandId: recoveryCommandId,
           kind: "recover-writer",
           logicalTurnId: resolvedHead.activeLogicalTurnId,
           executionId: resolvedHead.activeExecutionId,
         });
+        // Recovery emits a new finite segment, including its own RUN_STARTED.
+        // The abandoned buffer may survive in a DO; appending to it would
+        // splice two run preludes together. Subsequent readers select this
+        // segment through the recovery command recorded in the head.
+        sessionId = stableTupleHash([
+          "chat-response-tail",
+          requestedConversationId,
+          recoveryCommandId,
+        ]);
       }
       const activeRecord = yield* TurnJournalAuthority.operations.read(
         resolvedHead.activeExecutionId,

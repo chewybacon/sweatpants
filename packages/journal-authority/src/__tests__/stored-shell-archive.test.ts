@@ -111,6 +111,17 @@ describe("stored authority replay archive", () => {
       const archived = yield* readAll("replay", "authority-archive", pointers.replayHead);
       expect(journalEntries.length).toBeGreaterThan(0);
       expect(archived.length).toBeGreaterThan(0);
+      // Own-commit reuse must retain complete history, not only live topology.
+      expect(yield* drivers.journal.readSession(sessionId)).toEqual(journalEntries);
+      const restarted = createStoredShellDrivers(store, {
+        journalId,
+        keyring: createCapabilityKeyring("archive-test", [
+          { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
+        ]),
+      });
+      expect(yield* restarted.snapshot.exportSnapshot()).toEqual(
+        yield* drivers.snapshot.exportSnapshot(),
+      );
 
       // Regression: every archived event is archived exactly once.
       const archivedIds = archived.map(eventIdOf);
