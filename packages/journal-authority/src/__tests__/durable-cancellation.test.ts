@@ -16,7 +16,7 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "../testing/program-driver-host.ts";
-import { createAuthorityScenarioDriver } from "../testing/testing.ts";
+import { createAuthorityScenarioDriver, type AuthorityScenarioDriver } from "../testing/testing.ts";
 import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
@@ -162,7 +162,8 @@ function attach(sessionId: string) {
   } as const;
 }
 
-function* open(name: string, selected = authority(name)) {
+function* open(name: string, supplied?: AuthorityScenarioDriver) {
+  const selected = supplied ?? (yield* authority(name));
   const request = attach(name);
   const opened = yield* selected.openTask({
     sessionId: request.sessionId,
@@ -314,10 +315,10 @@ describe("durable cancellation and partial results", () => {
         },
       ),
     ]);
-    const selected = authority("unwind");
     const request = attach("unwind");
 
     await run(function* () {
+      const selected = yield* authority("unwind");
       yield* selected.openTask({
         sessionId: request.sessionId,
         turnId: "turn-0",
@@ -349,27 +350,27 @@ describe("durable cancellation and partial results", () => {
         });
       });
       expect(second).toEqual({ state: "cancelled" });
-    });
 
-    expect(catches).toBe(1);
-    expect(cleanupRuns).toBe(1);
-    const records = selected.readJournal(request.sessionId);
-    expect(
-      records
-        .slice()
-        .reverse()
-        .find((record) => record.payload.type === "TaskClosed")?.payload,
-    ).toEqual({
-      type: "TaskClosed",
-      taskId: request.taskId,
-      outcome: { status: "cancelled" },
+      expect(catches).toBe(1);
+      expect(cleanupRuns).toBe(1);
+      const records = selected.readJournal(request.sessionId);
+      expect(
+        records
+          .slice()
+          .reverse()
+          .find((record) => record.payload.type === "TaskClosed")?.payload,
+      ).toEqual({
+        type: "TaskClosed",
+        taskId: request.taskId,
+        outcome: { status: "cancelled" },
+      });
+      expect(records.at(-1)?.payload).toMatchObject({
+        type: "AdvancementReleased",
+        taskId: request.taskId,
+        reason: "terminal",
+      });
+      expect(records.some((record) => record.payload.type === "DurableEmission")).toBe(true);
+      expect(JSON.stringify(records)).not.toContain("must-not-become-success");
     });
-    expect(records.at(-1)?.payload).toMatchObject({
-      type: "AdvancementReleased",
-      taskId: request.taskId,
-      reason: "terminal",
-    });
-    expect(records.some((record) => record.payload.type === "DurableEmission")).toBe(true);
-    expect(JSON.stringify(records)).not.toContain("must-not-become-success");
   });
 });

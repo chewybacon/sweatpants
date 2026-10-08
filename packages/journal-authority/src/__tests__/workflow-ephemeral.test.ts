@@ -1,3 +1,4 @@
+import { call } from "effection";
 import { run, scoped } from "effection";
 import { describe, expect, it } from "vitest";
 import type { AttachProgramRequest, DurableProgramManifest } from "@sweatpants/durable-execution";
@@ -80,227 +81,255 @@ function weatherWorkflow(): () => Workflow<Json> {
 
 describe("workflow runtime ephemeral boundaries", () => {
   it("parks on a ephemeral call and settles through session resolution", async () => {
-    const sessionId = "ephemeral-ok";
-    const authority = makeAuthority("journal-ephemeral-ok");
-    const request = attach(sessionId);
+    return await run(function* () {
+      const sessionId = "ephemeral-ok";
+      const authority = yield* makeAuthority("journal-ephemeral-ok");
+      const request = attach(sessionId);
 
-    const outcome = await run(function* () {
-      return yield* withProgramDriverTestScope(authority, function* () {
-        const opened = (yield* authority.openTask({
-          sessionId,
-          turnId: "turn-0",
-          taskId: request.taskId,
-          manifest,
-          input: null,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(request),
-          audience: "program-host",
-        })) as unknown as { programCapability: string };
-        void opened;
+      const outcome = yield* call(() =>
+        run(function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
+            const opened = (yield* authority.openTask({
+              sessionId,
+              turnId: "turn-0",
+              taskId: request.taskId,
+              manifest,
+              input: null,
+              executionEpoch: 1,
+              attachmentId: stableProgramAttachmentId(request),
+              audience: "program-host",
+            })) as unknown as { programCapability: string };
+            void opened;
 
-        // Activation 1: parks on the live ephemeral reference.
-        const parked = yield* driveActivation({
-          attach: request,
-          authority,
-          workflow: weatherWorkflow(),
-        });
-        if (parked.state !== "parked" || parked.reason !== "ephemeral") {
-          throw new Error(
-            `expected parked ephemeral, got ${parked.state}/${"reason" in parked ? parked.reason : "?"}`,
-          );
-        }
+            // Activation 1: parks on the live ephemeral reference.
+            const parked = yield* driveActivation({
+              attach: request,
+              authority,
+              workflow: weatherWorkflow(),
+            });
+            if (parked.state !== "parked" || parked.reason !== "ephemeral") {
+              throw new Error(
+                `expected parked ephemeral, got ${parked.state}/${"reason" in parked ? parked.reason : "?"}`,
+              );
+            }
 
-        // Session settles against its live reference.
-        const pending = authority
-          .readJournal(sessionId)
-          .find(
-            (e) => e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
-          );
-        if (!pending || pending.payload.type !== "PullRequested") {
-          throw new Error("ephemeral pull missing");
-        }
-        if (pending.payload.descriptor.kind !== "ephemeral") return;
-        const resolved = yield* authority.resolve({
-          capability: authority.resolutionCapability(
-            sessionId,
-            request.taskId,
-            pending.payload.pullId,
-          ),
-          audience: "ephemeral:tool-session",
-          outcome: { status: "ok", value: { sky: "sunny" } },
-        });
-        if (resolved.status === "rejected") throw new Error(resolved.code);
+            // Session settles against its live reference.
+            const pending = authority
+              .readJournal(sessionId)
+              .find(
+                (e) =>
+                  e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
+              );
+            if (!pending || pending.payload.type !== "PullRequested") {
+              throw new Error("ephemeral pull missing");
+            }
+            if (pending.payload.descriptor.kind !== "ephemeral") {
+              return;
+            }
+            const resolved = yield* authority.resolve({
+              capability: authority.resolutionCapability(
+                sessionId,
+                request.taskId,
+                pending.payload.pullId,
+              ),
+              audience: "ephemeral:tool-session",
+              outcome: { status: "ok", value: { sky: "sunny" } },
+            });
+            if (resolved.status === "rejected") {
+              throw new Error(resolved.code);
+            }
 
-        // Restore replays the settled call and completes.
-        const bound = yield* authority.bindProgramAttachment(
-          sessionId,
-          request.taskId,
-          stableProgramAttachmentId(request) + "-2",
-          1,
-        );
-        void bound;
-        const settled = yield* driveActivation({
-          attach: request,
-          authority,
-          workflow: weatherWorkflow(),
-        });
-        return settled;
-      });
+            // Restore replays the settled call and completes.
+            const bound = yield* authority.bindProgramAttachment(
+              sessionId,
+              request.taskId,
+              stableProgramAttachmentId(request) + "-2",
+              1,
+            );
+            void bound;
+            const settled = yield* driveActivation({
+              attach: request,
+              authority,
+              workflow: weatherWorkflow(),
+            });
+            return settled;
+          });
+        }),
+      );
+
+      expect(outcome).toEqual({ state: "completed", value: { forecast: "sunny" } });
     });
-
-    expect(outcome).toEqual({ state: "completed", value: { forecast: "sunny" } });
   });
 
   it("journals a lost-reference resolution as a program failure", async () => {
-    const sessionId = "ephemeral-lost";
-    const authority = makeAuthority("journal-ephemeral-lost");
-    const request = attach(sessionId);
+    return await run(function* () {
+      const sessionId = "ephemeral-lost";
+      const authority = yield* makeAuthority("journal-ephemeral-lost");
+      const request = attach(sessionId);
 
-    const outcome = await run(function* () {
-      return yield* withProgramDriverTestScope(authority, function* () {
-        const opened = (yield* authority.openTask({
-          sessionId,
-          turnId: "turn-0",
-          taskId: request.taskId,
-          manifest,
-          input: null,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(request),
-          audience: "program-host",
-        })) as unknown as { programCapability: string };
-        void opened;
+      const outcome = yield* call(() =>
+        run(function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
+            const opened = (yield* authority.openTask({
+              sessionId,
+              turnId: "turn-0",
+              taskId: request.taskId,
+              manifest,
+              input: null,
+              executionEpoch: 1,
+              attachmentId: stableProgramAttachmentId(request),
+              audience: "program-host",
+            })) as unknown as { programCapability: string };
+            void opened;
 
-        const parked = yield* driveActivation({
-          attach: request,
-          authority,
-          workflow: weatherWorkflow(),
-        });
-        if (parked.state !== "parked") throw new Error(`expected parked, got ${parked.state}`);
+            const parked = yield* driveActivation({
+              attach: request,
+              authority,
+              workflow: weatherWorkflow(),
+            });
+            if (parked.state !== "parked") {
+              throw new Error(`expected parked, got ${parked.state}`);
+            }
 
-        // Reference died while the program stayed parked: the session
-        // journals the error resolution.
-        const pending = authority
-          .readJournal(sessionId)
-          .find(
-            (e) => e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
-          );
-        if (!pending || pending.payload.type !== "PullRequested") throw new Error("no pull");
-        const resolved = yield* authority.resolve({
-          capability: authority.resolutionCapability(
-            sessionId,
-            request.taskId,
-            pending.payload.pullId,
-          ),
-          audience: "ephemeral:tool-session",
-          outcome: {
-            status: "error",
-            error: { code: "ephemeral_reference_lost", message: "live reference gone" },
-          },
-        });
-        if (resolved.status === "rejected") throw new Error(resolved.code);
+            // Reference died while the program stayed parked: the session
+            // journals the error resolution.
+            const pending = authority
+              .readJournal(sessionId)
+              .find(
+                (e) =>
+                  e.payload.type === "PullRequested" && e.payload.descriptor.kind === "ephemeral",
+              );
+            if (!pending || pending.payload.type !== "PullRequested") {
+              throw new Error("no pull");
+            }
+            const resolved = yield* authority.resolve({
+              capability: authority.resolutionCapability(
+                sessionId,
+                request.taskId,
+                pending.payload.pullId,
+              ),
+              audience: "ephemeral:tool-session",
+              outcome: {
+                status: "error",
+                error: { code: "ephemeral_reference_lost", message: "live reference gone" },
+              },
+            });
+            if (resolved.status === "rejected") {
+              throw new Error(resolved.code);
+            }
 
-        const bound = yield* authority.bindProgramAttachment(
-          sessionId,
-          request.taskId,
-          stableProgramAttachmentId(request) + "-2",
-          1,
-        );
-        void bound;
-        return yield* driveActivation({
-          attach: request,
-          authority,
-          workflow: weatherWorkflow(),
-        });
+            const bound = yield* authority.bindProgramAttachment(
+              sessionId,
+              request.taskId,
+              stableProgramAttachmentId(request) + "-2",
+              1,
+            );
+            void bound;
+            return yield* driveActivation({
+              attach: request,
+              authority,
+              workflow: weatherWorkflow(),
+            });
+          });
+        }),
+      );
+
+      expect(outcome).toEqual({
+        state: "failed",
+        error: { code: "ephemeral_reference_lost", message: "live reference gone" },
       });
-    });
-
-    expect(outcome).toEqual({
-      state: "failed",
-      error: { code: "ephemeral_reference_lost", message: "live reference gone" },
     });
   });
 
   it("rejects non-process-bound durabilities at reserve (Case 2 gate)", async () => {
-    const sessionId = "ephemeral-durability";
-    const authority = makeAuthority("journal-ephemeral-durability");
-    const request = attach(sessionId);
+    return await run(function* () {
+      const sessionId = "ephemeral-durability";
+      const authority = yield* makeAuthority("journal-ephemeral-durability");
+      const request = attach(sessionId);
 
-    await run(function* () {
-      yield* scoped(function* () {
-        const opened = (yield* authority.openTask({
-          sessionId,
-          turnId: "turn-0",
-          taskId: request.taskId,
-          manifest,
-          input: null,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(request),
-          audience: "program-host",
-        })) as unknown as { programCapability: string };
-        void opened;
+      yield* call(() =>
+        run(function* () {
+          yield* scoped(function* () {
+            const opened = (yield* authority.openTask({
+              sessionId,
+              turnId: "turn-0",
+              taskId: request.taskId,
+              manifest,
+              input: null,
+              executionEpoch: 1,
+              attachmentId: stableProgramAttachmentId(request),
+              audience: "program-host",
+            })) as unknown as { programCapability: string };
+            void opened;
 
-        let threw: unknown;
-        try {
-          yield* driveActivation({
-            attach: request,
-            authority,
-            workflow: function* (): Workflow<Json> {
-              yield* pullOperation({
-                kind: "ephemeral",
-                driver: "mcp",
-                tool: "remote",
-                input: {},
-                durability: "opaque",
+            let threw: unknown;
+            try {
+              yield* driveActivation({
+                attach: request,
+                authority,
+                workflow: function* (): Workflow<Json> {
+                  yield* pullOperation({
+                    kind: "ephemeral",
+                    driver: "mcp",
+                    tool: "remote",
+                    input: {},
+                    durability: "opaque",
+                  });
+                  return {};
+                },
               });
-              return {};
-            },
+            } catch (error) {
+              threw = error;
+            }
+            expect(threw).toMatchObject({ code: "invalid_descriptor" });
           });
-        } catch (error) {
-          threw = error;
-        }
-        expect(threw).toMatchObject({ code: "invalid_descriptor" });
-      });
+        }),
+      );
     });
   });
 
   it("records the ephemeral request canonically in the journal", async () => {
-    const sessionId = "ephemeral-journal";
-    const authority = makeAuthority("journal-ephemeral-journal");
-    const request = attach(sessionId);
+    return await run(function* () {
+      const sessionId = "ephemeral-journal";
+      const authority = yield* makeAuthority("journal-ephemeral-journal");
+      const request = attach(sessionId);
 
-    await run(function* () {
-      yield* withProgramDriverTestScope(authority, function* () {
-        const opened = (yield* authority.openTask({
-          sessionId,
-          turnId: "turn-0",
-          taskId: request.taskId,
-          manifest,
-          input: null,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(request),
-          audience: "program-host",
-        })) as unknown as { programCapability: string };
-        void opened;
+      yield* call(() =>
+        run(function* () {
+          yield* withProgramDriverTestScope(authority, function* () {
+            const opened = (yield* authority.openTask({
+              sessionId,
+              turnId: "turn-0",
+              taskId: request.taskId,
+              manifest,
+              input: null,
+              executionEpoch: 1,
+              attachmentId: stableProgramAttachmentId(request),
+              audience: "program-host",
+            })) as unknown as { programCapability: string };
+            void opened;
 
-        yield* driveActivation({
-          attach: request,
-          authority,
-          workflow: weatherWorkflow(),
-        });
+            yield* driveActivation({
+              attach: request,
+              authority,
+              workflow: weatherWorkflow(),
+            });
 
-        const pull = authority
-          .readJournal(sessionId)
-          .find((e) => e.payload.type === "PullRequested");
-        expect(pull?.payload.type).toBe("PullRequested");
-        if (pull?.payload.type === "PullRequested") {
-          expect(cloneJson(pull.payload.descriptor)).toMatchObject({
-            kind: "ephemeral",
-            driver: "tool-session",
-            tool: "weather",
+            const pull = authority
+              .readJournal(sessionId)
+              .find((e) => e.payload.type === "PullRequested");
+            expect(pull?.payload.type).toBe("PullRequested");
+            if (pull?.payload.type === "PullRequested") {
+              expect(cloneJson(pull.payload.descriptor)).toMatchObject({
+                kind: "ephemeral",
+                driver: "tool-session",
+                tool: "weather",
+              });
+              void (null as unknown as Json);
+            }
           });
-          void (null as unknown as Json);
-        }
-      });
+        }),
+      );
     });
   });
 });

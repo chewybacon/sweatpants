@@ -3,7 +3,7 @@ import { canonicalDigest } from "@sweatpants/foundation";
 import { run } from "effection";
 import { expect, it } from "vitest";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
-import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import { createJournal } from "../shell/journal.ts";
 import { createMemoryExecutionStore } from "../store/memory.ts";
 import { DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES } from "../store/snapshot-codec.ts";
 import type { ExecutionStore, StoredExecutionObject } from "../store/store.ts";
@@ -25,7 +25,9 @@ it("publishes one UUID snapshot across a CAS retry and reuses it after cold relo
         return { status: "control_conflict", current: null };
       }
       const result = yield* store.commitExecution(request);
-      if (result.status === "committed") staged.push(...(request.objects ?? []));
+      if (result.status === "committed") {
+        staged.push(...(request.objects ?? []));
+      }
       return result;
     },
   };
@@ -60,8 +62,8 @@ it("publishes one UUID snapshot across a CAS retry and reuses it after cold relo
     audience: "workflow-host",
   };
   await run(function* () {
-    const drivers = createStoredShellDrivers(measured, options);
-    yield* drivers.authority.command({ type: "execution.open-task", request });
+    const drivers = yield* createJournal(measured, options);
+    yield* drivers.advance({ type: "execution.open-task", request });
     expect(commits).toBe(2);
     expect(proposedIds[1]).toBe(proposedIds[0]);
     expect(staged).toHaveLength(1);
@@ -77,28 +79,28 @@ it("publishes one UUID snapshot across a CAS retry and reuses it after cold relo
         integrity: { algorithm: "sha256", value: snapshot.contentHash },
       },
     });
-    const restarted = createStoredShellDrivers(measured, options);
-    expect(yield* restarted.snapshot.exportSnapshot()).toEqual(
-      yield* drivers.snapshot.exportSnapshot(),
-    );
+    const restarted = yield* createJournal(measured, options);
+    expect(yield* restarted.exportSnapshot()).toEqual(yield* drivers.exportSnapshot());
     expect(staged).toHaveLength(1);
     expect(yield* store.loadControl("authority:snapshot-identities")).toEqual(control);
-    expect((yield* restarted.journal.readSession("session")).length).toBeGreaterThan(0);
+    expect((yield* restarted.readSession("session")).length).toBeGreaterThan(0);
     for (const fault of ["oversized", "invalid-shape"] as const) {
       const invalidStore: ExecutionStore = {
         ...store,
         *getObject(pointer) {
           const saved = yield* store.getObject(pointer);
-          if (!saved) throw new Error("Expected the persisted snapshot");
+          if (!saved) {
+            throw new Error("Expected the persisted snapshot");
+          }
           return fault === "oversized"
             ? { ...saved, byteLength: DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES + 1 }
             : { ...saved, body: { version: 99, sessions: [], records: [], nextNonce: 0 } };
         },
       };
-      const invalid = createStoredShellDrivers(invalidStore, options);
+      const invalid = yield* createJournal(invalidStore, options);
       let failure: unknown;
       try {
-        yield* invalid.snapshot.exportSnapshot();
+        yield* invalid.exportSnapshot();
       } catch (error) {
         failure = error;
       }

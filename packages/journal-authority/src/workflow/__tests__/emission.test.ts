@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Json } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "../../contract/capabilities.ts";
 import { AuthorityJournalPort, JournalAuthorityPort } from "../../contract/authority-ports.ts";
-import { createInMemoryShellDrivers } from "../../shell/in-memory-shell.ts";
+import { createInMemoryJournal } from "../../shell/in-memory-journal.ts";
 import { createDurableSchemaRegistry } from "../../contract/schema-registry.ts";
 import { createSchemaFixture, stringGuard } from "../../testing/schema-fixtures.ts";
 import type { DurableProgramManifest } from "@sweatpants/durable-execution";
@@ -56,24 +56,15 @@ function attach(sessionId: string) {
 }
 
 function* installMemoryAuthority(sessionId: string): Operation<string> {
-  yield* JournalAuthorityPort.installDriver(
-    createInMemoryShellDrivers({
-      journalId: `emission-${sessionId}`,
-      journalIncarnation: "1",
-      keyring,
-      schemaRegistry: schemaRegistry(),
-      now: () => 1_000,
-    }).authority,
-  );
-  yield* AuthorityJournalPort.installDriver(
-    createInMemoryShellDrivers({
-      journalId: `emission-${sessionId}`,
-      journalIncarnation: "1",
-      keyring,
-      schemaRegistry: schemaRegistry(),
-      now: () => 1_000,
-    }).journal,
-  );
+  const journal = yield* createInMemoryJournal({
+    journalId: `emission-${sessionId}`,
+    journalIncarnation: "1",
+    keyring,
+    schemaRegistry: schemaRegistry(),
+    now: () => 1_000,
+  });
+  yield* JournalAuthorityPort.installDriver({ command: journal.advance, query: journal.query });
+  yield* AuthorityJournalPort.installDriver(journal);
   const opened = yield* JournalAuthorityPort.api.operations.command({
     type: "execution.open-task",
     request: {
@@ -110,7 +101,9 @@ describe("emission boundaries", () => {
         });
         const started = yield* handle.exchange({ type: "start", input: request.input });
         expectEvent(started, "emission-proposed");
-        if (started.type !== "emission-proposed") return;
+        if (started.type !== "emission-proposed") {
+          return;
+        }
         expect(started.descriptor).toEqual({
           eventType: "workflow.emission/test",
           payload: { n: 1 },
@@ -153,7 +146,9 @@ describe("emission boundaries", () => {
         });
         const proposed = yield* handle.exchange({ type: "start", input: request.input });
         expectEvent(proposed, "record-proposed");
-        if (proposed.type !== "record-proposed") return;
+        if (proposed.type !== "record-proposed") {
+          return;
+        }
         const reserved = yield* authority.command({
           type: "execution.reserve-pull",
           request: {
@@ -177,7 +172,9 @@ describe("emission boundaries", () => {
           descriptor: proposed.descriptor,
         });
         expectEvent(attempted, "record-attempt-completed");
-        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
+        if (attempted.type !== "record-attempt-completed") {
+          throw new Error("attempt missing");
+        }
         const resolved = yield* authority.command({
           type: "execution.resolve-pull",
           request: {
@@ -206,7 +203,9 @@ describe("emission boundaries", () => {
           replayed: false,
         });
         expectEvent(resumed, "emission-proposed");
-        if (resumed.type !== "emission-proposed") return;
+        if (resumed.type !== "emission-proposed") {
+          return;
+        }
         expect(resumed.actionIndex).toBe(1);
         const receipt = yield* authority.command({
           type: "execution.append-emission",

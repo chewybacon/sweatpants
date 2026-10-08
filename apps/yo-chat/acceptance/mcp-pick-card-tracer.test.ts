@@ -38,7 +38,7 @@ describe("MCP multi-round-trip pick_card tracer", () => {
           ]),
           schemaRegistry: programDriverSchemaRegistry(pickCard.artifacts.catalog),
         };
-        let authority = createAuthorityScenarioDriver(authorityOptions);
+        let authority = yield* createAuthorityScenarioDriver(authorityOptions);
         const attach = {
           sessionId: "invocation-1",
           taskId: "turn-0/root",
@@ -123,8 +123,9 @@ describe("MCP multi-round-trip pick_card tracer", () => {
         const [pullId] = Object.keys(requests);
         expect(requests[pullId]).toMatchObject({ method: "elicitation/create" });
         const operation = yield* authority.operationState(attach.sessionId, attach.taskId, pullId);
-        if (operation.status !== "found" || operation.descriptor.kind !== "elicit")
+        if (operation.status !== "found" || operation.descriptor.kind !== "elicit") {
           throw new Error("Missing park");
+        }
         const cards = PickCardContextSchema.parse(operation.descriptor.context).cards;
         const continuation = parked.result.requestState as string;
         const retry: TracerRequest = {
@@ -143,7 +144,7 @@ describe("MCP multi-round-trip pick_card tracer", () => {
         };
 
         // Replace the authority object from serialized state as well as replacing the host driver.
-        authority = createAuthorityScenarioDriver({
+        authority = yield* createAuthorityScenarioDriver({
           ...authorityOptions,
           snapshot: JSON.parse(JSON.stringify(authority.exportSnapshot())),
         });

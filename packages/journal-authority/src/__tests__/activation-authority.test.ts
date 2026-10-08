@@ -28,10 +28,46 @@ function authority(now: () => number) {
 }
 
 describe("activation leases and restore fencing", () => {
+  it("reports remaining ownership using authority time without mutating the lease", async () => {
+    let clock = 1_000;
+    await run(function* () {
+      const value = yield* authority(() => clock);
+      expect(yield* value.query({ type: "control.activation-status", sessionId: "s1" })).toEqual({
+        remainingMs: 0,
+      });
+      yield* value.openTask({
+        sessionId: "s1",
+        turnId: "t1",
+        taskId: "task",
+        manifest,
+        input: {},
+        executionEpoch: 1,
+        attachmentId: "initial",
+        audience: "workflow-host",
+      });
+      yield* value.claimActivation({ sessionId: "s1", ownerId: "a", leaseDurationMs: 1_000 });
+      expect(yield* value.query({ type: "control.activation-status", sessionId: "s1" })).toEqual({
+        remainingMs: 1_000,
+      });
+      clock = 1_999;
+      expect(yield* value.query({ type: "control.activation-status", sessionId: "s1" })).toEqual({
+        remainingMs: 1,
+      });
+      clock = 2_000;
+      expect(yield* value.query({ type: "control.activation-status", sessionId: "s1" })).toEqual({
+        remainingMs: 0,
+      });
+      expect(yield* value.claimActivation({ sessionId: "s1", ownerId: "b" })).toMatchObject({
+        status: "claimed",
+        epoch: 2,
+      });
+    });
+  });
+
   it("claims runnable work once, renews by owner, and takes over exactly at expiry", async () => {
     let clock = 1_000;
-    const value = authority(() => clock);
     await run(function* () {
+      const value = yield* authority(() => clock);
       yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -73,8 +109,8 @@ describe("activation leases and restore fencing", () => {
 
   it("recovers an expired in-flight lease even though claim cleared runnable", async () => {
     let clock = 1_000;
-    const value = authority(() => clock);
     await run(function* () {
+      const value = yield* authority(() => clock);
       yield* value.openTask({
         sessionId: "crashed",
         turnId: "turn",
@@ -105,8 +141,8 @@ describe("activation leases and restore fencing", () => {
 
   it("fences a replacement attachment after an expired activation lease", async () => {
     let clock = 1_000;
-    const value = authority(() => clock);
     await run(function* () {
+      const value = yield* authority(() => clock);
       yield* value.openTask({
         sessionId: "expired-replacement",
         turnId: "turn",
@@ -135,8 +171,8 @@ describe("activation leases and restore fencing", () => {
   });
 
   it("binds the verified frontier digest to the exact first semantic transition", async () => {
-    const value = authority(() => 2_000);
     await run(function* () {
+      const value = yield* authority(() => 2_000);
       const opened = yield* value.openTask({
         sessionId: "s-frontier",
         turnId: "t-frontier",
@@ -214,8 +250,8 @@ describe("activation leases and restore fencing", () => {
 
   it("uses single-use head-bound restore tickets and applies contention backoff", async () => {
     let clock = 5_000;
-    const value = authority(() => clock);
     await run(function* () {
+      const value = yield* authority(() => clock);
       yield* value.openTask({
         sessionId: "s2",
         turnId: "t2",

@@ -17,7 +17,7 @@ const factory: DurableSandboxConformanceFactory = {
   *open(options) {
     let authority = authorities.get(options.journalId);
     if (!authority) {
-      authority = createAuthorityScenarioDriver({
+      authority = yield* createAuthorityScenarioDriver({
         journalId: options.journalId,
         journalIncarnation: "sandbox-conformance-v1",
         keyring: options.keyring,

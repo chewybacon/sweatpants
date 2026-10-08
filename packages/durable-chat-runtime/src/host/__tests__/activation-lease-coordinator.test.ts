@@ -1,10 +1,76 @@
-import { run, sleep } from "effection";
+import { run, sleep, createScope, suspend, withResolvers } from "effection";
 import { describe, expect, it } from "vitest";
 
 import type { JournalAuthorityContract } from "@sweatpants/journal-authority";
 import { runWithRenewedActivationLease } from "../activation-lease-coordinator.ts";
 
 describe("activation lease coordinator", () => {
+  it("releases asynchronously on host loss without resuming the cancelled caller", async () => {
+    const [scope, destroy] = createScope();
+    const started = withResolvers<void>();
+    let released = false;
+    let continued = false;
+    const authority = {
+      *command(command: { type: string }) {
+        if (command.type === "control.claim-activation") {
+          return { status: "claimed", epoch: 1 };
+        }
+        if (command.type === "control.release-activation") {
+          // Persistent adapters suspend while committing release during teardown.
+          yield* sleep(1);
+          released = true;
+          return { status: "released", runnable: true };
+        }
+        throw new Error("unexpected renewal");
+      },
+    } as unknown as JournalAuthorityContract;
+    const task = scope.run(function* () {
+      yield* runWithRenewedActivationLease(authority, "session", "owner", function* () {
+        started.resolve();
+        yield* suspend();
+        return { state: "completed", value: null };
+      });
+      continued = true;
+    });
+    // The host destroys the operation; no unhandled promise is left behind.
+    void task.catch(() => undefined);
+    await run(() => started.operation);
+    await destroy();
+    expect(released).toBe(true);
+    expect(continued).toBe(false);
+  });
+
+  it("finishes the lease release before returning a completed activation", async () => {
+    const events: string[] = [];
+    const authority = {
+      *command(command: { type: string }) {
+        if (command.type === "control.claim-activation") {
+          return { status: "claimed", epoch: 1 };
+        }
+        if (command.type === "control.release-activation") {
+          yield* sleep(1);
+          events.push("released");
+          return { status: "released", runnable: false };
+        }
+        throw new Error("unexpected renewal");
+      },
+    } as unknown as JournalAuthorityContract;
+    await run(function* () {
+      const outcome = yield* runWithRenewedActivationLease(
+        authority,
+        "session",
+        "owner",
+        function* () {
+          events.push("activated");
+          return { state: "completed", value: null };
+        },
+      );
+      expect(outcome).toEqual({ state: "completed", value: null });
+      events.push("presented");
+    });
+    expect(events).toEqual(["activated", "released", "presented"]);
+  });
+
   it("renews outside the crank and cancels the activation scope when renewal is lost", async () => {
     let renewals = 0;
     let activationClosed = false;

@@ -1,3 +1,4 @@
+import { call } from "effection";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
@@ -154,7 +155,7 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
 
   async function runWorkflowDriver(): Promise<ScenarioResult> {
     return run(function* () {
-      const authority = makeAuthority("journal-flip-workflow");
+      const authority = yield* makeAuthority("journal-flip-workflow");
       const handlers = new Map([
         [
           "echo",
@@ -197,7 +198,9 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
       });
       const journal = authority.readJournal(sessionId);
       const closed = journal.find((entry) => entry.payload.type === "TaskClosed");
-      if (!closed || closed.payload.type !== "TaskClosed") throw new Error("workflow not closed");
+      if (!closed || closed.payload.type !== "TaskClosed") {
+        throw new Error("workflow not closed");
+      }
       return {
         value: (closed.payload.outcome as { value: string }).value,
         journalTypes: payloadTypes(journal),
@@ -212,111 +215,115 @@ describe("workflow runtime behind the ProgramDriver contract", () => {
   }
 
   it("runs the tool through the workflow driver", async () => {
-    const result = await runWorkflowDriver();
+    return await run(function* () {
+      const result = yield* call(() => runWorkflowDriver());
 
-    expect(result.value).toBe("one|one-executed|two");
-    expect(result.settledValues).toEqual(["one", "one-executed", "two"]);
-    expect(result.journalTypes).toContain("TaskClosed");
-    expect(result.forest).toBeDefined();
+      expect(result.value).toBe("one|one-executed|two");
+      expect(result.settledValues).toEqual(["one", "one-executed", "two"]);
+      expect(result.journalTypes).toContain("TaskClosed");
+      expect(result.forest).toBeDefined();
+    });
   });
 
   it("parks and resumes elicitations across activations through the driver", async () => {
-    const sessionId = "driver-parked";
-    let pullId = "";
-    let capability = "";
+    return await run(function* () {
+      const sessionId = "driver-parked";
+      let pullId = "";
+      let capability = "";
 
-    async function runSide(journalId: string) {
-      return run(function* () {
-        const authority = makeAuthority(journalId);
-        const drivers = createProgramDriverRegistry([
-          ["program", createWorkflowProgramDriver(createDurableToolRegistry([parkedTool]))],
-        ]);
-        const request = attach(sessionId);
-        let firstState = "";
-        let firstReason = "";
-        let secondValue = "";
-        yield* withProgramDriverTestScope(authority, function* () {
-          yield* authority.openTask({
-            sessionId: request.sessionId,
-            turnId: "turn-0",
-            taskId: request.taskId,
-            manifest,
-            input: request.input,
-            executionEpoch: 1,
-            attachmentId: stableProgramAttachmentId(request),
-            audience: "program-host",
-          });
-          const activate = () =>
-            ProgramDriverRegistryContext.with(drivers, function* () {
-              return yield* driveInstalledTestProgramTree({ attach: request });
+      async function runSide(journalId: string) {
+        return run(function* () {
+          const authority = yield* makeAuthority(journalId);
+          const drivers = createProgramDriverRegistry([
+            ["program", createWorkflowProgramDriver(createDurableToolRegistry([parkedTool]))],
+          ]);
+          const request = attach(sessionId);
+          let firstState = "";
+          let firstReason = "";
+          let secondValue = "";
+          yield* withProgramDriverTestScope(authority, function* () {
+            yield* authority.openTask({
+              sessionId: request.sessionId,
+              turnId: "turn-0",
+              taskId: request.taskId,
+              manifest,
+              input: request.input,
+              executionEpoch: 1,
+              attachmentId: stableProgramAttachmentId(request),
+              audience: "program-host",
             });
-          const firstRun = yield* activate();
-          if (firstRun.state !== "parked" || firstRun.reason !== "elicit") {
-            throw new Error(
-              `expected parked elicit, got ${firstRun.state}/${"reason" in firstRun ? firstRun.reason : "terminal"}`,
-            );
-          }
-          firstState = firstRun.state;
-          firstReason = firstRun.reason ?? "";
-          const pending = authority
-            .readJournal(sessionId)
-            .find(
-              (entry) =>
-                entry.payload.type === "PullRequested" &&
-                entry.payload.descriptor.kind === "elicit",
-            );
-          if (!pending || pending.payload.type !== "PullRequested") {
-            throw new Error("elicitation was not recorded");
-          }
-          pullId = pending.payload.pullId;
-          capability = authority.resolutionCapability(sessionId, request.taskId, pullId);
-          // Settle while parked.
-          const validated = yield* authority.validateElicitResponse({
-            sessionId,
-            pullId,
-            participantId: "user:approval",
-            completion: { action: "accept", content: true },
+            const activate = () =>
+              ProgramDriverRegistryContext.with(drivers, function* () {
+                return yield* driveInstalledTestProgramTree({ attach: request });
+              });
+            const firstRun = yield* activate();
+            if (firstRun.state !== "parked" || firstRun.reason !== "elicit") {
+              throw new Error(
+                `expected parked elicit, got ${firstRun.state}/${"reason" in firstRun ? firstRun.reason : "terminal"}`,
+              );
+            }
+            firstState = firstRun.state;
+            firstReason = firstRun.reason ?? "";
+            const pending = authority
+              .readJournal(sessionId)
+              .find(
+                (entry) =>
+                  entry.payload.type === "PullRequested" &&
+                  entry.payload.descriptor.kind === "elicit",
+              );
+            if (!pending || pending.payload.type !== "PullRequested") {
+              throw new Error("elicitation was not recorded");
+            }
+            pullId = pending.payload.pullId;
+            capability = authority.resolutionCapability(sessionId, request.taskId, pullId);
+            // Settle while parked.
+            const validated = yield* authority.validateElicitResponse({
+              sessionId,
+              pullId,
+              participantId: "user:approval",
+              completion: { action: "accept", content: true },
+            });
+            if (validated.status !== "valid") {
+              throw new Error(`validation failed: ${validated.status}`);
+            }
+            const resolved = yield* authority.resolve({
+              capability,
+              audience: validated.audience,
+              outcome: validated.outcome,
+            });
+            if (resolved.status !== "accepted") {
+              throw new Error(`resolution rejected: ${resolved.status}`);
+            }
+            void capability;
+            const secondRun = yield* activate();
+            if (secondRun.state !== "completed") {
+              throw new Error(`second run ${secondRun.state}`);
+            }
+            secondValue = String(secondRun.value);
           });
-          if (validated.status !== "valid") {
-            throw new Error(`validation failed: ${validated.status}`);
-          }
-          const resolved = yield* authority.resolve({
-            capability,
-            audience: validated.audience,
-            outcome: validated.outcome,
-          });
-          if (resolved.status !== "accepted") {
-            throw new Error(`resolution rejected: ${resolved.status}`);
-          }
-          void capability;
-          const secondRun = yield* activate();
-          if (secondRun.state !== "completed") {
-            throw new Error(`second run ${secondRun.state}`);
-          }
-          secondValue = String(secondRun.value);
-        });
-        const journal = authority.readJournal(sessionId);
-        return {
-          firstState,
-          firstReason,
-          value: secondValue,
-          journalTypes: payloadTypes(journal),
-          forest: canonicalSnapshot(projectExecutionForest(journal)),
-        };
-      }) as unknown as Promise<{
-        firstState: string;
-        firstReason: string;
-        value: string;
-        journalTypes: string[];
-        forest: unknown;
-      }>;
-    }
+          const journal = authority.readJournal(sessionId);
+          return {
+            firstState,
+            firstReason,
+            value: secondValue,
+            journalTypes: payloadTypes(journal),
+            forest: canonicalSnapshot(projectExecutionForest(journal)),
+          };
+        }) as unknown as Promise<{
+          firstState: string;
+          firstReason: string;
+          value: string;
+          journalTypes: string[];
+          forest: unknown;
+        }>;
+      }
 
-    const result = await runSide("journal-parked-workflow");
-    expect(result.firstState).toBe("parked");
-    expect(result.firstReason).toBe("elicit");
-    expect(result.value).toBe("approved:accept");
-    expect(result.journalTypes).toContain("TaskClosed");
-    expect(result.forest).toBeDefined();
+      const result = yield* call(() => runSide("journal-parked-workflow"));
+      expect(result.firstState).toBe("parked");
+      expect(result.firstReason).toBe("elicit");
+      expect(result.value).toBe("approved:accept");
+      expect(result.journalTypes).toContain("TaskClosed");
+      expect(result.forest).toBeDefined();
+    });
   });
 });

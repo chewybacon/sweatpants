@@ -105,18 +105,18 @@ function executeProbe(sessionId: string): Promise<ExecutionCapture> {
   const keyring = createCapabilityKeyring("prompt-stability", [
     { keyId: "active", secret: "prompt-stability-secret-32-bytes!" },
   ]);
-  const authority = createAuthorityScenarioDriver({
-    journalId: "prompt-stability",
-    journalIncarnation: "1",
-    keyring,
-    schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
-  });
   const drivers = createProgramDriverRegistry([
     ["program", createWorkflowProgramDriver(createDurableToolRegistry([ephemeralToolAdapter]))],
   ]);
 
   const contexts: string[] = [];
   return run(function* () {
+    const authority = yield* createAuthorityScenarioDriver({
+      journalId: "prompt-stability",
+      journalIncarnation: "1",
+      keyring,
+      schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
+    });
     yield* createLocalToolInvocationRuntime({});
     const effects = createDurableEffectRegistry([
       ...createToolInvocationEphemeralEffectRegistrations({

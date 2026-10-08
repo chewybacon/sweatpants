@@ -1,19 +1,23 @@
+import type { ProgramStep } from "@sweatpants/durable-execution";
+import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 
 import type {
+  OrphanReason,
   AuthorityCommand,
   AuthorityQuery,
   CommandResult,
   JournalAuthorityContract,
   QueryResult,
 } from "../contract/authority-contract.ts";
-import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
+import { createInMemoryJournal } from "../shell/in-memory-journal.ts";
 import type {
   DurableAuthoritySnapshot,
   InMemoryJournalAuthorityOptions,
 } from "../state/authority-snapshot.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import type {
+  AppendEmissionRequest,
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
   AcceptPullPreparationRequest,
@@ -69,17 +73,18 @@ import type {
 } from "../contract/authority-types.ts";
 import { normalizeEmissionPolicy } from "../state/authority-support.ts";
 import { signCapability } from "../contract/capabilities.ts";
-export type AuthorityScenarioDriver = ReturnType<typeof createAuthorityScenarioDriver>;
+export type AuthorityScenarioDriver =
+  ReturnType<typeof createAuthorityScenarioDriver> extends Operation<infer Driver> ? Driver : never;
 
-export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityOptions) {
+export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthorityOptions) {
   normalizeEmissionPolicy(options.emissionPolicy);
-  const drivers = createInMemoryShellDrivers(options);
+  const drivers = yield* createInMemoryJournal(options);
   let latest = options.snapshot ?? emptySnapshot();
   const capabilities = new Map<string, string>();
 
   function* command<C extends AuthorityCommand>(value: C): Operation<CommandResult<C>> {
-    const result = yield* drivers.authority.command(value);
-    latest = yield* drivers.snapshot.exportSnapshot();
+    const result = yield* drivers.advance(value);
+    latest = yield* drivers.exportSnapshot();
     if (
       value.type === "execution.reserve-pull" &&
       result !== null &&
@@ -99,7 +104,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
   const authority: JournalAuthorityContract & {
     journalIdentity(): { readonly id: string; readonly incarnation: string };
     taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
-    taskInput(sessionId: string, taskId: string): Operation<import("@sweatpants/foundation").Json>;
+    taskInput(sessionId: string, taskId: string): Operation<Json>;
     taskRecoveryState(sessionId: string, taskId?: string): Operation<DurableTaskRecoveryState>;
     rootTaskCount(sessionId: string): Operation<number>;
     operationState(
@@ -132,7 +137,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
       taskId: string,
       restoredFrontier?: {
         proof: RestoredFrontierProof;
-        step: import("@sweatpants/durable-execution").ProgramStep;
+        step: ProgramStep;
       },
     ): Operation<DurableCancellationState>;
     bindProgramAttachment(
@@ -173,9 +178,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
       request: AcceptAssistantPartialRequest,
     ): Operation<AcceptAssistantPartialResult>;
     resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-    emit(
-      request: import("../contract/authority-types.ts").AppendEmissionRequest,
-    ): Operation<EmissionReceipt>;
+    emit(request: AppendEmissionRequest): Operation<EmissionReceipt>;
     complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
     requestCancellation(
       sessionId: string,
@@ -196,11 +199,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
       attemptId: string,
       reason?: string,
     ): Operation<void>;
-    forceOrphan(
-      sessionId: string,
-      taskId: string,
-      reason: import("../contract/authority-contract.ts").OrphanReason,
-    ): Operation<void>;
+    forceOrphan(sessionId: string, taskId: string, reason: OrphanReason): Operation<void>;
     resolutionCapability(sessionId: string, taskId: string, pullId: string): string;
     readJournal(sessionId: string): DurableSemanticRecord[];
     readTaskJournal(sessionId: string, rootTaskId: string): DurableSemanticRecord[];
@@ -208,7 +207,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     exportSnapshot(): DurableAuthoritySnapshot;
   } = {
     command,
-    query: drivers.authority.query,
+    query: drivers.query,
     journalIdentity() {
       return { id: options.journalId, incarnation: options.journalIncarnation ?? "1" };
     },
@@ -312,7 +311,9 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
       const task = latest.sessions
         .find(([id]) => id === sessionId)?.[1]
         .execution.tasks.find((candidate) => candidate.taskId === taskId);
-      if (!task) throw new Error(`Unknown task ${taskId}`);
+      if (!task) {
+        throw new Error(`Unknown task ${taskId}`);
+      }
       return signCapability(
         {
           journalId: options.journalId,
@@ -397,7 +398,9 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
     },
     resolutionCapability(sessionId, taskId, pullId) {
       const cached = capabilities.get(pullId);
-      if (cached) return cached;
+      if (cached) {
+        return cached;
+      }
       const task = latest.sessions
         .find(([id]) => id === sessionId)?.[1]
         .execution.tasks.find((candidate) => candidate.taskId === taskId);
@@ -408,7 +411,9 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
         const attempt = [...pull.pull.attempts]
           .reverse()
           .find((candidate) => candidate.status === "started");
-        if (attempt) return attempt.capability;
+        if (attempt) {
+          return attempt.capability;
+        }
         if (pull.pull.resolutionAuthority.kind !== "attempt") {
           return pull.pull.resolutionAuthority.capability;
         }
@@ -449,7 +454,7 @@ export function createAuthorityScenarioDriver(options: InMemoryJournalAuthorityO
   };
 
   function query<Q extends AuthorityQuery>(value: Q): Operation<QueryResult<Q>> {
-    return drivers.authority.query(value);
+    return drivers.query(value);
   }
 
   return authority;

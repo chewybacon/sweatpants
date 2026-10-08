@@ -1,17 +1,15 @@
 import { advanceJournalHeadIdentities } from "./journal-head-identity.ts";
 import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
 import { verifyResolutionCapability } from "../contract/capabilities.ts";
-import type { Operation } from "effection";
+import { resource, type Operation } from "effection";
+import type { Journal } from "./journal.ts";
 
 import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
 import type {
   AuthorityCommand,
-  AuthorityJournalContract,
   AuthorityQuery,
-  AuthoritySnapshotContract,
   AuthorityState,
   CommandResult,
-  JournalAuthorityContract,
   KernelContext,
   KernelTransition,
   QueryResult,
@@ -29,22 +27,29 @@ import type {
 } from "../state/authority-snapshot.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 
-export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOptions): {
-  readonly authority: JournalAuthorityContract;
-  readonly journal: AuthorityJournalContract;
-  readonly snapshot: AuthoritySnapshotContract;
-} {
-  const initial = options.snapshot ?? emptySnapshot();
-  let state = authorityStateFromSnapshot(initial);
-  let history = initial.records.flatMap(([, records]) => structuredClone(records));
-  const identity = {
-    id: options.journalId,
-    incarnation: options.journalIncarnation ?? "1",
-  };
+/** A journal whose accepted state and history belong to the acquiring scope. */
+export function createInMemoryJournal(
+  options: InMemoryJournalAuthorityOptions,
+): Operation<Journal> {
+  return resource(function* (provide) {
+    let open = true;
+    function assertOpen() {
+      if (!open) {
+        throw new Error("Journal owning scope has exited");
+      }
+    }
+    const initial = options.snapshot ?? emptySnapshot();
+    let state = authorityStateFromSnapshot(initial);
+    let history = initial.records.flatMap(([, records]) => structuredClone(records));
+    const identity = {
+      id: options.journalId,
+      incarnation: options.journalIncarnation ?? "1",
+    };
 
-  const authority: JournalAuthorityContract = {
-    *command<C extends AuthorityCommand>(command: C): Operation<CommandResult<C>> {
-      while (true) {
+    const journal: Journal = {
+      *advance<C extends AuthorityCommand>(input: C): Operation<CommandResult<C>> {
+        assertOpen();
+        const command = structuredClone(input);
         const selectedState = state;
         const selectedHistory = history;
         const sessionId = commandSessionId(command, selectedState, options);
@@ -65,63 +70,69 @@ export function createInMemoryShellDrivers(options: InMemoryJournalAuthorityOpti
           context,
           command,
         }) as KernelTransition<C>;
-        if (state !== selectedState || history !== selectedHistory) continue;
         state = advanceJournalHeadIdentities(transition.state, transition.entries);
         history = [...selectedHistory, ...structuredClone(transition.entries)];
         signalCommittedCancellation(command, transition.state);
-        return transition.result;
-      }
-    },
-    *query<Q extends AuthorityQuery>(query: Q): Operation<QueryResult<Q>> {
-      return queryAuthorityState(
-        state,
-        {
-          nowMs: options.now?.() ?? Date.now(),
-          journalIdentity: identity,
-          appendCursor: { sessionId: "", nextOffset: 0 },
-          journalHeadId: "",
-          keyring: options.keyring,
-          schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
-          maxOutcomeBytes: options.maxOutcomeBytes,
-          emissionPolicy: options.emissionPolicy,
-          decisionDiagnostics: options.decisionDiagnostics,
-        },
-        query,
-      );
-    },
-  };
+        return structuredClone(transition.result);
+      },
+      *query<Q extends AuthorityQuery>(query: Q): Operation<QueryResult<Q>> {
+        assertOpen();
+        return queryAuthorityState(
+          state,
+          {
+            nowMs: options.now?.() ?? Date.now(),
+            journalIdentity: identity,
+            appendCursor: { sessionId: "", nextOffset: 0 },
+            journalHeadId: "",
+            keyring: options.keyring,
+            schemas: options.schemaRegistry ?? createDurableSchemaRegistry(),
+            maxOutcomeBytes: options.maxOutcomeBytes,
+            emissionPolicy: options.emissionPolicy,
+            decisionDiagnostics: options.decisionDiagnostics,
+          },
+          query,
+        );
+      },
 
-  const journal: AuthorityJournalContract = {
-    *readSession(sessionId) {
-      return structuredClone(history.filter((record) => record.sessionId === sessionId));
-    },
-    *readTree(sessionId, rootTaskId) {
-      const records = history.filter((record) => record.sessionId === sessionId);
-      const taskIds = new Set([rootTaskId]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const record of records) {
-          if (
-            record.payload.type === "TaskOpened" &&
-            record.payload.parentTaskId &&
-            taskIds.has(record.payload.parentTaskId) &&
-            !taskIds.has(record.payload.taskId)
-          ) {
-            taskIds.add(record.payload.taskId);
-            changed = true;
+      *readSession(sessionId) {
+        assertOpen();
+        return structuredClone(history.filter((record) => record.sessionId === sessionId));
+      },
+      *readTree(sessionId, rootTaskId) {
+        assertOpen();
+        const records = history.filter((record) => record.sessionId === sessionId);
+        const taskIds = new Set([rootTaskId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const record of records) {
+            if (
+              record.payload.type === "TaskOpened" &&
+              record.payload.parentTaskId &&
+              taskIds.has(record.payload.parentTaskId) &&
+              !taskIds.has(record.payload.taskId)
+            ) {
+              taskIds.add(record.payload.taskId);
+              changed = true;
+            }
           }
         }
-      }
-      return structuredClone(records.filter((record) => taskIds.has(record.payload.taskId)));
-    },
-  };
-  const snapshot: AuthoritySnapshotContract = {
-    *exportSnapshot() {
-      return snapshotFromAuthorityState(state, groupHistory(history));
-    },
-  };
-  return { authority, journal, snapshot };
+        return structuredClone(records.filter((record) => taskIds.has(record.payload.taskId)));
+      },
+
+      *exportSnapshot() {
+        assertOpen();
+        return snapshotFromAuthorityState(state, groupHistory(history));
+      },
+    };
+    try {
+      yield* provide(journal);
+    } finally {
+      open = false;
+      state = authorityStateFromSnapshot(emptySnapshot());
+      history = [];
+    }
+  });
 }
 
 function commandSessionId(
@@ -130,7 +141,9 @@ function commandSessionId(
   options: InMemoryJournalAuthorityOptions,
 ): string {
   const structural = structuralCommandSessionId(command);
-  if (structural !== undefined) return structural;
+  if (structural !== undefined) {
+    return structural;
+  }
   if (command.type === "execution.resolve-pull") {
     try {
       return verifyResolutionCapability(
@@ -147,7 +160,9 @@ function commandSessionId(
     command.type === "execution.accept-assistant-partial"
   ) {
     for (const [sessionId, session] of state.sessions) {
-      if (session.execution.tasks.has(command.request.taskId)) return sessionId;
+      if (session.execution.tasks.has(command.request.taskId)) {
+        return sessionId;
+      }
     }
   }
   return "";
@@ -156,9 +171,13 @@ function commandSessionId(
 function nextOffset(records: readonly DurableSemanticRecord[], sessionId: string): number {
   let next = 0;
   for (const record of records) {
-    if (record.sessionId !== sessionId) continue;
+    if (record.sessionId !== sessionId) {
+      continue;
+    }
     const offset = Number(record.offset);
-    if (Number.isSafeInteger(offset)) next = Math.max(next, offset + 1);
+    if (Number.isSafeInteger(offset)) {
+      next = Math.max(next, offset + 1);
+    }
   }
   return next;
 }
@@ -197,9 +216,13 @@ function signalCommittedCancellation<C extends AuthorityCommand>(
   command: C,
   state: AuthorityState,
 ): void {
-  if (command.type !== "execution.request-cancellation") return;
+  if (command.type !== "execution.request-cancellation") {
+    return;
+  }
   const session = state.sessions.get(command.request.sessionId);
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   for (const task of session.execution.tasks.values()) {
     const lifecycle = task.lifecycle;
     if (lifecycle.status !== "active" || lifecycle.cancellation.type !== "settling_pull") {

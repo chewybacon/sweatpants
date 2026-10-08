@@ -59,7 +59,9 @@ describe("journal-authority package boundaries", () => {
     ];
     for (const file of publicSources) {
       const source = readFileSync(resolve(packageRoot, "src", file), "utf8");
-      for (const name of forbidden) expect(source, `${file}:${name}`).not.toContain(name);
+      for (const name of forbidden) {
+        expect(source, `${file}:${name}`).not.toContain(name);
+      }
     }
     const packageJson = readFileSync(resolve(packageRoot, "package.json"), "utf8");
     expect(packageJson).not.toContain("decision-api");
@@ -94,13 +96,10 @@ describe("journal-authority package boundaries", () => {
     expect(decisionPipelineSource).not.toContain("authorityStateFromSnapshot");
     expect(decisionPipelineSource).not.toContain("evaluateSnapshotQuery");
 
-    const storedShellSource = readFileSync(
-      resolve(packageRoot, "src", "shell/stored-shell.ts"),
-      "utf8",
-    );
-    expect(storedShellSource).not.toContain("StoredScenarioDriver");
-    expect(storedShellSource).not.toContain("createStoredScenarioDriver");
-    expect(storedShellSource).not.toContain("taskExecutionState");
+    const journalSource = readFileSync(resolve(packageRoot, "src", "shell/journal.ts"), "utf8");
+    expect(journalSource).not.toContain("StoredScenarioDriver");
+    expect(journalSource).not.toContain("createStoredScenarioDriver");
+    expect(journalSource).not.toContain("taskExecutionState");
 
     const directStateSource = readFileSync(
       resolve(packageRoot, "src", "state/authority-state.ts"),

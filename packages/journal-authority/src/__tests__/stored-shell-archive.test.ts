@@ -7,7 +7,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import { createMemoryExecutionStore } from "../store/memory.ts";
-import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import { createJournal } from "../shell/journal.ts";
 import type { PrivateSegmentPointer } from "../store/store.ts";
 
 const manifest: DurableProgramManifest = {
@@ -42,34 +42,38 @@ function taskIdOf(entry: Json): string {
 describe("stored authority replay archive", () => {
   it("archives each evicted record exactly once across sequential root trees", async () => {
     const store = createMemoryExecutionStore();
-    const drivers = createStoredShellDrivers(store, {
-      journalId,
-      keyring: createCapabilityKeyring("archive-test", [
-        { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
-      ]),
-    });
-
-    const readAll = function* (
-      kind: "journal" | "replay",
-      taskId: string,
-      head: PrivateSegmentPointer | null,
-    ): Operation<Json[]> {
-      if (!head) return [];
-      const stream =
-        kind === "journal"
-          ? yield* store.readJournal({ executionId, taskId, head })
-          : yield* store.readReplay({ executionId, taskId, head });
-      return yield* call(async () => {
-        const all: Json[] = [];
-        for await (const chunk of stream) all.push(...chunk);
-        return all;
-      });
-    };
-
     await run(function* () {
+      const drivers = yield* createJournal(store, {
+        journalId,
+        keyring: createCapabilityKeyring("archive-test", [
+          { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
+        ]),
+      });
+
+      const readAll = function* (
+        kind: "journal" | "replay",
+        taskId: string,
+        head: PrivateSegmentPointer | null,
+      ): Operation<Json[]> {
+        if (!head) {
+          return [];
+        }
+        const stream =
+          kind === "journal"
+            ? yield* store.readJournal({ executionId, taskId, head })
+            : yield* store.readReplay({ executionId, taskId, head });
+        return yield* call(async () => {
+          const all: Json[] = [];
+          for await (const chunk of stream) {
+            all.push(...chunk);
+          }
+          return all;
+        });
+      };
+
       for (let turn = 0; turn < turnCount; turn += 1) {
         const taskId = `turn-${turn}/root`;
-        const opened = yield* drivers.authority.command({
+        const opened = yield* drivers.advance({
           type: "execution.open-task",
           request: {
             sessionId,
@@ -82,7 +86,7 @@ describe("stored authority replay archive", () => {
             audience: "workflow-host",
           },
         });
-        yield* drivers.authority.command({
+        yield* drivers.advance({
           type: "execution.append-emission",
           request: {
             sessionId,
@@ -92,7 +96,7 @@ describe("stored authority replay archive", () => {
             programCapability: opened.programCapability,
           },
         });
-        yield* drivers.authority.command({
+        yield* drivers.advance({
           type: "execution.complete-task",
           request: {
             sessionId,
@@ -112,16 +116,14 @@ describe("stored authority replay archive", () => {
       expect(journalEntries.length).toBeGreaterThan(0);
       expect(archived.length).toBeGreaterThan(0);
       // Own-commit reuse must retain complete history, not only live topology.
-      expect(yield* drivers.journal.readSession(sessionId)).toEqual(journalEntries);
-      const restarted = createStoredShellDrivers(store, {
+      expect(yield* drivers.readSession(sessionId)).toEqual(journalEntries);
+      const restarted = yield* createJournal(store, {
         journalId,
         keyring: createCapabilityKeyring("archive-test", [
           { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
         ]),
       });
-      expect(yield* restarted.snapshot.exportSnapshot()).toEqual(
-        yield* drivers.snapshot.exportSnapshot(),
-      );
+      expect(yield* restarted.exportSnapshot()).toEqual(yield* drivers.exportSnapshot());
 
       // Regression: every archived event is archived exactly once.
       const archivedIds = archived.map(eventIdOf);
@@ -141,14 +143,15 @@ describe("stored authority replay archive", () => {
 
   it("does not grow the archive or commit on idempotent replays", async () => {
     const store = createMemoryExecutionStore();
-    const drivers = createStoredShellDrivers(store, {
-      journalId,
-      keyring: createCapabilityKeyring("archive-test", [
-        { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
-      ]),
-    });
     await run(function* () {
-      const opened = yield* drivers.authority.command({
+      const drivers = yield* createJournal(store, {
+        journalId,
+        keyring: createCapabilityKeyring("archive-test", [
+          { keyId: "test", secret: "archive-test-secret-material-32-bytes" },
+        ]),
+      });
+
+      const opened = yield* drivers.advance({
         type: "execution.open-task",
         request: {
           sessionId,
@@ -171,10 +174,10 @@ describe("stored authority replay archive", () => {
           programCapability: opened.programCapability,
         },
       };
-      yield* drivers.authority.command(complete);
+      yield* drivers.advance(complete);
       const before = yield* store.loadControl(executionId);
       // An idempotent replay returns without a new control revision or archive.
-      yield* drivers.authority.command(complete);
+      yield* drivers.advance(complete);
       const after = yield* store.loadControl(executionId);
       expect(after?.controlRevision).toBe(before?.controlRevision);
     });

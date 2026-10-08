@@ -8,27 +8,31 @@ import type {
 } from "../contract/authority-contract.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import { verifyMaterializedIndexes } from "../store/materialized-index-verifier.ts";
-import { cloneTaskState } from "./accepted-values.ts";
 
 /** Expands the sole direct snapshot format into grouped in-process state. */
 export function authorityStateFromSnapshot(snapshot: DurableAuthoritySnapshot): AuthorityState {
   verifyMaterializedIndexes(snapshot);
   const sessions = new Map<string, AuthoritySessionState>();
   for (const [sessionId, value] of snapshot.sessions) {
-    if (sessions.has(sessionId)) invalid(`Duplicate session ${sessionId}`);
+    if (sessions.has(sessionId)) {
+      invalid(`Duplicate session ${sessionId}`);
+    }
     const headId = value.control.journalHeadId;
     if (
       (value.control.revision === 0 && headId !== null) ||
       (value.control.revision > 0 &&
         (typeof headId !== "string" ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(headId)))
-    )
+    ) {
       invalid(`Session ${sessionId} has an invalid journal head identity`);
+    }
     const tasks = new Map<string, TaskState>();
     for (const task of value.execution.tasks) {
-      if (tasks.has(task.taskId)) invalid(`Duplicate task ${task.taskId}`);
+      if (tasks.has(task.taskId)) {
+        invalid(`Duplicate task ${task.taskId}`);
+      }
       validateTask(task);
-      tasks.set(task.taskId, cloneTaskState(task));
+      tasks.set(task.taskId, structuredClone(task));
     }
     sessions.set(sessionId, {
       execution: { tasks },
@@ -77,14 +81,19 @@ function validateTask(task: TaskState): void {
   let pullIndex = 0;
   let emissionIndex = 0;
   for (const [actionIndex, action] of task.actions.entries()) {
-    if (action.actionIndex !== actionIndex) invalid(`Task ${task.taskId} has an action gap`);
+    if (action.actionIndex !== actionIndex) {
+      invalid(`Task ${task.taskId} has an action gap`);
+    }
     if (action.kind === "pull") {
-      if (action.pullIndex !== pullIndex++) invalid(`Task ${task.taskId} has a pull gap`);
+      if (action.pullIndex !== pullIndex++) {
+        invalid(`Task ${task.taskId} has a pull gap`);
+      }
       if (
         action.pull.resolution.status === "settled" &&
         action.pull.resolution.settlement.receipt.taskId !== task.taskId
-      )
+      ) {
         invalid(`Task ${task.taskId} pull receipt differs`);
+      }
     } else if (action.emissionIndex !== emissionIndex++) {
       invalid(`Task ${task.taskId} has an emission gap`);
     }

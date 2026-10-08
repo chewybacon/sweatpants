@@ -12,7 +12,7 @@ import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "../contract/schema-registry.ts";
 import { anyGuard, createSchemaFixture } from "../testing/schema-fixtures.ts";
 import { createMemoryExecutionStore } from "../store/memory.ts";
-import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import { createJournal, type Journal } from "../shell/journal.ts";
 import type { ExecutionStore, StoredPrivateSegment } from "../store/store.ts";
 
 /**
@@ -86,10 +86,10 @@ function validTaskOpenedRecord(sessionId: string, offset: string): Json {
   };
 }
 
-type Drivers = ReturnType<typeof createStoredShellDrivers>;
+type Drivers = Journal;
 
-function makeDrivers(store: ExecutionStore): Drivers {
-  return createStoredShellDrivers(store, {
+function* makeDrivers(store: ExecutionStore): Operation<Drivers> {
+  return yield* createJournal(store, {
     journalId,
     keyring,
     dataDirectory,
@@ -198,10 +198,10 @@ describe("hard-fail journal reset policy (REQ-012)", () => {
     const store = createMemoryExecutionStore();
     await run(function* () {
       yield* seedStoredJournal(store, [preCutoverPullRecord("session-a", "1")]);
-      const drivers = makeDrivers(store);
+      const drivers = yield* makeDrivers(store);
       let failure: unknown;
       try {
-        yield* drivers.authority.command(openTaskCommand());
+        yield* drivers.advance(openTaskCommand());
       } catch (error) {
         failure = error;
       }
@@ -218,11 +218,11 @@ describe("hard-fail journal reset policy (REQ-012)", () => {
         validTaskOpenedRecord("session-a", "1"),
         preCutoverPullRecord("session-a", "2"),
       ]);
-      const drivers = makeDrivers(store);
+      const drivers = yield* makeDrivers(store);
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let failure: unknown;
         try {
-          yield* drivers.authority.command(openTaskCommand());
+          yield* drivers.advance(openTaskCommand());
         } catch (error) {
           failure = error;
         }
@@ -235,10 +235,10 @@ describe("hard-fail journal reset policy (REQ-012)", () => {
     const tainted = createMemoryExecutionStore();
     await run(function* () {
       yield* seedStoredJournal(tainted, [preCutoverPullRecord("session-a", "1")]);
-      const failing = makeDrivers(tainted);
+      const failing = yield* makeDrivers(tainted);
       let failure: unknown;
       try {
-        yield* failing.authority.command(openTaskCommand());
+        yield* failing.advance(openTaskCommand());
       } catch (error) {
         failure = error;
       }
@@ -248,10 +248,10 @@ describe("hard-fail journal reset policy (REQ-012)", () => {
     // "Reset" = the named data directory is deleted; a fresh store takes its place.
     const reset = createMemoryExecutionStore();
     await run(function* () {
-      const drivers = makeDrivers(reset);
-      const opened = yield* drivers.authority.command(openTaskCommand());
+      const drivers = yield* makeDrivers(reset);
+      const opened = yield* drivers.advance(openTaskCommand());
       expect(typeof opened.programCapability).toBe("string");
-      yield* drivers.authority.command({
+      yield* drivers.advance({
         type: "execution.append-emission",
         request: {
           sessionId: "session-a",
@@ -265,8 +265,8 @@ describe("hard-fail journal reset policy (REQ-012)", () => {
     await run(function* () {
       // Restart through the same store: the post-reset records parse and the
       // session remains operable.
-      const restarted = makeDrivers(reset);
-      const reopened = yield* restarted.authority.command(
+      const restarted = yield* makeDrivers(reset);
+      const reopened = yield* restarted.advance(
         openTaskCommand({ taskId: "root-2", turnId: "turn-1", attachmentId: "attachment-1" }),
       );
       expect(typeof reopened.programCapability).toBe("string");

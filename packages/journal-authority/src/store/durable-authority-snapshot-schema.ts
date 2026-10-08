@@ -1,17 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { CrankError, type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { registeredPullKinds } from "../pull-kinds/index.ts";
 import { parser, assertJson, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
-import {
-  isAcceptedProgram,
-  retainParsedProgram,
-  isAcceptedAction,
-  retainParsedAction,
-  retainedValueBounds,
-  isAcceptedPullRequest,
-  retainParsedPullRequest,
-} from "../state/accepted-values.ts";
 
 /** Pull kinds whose snapshot variants come straight from the registry. */
 const PULL_KIND_SNAPSHOT_KINDS = new Set([
@@ -38,7 +30,9 @@ const MAX_MANIFEST_ENTRIES = 10_000;
 const jsonRecordSchema = z.unknown().transform((value, context) => {
   try {
     const json = assertJson(value);
-    if (json !== null && typeof json === "object" && !Array.isArray(json)) return json;
+    if (json !== null && typeof json === "object" && !Array.isArray(json)) {
+      return json;
+    }
   } catch {
     /* Report malformed JSON through the schema result. */
   }
@@ -203,6 +197,15 @@ const durableProgramManifestSchema = z.strictObject({
     replay: z.literal("strict"),
   }),
 });
+/** Capture authored manifests in the same representation a restored task uses. */
+export function parseDurableProgramManifest(value: unknown): DurableProgramManifest {
+  const parsed = durableProgramManifestSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new CrankError("invalid_journal", "Invalid durable program manifest");
+  }
+  return parsed.data;
+}
+
 const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: jsonValueSchema }),
   z.strictObject({
@@ -627,20 +630,15 @@ const pullResolutionSchema = z.discriminatedUnion("status", [
 ]);
 const pullSchema = z.strictObject({
   pullId: z.string(),
-  request: z.union([
-    z.custom(isAcceptedPullRequest),
-    z
-      .strictObject({
-        proposedDescriptorDigest: z.string(),
-        proposedDescriptor: durableOperationDescriptorSchema,
-        acceptedDescriptor: durableOperationDescriptorSchema,
-        resultDescriptor: portableSchemaDescriptorSchema,
-        resultSchemaDigest: z.string(),
-        maxOutcomeBytes: nonNegativeIntegerSchema,
-        publicMessageId: z.string().optional(),
-      })
-      .transform(retainParsedPullRequest),
-  ]),
+  request: z.strictObject({
+    proposedDescriptorDigest: z.string(),
+    proposedDescriptor: durableOperationDescriptorSchema,
+    acceptedDescriptor: durableOperationDescriptorSchema,
+    resultDescriptor: portableSchemaDescriptorSchema,
+    resultSchemaDigest: z.string(),
+    maxOutcomeBytes: nonNegativeIntegerSchema,
+    publicMessageId: z.string().optional(),
+  }),
   resolutionAuthority: resolutionAuthoritySchema,
   attempts: z.array(attemptSchema).max(MAX_ATTEMPTS_PER_PULL),
   acceptedFacts: z.strictObject({
@@ -651,29 +649,24 @@ const pullSchema = z.strictObject({
   }),
   resolution: pullResolutionSchema,
 });
-const actionSchema = z.union([
-  z.custom(isAcceptedAction),
-  z
-    .discriminatedUnion("kind", [
-      z.strictObject({
-        kind: z.literal("pull"),
-        actionIndex: nonNegativeIntegerSchema,
-        pullIndex: nonNegativeIntegerSchema,
-        pull: pullSchema,
-      }),
-      z.strictObject({
-        kind: z.literal("emission"),
-        actionIndex: nonNegativeIntegerSchema,
-        emissionIndex: nonNegativeIntegerSchema,
-        descriptorDigest: z.string(),
-        receipt: z.strictObject({
-          offset: z.string(),
-          eventId: z.string(),
-          duplicate: z.boolean(),
-        }),
-      }),
-    ])
-    .transform(retainParsedAction),
+const actionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("pull"),
+    actionIndex: nonNegativeIntegerSchema,
+    pullIndex: nonNegativeIntegerSchema,
+    pull: pullSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("emission"),
+    actionIndex: nonNegativeIntegerSchema,
+    emissionIndex: nonNegativeIntegerSchema,
+    descriptorDigest: z.string(),
+    receipt: z.strictObject({
+      offset: z.string(),
+      eventId: z.string(),
+      duplicate: z.boolean(),
+    }),
+  }),
 ]);
 const taskLifecycleSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("active"), cancellation: cancellationStateSchema }),
@@ -727,16 +720,11 @@ const taskSchema = z.strictObject({
   origin: taskOriginSchema,
   deadlineMs: z.number().optional(),
   forkGroup: forkGroupStateSchema.optional(),
-  program: z.union([
-    z.custom(isAcceptedProgram),
-    z
-      .strictObject({
-        artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
-        manifest: durableProgramManifestSchema,
-        input: jsonValueSchema,
-      })
-      .transform(retainParsedProgram),
-  ]),
+  program: z.strictObject({
+    artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
+    manifest: durableProgramManifestSchema,
+    input: jsonValueSchema,
+  }),
   execution: z.strictObject({
     epoch: nonNegativeIntegerSchema,
     attachmentId: z.string(),
@@ -815,15 +803,6 @@ const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
             return { issues: [{ message: "snapshot contains invalid Unicode" }] };
           }
           if (current.value === null || typeof current.value !== "object") {
-            continue;
-          }
-          const retained = retainedValueBounds(current.value);
-          if (retained) {
-            nodes += retained.nodes - 1;
-            if (nodes > MAX_SNAPSHOT_NODES)
-              return { issues: [{ message: "snapshot node count exceeds limit" }] };
-            if (current.depth + retained.depth > MAX_SNAPSHOT_DEPTH)
-              return { issues: [{ message: "snapshot depth exceeds limit" }] };
             continue;
           }
           if (seen.has(current.value)) {

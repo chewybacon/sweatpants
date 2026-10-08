@@ -2,7 +2,7 @@ export { createAuthorityScenarioDriver, type AuthorityScenarioDriver } from "./s
 export type { InMemoryJournalAuthorityOptions } from "../state/authority-snapshot.ts";
 export { createStoredScenarioDriver } from "./stored-scenario-driver.ts";
 export type { StoredScenarioDriver } from "./stored-scenario-driver.ts";
-export type { StoredJournalAuthorityOptions } from "../shell/stored-shell.ts";
+export type { StoredJournalAuthorityOptions } from "../shell/journal.ts";
 export {
   driveInstalledTestProgramTree,
   driveTestProgramTree,

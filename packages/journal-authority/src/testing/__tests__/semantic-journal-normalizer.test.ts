@@ -1,3 +1,4 @@
+import { call } from "effection";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
@@ -48,43 +49,47 @@ describe("semantic journal normalizer", () => {
   });
 
   it("normalizes records emitted by the real journal authority", async () => {
-    const authority = createAuthorityScenarioDriver({
-      journalId: "normalizer",
-      keyring: createCapabilityKeyring("normalizer", [
-        { keyId: "active", secret: "normalizer-secret-at-least-32-bytes" },
-      ]),
-    });
-    const records = await run(function* () {
-      const opened = yield* authority.openTask({
-        sessionId: "real-session",
-        turnId: "turn",
-        taskId: "task",
-        manifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "attachment",
-        audience: "workflow-host",
+    return await run(function* () {
+      const authority = yield* createAuthorityScenarioDriver({
+        journalId: "normalizer",
+        keyring: createCapabilityKeyring("normalizer", [
+          { keyId: "active", secret: "normalizer-secret-at-least-32-bytes" },
+        ]),
       });
-      yield* authority.reserve({
-        sessionId: "real-session",
-        turnId: "turn",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "elicit",
-          key: "answer",
-          message: "Answer",
-          response: ANY_JSON_SCHEMA_DESCRIPTOR,
-        },
-        programCapability: opened.programCapability,
-      });
-      return authority.readJournal("real-session");
-    });
+      const records = yield* call(() =>
+        run(function* () {
+          const opened = yield* authority.openTask({
+            sessionId: "real-session",
+            turnId: "turn",
+            taskId: "task",
+            manifest,
+            input: {},
+            executionEpoch: 1,
+            attachmentId: "attachment",
+            audience: "workflow-host",
+          });
+          yield* authority.reserve({
+            sessionId: "real-session",
+            turnId: "turn",
+            taskId: "task",
+            actionIndex: 0,
+            pullIndex: 0,
+            descriptor: {
+              kind: "elicit",
+              key: "answer",
+              message: "Answer",
+              response: ANY_JSON_SCHEMA_DESCRIPTOR,
+            },
+            programCapability: opened.programCapability,
+          });
+          return authority.readJournal("real-session");
+        }),
+      );
 
-    expect(records.map((record) => record.payload.type)).toEqual(["TaskOpened", "PullRequested"]);
-    expect(normalizeSemanticJournal(records)).toHaveLength(2);
-    expect(normalizedSemanticJournalDigest(records)).toMatch(/^[a-f0-9]{64}$/);
+      expect(records.map((record) => record.payload.type)).toEqual(["TaskOpened", "PullRequested"]);
+      expect(normalizeSemanticJournal(records)).toHaveLength(2);
+      expect(normalizedSemanticJournalDigest(records)).toMatch(/^[a-f0-9]{64}$/);
+    });
   });
 
   it("retains semantic order, record type, task identity, and canonical outcome", () => {

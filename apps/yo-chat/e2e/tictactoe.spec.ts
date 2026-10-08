@@ -32,7 +32,6 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/tictactoe/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Tic-Tac-Toe" })).toBeVisible();
-    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
     const threadId = `tictactoe:e2e-${crypto.randomUUID()}`;
     const created = await page.request.post("/api/threaded-chat/threads", {
       data: { namespace: "tictactoe", id: threadId },
@@ -48,6 +47,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
       threadId,
       { timeout: 15000 },
     );
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   });
 
   // =============================================================================

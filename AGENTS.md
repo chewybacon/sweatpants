@@ -12,12 +12,12 @@ A request moves through four independently replaceable boxes. Most confusion
 comes from collapsing box 3 and box 4, which run different code under different
 constraints.
 
-| box                   | decides                                                             | port                                                                                  | live implementations                                                      |
-| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`agent-host/src/server`)                                     | Node HTTP (`apps/yo-chat`)                                                |
-| 2. Journal authority  | where truth lives; the serialization domain                         | `DurableJournalAuthorityService` (`journal-authority/src/durable-authority-types.ts`) | `createStoredDurableJournalAuthority` over memory/SQLite Execution Stores |
-| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                             | in-process (Node)                                                         |
-| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                               | see below                                                                 |
+| box                   | decides                                                             | port                                                                         | live implementations                                                                                            |
+| --------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 1. Ingress            | where HTTP lands                                                    | `createChatApplication` (`agent-host/src/server`)                            | Node HTTP (`apps/yo-chat`)                                                                                      |
+| 2. Journal authority  | where truth lives; the serialization domain                         | `JournalAuthorityPort` (`journal-authority/src/contract/authority-ports.ts`) | `createJournal(store, options)` resource over Execution Stores; `createInMemoryJournal` for in-memory authority |
+| 3. Crank / activation | where the durable program generator runs; chatty with the authority | `ProgramRuntime`, `handler/durable/local-program-host.ts`                    | in-process (Node)                                                                                               |
+| 4. Tool execution     | where tool code runs; never touches the journal                     | see the two tiers below                                                      | see below                                                                                                       |
 
 Box 4 has two tiers, and they are different ports:
 

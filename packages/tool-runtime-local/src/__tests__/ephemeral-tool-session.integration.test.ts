@@ -1,3 +1,4 @@
+import { scoped } from "effection";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import {
   ProgramDriverRegistryContext,
@@ -10,6 +11,7 @@ import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
+  type AuthorityScenarioDriver,
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
@@ -107,118 +109,122 @@ describe("ToolSession ephemeral-tool durability boundary", () => {
   });
 
   it("fails without restarting when an ephemeral ToolSession host disappears", async () => {
-    let toolBodyExecutions = 0;
-    let ephemeralStarts = 0;
-    const tool = createTool("lost_ephemeral_tool")
-      .description("A ephemeral tool whose live host will disappear")
-      .parameters(z.object({ topic: z.string() }))
-      .elicits({
-        choose: {
-          response: z.object({ answer: z.string() }),
-          context: z.object({ suggestion: z.string() }),
-        },
-      })
-      .samples()
-      .execute(function* ({ topic }, context) {
-        toolBodyExecutions += 1;
-        const sample = yield* context.sample({ prompt: `Suggest ${topic}` });
-        const response = yield* context.elicit("choose", {
-          message: sample.text,
-          context: { suggestion: sample.text },
+    return await run(function* () {
+      let toolBodyExecutions = 0;
+      let ephemeralStarts = 0;
+      const tool = createTool("lost_ephemeral_tool")
+        .description("A ephemeral tool whose live host will disappear")
+        .parameters(z.object({ topic: z.string() }))
+        .elicits({
+          choose: {
+            response: z.object({ answer: z.string() }),
+            context: z.object({ suggestion: z.string() }),
+          },
+        })
+        .samples()
+        .execute(function* ({ topic }, context) {
+          toolBodyExecutions += 1;
+          const sample = yield* context.sample({ prompt: `Suggest ${topic}` });
+          const response = yield* context.elicit("choose", {
+            message: sample.text,
+            context: { suggestion: sample.text },
+          });
+          return {
+            answer: response.action === "accept" ? response.content.answer : "none",
+          };
         });
-        return {
-          answer: response.action === "accept" ? response.content.answer : "none",
-        };
-      });
-    const request: EphemeralToolRequest = {
-      driver: "tool-session",
-      tool: tool.name,
-      input: { topic: "durability" },
-      durability: "ephemeral_handle",
-    };
-    const tools = createDurableToolRegistry([ephemeralToolAdapter]);
-    const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const keyring = createCapabilityKeyring("ephemeral-loss", [
-      { keyId: "active", secret: "ephemeral-loss-secret-is-32-bytes!!" },
-    ]);
-    let authority = createAuthorityScenarioDriver({
-      journalId: "ephemeral-loss",
-      journalIncarnation: "1",
-      keyring,
-      schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
-    });
-    const sessionId = "ephemeral-loss-session";
-    const taskId = "turn-0/root";
-    const attach = attachRequest(sessionId, taskId, request);
-
-    const firstRun = await run(function* () {
-      yield* createLocalToolInvocationRuntime({});
-      const registrations = createToolInvocationEphemeralEffectRegistrations({
-        tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
-      });
-      const [startRegistration] = registrations;
-      const effects = createDurableEffectRegistry([
-        {
-          ...startRegistration,
-          handler(input, context) {
-            ephemeralStarts += 1;
-            return startRegistration.handler(input, context);
-          },
-        },
-        ...registrations.slice(1),
+      const request: EphemeralToolRequest = {
+        driver: "tool-session",
+        tool: tool.name,
+        input: { topic: "durability" },
+        durability: "ephemeral_handle",
+      };
+      const tools = createDurableToolRegistry([ephemeralToolAdapter]);
+      const drivers = createProgramDriverRegistry([
+        ["program", createWorkflowProgramDriver(tools)],
       ]);
-      yield* authority.openTask({
-        sessionId,
-        turnId: "turn-0",
-        taskId,
-        manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
-        input: request,
-        executionEpoch: 1,
-        attachmentId: "unattached-adapter",
-        audience: "workflow-host",
+      const keyring = createCapabilityKeyring("ephemeral-loss", [
+        { keyId: "active", secret: "ephemeral-loss-secret-is-32-bytes!!" },
+      ]);
+      let authority = yield* createAuthorityScenarioDriver({
+        journalId: "ephemeral-loss",
+        journalIncarnation: "1",
+        keyring,
+        schemaRegistry: createDurableSchemaRegistry(ephemeralToolSchemaEntries()),
       });
-      return yield* runProgram(attach, authority, drivers, effects, function* () {
-        return {
-          message: {
-            message: { role: "assistant", content: [{ type: "text", text: "suggestion-0" }] },
-            source: null,
-            usage: null,
-            stopReason: null,
-            responseId: null,
-            errorMessage: null,
-          },
-          output: { type: "message" },
-        };
-      });
-    });
-    expect(firstRun).toMatchObject({ state: "parked", reason: "elicit" });
+      const sessionId = "ephemeral-loss-session";
+      const taskId = "turn-0/root";
+      const attach = attachRequest(sessionId, taskId, request);
 
-    authority = recreate(authority, keyring);
-    await run(() => acceptPending(authority, sessionId, taskId));
-    authority = recreate(authority, keyring);
-
-    const recovered = await run(function* () {
-      yield* createLocalToolInvocationRuntime({});
-      const effects = createDurableEffectRegistry([
-        ...createToolInvocationEphemeralEffectRegistrations({
+      const firstRun = yield* scoped(function* () {
+        yield* createLocalToolInvocationRuntime({});
+        const registrations = createToolInvocationEphemeralEffectRegistrations({
           tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
-        }),
-      ]);
-      return yield* runProgram(attach, authority, drivers, effects, function* () {
-        throw new Error("Recorded sampling must replay after host loss");
+        });
+        const [startRegistration] = registrations;
+        const effects = createDurableEffectRegistry([
+          {
+            ...startRegistration,
+            handler(input, context) {
+              ephemeralStarts += 1;
+              return startRegistration.handler(input, context);
+            },
+          },
+          ...registrations.slice(1),
+        ]);
+        yield* authority.openTask({
+          sessionId,
+          turnId: "turn-0",
+          taskId,
+          manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+          input: request,
+          executionEpoch: 1,
+          attachmentId: "unattached-adapter",
+          audience: "workflow-host",
+        });
+        return yield* runProgram(attach, authority, drivers, effects, function* () {
+          return {
+            message: {
+              message: { role: "assistant", content: [{ type: "text", text: "suggestion-0" }] },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
+            },
+            output: { type: "message" },
+          };
+        });
       });
-    });
+      expect(firstRun).toMatchObject({ state: "parked", reason: "elicit" });
 
-    expect(recovered).toMatchObject({
-      state: "failed",
-      error: { code: "ephemeral_continuation_lost" },
+      authority = yield* recreate(authority, keyring);
+      yield* scoped(() => acceptPending(authority, sessionId, taskId));
+      authority = yield* recreate(authority, keyring);
+
+      const recovered = yield* scoped(function* () {
+        yield* createLocalToolInvocationRuntime({});
+        const effects = createDurableEffectRegistry([
+          ...createToolInvocationEphemeralEffectRegistrations({
+            tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
+          }),
+        ]);
+        return yield* runProgram(attach, authority, drivers, effects, function* () {
+          throw new Error("Recorded sampling must replay after host loss");
+        });
+      });
+
+      expect(recovered).toMatchObject({
+        state: "failed",
+        error: { code: "ephemeral_continuation_lost" },
+      });
+      const journal = authority.readJournal(sessionId);
+      expect(countEffectPulls(journal, "ephemeral.tool.start")).toBe(1);
+      expect(countEffectPulls(journal, "ephemeral.tool.continue")).toBe(2);
+      expect(countSamplePulls(journal)).toBe(1);
+      expect(ephemeralStarts).toBe(1);
+      expect(toolBodyExecutions).toBe(1);
     });
-    const journal = authority.readJournal(sessionId);
-    expect(countEffectPulls(journal, "ephemeral.tool.start")).toBe(1);
-    expect(countEffectPulls(journal, "ephemeral.tool.continue")).toBe(2);
-    expect(countSamplePulls(journal)).toBe(1);
-    expect(ephemeralStarts).toBe(1);
-    expect(toolBodyExecutions).toBe(1);
   });
 });
 
@@ -243,7 +249,7 @@ function attachRequest(
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+  authority: AuthorityScenarioDriver,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
   sample: Parameters<typeof withModelSampleTestBoundary>[0],
@@ -259,11 +265,11 @@ function runProgram(
   });
 }
 
-function recreate(
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+function* recreate(
+  authority: AuthorityScenarioDriver,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createAuthorityScenarioDriver({
+  return yield* createAuthorityScenarioDriver({
     journalId: "ephemeral-loss",
     journalIncarnation: "1",
     keyring,
@@ -273,7 +279,7 @@ function recreate(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+  authority: AuthorityScenarioDriver,
   sessionId: string,
   taskId: string,
 ): Operation<void> {

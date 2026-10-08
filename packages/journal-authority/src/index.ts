@@ -57,7 +57,8 @@ export {
   type CompleteAuthorityTurnRequest,
   type OpenAuthorityTurnRequest,
   TurnAuthorityBoundaryError,
-  TurnJournalAuthority,
+  createTurnJournal,
+  type TurnJournal,
 } from "./shell/turn-authority.ts";
 export {
   capabilityClaimsParser,
@@ -212,7 +213,8 @@ export {
   JournalAuthorityUnavailable,
   installInMemoryJournalAuthority,
   installStoredJournalAuthority,
-  createStoredJournalAuthority,
+  installJournal,
+  useJournal,
 } from "./contract/authority-ports.ts";
 export type {
   AuthorityJournalFacade,
@@ -229,9 +231,11 @@ export {
   type ProjectedTaskLifecycle,
   projectExecutionForest,
 } from "./forest/execution-forest.ts";
-export type { StoredJournalAuthorityOptions } from "./shell/stored-shell.ts";
+export { createJournal, type Journal } from "./shell/journal.ts";
+export type { StoredJournalAuthorityOptions } from "./shell/journal.ts";
 export {
   type ExecutionCommitDecision,
+  type ExecutionCommitOutcome,
   inlineControl,
   runExecutionCommitLoop,
 } from "./store/commit-loop.ts";
@@ -366,3 +370,5 @@ export {
   sampleDescriptorSchema,
   spawnDescriptorSchema,
 } from "./pull-kinds/index.ts";
+
+export { createInMemoryJournal } from "./shell/in-memory-journal.ts";

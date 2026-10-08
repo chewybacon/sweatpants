@@ -7,7 +7,7 @@ import type { ConversationHeadProposal } from "@sweatpants/history-store/contrac
 import { CrankError, type TerminalCapsule } from "@sweatpants/durable-execution";
 import { ExecutionStoreApi, installExecutionStore } from "@sweatpants/journal-authority/api";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
-import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
+import { createTurnJournal } from "@sweatpants/journal-authority/turn-authority";
 import {
   beginTurnPublication,
   completeAndPublishTurn,
@@ -119,7 +119,8 @@ describe("terminal Turn publication", () => {
       expect(
         yield* ConversationStoreApi.operations.getCommandReceipt("session-1", "command-1"),
       ).toBeNull();
-      expect(yield* TurnJournalAuthority.operations.read("execution-1")).toBeNull();
+      const journal = yield* createTurnJournal("execution-1");
+      expect(yield* journal.read()).toBeNull();
     });
   });
 
@@ -205,8 +206,8 @@ describe("terminal Turn publication", () => {
       yield* installExecutionStore(execution);
       yield* installConversation(conversation);
       const identity = yield* beginTurnPublication(beginRequest());
-      const terminal = yield* TurnJournalAuthority.operations.complete({
-        executionId: identity.executionId,
+      const journal = yield* createTurnJournal(identity.executionId);
+      const terminal = yield* journal.complete({
         outcome: capsule.outcome,
         disposition: capsule.disposition,
         completedAt: capsule.completedAt,
@@ -219,9 +220,7 @@ describe("terminal Turn publication", () => {
 
       const recovered = yield* recoverTerminalPublication("session-1", project);
       expect(recovered?.result.status).toBe("published");
-      expect((yield* TurnJournalAuthority.operations.read("execution-1"))?.format).toBe(
-        "sweatpants.terminal-execution.v1",
-      );
+      expect((yield* journal.read())?.format).toBe("sweatpants.terminal-execution.v1");
       expect(yield* ConversationStoreApi.operations.loadHead("session-1")).toMatchObject({
         activeExecutionId: null,
         latestCompletedExecutionId: "execution-1",
@@ -264,11 +263,12 @@ describe("terminal Turn publication", () => {
       expect(
         yield* ConversationStoreApi.operations.getCommandReceipt("session-1", "command-1"),
       ).toMatchObject({ executionId: "execution-1", logicalTurnId: "turn-1" });
-      expect(yield* TurnJournalAuthority.operations.read("execution-1")).toBeNull();
+      const journal = yield* createTurnJournal("execution-1");
+      expect(yield* journal.read()).toBeNull();
 
       const retried = yield* beginTurnPublication(beginRequest());
       expect(retried.executionId).toBe("execution-1");
-      expect(yield* TurnJournalAuthority.operations.read("execution-1")).not.toBeNull();
+      expect(yield* journal.read()).not.toBeNull();
       expect(yield* ConversationStoreApi.operations.loadHead("session-1")).toMatchObject({
         state: "running",
         activeExecutionId: "execution-1",
@@ -292,7 +292,8 @@ describe("terminal Turn publication", () => {
         project,
       });
       expect(result.status).toBe("published");
-      const terminal = yield* TurnJournalAuthority.operations.read("execution-1");
+      const journal = yield* createTurnJournal("execution-1");
+      const terminal = yield* journal.read();
       expect(terminal?.format).toBe("sweatpants.terminal-execution.v1");
     });
   });
@@ -305,7 +306,9 @@ describe("terminal Turn publication", () => {
       yield* installConversation(conversation);
       const first = yield* beginTurnPublication(beginRequest());
       const runningHead = yield* ConversationStoreApi.operations.loadHead("session-1");
-      if (!runningHead) throw new Error("missing running head");
+      if (!runningHead) {
+        throw new Error("missing running head");
+      }
       const parked = yield* ConversationStoreApi.operations.compareAndSwapHead(
         "session-1",
         runningHead.revision,
@@ -323,7 +326,9 @@ describe("terminal Turn publication", () => {
           ownerTransition: { kind: "clear" },
         },
       );
-      if (parked.status !== "committed") throw new Error("failed to park Turn");
+      if (parked.status !== "committed") {
+        throw new Error("failed to park Turn");
+      }
       const joined = yield* beginTurnPublication({
         ...beginRequest(),
         expectedRevision: parked.head.revision,
@@ -363,7 +368,8 @@ describe("terminal Turn publication", () => {
       } catch (error) {
         failure = error;
       }
-      secondRecord = yield* TurnJournalAuthority.operations.read("execution-2");
+      const journal = yield* createTurnJournal("execution-2");
+      secondRecord = yield* journal.read();
     });
     expect(failure).toMatchObject({ code: "conversation_state_changed" });
     expect(secondRecord).toBeNull();
@@ -398,7 +404,8 @@ describe("terminal Turn publication", () => {
       } catch (error) {
         failure = error;
       }
-      secondRecord = yield* TurnJournalAuthority.operations.read("execution-2");
+      const journal = yield* createTurnJournal("execution-2");
+      secondRecord = yield* journal.read();
     });
     expect(failure).toMatchObject({ code: "conversation_state_changed" });
     expect(secondRecord).toBeNull();

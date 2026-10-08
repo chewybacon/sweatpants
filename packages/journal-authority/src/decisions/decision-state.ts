@@ -1,5 +1,4 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { cloneTaskState } from "../state/accepted-values.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type { DurableCancellationState } from "../contract/authority-types.ts";
 import type {
@@ -22,6 +21,24 @@ export type DraftSession = DeepMutable<AuthoritySessionState>;
 export type DraftState = DeepMutable<AuthorityState>;
 export type DraftPull = DeepMutable<PullState>;
 
+/** Accepted program identity/input and pull requests never change after admission.
+ * Drafts copy mutable fields, sharing immutable owned data without registration.
+ */
+function cloneTaskState(task: TaskState): TaskState {
+  const { program, actions, ...mutable } = task;
+  return {
+    ...structuredClone(mutable),
+    program,
+    actions: actions.map((action) => {
+      if (action.kind === "emission") {
+        return action;
+      }
+      const { request, ...pull } = action.pull;
+      return { ...action, pull: { ...structuredClone(pull), request } };
+    }),
+  };
+}
+
 export function cloneAuthorityState(state: AuthorityState): DraftState {
   return {
     nextNonce: state.nextNonce,
@@ -43,14 +60,18 @@ export function cloneAuthorityState(state: AuthorityState): DraftState {
 
 export function taskOriginSession(state: AuthorityState, taskId: string): string {
   for (const [sessionId, session] of state.sessions) {
-    if (session.execution.tasks.has(taskId)) return sessionId;
+    if (session.execution.tasks.has(taskId)) {
+      return sessionId;
+    }
   }
   throw new CrankError("unknown_target", `Unknown task ${taskId}`);
 }
 
 export function taskFor(state: AuthorityState, sessionId: string, taskId: string): TaskState {
   const task = state.sessions.get(sessionId)?.execution.tasks.get(taskId);
-  if (task === undefined) throw new CrankError("unknown_target", `Unknown task ${taskId}`);
+  if (task === undefined) {
+    throw new CrankError("unknown_target", `Unknown task ${taskId}`);
+  }
   return task;
 }
 
@@ -65,7 +86,9 @@ export function pullById(task: TaskState, pullId: string): DraftPull {
   const action = task.actions.find(
     (candidate) => candidate.kind === "pull" && candidate.pull.pullId === pullId,
   );
-  if (action?.kind !== "pull") throw new CrankError("pull_not_found");
+  if (action?.kind !== "pull") {
+    throw new CrankError("pull_not_found");
+  }
   return action.pull as DraftPull;
 }
 
@@ -104,11 +127,15 @@ export function findTaskPullById(
 ): [string, DraftTask, DraftPull] | undefined {
   for (const [sessionId, session] of state.sessions) {
     const task = session.execution.tasks.get(taskId);
-    if (task === undefined) continue;
+    if (task === undefined) {
+      continue;
+    }
     const action = task.actions.find(
       (candidate) => candidate.kind === "pull" && candidate.pull.pullId === pullId,
     );
-    if (action?.kind === "pull") return [sessionId, task as DraftTask, action.pull as DraftPull];
+    if (action?.kind === "pull") {
+      return [sessionId, task as DraftTask, action.pull as DraftPull];
+    }
   }
   return undefined;
 }

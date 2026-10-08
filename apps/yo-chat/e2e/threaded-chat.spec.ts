@@ -5,8 +5,8 @@ test.setTimeout(300000);
 async function createNewThread(page: Page) {
   await page.goto("/chat/threaded/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Threaded Chat" })).toBeVisible();
-  await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   await page.getByTestId("thread-create").click();
+  await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   await expect(page.getByText("Active")).toBeVisible();
 }
 
