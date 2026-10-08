@@ -1,3 +1,4 @@
+import { fromByteArray, toByteArray } from "base64-js";
 import {
   assertJson,
   canonicalJson,
@@ -144,19 +145,7 @@ export function binaryResourceFromBase64(
 
 /** Encodes exact bytes for deterministic generated resource modules. */
 export function encodeResourceBase64(bytes: Uint8Array): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let output = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const first = bytes[index]!;
-    const second = bytes[index + 1];
-    const third = bytes[index + 2];
-    const value = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
-    output += alphabet[(value >>> 18) & 63];
-    output += alphabet[(value >>> 12) & 63];
-    output += second === undefined ? "=" : alphabet[(value >>> 6) & 63];
-    output += third === undefined ? "=" : alphabet[value & 63];
-  }
-  return output;
+  return fromByteArray(bytes);
 }
 
 function decodeResourceBase64(encoded: string): Uint8Array {
@@ -167,25 +156,7 @@ function decodeResourceBase64(encoded: string): Uint8Array {
   ) {
     invalidManifest();
   }
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
-  const output = new Uint8Array((encoded.length / 4) * 3 - padding);
-  let offset = 0;
-  for (let index = 0; index < encoded.length; index += 4) {
-    const first = alphabet.indexOf(encoded[index]!);
-    const second = alphabet.indexOf(encoded[index + 1]!);
-    const third = encoded[index + 2] === "=" ? 0 : alphabet.indexOf(encoded[index + 2]!);
-    const fourth = encoded[index + 3] === "=" ? 0 : alphabet.indexOf(encoded[index + 3]!);
-    const value = (first << 18) | (second << 12) | (third << 6) | fourth;
-    output[offset++] = (value >>> 16) & 0xff;
-    if (offset < output.length) {
-      output[offset++] = (value >>> 8) & 0xff;
-    }
-    if (offset < output.length) {
-      output[offset++] = value & 0xff;
-    }
-  }
-  return output;
+  return toByteArray(encoded);
 }
 
 /** Builds an immutable package and copies every caller-owned byte buffer. */

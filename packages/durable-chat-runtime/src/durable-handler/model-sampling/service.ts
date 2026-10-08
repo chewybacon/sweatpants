@@ -2,13 +2,11 @@ import { EventType } from "@ag-ui/core";
 import { call, race, type Operation } from "effection";
 import {
   assertJson,
-  canonicalSnapshot,
   replaceControlCharacters,
   stableTupleHash,
   type Json,
   canonicalDigest,
   cloneJson,
-  sha256,
 } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
@@ -35,6 +33,7 @@ import {
   type HistoryPolicy,
   type PublicProjectionRoot,
 } from "@sweatpants/chat-core";
+import { createContentAddressedExecutionObject } from "@sweatpants/journal-authority/store-persistence";
 import { ExecutionStoreApi } from "@sweatpants/journal-authority/api";
 import { useConversationStore } from "@sweatpants/history-store/port";
 import type {
@@ -168,21 +167,20 @@ export function* stageModelContextSource(
   value: ModelContext,
   conversationId: string,
 ): Operation<ModelContextSource> {
-  const context = canonicalSnapshot(value);
-  const contextDigest = sha256(context.canonical);
-  const byteLength = new TextEncoder().encode(context.canonical).byteLength;
-  const objectId = stableTupleHash(["model-context-source", conversationId, contextDigest]);
-  const object = yield* ExecutionStoreApi.operations.putObject({
-    objectId,
-    lifetimeScope: "conversation",
-    scopeOwnerId: conversationId,
-    objectKind: "model-context-source.v1",
-    contentHash: contextDigest,
-    byteLength,
-    // SAFETY: canonicalSnapshot validated and detached this private body.
-    body: context.value as unknown as Json,
-    createdAt: Date.now(),
-  });
+  const prepared = yield* call(() =>
+    createContentAddressedExecutionObject(
+      {
+        lifetimeScope: "conversation",
+        scopeOwnerId: conversationId,
+        objectKind: "model-context-source.v1",
+        createdAt: Date.now(),
+      },
+      ["model-context-source", conversationId],
+      value,
+    ),
+  );
+  const contextDigest = prepared.contentHash;
+  const object = yield* ExecutionStoreApi.operations.putObject(prepared);
   return { type: "object", object, digest: contextDigest };
 }
 
@@ -441,7 +439,7 @@ export function createHostModelSamplingService(options: {
       } else if (options.journal && options.conversationStore && options.conversationId) {
         // The constructor guard guarantees this triple is all-or-nothing.
         const contextDigest = canonicalDigest(plan.providerRequest.context);
-        const prepared: PreparedModelInvocation = {
+        const prepared: PreparedModelInvocation = structuredClone({
           version: 1,
           model: { provider: options.model.provider, id: options.model.id },
           context: plan.providerRequest.context,
@@ -449,17 +447,8 @@ export function createHostModelSamplingService(options: {
           response: assertJson(plan.response),
           delivery: assertJson(plan.delivery),
           decisions: assertJson(plan.decisions),
-        };
-        const invocation = canonicalSnapshot(prepared);
-        const invocationDigest = sha256(invocation.canonical);
+        });
         const maxCanonicalBytes = preparedModelContextByteLimit(options.model.contextWindow);
-        const byteLength = new TextEncoder().encode(invocation.canonical).byteLength;
-        if (byteLength > maxCanonicalBytes) {
-          throw new CrankError(
-            "model_context_limit_exceeded",
-            `Prepared model context ${byteLength} exceeds budget ${maxCanonicalBytes}`,
-          );
-        }
         const head = yield* options.conversationStore.loadHead(options.conversationId);
         if (!head?.checkpoint || !head.activeExecutionId || !head.activeCommand) {
           throw new CrankError(
@@ -482,24 +471,26 @@ export function createHostModelSamplingService(options: {
           );
         }
         const publicMessageId = stableTupleHash(["sweatpants.public-assistant", attempt.pullId]);
-        const objectId = stableTupleHash([
-          "prepared-model-context",
-          head.activeExecutionId,
-          attempt.taskId,
-          attempt.pullId,
-          invocationDigest,
-        ]);
-        const contextObject = yield* ExecutionStoreApi.operations.putObject({
-          objectId,
-          lifetimeScope: "execution",
-          scopeOwnerId: head.activeExecutionId,
-          objectKind: "prepared-model-context.v1",
-          contentHash: invocationDigest,
-          byteLength,
-          // SAFETY: This canonical snapshot stays private until this store call.
-          body: invocation.value as unknown as Json,
-          createdAt: Date.now(),
-        });
+        const object = yield* call(() =>
+          createContentAddressedExecutionObject(
+            {
+              lifetimeScope: "execution",
+              scopeOwnerId: head.activeExecutionId!,
+              objectKind: "prepared-model-context.v1",
+              createdAt: Date.now(),
+            },
+            ["prepared-model-context", head.activeExecutionId!, attempt.taskId, attempt.pullId],
+            prepared,
+          ),
+        );
+        const { contentHash: invocationDigest, byteLength } = object;
+        if (byteLength > maxCanonicalBytes) {
+          throw new CrankError(
+            "model_context_limit_exceeded",
+            `Prepared model context ${byteLength} exceeds budget ${maxCanonicalBytes}`,
+          );
+        }
+        const contextObject = yield* ExecutionStoreApi.operations.putObject(object);
         const budget = {
           id: `provider:${options.model.provider}/${options.model.id}:context-window`,
           maxCanonicalBytes,

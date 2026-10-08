@@ -82,16 +82,14 @@ const statesByKind: Readonly<Record<PublicActivityNode["kind"], ReadonlySet<stri
   elicit: new Set(["pending", "responded", "cancelled"]),
 };
 const states = new Set(Object.values(statesByKind).flatMap((values) => [...values]));
-const jsonValueSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
+const jsonValueSchema = z.unknown().transform((value, context) => {
+  try {
+    return assertJson(value);
+  } catch {
+    context.addIssue({ code: "custom", message: "invalid JSON value" });
+    return z.NEVER;
+  }
+});
 const publicMessageDataSchema = z.strictObject({
   kind: z.literal("message"),
   messageId: z.string().min(1),
@@ -118,8 +116,8 @@ const publicElicitDataSchema = z.strictObject({
   key: z.string().min(1),
   message: z.string().min(1),
   context: jsonValueSchema.optional(),
-  responseContract: z.record(z.string(), z.unknown()),
-  contextContract: z.record(z.string(), z.unknown()).optional(),
+  responseContract: z.unknown(),
+  contextContract: z.unknown().optional(),
   toolName: z.string().min(1),
   callId: z.string().min(1),
   producerSequence: z.number().int().nonnegative(),
@@ -290,8 +288,8 @@ function publicData(
       callId: input["callId"] as string,
       name: input["name"] as string,
       ...(input["rawInput"] !== undefined ? { rawInput: input["rawInput"] as string } : {}),
-      ...(input["input"] !== undefined ? { input: json(input["input"], `${path}.input`) } : {}),
-      ...(input["output"] !== undefined ? { output: json(input["output"], `${path}.output`) } : {}),
+      ...(input["input"] !== undefined ? { input: input["input"] as Json } : {}),
+      ...(input["output"] !== undefined ? { output: input["output"] as Json } : {}),
       ...(input["errorText"] !== undefined ? { errorText: input["errorText"] as string } : {}),
     };
   }
@@ -299,7 +297,7 @@ function publicData(
     return {
       kind,
       activityType: input["activityType"] as string,
-      ...(input["data"] !== undefined ? { data: json(input["data"], `${path}.data`) } : {}),
+      ...(input["data"] !== undefined ? { data: input["data"] as Json } : {}),
     };
   }
   const responseContract = parseDescriptor(input["responseContract"], `${path}.responseContract`);
@@ -313,9 +311,7 @@ function publicData(
     bindingId: input["bindingId"] as string,
     key: input["key"] as string,
     message: input["message"] as string,
-    ...(input["context"] !== undefined
-      ? { context: json(input["context"], `${path}.context`) }
-      : {}),
+    ...(input["context"] !== undefined ? { context: input["context"] as Json } : {}),
     responseContract,
     ...(contextContract !== undefined ? { contextContract } : {}),
     toolName: input["toolName"] as string,
@@ -336,12 +332,31 @@ export const publicActivityParser: Parser<SweatpantsPublicActivity> =
     }
   });
 
+const decodedPublicActivities = new WeakSet<object>();
+
+function retainPublicActivity(value: SweatpantsPublicActivity): SweatpantsPublicActivity {
+  const pending: object[] = [value];
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (Object.isFrozen(current)) continue;
+    for (const child of Object.values(current)) {
+      if (child !== null && typeof child === "object") pending.push(child);
+    }
+    Object.freeze(current);
+  }
+  decodedPublicActivities.add(value);
+  return value;
+}
+
 export function decodePublicActivity(value: unknown, path = "$.content"): SweatpantsPublicActivity {
+  if (value !== null && typeof value === "object" && decodedPublicActivities.has(value)) {
+    return value as SweatpantsPublicActivity;
+  }
   const parsed = publicActivityParser.parse(value);
   if (!parsed.ok) {
     activityInvalid(parsed.issues[0]?.message ?? "invalid public activity", path);
   }
-  return parsed.value;
+  return retainPublicActivity(parsed.value);
 }
 
 function normalizePublicActivity(value: unknown, path: string): SweatpantsPublicActivity {
@@ -468,15 +483,30 @@ function normalizeActivityPatch(
 function decodeActivitySnapshot(input: Record<string, unknown>): ActivitySnapshotEvent {
   const messageId = input["messageId"] as string;
   const activityType = input["activityType"] as string;
-  const content = json(input["content"], "$.content");
-  const contentResult = activityContentParser.parse(content);
-  if (!contentResult.ok) {
-    activityInvalid("content must be an object", "$.content");
-  }
+  const rawContent = input["content"];
+  let contentObject: Record<string, unknown>;
   if (activityType === "sweatpants:public-execution") {
-    decodePublicActivity(contentResult.value);
+    if (
+      !(
+        rawContent !== null &&
+        typeof rawContent === "object" &&
+        decodedPublicActivities.has(rawContent)
+      )
+    ) {
+      // Validate the envelope without replacing already-owned descriptor identities.
+      // The typed parser below owns the normalized result and each JSON data field.
+      try {
+        canonicalJson(rawContent);
+      } catch (error) {
+        invalid(error instanceof Error ? error.message : "invalid JSON", "$.content");
+      }
+    }
+    contentObject = decodePublicActivity(rawContent) as unknown as Record<string, unknown>;
+  } else {
+    const contentResult = activityContentParser.parse(json(rawContent, "$.content"));
+    if (!contentResult.ok) activityInvalid("content must be an object", "$.content");
+    contentObject = contentResult.value;
   }
-  const contentObject = contentResult.value;
   return {
     type: EventType.ACTIVITY_SNAPSHOT,
     messageId,

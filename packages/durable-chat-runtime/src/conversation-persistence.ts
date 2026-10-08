@@ -24,7 +24,6 @@ import {
 import {
   assertCheckpointBounds,
   checkpointHotRoots,
-  checkpointPayloadFromHotRoots,
   checkpointPublicApplicationState,
   DEFAULT_CHECKPOINT_TARGETS,
   rootPayloadBytes,
@@ -75,6 +74,16 @@ export function publicProjectionBasis(
   const hotRoots = numericSort(
     checkpointHotRoots(checkpoint.payload).map((root) => decodePublicProjectionRoot(root)),
   );
+  return projectionBasisFromRoots(head, checkpoint, hotRoots, issuedAt, expiresAt);
+}
+
+function projectionBasisFromRoots(
+  head: ConversationHead,
+  checkpoint: StoredCheckpoint,
+  hotRoots: readonly PublicProjectionRoot[],
+  issuedAt: number,
+  expiresAt: number,
+): PublicProjectionBasis {
   return {
     lineageId: checkpoint.lineageId,
     basisRevision: head.revision,
@@ -213,7 +222,10 @@ export function* buildConversationWindow(params: {
 }): Operation<ConversationWindowFrame> {
   const now = params.now ?? Date.now();
   const expiresAt = now + (params.tokenTtlMs ?? DEFAULT_PROJECTION_TOKEN_TTL_MS);
-  const basis = publicProjectionBasis(params.head, params.checkpoint, now, expiresAt);
+  const hotRoots = numericSort(
+    checkpointHotRoots(params.checkpoint.payload).map((root) => decodePublicProjectionRoot(root)),
+  );
+  const basis = projectionBasisFromRoots(params.head, params.checkpoint, hotRoots, now, expiresAt);
   let catchup: readonly PublicProjectionRoot[] | null = null;
   if (params.knownWindowToken) {
     try {
@@ -229,9 +241,6 @@ export function* buildConversationWindow(params: {
       }
     }
   }
-  const hotRoots = numericSort(
-    checkpointHotRoots(params.checkpoint.payload).map((root) => decodePublicProjectionRoot(root)),
-  );
   const windowToken = yield* call(() => mintWindowToken(basis, params.keyring));
   // Accepted archive membership is explicit in the checkpoint frontier. Do
   // not probe an archive body during hydration merely to decide whether the
@@ -706,15 +715,12 @@ export function* preflightConversationCheckpoint(params: {
     executionId: params.executionId,
   });
   const { hotRoots } = spillRoots(compacted.roots, targets.spill);
-  const payload = canonicalJson(
-    checkpointPayloadFromHotRoots(
-      hotRoots.map((root) => assertJson(root)),
-      compacted.applicationState,
-    ),
-  );
+  const payload = canonicalJson({
+    public: { hotRoots, applicationState: compacted.applicationState },
+  });
   const largestInlineRootBytes = Math.max(
     0,
-    ...hotRoots.map((root) => new TextEncoder().encode(canonicalJson(assertJson(root))).byteLength),
+    ...hotRoots.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength),
   );
   try {
     assertCheckpointBounds({
@@ -774,10 +780,9 @@ export function* persistConversationCheckpoint(
     request.createdAt,
     targets,
   );
-  const payloadValue = checkpointPayloadFromHotRoots(
-    hotRoots.map((root) => assertJson(root)),
-    compacted.applicationState,
-  );
+  const payloadValue = {
+    public: { hotRoots, applicationState: compacted.applicationState },
+  };
   const payload = canonicalSnapshot(payloadValue);
   const payloadDigest = sha256(payload.canonical);
   const cause = cloneJson(request.cause);
@@ -796,7 +801,8 @@ export function* persistConversationCheckpoint(
         archiveHead: archive.archiveHead,
         archiveFrontierOrdinal: archive.archiveFrontierOrdinal.toString(10),
         nextPublicPosition: compacted.nextPosition.toString(10),
-        payload: payload.value,
+        // canonicalSnapshot validated and detached the complete constructed envelope.
+        payload: payload.value as unknown as Json,
         encodedBytes: new TextEncoder().encode(payload.canonical).byteLength,
         createdAt: request.createdAt,
       };
@@ -859,9 +865,11 @@ export function* readAllPublicRootsForModel(
     );
   }
   const archived: Json[] = [];
-  const hotMessages = checkpointHotRoots(checkpoint.payload).filter(
-    (root) => decodePublicProjectionRoot(root).kind === "message",
+  const hotRoots = checkpointHotRoots(checkpoint.payload).map((root) =>
+    decodePublicProjectionRoot(root),
   );
+  const hotRootPositions = hotRoots.map((root) => root.position);
+  const hotMessages = hotRoots.filter((root) => root.kind === "message") as unknown as Json[];
   let materializedBytes = hotMessages.reduce<number>(
     (total, root) => total + new TextEncoder().encode(canonicalJson(root)).byteLength,
     0,
@@ -881,9 +889,7 @@ export function* readAllPublicRootsForModel(
         basisRevision: "0",
         archiveFrontierOrdinal: checkpoint.archiveFrontierOrdinal,
         nextPublicPosition: checkpoint.nextPublicPosition,
-        hotRootPositions: checkpointHotRoots(checkpoint.payload).map(
-          (root) => decodePublicProjectionRoot(root).position,
-        ),
+        hotRootPositions,
       },
       beforePosition,
       maxRoots: 100,

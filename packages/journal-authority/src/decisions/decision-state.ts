@@ -1,4 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
+import { cloneTaskState } from "../state/accepted-values.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type { DurableCancellationState } from "../contract/authority-types.ts";
 import type {
@@ -22,7 +23,22 @@ export type DraftState = DeepMutable<AuthorityState>;
 export type DraftPull = DeepMutable<PullState>;
 
 export function cloneAuthorityState(state: AuthorityState): DraftState {
-  return structuredClone(state) as unknown as DraftState;
+  return {
+    nextNonce: state.nextNonce,
+    sessions: new Map(
+      [...state.sessions].map(([id, session]) => [
+        id,
+        {
+          control: structuredClone(session.control),
+          execution: {
+            tasks: new Map(
+              [...session.execution.tasks].map(([taskId, task]) => [taskId, cloneTaskState(task)]),
+            ),
+          },
+        },
+      ]),
+    ),
+  } as DraftState;
 }
 
 export function taskOriginSession(state: AuthorityState, taskId: string): string {

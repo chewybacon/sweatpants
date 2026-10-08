@@ -459,7 +459,7 @@ async function insertImmutable(
       // Mutation values come from the mandatory semantic codec, which already
       // checked hashes, ranges, byte counts, and entry bounds. The SQLite
       // binding only needs the canonical envelope fields for insertion.
-      const value = decodePrivateSegment(record.value);
+      const value = await decodePrivateSegment(record.value);
       const table =
         record.collection === DurableCollections.executionJournalSegments
           ? spExecutionJournalSegments
@@ -483,7 +483,7 @@ async function insertImmutable(
               body: envelope["body"],
               createdAt: envelope["createdAt"],
             } as StoredExecutionObject)
-          : decodeExecutionObject(record.value);
+          : await decodeExecutionObject(record.value);
       await resolved(database.insert(spExecutionObjects).values(objectToRow(value)).run());
     }
   }
@@ -630,7 +630,9 @@ async function insertPrivateBatch(
     collection === DurableCollections.executionJournalSegments
       ? spExecutionJournalSegments
       : spExecutionReplaySegments;
-  const values = ensures.map((ensure) => privateToRow(decodePrivateSegment(ensure.value)));
+  const values = await Promise.all(
+    ensures.map(async (ensure) => privateToRow(await decodePrivateSegment(ensure.value))),
+  );
   await resolved(database.insert(table).values(values).run());
 }
 

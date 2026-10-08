@@ -14,6 +14,7 @@ import {
   decodeAuthorityControl,
   encodeExecutionControl,
   encodePrivateSegment,
+  encodeExecutionObject,
   executionKeys,
 } from "./store-persistence.ts";
 
@@ -94,6 +95,18 @@ export function planExecutionCommit(input: {
     updatedAt: request.updatedAt,
   };
   const ensures = [
+    ...(request.objects ?? []).map((object, index): ImmutableEnsure => {
+      if (object.lifetimeScope !== "execution" || object.scopeOwnerId !== request.executionId) {
+        throw new Error("object is outside the committed execution");
+      }
+      return {
+        name: `object-${index}`,
+        collection: DurableCollections.executionObjects,
+        key: executionKeys.object(object.objectId),
+        fingerprint: object.contentHash,
+        value: encodeExecutionObject(object),
+      };
+    }),
     ...(request.journalSegments ?? []).map((segment, index) =>
       privateSegmentEnsure("journal", segment, index),
     ),

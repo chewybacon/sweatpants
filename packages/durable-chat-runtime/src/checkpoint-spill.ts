@@ -1,6 +1,6 @@
 import type { PublicProjectionRoot } from "@sweatpants/chat-core";
-import { assertJson } from "@sweatpants/foundation";
-import { encodedJsonBytes, type CheckpointPublicationTargets } from "@sweatpants/history-store";
+import { canonicalJson } from "@sweatpants/foundation";
+import { type CheckpointPublicationTargets } from "@sweatpants/history-store";
 
 /** Retain mutable roots; spill sealed roots in their existing order. */
 export function spillRoots(
@@ -19,7 +19,7 @@ export function spillRoots(
     // pressure matters; roots do not change during this synchronous operation.
     if (hot.length > target.maxRoots) return true;
     if (sizes === undefined) {
-      sizes = hot.map((root) => encodedJsonBytes(assertJson(root)));
+      sizes = hot.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength);
       bytes = sizes.reduce((sum, size) => sum + size, 0);
     }
     return bytes > target.maxEncodedBytes;

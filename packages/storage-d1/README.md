@@ -13,12 +13,12 @@ With 100 and then 10,000 unrelated/pre-cursor records:
 
 | Operation                                                                                  | Rows read | Rows written |
 | ------------------------------------------------------------------------------------------ | --------: | -----------: |
-| Point lookup, two 3-record deep pages, missing lookup, and one authority creation combined |        51 |            5 |
-| Replace an existing one-chunk authority                                                    |        14 |            5 |
+| Point lookup, two 3-record deep pages, missing lookup, and one authority creation combined |        36 |            3 |
+| Replace an existing inline authority                                                       |         7 |            2 |
 | Wait for a journal change                                                                  |         0 |            0 |
 
-32 simultaneous independent authority creations use 32 attempts, 160 reads, and
-160 writes; the regression test permits no retries. Shared-alias races still
+32 simultaneous independent authority creations use 32 attempts, 128 reads, and
+96 writes; the regression test permits no retries. Shared-alias races still
 allow exactly one winner without publishing the losing authority.
 
 Tests enforce upper bounds, including forward/backward cursor seeks, missing
@@ -28,7 +28,8 @@ not a production billing guarantee or a per-chat-turn estimate.
 
 ## Query discipline
 
-- Point reads resolve composite primary keys; chunk reads stay within that key.
+- Records up to 1 MiB store their exact bytes inline. Larger records use ordered
+  chunks. Point reads resolve composite primary keys; chunk reads stay within that key.
 - Journal pages seek by `(collection, index_name, scope, digits, position, key)`.
   They fetch at most `maxRecords + 1` metadata rows, then only the record chunks
   that fit the requested byte budget. There is no OFFSET pagination.
@@ -43,7 +44,8 @@ not a production billing guarantee or a per-chat-turn estimate.
 ## Remaining costs to budget before cloud rollout
 
 Actual traffic still costs money. Replaying a long conversation reads its history;
-large records consume multiple chunks; an authority update rewrites its chunks.
+large records consume multiple chunks. Authority updates replace inline bytes or
+rewrite chunks, removing any chunks left by a previously larger value.
 Optimistic commits validate the authority revision and immutable alias identities
 actually read by the mutation. Unrelated writers do not invalidate that snapshot.
 A transaction-local token gates subsequent statements inside the atomic D1 batch.

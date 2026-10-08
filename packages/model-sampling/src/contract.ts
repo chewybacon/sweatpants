@@ -121,7 +121,7 @@ const toolSourceSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("none") }),
   z.strictObject({
     type: z.literal("embedded"),
-    tools: z.array(z.json()).max(MAX_MODEL_SAMPLE_TOOLS),
+    tools: z.array(z.unknown()).max(MAX_MODEL_SAMPLE_TOOLS),
   }),
   z.strictObject({ type: z.literal("catalog"), digest: z.string().min(1) }),
 ]);
@@ -155,7 +155,7 @@ const modelContextSourceSchema = z.discriminatedUnion("type", [
   }),
 ]);
 const modelSampleRequestSchema = z.strictObject({
-  invocation: z.strictObject({ context: z.json(), options: optionsSchema.optional() }),
+  invocation: z.strictObject({ context: z.unknown(), options: optionsSchema.optional() }),
   tools: toolSourceSchema,
   response: responseModeSchema,
   modelPreferences: z.json().optional(),
@@ -170,7 +170,8 @@ const modelSampleOutputSchema = z.discriminatedUnion("type", [
   }),
 ]);
 const modelSampleResultSchema = z.strictObject({
-  message: z.json(),
+  // The response parser below validates and owns the complete message.
+  message: z.unknown(),
   output: modelSampleOutputSchema,
 });
 const modelSampleCancellationPartialSchema = z.strictObject({

@@ -6,7 +6,7 @@ import {
   type StoredImmutableRecord,
 } from "@sweatpants/durable-storage-kernel";
 import { type Json, canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
-import { assertCheckpointBounds } from "./checkpoint-bounds.ts";
+import { assertCheckpointBounds, CHECKPOINT_BOUNDS } from "./checkpoint-bounds.ts";
 import { assertCheckpointPayload, checkpointHotRoots } from "./checkpoint-payload.ts";
 import { rootPayloadBytes } from "./segmentation.ts";
 import {
@@ -190,10 +190,14 @@ function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
     totalRoots: roots.length,
     mutableRoots: mutable,
     openInterrupts: Array.isArray(openInterrupts) ? openInterrupts.length : 0,
-    largestInlineRootBytes: Math.max(
-      0,
-      ...roots.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength),
-    ),
+    // A root cannot exceed its enclosing canonical payload.
+    largestInlineRootBytes:
+      encodedBytes <= CHECKPOINT_BOUNDS.maxInlineRootBytes
+        ? encodedBytes
+        : Math.max(
+            0,
+            ...roots.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength),
+          ),
   });
 }
 
@@ -208,7 +212,8 @@ export function encodeCheckpoint(value: StoredCheckpoint): Uint8Array {
     return invalid(`Checkpoint ${value.checkpointId} encoded byte count does not match payload`);
   }
   validateCheckpointBounds(value.payload, value.encodedBytes);
-  return jsonEncode(value);
+  // The payload owns the content identity; the storage envelope is ordinary JSON.
+  return new TextEncoder().encode(JSON.stringify(value));
 }
 
 export function decodeCheckpoint(value: Uint8Array): StoredCheckpoint {

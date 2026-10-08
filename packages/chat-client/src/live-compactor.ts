@@ -346,15 +346,24 @@ export class LiveChatCompactor {
   private replaceProjection(projection: ChatProjectionState): void {
     this.projectionGeneration += 1;
     this.pendingPresentationReconciliation = new Map(
-      findTextParts(this.current).map((entry) => [
-        `${entry.messageId}\u0000${entry.part.id}`,
-        {
-          text: entry.part.text,
-          state: entry.part.state,
-          frame: entry.part.frame,
-          rendered: entry.part.rendered,
-        },
-      ]),
+      findTextParts(this.current)
+        .filter(
+          (entry) =>
+            // Semantic completion can precede the final presentation pull. Only
+            // reuse frames whose pipeline has actually finished and been released.
+            entry.part.state === "done" &&
+            !this.pipelines.has(entry.part.id) &&
+            !this.dirtyParts.has(entry.part.id),
+        )
+        .map((entry) => [
+          `${entry.messageId}\u0000${entry.part.id}`,
+          {
+            text: entry.part.text,
+            state: entry.part.state,
+            frame: entry.part.frame,
+            rendered: entry.part.rendered,
+          },
+        ]),
     );
     this.current = projection;
     this.pipelines.clear();

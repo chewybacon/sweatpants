@@ -7,9 +7,10 @@ import {
   type DurableKernel,
   type DurableMutationOutcome,
   type StoredScanPage,
+  type StoredAuthorityRecord,
 } from "@sweatpants/durable-storage-kernel";
 import type { Json } from "@sweatpants/foundation";
-import type { Operation } from "effection";
+import { call, type Operation } from "effection";
 import {
   ExecutionStoreError,
   type CommitExecutionResult,
@@ -46,11 +47,27 @@ function counter(value: string, field: string): bigint {
 }
 
 export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStore {
+  // A load followed by a commit need not fetch the same expected revision again.
+  // This is only a planning input: the kernel still atomically checks its CAS.
+  let observed: { executionId: string; record: StoredAuthorityRecord | null } | undefined;
+  // IDs and selected chain heads name immutable content. Keep only the most
+  // recent small read of each kind; misses and mutable control are never cached.
+  const retainedReadBytes = 1024 * 1024;
+  const objectReads = new Map<string, StoredExecutionObject>();
+  let objectReadBytes = 0;
+  let chainRead: { key: string; chunks: readonly (readonly Json[])[] } | undefined;
+  function chainValues(chunks: readonly (readonly Json[])[]): AsyncIterable<readonly Json[]> {
+    return (async function* () {
+      for (const chunk of chunks) yield structuredClone(chunk);
+    })();
+  }
+
   function* loadControl(executionId: string): Operation<ExecutionControl | null> {
     const record = yield* kernel.readAuthority(
       DurableCollections.executionControls,
       executionKeys.control(executionId),
     );
+    observed = { executionId, record };
     return record === null ? null : decodeAuthorityControl(record);
   }
 
@@ -58,24 +75,6 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
     kind: "journal" | "replay",
     segment: StoredPrivateSegment,
   ): Operation<PrivateSegmentPointer> {
-    const collection =
-      kind === "journal"
-        ? DurableCollections.executionJournalSegments
-        : DurableCollections.executionReplaySegments;
-    const existing = yield* kernel.readImmutable(
-      collection,
-      executionKeys.segment(segment.segmentId),
-    );
-    if (existing !== null) {
-      if (existing.fingerprint !== segment.contentHash) {
-        throw new ExecutionStoreError(
-          "immutable_object_conflict",
-          `${kind} segment ${segment.segmentId} has another content hash`,
-        );
-      }
-      const stored = decodePrivateSegment(existing.value);
-      return { segmentId: stored.segmentId, lastSequence: stored.lastSequence };
-    }
     const ensure = privateSegmentEnsure(kind, segment);
     const outcome = yield* kernel.apply({ ensures: [ensure] });
     if (outcome.status === "immutable_conflict") {
@@ -94,7 +93,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         `Segment staging omitted ${ensure.name}`,
       );
     }
-    const stored = decodePrivateSegment(record.value);
+    const stored = yield* call(() => decodePrivateSegment(record.value));
     return { segmentId: stored.segmentId, lastSequence: stored.lastSequence };
   }
 
@@ -113,7 +112,10 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       kind === "journal"
         ? DurableCollections.executionJournalSegments
         : DurableCollections.executionReplaySegments;
+    const readKey = JSON.stringify([kind, task.executionId, task.taskId, task.head]);
+    if (chainRead?.key === readKey) return chainValues(chainRead.chunks);
     const chunks: Array<readonly Json[]> = [];
+    let readBytes = 0;
     let after: string | null = null;
     let expected: bigint | null = null;
     let previousSegmentId: string | null = null;
@@ -130,7 +132,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
       });
       for (const record of page.records) {
-        const segment = decodePrivateSegment(record.value);
+        const segment = yield* call(() => decodePrivateSegment(record.value));
         if (segment.executionId !== task.executionId || segment.taskId !== task.taskId) {
           throw new ExecutionStoreError(
             "persisted_data_invalid",
@@ -152,6 +154,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         finalSegment = segment;
         // Decoding created these entries; this read owns them until the iterable yields.
         chunks.push(segment.entries);
+        readBytes += segment.encodedBytes;
       }
       after = page.nextCursor;
     } while (after !== null);
@@ -164,9 +167,8 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         `${kind} scan did not reach selected head ${task.head.segmentId}`,
       );
     }
-    return (async function* () {
-      yield* chunks;
-    })();
+    chainRead = readBytes <= retainedReadBytes ? { key: readKey, chunks } : undefined;
+    return chainValues(chunks);
   }
 
   return {
@@ -174,10 +176,17 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       return yield* loadControl(executionId);
     },
     *commitExecution(request): Operation<CommitExecutionResult> {
-      const currentRecord = yield* kernel.readAuthority(
-        DurableCollections.executionControls,
-        executionKeys.control(request.executionId),
-      );
+      const prior = observed;
+      observed = undefined;
+      const currentRecord =
+        prior?.executionId === request.executionId &&
+        (prior.record?.revision ?? null) === request.expectedControlRevision &&
+        (prior.record?.fence ?? "0") === request.expectedOwnerFence
+          ? prior.record
+          : yield* kernel.readAuthority(
+              DurableCollections.executionControls,
+              executionKeys.control(request.executionId),
+            );
       const decision = planExecutionCommit({ request, currentRecord });
       if (decision.kind === "complete") {
         return decision.result;
@@ -190,6 +199,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
             "Execution commit omitted its control result",
           );
         }
+        observed = { executionId: request.executionId, record: outcome.authority };
         return { status: "committed", control: decodeAuthorityControl(outcome.authority) };
       }
       if (outcome.status === "authority_conflict") {
@@ -209,19 +219,6 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
     },
     *putObject(object): Operation<ExecutionObjectPointer> {
       const objectId = object.objectId;
-      const existing = yield* kernel.readImmutable(
-        DurableCollections.executionObjects,
-        executionKeys.object(object.objectId),
-      );
-      if (existing !== null) {
-        if (existing.fingerprint !== object.contentHash) {
-          throw new ExecutionStoreError(
-            "immutable_object_conflict",
-            `Execution object ${object.objectId} has another content hash`,
-          );
-        }
-        return { objectId: decodeExecutionObject(existing.value).objectId };
-      }
       const name = "execution-object";
       const outcome = yield* kernel.apply({
         ensures: [
@@ -252,11 +249,24 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
       return { objectId };
     },
     *getObject(pointer): Operation<StoredExecutionObject | null> {
+      const retained = objectReads.get(pointer.objectId);
+      if (retained) return structuredClone(retained);
       const record = yield* kernel.readImmutable(
         DurableCollections.executionObjects,
         executionKeys.object(pointer.objectId),
       );
-      return record === null ? null : decodeExecutionObject(record.value);
+      if (record === null) return null;
+      const object = yield* call(() => decodeExecutionObject(record.value));
+      if (!objectReads.has(object.objectId) && object.byteLength <= retainedReadBytes) {
+        while (objectReads.size >= 4 || objectReadBytes + object.byteLength > retainedReadBytes) {
+          const oldest = objectReads.keys().next().value!;
+          objectReadBytes -= objectReads.get(oldest)!.byteLength;
+          objectReads.delete(oldest);
+        }
+        objectReads.set(object.objectId, object);
+        objectReadBytes += object.byteLength;
+      }
+      return structuredClone(object);
     },
     *appendJournalSegment(segment): Operation<PrivateSegmentPointer> {
       return yield* putSegment("journal", segment);

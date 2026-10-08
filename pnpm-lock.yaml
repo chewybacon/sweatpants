@@ -1129,6 +1129,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      base64-js:
+        specifier: 1.5.1
+        version: 1.5.1
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -1399,6 +1402,9 @@ importers:
       '@sweatpants/tool-session':
         specifier: workspace:*
         version: link:../tool-session
+      base64-js:
+        specifier: 1.5.1
+        version: 1.5.1
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -1579,6 +1585,9 @@ importers:
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
+      canonicalize:
+        specifier: 5.1.0
+        version: 5.1.0
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -1678,6 +1687,9 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
+      base64-js:
+        specifier: 1.5.1
+        version: 1.5.1
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -1960,6 +1972,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20261005.1
         version: 5.20261005.1
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@sweatpants/durable-storage-kernel':
         specifier: workspace:*
         version: link:../durable-storage-kernel
@@ -2410,6 +2425,9 @@ importers:
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
+      base64-js:
+        specifier: 1.5.1
+        version: 1.5.1
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -7435,6 +7453,11 @@ packages:
 
   caniuse-lite@1.0.30001764:
     resolution: {integrity: sha512-9JGuzl2M+vPL+pz70gtMF9sHdMFbY9FJaQBi186cHKH3pSzDvzoUJUPV6fqiKIMyXbud9ZLg4F3Yza1vJ1+93g==}
+
+  canonicalize@5.1.0:
+    resolution: {integrity: sha512-bab9+WefZljqQ8jT0qRwVmTyzAUU63K97QIQD3agynIBrb6sa5M2eAy8Hv8K3p4V9+ONVYZKtGYl4Dg+/5Gumw==}
+    engines: {node: '>=22'}
+    hasBin: true
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -16644,6 +16667,8 @@ snapshots:
       get-intrinsic: 1.3.0
 
   caniuse-lite@1.0.30001764: {}
+
+  canonicalize@5.1.0: {}
 
   ccount@2.0.1: {}
 

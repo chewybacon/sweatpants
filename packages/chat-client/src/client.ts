@@ -1445,6 +1445,9 @@ class ChatClientController<
       // Yield once so the eager reader's atomic buffer includes all values that
       // causally preceded this presentation tick.
       yield* call(() => Promise.resolve());
+      // Completion belongs to this drain. Rendering below may suspend while
+      // the reader buffers more events and reaches EOF; those need another tick.
+      const drainedState = events.state;
       const publishable: ConversationStreamEvent[] = [];
       for (const event of events.drain()) {
         validator.push(event);
@@ -1483,10 +1486,10 @@ class ChatClientController<
         return terminalEvent;
       }
 
-      if (events.state.status === "error") {
-        throw events.state.error;
+      if (drainedState.status === "error") {
+        throw drainedState.error;
       }
-      if (events.state.status === "done") {
+      if (drainedState.status === "done") {
         if (!this.closed) validator.finish();
         if (prelude.length > 0) {
           terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;

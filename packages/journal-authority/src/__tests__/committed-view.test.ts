@@ -127,27 +127,63 @@ it("never exposes a candidate rejected by the owner fence", async () => {
   });
 });
 
-it("retains cold snapshot depth validation on the first read after its own commit", async () => {
+it("rejects unrestorable mutations before staging or committing any data", async () => {
   const store = createMemoryExecutionStore();
+  let writes = 0;
+  const measured: ExecutionStore = {
+    ...store,
+    *putObject(value) {
+      writes++;
+      return yield* store.putObject(value);
+    },
+    *commitExecution(value) {
+      writes++;
+      return yield* store.commitExecution(value);
+    },
+  };
   let input: Json = null;
   for (let depth = 0; depth < 140; depth++) input = { nested: input };
   await run(function* () {
-    const drivers = createStoredShellDrivers(store, options);
-    // The writer currently permits JSON inputs deeper than the stored snapshot
-    // limit. Reusing its committed representation must not conceal that limit.
-    yield* drivers.authority.command({
-      type: "execution.open-task",
-      request: { ...request, input },
-    });
-    for (const reader of [drivers, createStoredShellDrivers(store, options)]) {
-      let error: unknown;
-      try {
-        yield* reader.snapshot.exportSnapshot();
-      } catch (caught) {
-        error = caught;
-      }
-      expect(error).toMatchObject({ code: "invalid_journal" });
+    const drivers = createStoredShellDrivers(measured, options);
+    let error: unknown;
+    try {
+      yield* drivers.authority.command({
+        type: "execution.open-task",
+        request: { ...request, input },
+      });
+    } catch (caught) {
+      error = caught;
     }
+    expect(error).toMatchObject({ code: "invalid_journal" });
+    expect(writes).toBe(0);
+    expect(yield* store.loadControl("authority:committed-view")).toBeNull();
+    expect(yield* drivers.snapshot.exportSnapshot()).toEqual(
+      yield* createStoredShellDrivers(store, options).snapshot.exportSnapshot(),
+    );
+    const opened = yield* drivers.authority.command({ type: "execution.open-task", request });
+    const before = yield* drivers.snapshot.exportSnapshot();
+    writes = 0;
+    error = undefined;
+    try {
+      yield* drivers.authority.command({
+        type: "execution.append-emission",
+        request: {
+          sessionId: "session",
+          taskId: "root",
+          actionIndex: 0,
+          descriptor: { eventType: "progress", payload: input },
+          programCapability: opened.programCapability,
+        },
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({ code: "invalid_journal" });
+    expect(writes).toBe(0);
+    expect(yield* drivers.snapshot.exportSnapshot()).toEqual(before);
+    expect(yield* createStoredShellDrivers(store, options).snapshot.exportSnapshot()).toEqual(
+      before,
+    );
   });
 });
 

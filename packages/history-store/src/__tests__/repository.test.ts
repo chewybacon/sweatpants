@@ -25,6 +25,67 @@ const idle: ConversationHeadProposal = {
 };
 
 describe("kernel conversation repository", () => {
+  it("plans against an observed head but still rejects a peer commit atomically", async () => {
+    const kernel = createMemoryDurableKernel();
+    let reads = 0;
+    const store = createKernelConversationStore({
+      ...kernel,
+      *readAuthority(collection, key) {
+        reads++;
+        return yield* kernel.readAuthority(collection, key);
+      },
+    });
+    const peer = createKernelConversationStore(kernel);
+    await run(function* () {
+      yield* store.compareAndSwapHead("conversation", null, null, idle);
+      const basis = yield* store.loadHead("conversation");
+      const before = reads;
+      expect(
+        yield* store.compareAndSwapHead("conversation", basis!.revision, basis!.ownerEpoch, idle),
+      ).toMatchObject({ status: "committed", head: { revision: "1" } });
+      expect(reads).toBe(before);
+      yield* peer.compareAndSwapHead("conversation", "1", "0", idle);
+      const candidate = checkpoint("losing", "lineage");
+      expect(
+        yield* store.commitConversation({
+          conversationId: "conversation",
+          expectedRevision: "1",
+          expectedOwnerEpoch: "0",
+          proposal: { ...idle, checkpoint: { checkpointId: candidate.checkpointId } },
+          checkpoint: candidate,
+        }),
+      ).toMatchObject({ status: "head_conflict", current: { revision: "2" } });
+      expect(yield* store.getCheckpoint({ checkpointId: candidate.checkpointId })).toBeNull();
+      expect(yield* store.loadHead("conversation")).toMatchObject({ revision: "2" });
+      expect(reads).toBe(before + 1);
+    });
+  });
+
+  it("retains immutable checkpoints without caching misses or caller mutations", async () => {
+    const kernel = createMemoryDurableKernel();
+    let reads = 0;
+    const store = createKernelConversationStore({
+      ...kernel,
+      *readImmutable(collection, key) {
+        reads++;
+        return yield* kernel.readImmutable(collection, key);
+      },
+    });
+    const accepted = checkpoint("owned", "lineage");
+    const pointer = { checkpointId: accepted.checkpointId };
+    await run(function* () {
+      expect(yield* store.getCheckpoint(pointer)).toBeNull();
+      yield* store.putCheckpoint(accepted);
+      const first = yield* store.getCheckpoint(pointer);
+      const readsAfterFirst = reads;
+      Object.assign(first!, { payload: null });
+      expect(yield* store.getCheckpoint(pointer)).toEqual(accepted);
+      expect(reads).toBe(readsAfterFirst);
+      const restored = createKernelConversationStore(kernel);
+      expect(yield* restored.getCheckpoint(pointer)).toEqual(accepted);
+    });
+  });
+
   it("preserves idempotent command retries and reports identity evidence on divergence", async () => {
     const store = createMemoryConversationStore();
     await run(function* () {

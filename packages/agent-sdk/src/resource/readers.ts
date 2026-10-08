@@ -1,3 +1,4 @@
+import { fromByteArray } from "base64-js";
 import { assertJson, canonicalJson, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
 import {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -212,7 +213,7 @@ export function readResource(
       "Binary resource has no model-readable projection",
     );
   }
-  return deepFreeze({ ...base, kind: "bytes", bytesBase64: encodeBase64(bytes) });
+  return deepFreeze({ ...base, kind: "bytes", bytesBase64: fromByteArray(bytes) });
 }
 
 /**
@@ -484,22 +485,6 @@ function requireProgram(value: PinnedProgram): void {
   ) {
     throw new ResourceError("invalid_resource_manifest", "Invalid reader engine identity");
   }
-}
-
-function encodeBase64(bytes: Uint8Array): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let output = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const first = bytes[index]!;
-    const second = bytes[index + 1];
-    const third = bytes[index + 2];
-    const value = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
-    output += alphabet[(value >>> 18) & 63];
-    output += alphabet[(value >>> 12) & 63];
-    output += second === undefined ? "=" : alphabet[(value >>> 6) & 63];
-    output += third === undefined ? "=" : alphabet[value & 63];
-  }
-  return output;
 }
 
 function compareText(left: string, right: string): number {

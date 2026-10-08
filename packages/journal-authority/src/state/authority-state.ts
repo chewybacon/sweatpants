@@ -8,6 +8,7 @@ import type {
 } from "../contract/authority-contract.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import { verifyMaterializedIndexes } from "../store/materialized-index-verifier.ts";
+import { cloneTaskState } from "./accepted-values.ts";
 
 /** Expands the sole direct snapshot format into grouped in-process state. */
 export function authorityStateFromSnapshot(snapshot: DurableAuthoritySnapshot): AuthorityState {
@@ -27,7 +28,7 @@ export function authorityStateFromSnapshot(snapshot: DurableAuthoritySnapshot): 
     for (const task of value.execution.tasks) {
       if (tasks.has(task.taskId)) invalid(`Duplicate task ${task.taskId}`);
       validateTask(task);
-      tasks.set(task.taskId, structuredClone(task));
+      tasks.set(task.taskId, cloneTaskState(task));
     }
     sessions.set(sessionId, {
       execution: { tasks },
@@ -42,19 +43,27 @@ export function snapshotFromAuthorityState(
   state: AuthorityState,
   records: readonly [string, readonly DurableSemanticRecord[]][] = [],
 ): DurableAuthoritySnapshot {
+  return structuredClone(projectAuthoritySnapshot(state, records));
+}
+
+/** Internal projection; callers must retain ownership of the state and records. */
+export function projectAuthoritySnapshot(
+  state: AuthorityState,
+  records: readonly [string, readonly DurableSemanticRecord[]][] = [],
+): DurableAuthoritySnapshot {
   return {
     version: 1,
     sessions: [...state.sessions].map(([sessionId, session]) => [
       sessionId,
       {
         execution: {
-          tasks: [...session.execution.tasks.values()].map((task) => structuredClone(task)),
+          tasks: [...session.execution.tasks.values()],
         },
-        control: structuredClone(session.control),
+        control: session.control,
       },
     ]),
     nextNonce: state.nextNonce,
-    records: records.map(([sessionId, entries]) => [sessionId, structuredClone([...entries])]),
+    records: records.map(([sessionId, entries]) => [sessionId, [...entries]]),
   };
 }
 

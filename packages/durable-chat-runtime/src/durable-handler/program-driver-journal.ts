@@ -188,11 +188,12 @@ export function createProgramDriverJournalStore(
           return yield* scoped(function* () {
             yield* install();
             const journal = yield* AuthorityJournalPort.use();
-            return structuredClone([
+            // Journal reads already return detached records at their boundary.
+            return [
               ...(rootTaskId
                 ? yield* journal.readTree(sessionId, rootTaskId)
                 : yield* journal.readSession(sessionId)),
-            ]);
+            ];
           });
         },
         *requestCancellation(sessionId, taskId, reason, commandId) {

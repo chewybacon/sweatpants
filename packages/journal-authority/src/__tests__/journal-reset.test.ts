@@ -98,7 +98,7 @@ function makeDrivers(store: ExecutionStore): Drivers {
 }
 
 function* seedStoredJournal(store: ExecutionStore, entries: readonly Json[]): Operation<void> {
-  const body = { version: 1, nextNonce: 0, sessions: [], records: [] };
+  const body = JSON.stringify({ version: 1, nextNonce: 0, sessions: [], records: [] });
   const canonicalBody = canonicalJson(body);
   const objectPointer = yield* store.putObject({
     objectId: "snap-fixture",

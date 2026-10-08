@@ -1,11 +1,4 @@
-import {
-  assertJson,
-  canonicalSnapshot,
-  canonicalJson,
-  sha256,
-  stableTupleHash,
-  type Json,
-} from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   completeRoot,
   terminalCapsuleParser,
@@ -15,7 +8,11 @@ import {
   type StoredJson,
   type TerminalCapsule,
 } from "@sweatpants/durable-execution";
-import type { Operation } from "effection";
+import { call, type Operation } from "effection";
+import {
+  createContentAddressedExecutionObject,
+  createPrivateSegment,
+} from "../store/store-persistence.ts";
 import { createApi } from "effection/experimental";
 import { ExecutionStoreApi } from "../api.ts";
 import { AcceptedProjectionFactStore } from "../store/fact-store.ts";
@@ -114,7 +111,7 @@ export const TurnJournalAuthority = createApi("turn-journal-authority", {
           completedAt: request.completedAt,
         });
         const capsule = decision.next as TerminalCapsule;
-        const journalSegments = privateSegments(
+        const journalSegments = yield* privateSegments(
           request.executionId,
           "authority",
           parsed.journalHead,
@@ -362,20 +359,20 @@ function* putExecutionObject(
   version: string;
   integrity: { algorithm: "sha256"; value: string };
 }> {
-  const encoded = canonicalSnapshot(body);
-  const contentHash = sha256(encoded.canonical);
-  const objectId = stableTupleHash([executionId, kind, contentHash]);
-  const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
-  yield* ExecutionStoreApi.operations.putObject({
-    objectId,
-    lifetimeScope: "execution",
-    scopeOwnerId: executionId,
-    objectKind: kind,
-    contentHash,
-    byteLength,
-    body: encoded.value,
-    createdAt: Date.now(),
-  });
+  const object = yield* call(() =>
+    createContentAddressedExecutionObject(
+      {
+        lifetimeScope: "execution",
+        scopeOwnerId: executionId,
+        objectKind: kind,
+        createdAt: Date.now(),
+      },
+      [executionId, kind],
+      body,
+    ),
+  );
+  const { objectId, byteLength, contentHash } = object;
+  yield* ExecutionStoreApi.operations.putObject(object);
   return {
     id: objectId,
     byteLength,
@@ -384,34 +381,33 @@ function* putExecutionObject(
   };
 }
 
-function privateSegments(
+function* privateSegments(
   executionId: string,
   taskId: string,
   previous: PrivateSegmentPointer | null,
   entries: readonly Json[],
   createdAt: number,
   target: PrivateSegmentTarget = DEFAULT_PRIVATE_SEGMENT_TARGET,
-): StoredPrivateSegment[] {
+): Operation<StoredPrivateSegment[]> {
   if (entries.length === 0) return [];
   const segments: StoredPrivateSegment[] = [];
   let cursor = previous;
   for (const batch of segmentPrivateEntries(entries, target)) {
     const first = cursor === null ? 1n : BigInt(cursor.lastSequence) + 1n;
     const last = first + BigInt(batch.entries.length - 1);
-    const canonical = canonicalJson(batch.entries);
-    const contentHash = sha256(canonical);
-    const segment: StoredPrivateSegment = {
-      segmentId: stableTupleHash([executionId, taskId, first.toString(10), contentHash]),
-      executionId,
-      taskId,
-      previous: cursor,
-      firstSequence: first.toString(10),
-      lastSequence: last.toString(10),
-      entries: batch.entries,
-      contentHash,
-      encodedBytes: new TextEncoder().encode(canonical).byteLength,
-      createdAt,
-    };
+    const segment = yield* call(() =>
+      createPrivateSegment(
+        {
+          executionId,
+          taskId,
+          previous: cursor,
+          firstSequence: first.toString(10),
+          lastSequence: last.toString(10),
+          createdAt,
+        },
+        batch.entries,
+      ),
+    );
     segments.push(segment);
     cursor = { segmentId: segment.segmentId, lastSequence: segment.lastSequence };
   }

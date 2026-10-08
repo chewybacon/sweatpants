@@ -1,3 +1,4 @@
+import { fromByteArray, toByteArray } from "base64-js";
 import { CrankError } from "@sweatpants/durable-execution";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -34,6 +35,12 @@ type KeyringState = ReadonlyMap<
 >;
 
 const keyringStates = new WeakMap<CapabilityKeyring, KeyringState>();
+// A keyring's secret and retirement policy are immutable. Authentication of the
+// same token can be retained; audience and execution fencing still run per use.
+const lastAuthenticated = new WeakMap<
+  CapabilityKeyring,
+  { token: string; claims: CapabilityClaims }
+>();
 
 /** Parses key configuration, enforces unique IDs and 256-bit minimum secrets. */
 export function createCapabilityKeyring(
@@ -113,7 +120,9 @@ export function signCapability(
   const third = base64url(encoder.encode(canonicalJson(parsed)));
   const signingInput = `${first}.${second}.${third}`;
   const signature = hmac(sha256, key.secret, encoder.encode(signingInput));
-  return `${signingInput}.${base64url(signature)}`;
+  const token = `${signingInput}.${base64url(signature)}`;
+  lastAuthenticated.set(keyring, { token, claims: parsed });
+  return token;
 }
 
 /** Signs host-private canonical JSON under a domain-separated purpose. */
@@ -188,6 +197,8 @@ export function verifyPrivateAuthorityToken(
 
 /** Authenticates and parses an exact canonical capability DTO. */
 export function verifyCapability(token: string, keyring: CapabilityKeyring): CapabilityClaims {
+  const retained = lastAuthenticated.get(keyring);
+  if (retained?.token === token) return structuredClone(retained.claims);
   try {
     const [version, keyPart, claimsPart, signaturePart, ...extraParts] = token.split(".");
     if (
@@ -221,7 +232,8 @@ export function verifyCapability(token: string, keyring: CapabilityKeyring): Cap
     if (claims.keyId !== keyId || claims.issuer !== keyring.issuer) {
       throw invalid();
     }
-    return claims;
+    lastAuthenticated.set(keyring, { token, claims });
+    return structuredClone(claims);
   } catch (error) {
     if (error instanceof CrankError) {
       throw error;
@@ -414,33 +426,17 @@ function invalid(): CrankError {
   return new CrankError("invalid_resolution_capability", "Invalid capability token");
 }
 
-/**
- * base64url via `btoa`/`atob` rather than Node's Buffer.
- *
- * Capabilities are minted and verified wherever the authority runs, which
- * includes browsers and edge runtimes. Buffer is a Node global: it breaks
- * browser bundling, and depending on it here would tie the session contract to
- * one runtime for no reason.
- */
+/** Portable base64url wire representation; byte conversion belongs to the codec. */
 function base64url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return fromByteArray(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function fromBase64url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]*$/.test(value)) {
+  if (!/^[A-Za-z0-9_-]*$/.test(value) || value.length % 4 === 1) {
     throw invalid();
   }
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+  return toByteArray(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
 }
 
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {

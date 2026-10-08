@@ -124,7 +124,7 @@ const assistantPartSchema = z.discriminatedUnion("type", [
 ]);
 
 const chatMessageSchema = z.discriminatedUnion("role", [
-  z.strictObject({ role: z.literal("user"), content: z.json() }),
+  z.strictObject({ role: z.literal("user"), content: z.unknown() }),
   z.strictObject({
     role: z.literal("assistant"),
     content: z.array(assistantPartSchema),
@@ -135,7 +135,7 @@ const chatMessageSchema = z.discriminatedUnion("role", [
     role: z.literal("tool"),
     toolCallId: nonemptyString,
     name: nonemptyString,
-    content: z.json(),
+    content: z.unknown(),
     isError: z.boolean(),
   }),
 ]);
@@ -315,7 +315,7 @@ function normalizeToolDefinition(value: StructuralChatToolDefinition): ChatToolD
   });
 }
 
-function decodeContent(value: Json, path: string): ChatContent {
+function decodeContent(value: unknown, path: string): ChatContent {
   try {
     return decodeChatContent(value);
   } catch (error) {

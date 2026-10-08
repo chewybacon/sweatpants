@@ -1,3 +1,4 @@
+import { fromByteArray, toByteArray } from "base64-js";
 import { z } from "zod";
 import type { JsonObject } from "@sweatpants/foundation";
 
@@ -38,7 +39,7 @@ export function encodeMcpHeaderValue(value: string): string {
   )
     return value;
   const bytes = new TextEncoder().encode(value);
-  return `=?base64?${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}?=`;
+  return `=?base64?${fromByteArray(bytes)}?=`;
 }
 
 function decodeHeader(value: string): string {
@@ -49,11 +50,9 @@ function decodeHeader(value: string): string {
   }
   const encoded = value.slice(9, -2);
   try {
-    const raw = atob(encoded);
-    if (btoa(raw) !== encoded) return mismatch("Invalid MCP Base64 header");
-    return new TextDecoder("utf-8", { fatal: true }).decode(
-      Uint8Array.from(raw, (char) => char.charCodeAt(0)),
-    );
+    const bytes = toByteArray(encoded);
+    if (fromByteArray(bytes) !== encoded) return mismatch("Invalid MCP Base64 header");
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return mismatch("Invalid MCP Base64 header");
   }

@@ -20,7 +20,6 @@ import type {
   ValidateElicitResponseResult,
 } from "../contract/authority-types.ts";
 import {
-  cloneAuthorityState,
   currentAttempt,
   findPullById,
   findTaskPullById,
@@ -55,7 +54,7 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
   let result: unknown;
   switch (query.type) {
     case "authority.identity":
-      result = context.journalIdentity;
+      result = { ...context.journalIdentity };
       break;
     case "authority.nonterminal-schema-digests":
       result = nonterminalSchemaDigests(state);
@@ -119,13 +118,7 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
       result = authorizeModelDispatch(state, query.request);
       break;
     case "pull.resolution-capability":
-      result = resolutionCapabilityFor(
-        context,
-        cloneAuthorityState(state),
-        query.sessionId,
-        query.taskId,
-        query.pullId,
-      );
+      result = resolutionCapabilityFor(context, state, query.sessionId, query.taskId, query.pullId);
       break;
     default:
       return assertNever(query);
@@ -367,7 +360,7 @@ function taskRecoveryState(
 
 function resolutionCapabilityFor(
   context: AuthorityDecisionFrame<AuthorityCommand>["context"],
-  state: ReturnType<typeof cloneAuthorityState>,
+  state: AuthorityState,
   sessionId: string,
   taskId: string,
   pullId: string,
