@@ -113,7 +113,16 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
   let stopProfile: (() => Promise<void>) | undefined;
   try {
     await worker.ready;
-    await initializeD1Storage((await worker.getD1Database("JOURNAL")) as unknown as D1Database);
+    const database = (await worker.getD1Database("JOURNAL")) as unknown as D1Database;
+    const frozenSchema = process.env.YO_CHAT_CPU_PROFILE_SCHEMA;
+    if (frozenSchema) {
+      if (!frozenBundle || !profileDirectory)
+        throw new Error("Frozen schema requires a frozen CPU profile bundle");
+      const statements: string[] = JSON.parse(await readFile(frozenSchema, "utf8"));
+      await database.batch(statements.map((sql) => database.prepare(sql)));
+    } else {
+      await initializeD1Storage(database);
+    }
     if (profileDirectory) {
       stopProfile = await startWorkerCpuProfile(
         worker,

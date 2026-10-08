@@ -16,10 +16,19 @@ const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8"
 const frozenBundle = process.env.YO_CHAT_CPU_PROFILE_BUNDLE
     ? resolve(process.env.YO_CHAT_CPU_PROFILE_BUNDLE)
     : undefined;
+const frozenSchema = process.env.YO_CHAT_CPU_PROFILE_SCHEMA
+    ? resolve(process.env.YO_CHAT_CPU_PROFILE_SCHEMA)
+    : undefined;
 const metadata = {
     scenario: "replays a parked card after the entire Worker host is replaced",
     runs,
     frozenBundle: frozenBundle ?? null,
+    frozenSchema: frozenSchema ?? null,
+    frozenSchemaSha256: frozenSchema
+        ? createHash("sha256")
+              .update(await readFile(frozenSchema))
+              .digest("hex")
+        : null,
     frozenBundleSha256: frozenBundle
         ? createHash("sha256")
               .update(await readFile(frozenBundle))

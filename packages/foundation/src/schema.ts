@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { parser, type Parser } from "./parser.ts";
 import { canonicalJson, canonicalSnapshot, sha256 } from "./json.ts";
 import type { Json } from "./json.ts";
+const ownedDescriptors = new WeakSet<object>();
 export class SchemaDescriptorError extends Error {
   readonly code = "invalid_schema_descriptor";
 
@@ -133,10 +134,12 @@ function buildPortableSchemaDescriptor<Role extends string>(
   });
   // SAFETY: canonicalSnapshot validated both unknown projections as JSON and
   // copied them; the descriptor owns the deeply frozen result.
-  return deepFreeze({
+  const descriptor = deepFreeze({
     ...normalized,
     digest: sha256(`${SCHEMA_DESCRIPTOR_DIGEST_DOMAIN}\n${canonical}`),
   }) as PortableSchemaDescriptor<Role>;
+  ownedDescriptors.add(descriptor);
+  return descriptor;
 }
 
 /**
@@ -144,6 +147,8 @@ function buildPortableSchemaDescriptor<Role extends string>(
  * digest that does not recommit to the descriptor's own fields.
  */
 function parsePortableSchemaDescriptorValue(value: unknown): PortableSchemaDescriptor {
+  if (typeof value === "object" && value !== null && ownedDescriptors.has(value))
+    return value as PortableSchemaDescriptor;
   if (!isRecord(value)) {
     throw invalidDescriptor("descriptor must be an object");
   }

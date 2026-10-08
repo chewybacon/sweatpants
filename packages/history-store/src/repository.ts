@@ -7,6 +7,7 @@ import {
   type DurableKernel,
   type DurableMutationOutcome,
   type StoredImmutableRecord,
+  type StoredAuthorityRecord,
   type StoredScanPage,
 } from "@sweatpants/durable-storage-kernel";
 import { type Json, canonicalJson, sha256 } from "@sweatpants/foundation";
@@ -122,11 +123,39 @@ function ensureOutcome<T>(
  * construction capability and is never exposed through ConversationStore.
  */
 export function createKernelConversationStore(kernel: DurableKernel): ConversationStore {
+  // Checkpoint IDs select immutable content. Retain one owned decoded value,
+  // never a miss, and give callers independent copies. A replaced repository
+  // restores and validates from storage again.
+  let lastCheckpoint: StoredCheckpoint | undefined;
+  let observedHead: { conversationId: string; record: StoredAuthorityRecord | null } | undefined;
+
+  // Reuse the caller's exact CAS basis for planning, never for queries. The
+  // atomic kernel still rejects a peer's replacement before publishing writes.
+  function* commitBasis(
+    conversationId: string,
+    revision: string | null,
+    fence: string | null,
+  ): Operation<StoredAuthorityRecord | null> {
+    if (
+      observedHead?.conversationId === conversationId &&
+      (observedHead.record?.revision ?? null) === revision &&
+      (observedHead.record?.fence ?? null) === fence
+    )
+      return observedHead.record;
+    const record = yield* kernel.readAuthority(
+      DurableCollections.conversationHeads,
+      conversationKeys.head(conversationId),
+    );
+    observedHead = { conversationId, record };
+    return record;
+  }
+
   function* loadHead(conversationId: string): Operation<ConversationHead | null> {
     const record = yield* kernel.readAuthority(
       DurableCollections.conversationHeads,
       conversationKeys.head(conversationId),
     );
+    observedHead = { conversationId, record };
     return record === null ? null : decodeAuthorityHead(record);
   }
 
@@ -138,7 +167,9 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           "Conversation commit omitted its authority result",
         );
       }
-      return { status: "committed", head: decodeAuthorityHead(outcome.authority) };
+      const head = decodeAuthorityHead(outcome.authority);
+      observedHead = { conversationId: head.conversationId, record: outcome.authority };
+      return { status: "committed", head };
     }
     if (outcome.status === "authority_conflict") {
       return { status: "head_conflict", current: decodeCurrent(outcome) };
@@ -259,9 +290,10 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       expectedOwnerEpoch,
       proposal,
     ): Operation<HeadCommitResult> {
-      const currentRecord = yield* kernel.readAuthority(
-        DurableCollections.conversationHeads,
-        conversationKeys.head(conversationId),
+      const currentRecord = yield* commitBasis(
+        conversationId,
+        expectedRevision,
+        expectedOwnerEpoch,
       );
       const decision = planHeadCommit({
         conversationId,
@@ -277,9 +309,10 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       return yield* applyHeadMutation(decision.mutation);
     },
     *commitConversation(request): Operation<CommitConversationResult> {
-      const currentRecord = yield* kernel.readAuthority(
-        DurableCollections.conversationHeads,
-        conversationKeys.head(request.conversationId),
+      const currentRecord = yield* commitBasis(
+        request.conversationId,
+        request.expectedRevision,
+        request.expectedOwnerEpoch,
       );
       const decision = planConversationCommit({
         request,
@@ -390,20 +423,14 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
             "Command admission committed without a conversation head",
           );
         }
-        const receiptRecord = yield* kernel.readImmutable(
-          DurableCollections.conversationCommandReceipts,
-          conversationKeys.receipt(request.conversationId, request.commandId),
-        );
-        if (receiptRecord === null) {
-          throw new ConversationStoreError(
-            "persisted_data_invalid",
-            "Command admission committed without a receipt",
-          );
-        }
+        // A committed claim acknowledges these already encoded, owned bytes.
+        // Reading the same immutable receipt again adds no acceptance evidence.
+        const head = decodeAuthorityHead(outcome.authority);
+        observedHead = { conversationId: request.conversationId, record: outcome.authority };
         return {
           status: "admitted",
-          receipt: decodeCommandReceipt(receiptRecord.value),
-          head: decodeAuthorityHead(outcome.authority),
+          receipt: decodeCommandReceipt(decision.mutation.claim!.value),
+          head,
         };
       }
       if (outcome.status === "claim_exists") {
@@ -470,11 +497,15 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       return { checkpointId: stored.checkpointId };
     },
     *getCheckpoint(pointer): Operation<StoredCheckpoint | null> {
+      if (lastCheckpoint?.checkpointId === pointer.checkpointId)
+        return structuredClone(lastCheckpoint);
       const record = yield* kernel.readImmutable(
         DurableCollections.conversationCheckpoints,
         conversationKeys.checkpoint(pointer.checkpointId),
       );
-      return record === null ? null : decodeCheckpoint(record.value);
+      if (record === null) return null;
+      lastCheckpoint = decodeCheckpoint(record.value);
+      return structuredClone(lastCheckpoint);
     },
     *putPublicArchiveSegment(segment): Operation<PublicArchivePointer> {
       const existing = yield* kernel.readImmutable(

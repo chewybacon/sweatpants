@@ -40,7 +40,18 @@ describe("HTTP response-stream reconnect", () => {
         expect(checkpoint.conversationId).toBe("reconnect-acceptance");
         yield* stream.disconnect();
 
+        // Finishing the provider stream does not await durable turn publication.
+        // Observe the still-live segment so completed hydration has a causal barrier.
+        const live = yield* s.streams.reconnect(checkpoint);
+        const started = yield* live.event("RUN_STARTED");
+        expect(started.event).toEqual(
+          stream.events.find((frame) => frame.event.type === EventType.RUN_STARTED)?.event,
+        );
         yield* response.finish();
+        const liveFrames = yield* live.complete();
+        expect(liveFrames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        expect(s.model.requests()).toHaveLength(1);
+
         const resumed = yield* s.streams.reconnect(checkpoint);
         const frames = yield* resumed.complete();
         const serialized = JSON.stringify(frames.map((frame) => frame.event));

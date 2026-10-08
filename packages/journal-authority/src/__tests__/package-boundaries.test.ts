@@ -9,7 +9,7 @@ describe("journal-authority package boundaries", () => {
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    // Journal Authority may depend on domain contracts, portable signing
+    // Journal Authority may depend on domain contracts, portable signing/encoding
     // primitives, the domain-agnostic durable storage kernel, and private Zod
     // schemas. No Host, tool-runtime, or Redis dependency is permitted.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
@@ -19,6 +19,7 @@ describe("journal-authority package boundaries", () => {
       "@sweatpants/durable-execution",
       "@sweatpants/durable-storage-kernel",
       "@sweatpants/foundation",
+      "base64-js",
       "effection",
       "zod",
     ]);

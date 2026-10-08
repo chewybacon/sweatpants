@@ -1,4 +1,4 @@
-import { emptyFrame, type Frame } from "@sweatpants/frame-renderer";
+import { createPipeline, emptyFrame, type Frame } from "@sweatpants/frame-renderer";
 import { describe, expect, it } from "vitest";
 import { call, run } from "effection";
 import { EventType } from "@ag-ui/core";
@@ -95,6 +95,28 @@ function suspendedPipeline(frame: Frame = emptyFrame()): SuspendedPipeline {
 }
 
 describe("LiveChatCompactor window layers", () => {
+  it("renders the final text when a sealed window overtakes the last presentation pull", async () => {
+    const compactor = new LiveChatCompactor(() => createPipeline({ processors: "markdown" }));
+    compactor.ingest({ type: EventType.TEXT_MESSAGE_START, messageId: "reply", role: "assistant" });
+    compactor.ingest({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: "reply", delta: "c" });
+    await run(() => compactor.pull());
+
+    compactor.ingest({
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "reply",
+      delta: "opper lantern",
+    });
+    compactor.ingest({ type: EventType.TEXT_MESSAGE_END, messageId: "reply" });
+    compactor.applyWindow(window("lineage-1", [root("reply", "1", "assistant", "copper lantern")]));
+    await run(() => compactor.pull(true));
+
+    expect(compactor.materialize()[0]?.parts[0]).toMatchObject({
+      text: "copper lantern",
+      rendered: "<p>copper lantern</p>\n",
+      state: "done",
+    });
+  });
+
   it("does not apply a suspended old presentation frame after window replacement", async () => {
     const suspended = suspendedPipeline();
     const pipeline = suspended.pipeline;

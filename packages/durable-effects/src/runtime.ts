@@ -1,5 +1,4 @@
 import {
-  assertJson,
   stableTupleHash,
   type Json,
   canonicalDigest,
@@ -46,7 +45,8 @@ export const DurableEffectRegistryContext = createContext<DurableEffectRegistry 
 );
 
 export function durableEffectKey(name: string, version: string): string {
-  return stableTupleHash([name, version]);
+  // Local registry identity needs an unambiguous key, not an integrity digest.
+  return JSON.stringify([name, version]);
 }
 
 /** Validates exact authored contracts against their selected handlers. */
@@ -126,9 +126,9 @@ const MAX_ERROR_DETAILS_BYTES = 64 * 1024;
 function safeErrorDetails(error: unknown): Json | undefined {
   if (error === null || typeof error !== "object" || !("details" in error)) return undefined;
   try {
-    const details = canonicalSnapshot(assertJson(error.details));
+    const details = canonicalSnapshot(error.details);
     return new TextEncoder().encode(details.canonical).byteLength <= MAX_ERROR_DETAILS_BYTES
-      ? details.value
+      ? (details.value as Json)
       : undefined;
   } catch {
     return undefined;
@@ -154,7 +154,7 @@ export const DurableEffects = createApi("durable-effects:execute", {
         `Effect contract differs for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
       );
     }
-    const input = cloneJson(assertJson(authorization.descriptor.input));
+    const input = cloneJson(authorization.descriptor.input);
     const controller = new AbortController();
     const release = registerLiveDurablePull(
       authorization.sessionId,
@@ -180,7 +180,7 @@ export const DurableEffects = createApi("durable-effects:execute", {
       }
       const disposition = yield* operation;
       if (disposition.status === "ok") {
-        const value = canonicalSnapshot(assertJson(disposition.value));
+        const value = canonicalSnapshot(disposition.value);
         if (new TextEncoder().encode(value.canonical).byteLength > MAX_INLINE_BYTES) {
           throw new DurableEffectConfigurationError(
             "invalid_manifest",

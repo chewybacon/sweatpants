@@ -60,6 +60,169 @@ describeExecutionStoreConformance([
   },
 ]);
 describe("D1 atomic kernel", () => {
+  it("replaces chunked and inline authority values without leaving stale payload rows", async () => {
+    await fresh();
+    const kernel = createD1DurableKernel(db);
+    const key = durableKey("inline-transition");
+    const values = [
+      new Uint8Array(1024 * 1024 + 1).fill(7),
+      new Uint8Array(),
+      new Uint8Array([0, 255, 128]),
+      new Uint8Array(1024 * 1024 + 3).fill(9),
+    ];
+    for (let index = 0; index < values.length; index++) {
+      const value = values[index]!;
+      expect(
+        (
+          await run(() =>
+            kernel.apply({
+              ensures: [],
+              authority: {
+                name: "control",
+                collection: "execution-controls",
+                key,
+                expected: { revision: index === 0 ? null : String(index - 1) },
+                next: { revision: String(index), value },
+              },
+            }),
+          )
+        ).status,
+      ).toBe("committed");
+      expect((await run(() => kernel.readAuthority("execution-controls", key)))?.value).toEqual(
+        value,
+      );
+      const chunks = await db
+        .prepare("SELECT COUNT(*) AS count FROM sp_d1_chunks WHERE collection=? AND key=?")
+        .bind("execution-controls", key)
+        .first("count");
+      expect(chunks).toBe(value.length > 1024 * 1024 ? 2 : 0);
+    }
+  });
+
+  it("splits wide writes under D1's bound parameter limit without losing aliases", async () => {
+    await fresh();
+    const kernel = createD1DurableKernel(db);
+    const ensures = Array.from({ length: 40 }, (_, i) => ({
+      name: `entry-${i}`,
+      collection: "execution-objects" as const,
+      key: durableKey(`entry-${i}`),
+      alternateKeys: [durableKey(`alias-${i}`)],
+      fingerprint: String(i),
+      value: new Uint8Array([i]),
+    }));
+    expect((await run(() => kernel.apply({ ensures }))).status).toBe("committed");
+    for (let i = 0; i < ensures.length; i++) {
+      expect(
+        (await run(() => kernel.readImmutable("execution-objects", durableKey(`alias-${i}`))))
+          ?.value,
+      ).toEqual(new Uint8Array([i]));
+    }
+  });
+
+  it("atomically competes for an immutable alias without publishing losing side objects", async () => {
+    await fresh();
+    const kernel = createD1DurableKernel(db, { maxAttempts: 1 });
+    const outcomes = await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        run(() =>
+          kernel.apply({
+            ensures: [
+              {
+                name: "shared",
+                collection: "execution-objects",
+                key: durableKey(`candidate-${i}`),
+                alternateKeys: [durableKey("shared-alias")],
+                fingerprint: String(i),
+                value: new Uint8Array([i]),
+              },
+              {
+                name: "side",
+                collection: "execution-objects",
+                key: durableKey(`side-${i}`),
+                fingerprint: String(i),
+                value: new Uint8Array([i]),
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    expect(outcomes.filter((value) => value.status === "committed")).toHaveLength(1);
+    expect(outcomes.filter((value) => value.status === "immutable_conflict")).toHaveLength(3);
+    expect(
+      (await db.prepare("SELECT key FROM sp_d1_records WHERE collection='execution-objects'").all())
+        .results,
+    ).toHaveLength(2);
+  });
+
+  it("publishes one fenced optimistic batch and restores conflict details without leaking objects", async () => {
+    await fresh();
+    const kernel = createD1DurableKernel(db, { maxAttempts: 1 });
+    const key = durableKey("optimistic");
+    await run(() =>
+      kernel.apply({
+        ensures: [],
+        authority: {
+          name: "control",
+          collection: "execution-controls",
+          key,
+          expected: { revision: null, fence: "0" },
+          next: { revision: "0", fence: "7", value: new Uint8Array([0]) },
+        },
+      }),
+    );
+    const results = await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        run(() =>
+          kernel.apply({
+            ensures: [
+              {
+                name: "object",
+                collection: "execution-objects",
+                key: durableKey(`optimistic-${i}`),
+                fingerprint: String(i),
+                value: new Uint8Array([i]),
+              },
+            ],
+            authority: {
+              name: "control",
+              collection: "execution-controls",
+              key,
+              expected: { revision: "0", fence: "7" },
+              next: { revision: "1", fence: "7", value: new Uint8Array([i]) },
+            },
+          }),
+        ),
+      ),
+    );
+    expect(results.filter((result) => result.status === "committed")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "authority_conflict")).toHaveLength(3);
+    const winner = await run(() => kernel.readAuthority("execution-controls", key));
+    for (const result of results) {
+      if (result.status === "authority_conflict") expect(result.current).toEqual(winner);
+    }
+    const rows = await db
+      .prepare("SELECT key FROM sp_d1_records WHERE collection='execution-objects'")
+      .all();
+    expect(rows.results).toHaveLength(1);
+    const stale = await run(() =>
+      kernel.apply({
+        ensures: [],
+        authority: {
+          name: "control",
+          collection: "execution-controls",
+          key,
+          expected: { revision: "1", fence: "6" },
+          next: { revision: "2", fence: "7", value: new Uint8Array([9]) },
+        },
+      }),
+    );
+    expect(stale).toMatchObject({
+      status: "authority_conflict",
+      mismatch: "fence",
+      current: winner,
+    });
+  });
   it("admits exactly one concurrent claimant and rolls back losing ensures", async () => {
     await fresh();
     const kernel = createD1DurableKernel(db);
@@ -94,45 +257,54 @@ describe("D1 atomic kernel", () => {
       .all();
     expect(rows.results).toHaveLength(1);
   });
-  it("rolls back the entire batch when a later database write fails", async () => {
-    await fresh();
-    const kernel = createD1DurableKernel(db);
-    await db
-      .prepare(
-        "CREATE TRIGGER fail_chunk BEFORE INSERT ON sp_d1_chunks BEGIN SELECT RAISE(ABORT, 'injected failure'); END",
-      )
-      .run();
-    const token = await db.prepare("SELECT token FROM sp_d1_meta").first("token");
-    try {
-      await expect(
-        run(() =>
-          kernel.apply({
-            claim: {
-              name: "receipt",
-              collection: "conversation-command-receipts",
-              key: durableKey("rollback"),
-              fingerprint: "one",
-              value: new Uint8Array([1]),
-            },
-            ensures: [],
-            authority: {
-              name: "head",
-              collection: "conversation-heads",
-              key: durableKey("rollback"),
-              expected: { revision: null },
-              next: { revision: "0", value: new Uint8Array([2]) },
-            },
-          }),
-        ),
-      ).rejects.toThrow("injected failure");
-      expect(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_records").first("count")).toBe(
-        0,
-      );
-      expect(await db.prepare("SELECT token FROM sp_d1_meta").first("token")).toBe(token);
-    } finally {
-      await db.prepare("DROP TRIGGER fail_chunk").run();
-    }
-  });
+  it.each(["inline", "chunked"])(
+    "rolls back the entire %s batch when a later database write fails",
+    async (mode) => {
+      await fresh();
+      const kernel = createD1DurableKernel(db);
+      await db
+        .prepare(
+          `CREATE TRIGGER fail_chunk BEFORE INSERT ON ${mode === "inline" ? "sp_d1_aliases" : "sp_d1_chunks"} BEGIN SELECT RAISE(ABORT, 'injected failure'); END`,
+        )
+        .run();
+      const token = await db.prepare("SELECT token FROM sp_d1_meta").first("token");
+      try {
+        await expect(
+          run(() =>
+            kernel.apply({
+              claim: {
+                name: "receipt",
+                collection: "conversation-command-receipts",
+                key: durableKey("rollback"),
+                fingerprint: "one",
+                value: new Uint8Array([1]),
+              },
+              ensures: [],
+              authority: {
+                name: "head",
+                collection: "conversation-heads",
+                key: durableKey("rollback"),
+                expected: { revision: null },
+                next: {
+                  revision: "0",
+                  value:
+                    mode === "inline"
+                      ? new Uint8Array([2])
+                      : new Uint8Array(1024 * 1024 + 1).fill(2),
+                },
+              },
+            }),
+          ),
+        ).rejects.toThrow("injected failure");
+        expect(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_records").first("count")).toBe(
+          0,
+        );
+        expect(await db.prepare("SELECT token FROM sp_d1_meta").first("token")).toBe(token);
+      } finally {
+        await db.prepare("DROP TRIGGER fail_chunk").run();
+      }
+    },
+  );
   it("fences concurrent authority writers without leaking the losing objects", async () => {
     await fresh();
     const kernel = createD1DurableKernel(db);

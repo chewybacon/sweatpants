@@ -28,40 +28,40 @@ it.each<Json>([
   null,
   [],
   { z: [true, null, -0, { '\"\\\n': '雪 😀 \",\"body\":null,\"x\":\"' }], a: 2 },
-])("preserves canonical JSON envelope bytes and readback for %j", (body) => {
+])("stores ordinary JSON envelopes without changing body integrity for %j", async (body) => {
   const object = executionObject(body);
-  const expected = new TextEncoder().encode(canonicalJson({ ...object, bodyKind: "json" }));
-  expect(encodeExecutionObject(object)).toEqual(expected);
-  expect(encodeExecutionObjectEnvelope(object)).toEqual(expected);
-  expect(decodeExecutionObject(expected)).toEqual({
+  const encoded = encodeExecutionObject(object);
+  expect(JSON.parse(new TextDecoder().decode(encoded))).toEqual({
+    ...object,
+    body: JSON.parse(JSON.stringify(body)),
+    bodyKind: "json",
+  });
+  expect(encodeExecutionObjectEnvelope(object)).toEqual(encoded);
+  expect(await decodeExecutionObject(encoded)).toEqual({
     ...object,
     body: JSON.parse(canonicalJson(body)),
   });
 });
 
-it("preserves exact binary envelope bytes and owns the encoded result", () => {
+it("preserves exact binary envelope bytes and owns the encoded result", async () => {
   const body = new Uint8Array([0, 255, 1, 128]);
   const object = executionObject(body);
   const encoded = encodeExecutionObject(object);
-  expect(encoded).toEqual(
-    new TextEncoder().encode(
-      canonicalJson({
-        ...object,
-        bodyKind: "binary",
-        body: "AP8BgA==",
-      }),
-    ),
-  );
+  expect(JSON.parse(new TextDecoder().decode(encoded))).toEqual({
+    ...object,
+    bodyKind: "binary",
+    body: "AP8BgA==",
+  });
   expect(encodeExecutionObjectEnvelope(object)).toEqual(encoded);
   body.fill(0);
-  expect(decodeExecutionObject(encoded).body).toEqual(new Uint8Array([0, 255, 1, 128]));
+  expect((await decodeExecutionObject(encoded)).body).toEqual(new Uint8Array([0, 255, 1, 128]));
 });
 
-it("owns encoded JSON independently of later source mutation", () => {
+it("owns encoded JSON independently of later source mutation", async () => {
   const body = { nested: { value: "original" } };
   const encoded = encodeExecutionObject(executionObject(body));
   body.nested.value = "mutated";
-  expect(decodeExecutionObject(encoded).body).toEqual({ nested: { value: "original" } });
+  expect((await decodeExecutionObject(encoded)).body).toEqual({ nested: { value: "original" } });
 });
 
 it("rejects inconsistent metadata and invalid JSON before encoding", () => {

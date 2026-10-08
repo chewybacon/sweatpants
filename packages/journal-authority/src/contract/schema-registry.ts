@@ -138,7 +138,7 @@ export function parseRegisteredSchema(
     return { status: "invalid", issues: safeSchemaIssues(result.issues) };
   }
   try {
-    return { status: "ok", value: cloneJson(assertJson(result.value)) };
+    return { status: "ok", value: cloneJson(result.value) as Json };
   } catch {
     return {
       status: "invalid",

@@ -17,6 +17,14 @@ import { createPinnedDurableProgram, parseDurableManifest } from "./program-auth
 import { CrankError } from "./errors.ts";
 import { z } from "zod";
 
+const ownedIdentityEvidence = new WeakMap<
+  DurableProgramManifest,
+  {
+    provenance: ProgramIdentityProvenanceV1;
+    artifact?: GeneratedProgramArtifactIdentityV1;
+  }
+>();
+
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const programArtifactIdentityInputSchema = z.strictObject({
   format: z.literal(PROGRAM_ARTIFACT_IDENTITY_FORMAT),
@@ -155,6 +163,21 @@ export function verifyProgramIdentityProvenance(
   options: { readonly releaseStrict?: boolean } = {},
 ): void {
   const provenance = binding.identityProvenance;
+  const retained = ownedIdentityEvidence.get(binding.manifest);
+  if (
+    retained &&
+    retained.provenance === provenance &&
+    retained.artifact === binding.identityArtifact
+  ) {
+    if (options.releaseStrict && provenance.kind === "generated-interface") {
+      throw new CrankError(
+        "interface_program_identity_forbidden",
+        "Release-strict validation requires an implementation artifact identity",
+      );
+    }
+    return;
+  }
+
   if (!provenance || provenance.kind === "asserted") {
     if (options.releaseStrict) {
       throw new CrankError(
@@ -217,7 +240,11 @@ export function createInterfaceDerivedPinnedDurableProgram<
 ): DurableTool<I, O> {
   const identity = generateProgramInterfaceIdentity(manifest);
   const tool = createPinnedDurableProgram({ ...manifest, digest: identity.digest }, program);
-  return Object.freeze({ ...tool, identityProvenance: identity.provenance });
+  const result = Object.freeze({ ...tool, identityProvenance: identity.provenance });
+  // Both the parsed manifest and generated evidence are privately owned and frozen.
+  // Registries can check their identities without deriving the same digest again.
+  ownedIdentityEvidence.set(result.manifest, { provenance: result.identityProvenance });
+  return result;
 }
 
 /** @internal constructor used to retain independently re-verifiable generated evidence. */
@@ -227,11 +254,15 @@ export function createPinnedDurableProgramWithIdentity<I extends Json, O extends
   identity: GeneratedProgramArtifactIdentityV1,
 ): DurableTool<I, O> {
   const tool = createPinnedDurableProgram(manifest, program);
-  return Object.freeze({
+  const owned = deepFreeze(structuredClone(identity));
+  const result = Object.freeze({
     ...tool,
-    identityProvenance: identity.provenance,
-    identityArtifact: identity,
+    identityProvenance: owned.provenance,
+    identityArtifact: owned,
   });
+  verifyProgramIdentityProvenance(result);
+  ownedIdentityEvidence.set(result.manifest, { provenance: owned.provenance, artifact: owned });
+  return result;
 }
 
 function invalidIdentity(message: string): never {

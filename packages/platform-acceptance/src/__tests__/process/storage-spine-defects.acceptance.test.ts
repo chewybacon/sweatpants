@@ -494,7 +494,8 @@ describe("database-backed durability-spine regression probes", () => {
             FROM sp_execution_objects
             WHERE object_id = ${snapshotId}`,
       ) as Array<{ json_body: string | null }>;
-      const snapshot = JSON.parse(snapshots[0]?.json_body ?? "null") as Record<string, unknown>;
+      const body = JSON.parse(snapshots[0]?.json_body ?? "null") as string;
+      const snapshot = JSON.parse(body) as Record<string, unknown>;
 
       expect(snapshot).toHaveProperty("records", []);
     });

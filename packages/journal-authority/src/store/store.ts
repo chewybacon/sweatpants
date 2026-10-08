@@ -56,6 +56,8 @@ export interface CommitExecutionRequest {
   readonly nextControl: Omit<ExecutionControl, "controlRevision" | "updatedAt">;
   readonly journalSegments?: readonly StoredPrivateSegment[];
   readonly replaySegments?: readonly StoredPrivateSegment[];
+  /** Execution-owned immutable objects published atomically with this control. */
+  readonly objects?: readonly StoredExecutionObject[];
   readonly updatedAt: Milliseconds;
 }
 

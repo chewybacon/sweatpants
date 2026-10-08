@@ -1,8 +1,17 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { registeredPullKinds } from "../pull-kinds/index.ts";
-import { parser, type Parser } from "@sweatpants/foundation";
+import { parser, assertJson, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
+import {
+  isAcceptedProgram,
+  retainParsedProgram,
+  isAcceptedAction,
+  retainParsedAction,
+  retainedValueBounds,
+  isAcceptedPullRequest,
+  retainParsedPullRequest,
+} from "../state/accepted-values.ts";
 
 /** Pull kinds whose snapshot variants come straight from the registry. */
 const PULL_KIND_SNAPSHOT_KINDS = new Set([
@@ -20,35 +29,42 @@ const MAX_SNAPSHOT_DEPTH = 128;
 const MAX_SNAPSHOT_NODES = 2_000_000;
 const MAX_SNAPSHOT_TASKS = 10_000;
 const MAX_SNAPSHOT_COLLECTIONS = 10_000;
-const MAX_RECORDS_PER_SESSION = 100_000;
+export const MAX_RECORDS_PER_SESSION = 100_000;
 const MAX_ACTIONS_PER_TASK = 100_000;
 const MAX_ATTEMPTS_PER_PULL = 10_000;
 const MAX_CHILDREN_PER_OPERATION = 10_000;
 const MAX_MANIFEST_ENTRIES = 10_000;
 
-const jsonRecordSchema = z.record(z.string(), z.unknown());
-const jsonValueSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
+const jsonRecordSchema = z.unknown().transform((value, context) => {
+  try {
+    const json = assertJson(value);
+    if (json !== null && typeof json === "object" && !Array.isArray(json)) return json;
+  } catch {
+    /* Report malformed JSON through the schema result. */
+  }
+  context.addIssue({ code: "custom", message: "expected JSON object" });
+  return z.NEVER;
+});
+const jsonValueSchema = z.unknown().transform((value, context) => {
+  try {
+    return assertJson(value);
+  } catch {
+    context.addIssue({ code: "custom", message: "invalid JSON value" });
+    return z.NEVER;
+  }
+});
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
 const digestSchema = z.string().regex(/^[0-9a-f]{64}$/);
-const portableSchemaDescriptorSchema = z.record(z.string(), z.unknown()).refine((value) => {
+const portableSchemaDescriptorSchema = z.unknown().transform((value, context) => {
   try {
-    parsePortableSchemaDescriptor(value);
-    return true;
+    return parsePortableSchemaDescriptor(value);
   } catch {
-    return false;
+    context.addIssue({ code: "custom", message: "invalid portable schema descriptor" });
+    return z.NEVER;
   }
 });
 
-const retrySafetySchema = z.union([
+const retrySafetySchema = z.discriminatedUnion("mode", [
   z.strictObject({ mode: z.literal("repeatable") }),
   z.strictObject({ mode: z.literal("unsafe") }),
   z.strictObject({
@@ -62,53 +78,91 @@ const childSnapshotSchema = z.strictObject({
   digest: digestSchema,
   input: jsonValueSchema,
 });
-const durableOperationDescriptorSchema = z.union([
-  z.strictObject({
-    kind: z.literal("record"),
-    key: z
-      .string()
-      .min(1)
-      .refine((value) => new TextEncoder().encode(value).byteLength <= 128),
-    retrySafety: retrySafetySchema,
-  }),
-  z.strictObject({
-    kind: z.literal("effect"),
-    name: z.string(),
-    version: z.string(),
-    input: jsonValueSchema,
-    resolver: z.strictObject({ audience: z.string(), route: z.string().optional() }),
-  }),
-  // Registered interaction kinds derive their snapshot variants from the
-  // pull-kind registry — adding a kind never requires editing this codec.
-  ...registeredPullKinds()
+const registeredDescriptorSchemas = new Map(
+  registeredPullKinds()
     .filter((policy) => PULL_KIND_SNAPSHOT_KINDS.has(policy.kind))
-    .map((policy) => policy.descriptorSchema),
-  // Clock waits keep their snapshot-only exactly-one-deadline refinement.
-  z
-    .strictObject({
-      kind: z.literal("wait"),
-      key: z.string(),
-      notBefore: z.string().optional(),
-      durationMs: nonNegativeIntegerSchema.optional(),
-    })
-    .refine(
-      (value) =>
-        (value.notBefore !== undefined && Number.isFinite(Date.parse(value.notBefore))) ||
-        value.durationMs !== undefined,
-    ),
-  z.strictObject({
-    kind: z.literal("all"),
-    children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
-  }),
-  z.strictObject({
-    kind: z.literal("race"),
-    children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
-  }),
-  z.strictObject({
-    kind: z.literal("join"),
-    handle: z.strictObject({ __durableTask: z.string(), owner: z.string() }),
-  }),
+    .map((policy) => [policy.kind, policy.descriptorSchema]),
+);
+const descriptorSchemas = new Map<string, z.ZodType>([
+  ...registeredDescriptorSchemas,
+  [
+    "record",
+    z.strictObject({
+      kind: z.literal("record"),
+      key: z
+        .string()
+        .min(1)
+        .refine((value) => new TextEncoder().encode(value).byteLength <= 128),
+      retrySafety: retrySafetySchema,
+    }),
+  ],
+  [
+    "effect",
+    z.strictObject({
+      kind: z.literal("effect"),
+      name: z.string(),
+      version: z.string(),
+      input: jsonValueSchema,
+      resolver: z.strictObject({ audience: z.string(), route: z.string().optional() }),
+    }),
+  ],
+  [
+    "wait",
+    z
+      .strictObject({
+        kind: z.literal("wait"),
+        key: z.string(),
+        notBefore: z.string().optional(),
+        durationMs: nonNegativeIntegerSchema.optional(),
+      })
+      .refine(
+        (value) =>
+          (value.notBefore !== undefined && Number.isFinite(Date.parse(value.notBefore))) ||
+          value.durationMs !== undefined,
+      ),
+  ],
+  [
+    "all",
+    z.union([
+      registeredDescriptorSchemas.get("all")!,
+      z.strictObject({
+        kind: z.literal("all"),
+        children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
+      }),
+    ]),
+  ],
+  [
+    "race",
+    z.union([
+      registeredDescriptorSchemas.get("race")!,
+      z.strictObject({
+        kind: z.literal("race"),
+        children: z.array(childSnapshotSchema).max(MAX_CHILDREN_PER_OPERATION),
+      }),
+    ]),
+  ],
+  [
+    "join",
+    z.strictObject({
+      kind: z.literal("join"),
+      handle: z.strictObject({ __durableTask: z.string(), owner: z.string() }),
+    }),
+  ],
 ]);
+// Select the declared kind before parsing. Trying every unrelated branch builds
+// rejection trees for valid journal entries, especially on a cold restore.
+const durableOperationDescriptorSchema = z.unknown().transform((value, context) => {
+  const kind =
+    value !== null && typeof value === "object" && "kind" in value ? value.kind : undefined;
+  const schema = typeof kind === "string" ? descriptorSchemas.get(kind) : undefined;
+  const parsed = schema?.safeParse(value);
+  if (!parsed?.success) {
+    context.addIssue({ code: "custom", message: "invalid durable operation descriptor" });
+    return z.NEVER;
+  }
+  return parsed.data;
+});
+
 const programElicitDeclarationSchema = z.strictObject({
   response: portableSchemaDescriptorSchema,
   context: portableSchemaDescriptorSchema.optional(),
@@ -149,7 +203,7 @@ const durableProgramManifestSchema = z.strictObject({
     replay: z.literal("strict"),
   }),
 });
-const operationOutcomeSchema = z.union([
+const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: jsonValueSchema }),
   z.strictObject({
     status: z.literal("error"),
@@ -280,7 +334,7 @@ const orphanReasonSchema = z.enum([
   "replay_execution_failed",
   "replay_diverged",
 ]);
-const cancellationStateSchema = z.union([
+const cancellationStateSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("none") }),
   z.strictObject({
     type: z.literal("requested"),
@@ -311,7 +365,7 @@ const cancellationStateSchema = z.union([
   z.strictObject({ type: z.literal("cancelled"), commandId: z.string() }),
   z.strictObject({ type: z.literal("orphaned"), reason: orphanReasonSchema }),
 ]);
-const semanticPayloadSchema = z.union([
+const semanticPayloadSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("TaskOpened"),
     taskId: z.string(),
@@ -573,15 +627,20 @@ const pullResolutionSchema = z.discriminatedUnion("status", [
 ]);
 const pullSchema = z.strictObject({
   pullId: z.string(),
-  request: z.strictObject({
-    proposedDescriptorDigest: z.string(),
-    proposedDescriptor: durableOperationDescriptorSchema,
-    acceptedDescriptor: durableOperationDescriptorSchema,
-    resultDescriptor: portableSchemaDescriptorSchema,
-    resultSchemaDigest: z.string(),
-    maxOutcomeBytes: nonNegativeIntegerSchema,
-    publicMessageId: z.string().optional(),
-  }),
+  request: z.union([
+    z.custom(isAcceptedPullRequest),
+    z
+      .strictObject({
+        proposedDescriptorDigest: z.string(),
+        proposedDescriptor: durableOperationDescriptorSchema,
+        acceptedDescriptor: durableOperationDescriptorSchema,
+        resultDescriptor: portableSchemaDescriptorSchema,
+        resultSchemaDigest: z.string(),
+        maxOutcomeBytes: nonNegativeIntegerSchema,
+        publicMessageId: z.string().optional(),
+      })
+      .transform(retainParsedPullRequest),
+  ]),
   resolutionAuthority: resolutionAuthoritySchema,
   attempts: z.array(attemptSchema).max(MAX_ATTEMPTS_PER_PULL),
   acceptedFacts: z.strictObject({
@@ -592,20 +651,29 @@ const pullSchema = z.strictObject({
   }),
   resolution: pullResolutionSchema,
 });
-const actionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("pull"),
-    actionIndex: nonNegativeIntegerSchema,
-    pullIndex: nonNegativeIntegerSchema,
-    pull: pullSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("emission"),
-    actionIndex: nonNegativeIntegerSchema,
-    emissionIndex: nonNegativeIntegerSchema,
-    descriptorDigest: z.string(),
-    receipt: z.strictObject({ offset: z.string(), eventId: z.string(), duplicate: z.boolean() }),
-  }),
+const actionSchema = z.union([
+  z.custom(isAcceptedAction),
+  z
+    .discriminatedUnion("kind", [
+      z.strictObject({
+        kind: z.literal("pull"),
+        actionIndex: nonNegativeIntegerSchema,
+        pullIndex: nonNegativeIntegerSchema,
+        pull: pullSchema,
+      }),
+      z.strictObject({
+        kind: z.literal("emission"),
+        actionIndex: nonNegativeIntegerSchema,
+        emissionIndex: nonNegativeIntegerSchema,
+        descriptorDigest: z.string(),
+        receipt: z.strictObject({
+          offset: z.string(),
+          eventId: z.string(),
+          duplicate: z.boolean(),
+        }),
+      }),
+    ])
+    .transform(retainParsedAction),
 ]);
 const taskLifecycleSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("active"), cancellation: cancellationStateSchema }),
@@ -659,11 +727,16 @@ const taskSchema = z.strictObject({
   origin: taskOriginSchema,
   deadlineMs: z.number().optional(),
   forkGroup: forkGroupStateSchema.optional(),
-  program: z.strictObject({
-    artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
-    manifest: durableProgramManifestSchema,
-    input: jsonValueSchema,
-  }),
+  program: z.union([
+    z.custom(isAcceptedProgram),
+    z
+      .strictObject({
+        artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
+        manifest: durableProgramManifestSchema,
+        input: jsonValueSchema,
+      })
+      .transform(retainParsedProgram),
+  ]),
   execution: z.strictObject({
     epoch: nonNegativeIntegerSchema,
     attachmentId: z.string(),
@@ -721,10 +794,16 @@ const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
     validate(value) {
       try {
         const seen = new WeakSet();
-        const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+        const pending: Array<{ value: unknown; depth: number; exit?: boolean }> = [
+          { value, depth: 0 },
+        ];
         let nodes = 0;
         while (pending.length > 0) {
           const current = pending.pop()!;
+          if (current.exit) {
+            seen.delete(current.value as object);
+            continue;
+          }
           nodes += 1;
           if (nodes > MAX_SNAPSHOT_NODES) {
             return { issues: [{ message: "snapshot node count exceeds limit" }] };
@@ -732,14 +811,30 @@ const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
           if (current.depth > MAX_SNAPSHOT_DEPTH) {
             return { issues: [{ message: "snapshot depth exceeds limit" }] };
           }
+          if (typeof current.value === "string" && /[\uD800-\uDFFF]/u.test(current.value)) {
+            return { issues: [{ message: "snapshot contains invalid Unicode" }] };
+          }
           if (current.value === null || typeof current.value !== "object") {
+            continue;
+          }
+          const retained = retainedValueBounds(current.value);
+          if (retained) {
+            nodes += retained.nodes - 1;
+            if (nodes > MAX_SNAPSHOT_NODES)
+              return { issues: [{ message: "snapshot node count exceeds limit" }] };
+            if (current.depth + retained.depth > MAX_SNAPSHOT_DEPTH)
+              return { issues: [{ message: "snapshot depth exceeds limit" }] };
             continue;
           }
           if (seen.has(current.value)) {
             return { issues: [{ message: "snapshot contains a cycle" }] };
           }
           seen.add(current.value);
-          for (const child of Object.values(current.value)) {
+          pending.push({ ...current, exit: true });
+          for (const [key, child] of Object.entries(current.value)) {
+            if (key === "__proto__" || /[\uD800-\uDFFF]/u.test(key)) {
+              return { issues: [{ message: "snapshot contains an invalid key" }] };
+            }
             pending.push({ value: child, depth: current.depth + 1 });
           }
         }
@@ -753,6 +848,11 @@ const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
 const durableAuthoritySnapshotShapeParser = parser(durableAuthoritySnapshotStructureSchema);
 
 /** Private bounded structural parser for the exact current Journal Authority snapshot. */
-export const durableAuthoritySnapshotStructureParser: Parser<unknown> = parser(
+export const durableAuthoritySnapshotBoundsParser: Parser<unknown> = parser(
   boundedSnapshotValueSchema,
-).andThen((value) => durableAuthoritySnapshotShapeParser.parse(value));
+);
+
+export const durableAuthoritySnapshotStructureParser: Parser<unknown> =
+  durableAuthoritySnapshotBoundsParser.andThen((value) =>
+    durableAuthoritySnapshotShapeParser.parse(value),
+  );

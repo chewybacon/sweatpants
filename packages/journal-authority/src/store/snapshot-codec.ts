@@ -9,10 +9,16 @@ import {
 import {
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
   durableAuthoritySnapshotStructureParser,
+  durableAuthoritySnapshotBoundsParser,
+  MAX_RECORDS_PER_SESSION,
 } from "./durable-authority-snapshot-schema.ts";
+import { retainedValueBounds } from "../state/accepted-values.ts";
 import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
 
 export { DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES } from "./durable-authority-snapshot-schema.ts";
+
+const verifiedRequests = new WeakSet<object>();
+const verifiedSettlements = new WeakSet<object>();
 
 export const durableAuthoritySnapshotParser: Parser<DurableAuthoritySnapshot> =
   durableAuthoritySnapshotStructureParser.andThen(verifyDurableAuthoritySnapshot);
@@ -59,18 +65,24 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
           if (action.pullIndex !== pullIndex++)
             return snapshotFailure(path, "pull indexes have a gap");
           if (
-            action.pull.request.proposedDescriptorDigest !==
+            !verifiedRequests.has(action.pull.request) &&
+            (action.pull.request.proposedDescriptorDigest !==
               canonicalDigest(action.pull.request.proposedDescriptor) ||
-            action.pull.request.resultSchemaDigest !==
-              (action.pull.request.resultDescriptor as unknown as Record<string, unknown>)["digest"]
+              action.pull.request.resultSchemaDigest !==
+                (action.pull.request.resultDescriptor as unknown as Record<string, unknown>)[
+                  "digest"
+                ])
           )
             return snapshotFailure(path, "pull integrity relationship is invalid");
+          verifiedRequests.add(action.pull.request);
           if (
             action.pull.resolution.status === "settled" &&
+            !verifiedSettlements.has(action) &&
             action.pull.resolution.settlement.outcomeDigest !==
               canonicalDigest(action.pull.resolution.settlement.outcome)
           )
             return snapshotFailure(path, "pull settlement digest differs");
+          if (action.pull.resolution.status === "settled") verifiedSettlements.add(action);
         } else if (action.emissionIndex !== emissionIndex++) {
           return snapshotFailure(path, "emission indexes have a gap");
         }
@@ -128,4 +140,34 @@ export function decodeDurableAuthoritySnapshot(value: unknown): DurableAuthority
 
 function invalidSnapshot(): CrankError {
   return new CrankError("invalid_journal", "Invalid durable authority snapshot");
+}
+
+// Byte sizes belong to privately retained immutable records, never caller graphs.
+const retainedRecordBytes = new WeakMap<object, number>();
+
+/** Check aggregate limits for privately owned records whose shapes are already validated. */
+export function validateJournalCollectionBounds(
+  sessionId: string,
+  records: readonly import("../contract/semantic-record.ts").DurableSemanticRecord[],
+): void {
+  const snapshot = { version: 1, sessions: [], nextNonce: 0, records: [[sessionId, records]] };
+  if (
+    records.length > MAX_RECORDS_PER_SESSION ||
+    !durableAuthoritySnapshotBoundsParser.parse(snapshot).ok
+  ) {
+    throw invalidSnapshot();
+  }
+  const encoder = new TextEncoder();
+  const empty = { ...snapshot, records: [[sessionId, []]] };
+  let bytes = encoder.encode(JSON.stringify(empty)).byteLength + Math.max(0, records.length - 1);
+  if (bytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) throw invalidSnapshot();
+  for (const record of records) {
+    let size = retainedRecordBytes.get(record);
+    if (size === undefined) {
+      size = encoder.encode(JSON.stringify(record)).byteLength;
+      if (retainedValueBounds(record)) retainedRecordBytes.set(record, size);
+    }
+    bytes += size;
+    if (bytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) throw invalidSnapshot();
+  }
 }

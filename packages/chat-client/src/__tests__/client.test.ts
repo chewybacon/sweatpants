@@ -254,6 +254,90 @@ function gatedFrames(
   });
 }
 
+it("drains terminal events that arrive while a lazy renderer is suspended", async () => {
+  const contentReady = deferred<void>();
+  const renderingStarted = deferred<void>();
+  const transportEnded = deferred<void>();
+  const client = createChatClient({
+    threadId: "lazy-render-end",
+    initialConversation: "new",
+    scheduler: {
+      clock: () =>
+        (function* (): Stream<unknown, never> {
+          return {
+            *next() {
+              yield* call(() => contentReady.promise);
+              yield* call(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+              return { done: false as const, value: undefined };
+            },
+          };
+        })(),
+    },
+    pipeline: {
+      processors: [
+        {
+          name: "suspended-renderer",
+          *process(frame) {
+            renderingStarted.resolve();
+            yield* call(() => transportEnded.promise);
+            return frame;
+          },
+        },
+      ],
+    },
+    connection: {
+      *sendMessages(request) {
+        const frames = withAuthority([
+          {
+            type: EventType.RUN_STARTED,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
+          },
+          { type: EventType.TEXT_MESSAGE_START, messageId: "reply", role: "assistant" },
+          { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "reply", delta: "complete reply\n" },
+          { type: EventType.TEXT_MESSAGE_END, messageId: "reply" },
+          {
+            type: EventType.RUN_FINISHED,
+            threadId: request.conversationId,
+            runId: request.runId ?? request.command.commandId,
+          },
+        ]);
+        return (function* (): Stream<ConversationStreamEvent, void> {
+          let index = 0;
+          return {
+            *next() {
+              const event = frames[index++];
+              if (!event) {
+                transportEnded.resolve();
+                return { done: true as const, value: undefined };
+              }
+              if (event.type === EventType.TEXT_MESSAGE_CONTENT) contentReady.resolve();
+              if (event.type === EventType.TEXT_MESSAGE_END)
+                yield* call(() => renderingStarted.promise);
+              return { done: false as const, value: event };
+            },
+          };
+        })();
+      },
+      *reconnectToStream() {
+        return null;
+      },
+      *disconnect() {},
+    },
+  });
+  try {
+    await client.initialized;
+    await client.sendMessage("render a reply");
+    expect(client.getSnapshot()).toMatchObject({ status: "ready", error: null });
+    expect(client.getSnapshot().messages[0]?.parts[0]).toMatchObject({
+      text: "complete reply\n",
+      state: "done",
+    });
+  } finally {
+    await client.close();
+  }
+});
+
 function waitForQueue(
   client: {
     getSnapshot(): { queue: readonly unknown[] };

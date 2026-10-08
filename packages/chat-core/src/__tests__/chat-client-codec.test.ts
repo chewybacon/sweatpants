@@ -5,11 +5,35 @@ import {
   activityPatchParser,
   aguiEventParser,
   decodeAGUIEvent,
+  decodePublicActivity,
   encodeAGUIEvent,
   publicActivityParser,
 } from "../client/chat-client-codec.ts";
 
 describe("official AG-UI chat codec", () => {
+  it("retains owned activity validation while rejecting altered copies", () => {
+    const input = {
+      version: 1,
+      node: {
+        nodeId: "activity",
+        parentNodeId: null,
+        sequence: 0,
+        kind: "activity",
+        state: "running",
+        presentation: "public",
+        publicData: { kind: "activity", activityType: "progress", data: { count: 1 } },
+      },
+    };
+    const accepted = decodePublicActivity(input);
+    input.node.publicData.data.count = 2;
+    expect(accepted.node.publicData).toMatchObject({ data: { count: 1 } });
+    expect(Object.isFrozen(accepted.node.publicData)).toBe(true);
+    expect(decodePublicActivity(accepted)).toBe(accepted);
+    expect(() =>
+      decodePublicActivity({ ...accepted, node: { ...accepted.node, state: "done" } }),
+    ).toThrow(ChatProtocolError);
+  });
+
   it("accepts official message, reasoning, raw, and custom events", () => {
     const snapshot = {
       type: EventType.MESSAGES_SNAPSHOT,

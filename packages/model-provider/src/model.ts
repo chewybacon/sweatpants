@@ -2,7 +2,6 @@ import {
   failure,
   parser,
   success,
-  type Json,
   type JsonObject,
   type ParseIssue,
   type ParseResult,
@@ -173,9 +172,10 @@ export class ModelDecodeError extends TypeError {
   }
 }
 
+// Nested values are validated and owned by their typed chat parsers below.
 const modelContextSchema = z.strictObject({
-  messages: z.array(z.json()),
-  tools: z.array(z.json()).optional(),
+  messages: z.array(z.unknown()),
+  tools: z.array(z.unknown()).optional(),
 });
 
 const modelSourceSchema = z.strictObject({
@@ -203,7 +203,7 @@ const modelUsageSchema = z.strictObject({
 });
 
 const modelResponseSchema = z.strictObject({
-  message: z.json(),
+  message: z.unknown(),
   source: modelSourceSchema.nullable().optional(),
   usage: modelUsageSchema.nullable().optional(),
   stopReason: z.string().nullable().optional(),
@@ -212,63 +212,63 @@ const modelResponseSchema = z.strictObject({
 });
 
 const modelStreamEventSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("start"), partial: z.json() }),
+  z.strictObject({ type: z.literal("start"), partial: z.unknown() }),
   z.strictObject({
     type: z.literal("text-start"),
     contentIndex: z.number().int().nonnegative().safe(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("text-delta"),
     contentIndex: z.number().int().nonnegative().safe(),
     delta: z.string(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("text-end"),
     contentIndex: z.number().int().nonnegative().safe(),
     content: z.string(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("reasoning-start"),
     contentIndex: z.number().int().nonnegative().safe(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("reasoning-delta"),
     contentIndex: z.number().int().nonnegative().safe(),
     delta: z.string(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("reasoning-end"),
     contentIndex: z.number().int().nonnegative().safe(),
     content: z.string(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("tool-call-start"),
     contentIndex: z.number().int().nonnegative().safe(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("tool-call-delta"),
     contentIndex: z.number().int().nonnegative().safe(),
     delta: z.string(),
-    partial: z.json(),
+    partial: z.unknown(),
   }),
   z.strictObject({
     type: z.literal("tool-call-end"),
     contentIndex: z.number().int().nonnegative().safe(),
-    toolCall: z.json(),
-    partial: z.json(),
+    toolCall: z.unknown(),
+    partial: z.unknown(),
   }),
-  z.strictObject({ type: z.literal("done"), reason: z.string(), message: z.json() }),
+  z.strictObject({ type: z.literal("done"), reason: z.string(), message: z.unknown() }),
   z.strictObject({
     type: z.literal("error"),
     reason: z.enum(["error", "aborted"]),
-    error: z.json(),
+    error: z.unknown(),
   }),
 ]);
 
@@ -457,7 +457,7 @@ function normalizeUsage(value: StructuralModelResponse["usage"]): ModelUsage | n
   });
 }
 
-function assistantMessage(value: Json, path: string): ChatAssistantMessage {
+function assistantMessage(value: unknown, path: string): ChatAssistantMessage {
   try {
     return decodeChatAssistantMessage(value, path);
   } catch (error) {

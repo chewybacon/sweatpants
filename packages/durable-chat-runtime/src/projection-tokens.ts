@@ -1,3 +1,4 @@
+import { fromByteArray, toByteArray } from "base64-js";
 import { canonicalJson, parseJsonText, type Json } from "@sweatpants/foundation";
 import {
   MAX_PROJECTION_TOKEN_BYTES,
@@ -54,30 +55,22 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 function base64url(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64url");
-  }
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return fromByteArray(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function fromBase64url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
     throw new ProjectionTokenError(
       "public_history_cursor_invalid",
       "Projection token contains invalid base64url",
     );
   }
   try {
-    if (typeof Buffer !== "undefined") {
-      return new Uint8Array(Buffer.from(value, "base64url"));
-    }
     const padded = value
       .replace(/-/g, "+")
       .replace(/_/g, "/")
       .padEnd(Math.ceil(value.length / 4) * 4, "=");
-    return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+    return toByteArray(padded);
   } catch (error) {
     throw new ProjectionTokenError(
       "public_history_cursor_invalid",

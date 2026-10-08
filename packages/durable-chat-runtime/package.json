@@ -185,6 +185,7 @@
         "@sweatpants/storage-sqlite": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",
         "@sweatpants/tool-session": "workspace:*",
+        "base64-js": "1.5.1",
         "effection": "catalog:",
         "zod": "catalog:"
     },

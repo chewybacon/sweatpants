@@ -1,3 +1,4 @@
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { D1Database, D1DatabaseSession, D1PreparedStatement } from "@cloudflare/workers-types";
 import { call, sleep, type Operation } from "effection";
 import {
@@ -27,12 +28,17 @@ interface Row {
   fingerprint: string | null;
   byte_length: number;
   part: number | null;
-  value: number[] | ArrayBuffer | null;
+  value: string | null;
+  inline_value: string | null;
 }
 const CHUNK_BYTES = 1024 * 1024;
+const selectedRecordColumns = `r.collection,r.key,r.revision,r.fence,r.fingerprint,r.byte_length,
+  CASE WHEN r.inline_value IS NULL THEN NULL ELSE hex(r.inline_value) END AS inline_value`;
 // Reserve one of D1's 100 bound parameters for the collection.
 const SCAN_KEYS_PER_QUERY = 99;
 const gate = "(SELECT token FROM sp_d1_meta WHERE id=1)=?";
+// D1 transports BLOBs as JSON arrays of numbers. Hex keeps that transport a
+// scalar string while SQLite continues storing exactly the same binary bytes.
 function readStatement(
   session: D1DatabaseSession,
   collection: string,
@@ -40,7 +46,7 @@ function readStatement(
   immutable: boolean,
 ) {
   return session
-    .prepare(`SELECT r.*, c.part, c.value FROM sp_d1_records r
+    .prepare(`SELECT ${selectedRecordColumns}, c.part, hex(c.value) AS value FROM sp_d1_records r
     LEFT JOIN sp_d1_chunks c ON c.collection=r.collection AND c.key=r.key
     WHERE r.collection=? AND r.key=${
       immutable ? "(SELECT key FROM sp_d1_aliases WHERE collection=? AND alias=?)" : "?"
@@ -51,17 +57,29 @@ function readStatement(
 function record(rows: Row[]): StoredAuthorityRecord | StoredImmutableRecord | null {
   if (!rows.length) return null;
   const first = rows[0]!;
+  if (first.inline_value !== null) {
+    if (rows.length !== 1 || first.part !== null) throw corrupt("Inline record has journal chunks");
+    const value = hexToBytes(first.inline_value);
+    if (value.byteLength !== first.byte_length) throw corrupt("Invalid inline journal length");
+    return storedRecord(first, value);
+  }
   const value = new Uint8Array(first.byte_length);
   let offset = 0;
   for (const [part, row] of rows.entries()) {
     if (row.part === null && value.length === 0) continue;
     if (row.part !== part || row.value === null) throw corrupt("Missing journal chunk");
-    const chunk = new Uint8Array(row.value);
+    const chunk = hexToBytes(row.value);
     if (offset + chunk.length > value.length) throw corrupt("Invalid journal chunk length");
     value.set(chunk, offset);
     offset += chunk.length;
   }
   if (offset !== value.length) throw corrupt("Incomplete journal record");
+  return storedRecord(first, value);
+}
+function storedRecord(
+  first: Row,
+  value: Uint8Array,
+): StoredAuthorityRecord | StoredImmutableRecord {
   if (first.revision !== null)
     return {
       collection: first.collection as StoredAuthorityRecord["collection"],
@@ -113,6 +131,9 @@ export function createD1DurableKernel(
   const maxAttempts = options.maxAttempts ?? 32;
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1)
     throw new RangeError("maxAttempts must be positive");
+  // Remember only the last accepted immutable identities to avoid speculative
+  // writes for a known replay. This is a planning hint; SQL still checks truth.
+  let acceptedAliases = new Set<string>();
   const kernel: DurableKernel = {
     *readAuthority(collection, key) {
       const session = database.withSession("first-primary");
@@ -126,6 +147,33 @@ export function createD1DurableKernel(
     },
     *apply(mutation): Operation<DurableMutationOutcome> {
       validateMutationStructure(mutation);
+      const authority = mutation.authority;
+      // New immutable keys and a CAS can be attempted in one batch. For a
+      // revision-only request, try the proposed fence as well; the SQL guard
+      // proves both before any write, otherwise the ordinary read path decides.
+      // Conflicts and replays fall back to reading their actual stored values.
+      const proposedFence =
+        authority?.expected.fence === undefined
+          ? (authority?.next.fence ?? null)
+          : authority.expected.fence;
+      let optimistic =
+        authority === undefined
+          ? mutation.ensures.every((ensure) =>
+              [ensure.key, ...(ensure.alternateKeys ?? [])].every(
+                (key) => !acceptedAliases.has(JSON.stringify([ensure.collection, key])),
+              ),
+            )
+          : BigInt(authority.next.revision) ===
+              (authority.expected.revision === null
+                ? 0n
+                : BigInt(authority.expected.revision) + 1n) &&
+            (authority.expected.revision !== null ||
+              authority.expected.fence === undefined ||
+              authority.expected.fence === null ||
+              authority.expected.fence === "0") &&
+            (authority.next.fence == null ||
+              authority.expected.fence == null ||
+              BigInt(authority.next.fence) >= BigInt(authority.expected.fence));
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const session = database.withSession("first-primary");
         const queries: D1PreparedStatement[] = [];
@@ -141,11 +189,28 @@ export function createD1DurableKernel(
         for (const ensure of mutation.ensures)
           for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])])
             add(ensure.collection, key, true);
-        const snapshot = yield* call(() => session.batch(queries));
-        const read = (collection: string, key: string) =>
-          record(
+        const snapshot = optimistic ? [] : yield* call(() => session.batch(queries));
+        const read = (
+          collection: string,
+          key: string,
+        ): StoredAuthorityRecord | StoredImmutableRecord | null => {
+          if (optimistic) {
+            return authority?.collection === collection &&
+              authority.key === key &&
+              authority.expected.revision !== null
+              ? {
+                  collection: authority.collection,
+                  key,
+                  revision: authority.expected.revision,
+                  fence: proposedFence,
+                  value: new Uint8Array(),
+                }
+              : null;
+          }
+          return record(
             snapshot[slots.get(JSON.stringify([collection, key]))!]!.results as unknown as Row[],
           );
+        };
         const claim = mutation.claim
           ? (read(mutation.claim.collection, mutation.claim.key) as StoredImmutableRecord | null)
           : null;
@@ -193,6 +258,10 @@ export function createD1DurableKernel(
             mutation.authority.key,
             current?.revision ?? null,
           );
+          if (optimistic && current !== null) {
+            conditions.push("(SELECT fence FROM sp_d1_records WHERE collection=? AND key=?) IS ?");
+            guardArgs.push(mutation.authority.collection, mutation.authority.key, current.fence);
+          }
         }
         // D1 executes the whole batch as one transaction. Once the read set is
         // accepted, no other batch can replace this token between our statements.
@@ -204,26 +273,25 @@ export function createD1DurableKernel(
             )
             .bind(token, ...guardArgs),
         ];
+        type Bind = string | number | null;
+        const records: Bind[][] = [];
+        const chunks: Bind[][] = [];
+        const aliasRows: Bind[][] = [];
+        const positions: Bind[][] = [];
         const write = (
           record: StoredAuthorityRecord | StoredImmutableRecord,
           aliases?: readonly string[],
         ) => {
           const authority = "revision" in record;
-          statements.push(
-            session
-              .prepare(`INSERT INTO sp_d1_records(collection,key,revision,fence,fingerprint,byte_length)
-            SELECT ?,?,?,?,?,? WHERE ${gate} ON CONFLICT(collection,key) DO UPDATE SET
-            revision=excluded.revision,fence=excluded.fence,byte_length=excluded.byte_length`)
-              .bind(
-                record.collection,
-                record.key,
-                authority ? record.revision : null,
-                authority ? record.fence : null,
-                authority ? null : record.fingerprint,
-                record.value.byteLength,
-                token,
-              ),
-          );
+          records.push([
+            record.collection,
+            record.key,
+            authority ? record.revision : null,
+            authority ? record.fence : null,
+            authority ? null : record.fingerprint,
+            record.value.byteLength,
+            record.value.byteLength <= CHUNK_BYTES ? bytesToHex(record.value) : null,
+          ]);
           if (authority)
             statements.push(
               session
@@ -232,57 +300,84 @@ export function createD1DurableKernel(
             );
           for (
             let offset = 0, part = 0;
-            offset < record.value.byteLength;
+            record.value.byteLength > CHUNK_BYTES && offset < record.value.byteLength;
             offset += CHUNK_BYTES, part++
           ) {
-            statements.push(
-              session
-                .prepare(
-                  `INSERT INTO sp_d1_chunks(collection,key,part,value) SELECT ?,?,?,? WHERE ${gate}`,
-                )
-                .bind(
-                  record.collection,
-                  record.key,
-                  part,
-                  record.value.slice(offset, offset + CHUNK_BYTES).buffer,
-                  token,
-                ),
-            );
+            chunks.push([
+              record.collection,
+              record.key,
+              part,
+              bytesToHex(record.value.subarray(offset, offset + CHUNK_BYTES)),
+            ]);
           }
           if (aliases) {
-            for (const alias of aliases)
-              statements.push(
-                session
-                  .prepare(
-                    `INSERT INTO sp_d1_aliases(collection,alias,key) SELECT ?,?,? WHERE ${gate}`,
-                  )
-                  .bind(record.collection, alias, record.key, token),
-              );
+            for (const alias of aliases) aliasRows.push([record.collection, alias, record.key]);
             const at = position(record.collection, aliases);
             if (at)
-              statements.push(
-                session
-                  .prepare(
-                    `INSERT INTO sp_d1_positions(collection,index_name,scope,position,digits,key) SELECT ?,?,?,?,?,? WHERE ${gate}`,
-                  )
-                  .bind(
-                    record.collection,
-                    at.index,
-                    at.scope,
-                    at.value,
-                    at.value.length,
-                    record.key,
-                    token,
-                  ),
-              );
+              positions.push([
+                record.collection,
+                at.index,
+                at.scope,
+                at.value,
+                at.value.length,
+                record.key,
+              ]);
           }
         };
         if (mutation.claim) write(mutation.claim, [mutation.claim.key]);
         for (const ensure of plan.inserts)
           write(plan.outcome.ensured[ensure.name]!, [ensure.key, ...(ensure.alternateKeys ?? [])]);
         if (plan.outcome.authority) write(plan.outcome.authority);
+        // Bound each VALUES group by D1's parameter limit. The transaction latch
+        // still guards every row; grouping reduces statement and transport work.
+        const insert = (
+          table: string,
+          columns: string,
+          rows: Bind[][],
+          tuple: string,
+          conflict = "",
+        ) => {
+          if (!rows.length) return;
+          const limit = Math.floor(99 / rows[0]!.length);
+          for (let offset = 0; offset < rows.length; offset += limit) {
+            const group = rows.slice(offset, offset + limit);
+            statements.push(
+              session
+                .prepare(`INSERT INTO ${table}(${columns}) SELECT * FROM
+              (VALUES ${group.map(() => tuple).join(",")}) WHERE ${gate} ${conflict}`)
+                .bind(...group.flat(), token),
+            );
+          }
+        };
+        insert(
+          "sp_d1_records",
+          "collection,key,revision,fence,fingerprint,byte_length,inline_value",
+          records,
+          "(?,?,?,?,?,?,unhex(?))",
+          "ON CONFLICT(collection,key) DO UPDATE SET revision=excluded.revision,fence=excluded.fence,byte_length=excluded.byte_length,inline_value=excluded.inline_value",
+        );
+        insert("sp_d1_chunks", "collection,key,part,value", chunks, "(?,?,?,unhex(?))");
+        insert("sp_d1_aliases", "collection,alias,key", aliasRows, "(?,?,?)");
+        insert(
+          "sp_d1_positions",
+          "collection,index_name,scope,position,digits,key",
+          positions,
+          "(?,?,?,?,?,?)",
+        );
         const result = yield* call(() => session.batch(statements));
-        if (result[0]!.results.length) return plan.outcome;
+        if (result[0]!.results.length) {
+          acceptedAliases = new Set(
+            identities
+              .filter((identity) => identity.immutable)
+              .map(({ collection, key }) => JSON.stringify([collection, key])),
+          );
+          return plan.outcome;
+        }
+        if (optimistic) {
+          optimistic = false;
+          attempt--;
+          continue;
+        }
         yield* sleep(Math.min(50, 1 + attempt * 2));
       }
       throw new DurableKernelError(
@@ -326,7 +421,7 @@ export function createD1DurableKernel(
         const keys = page.selected.slice(start, start + SCAN_KEYS_PER_QUERY).map((row) => row.key);
         const result = yield* call(() =>
           session
-            .prepare(`SELECT r.*, c.part, c.value FROM sp_d1_records r
+            .prepare(`SELECT ${selectedRecordColumns}, c.part, hex(c.value) AS value FROM sp_d1_records r
               LEFT JOIN sp_d1_chunks c ON c.collection=r.collection AND c.key=r.key
               WHERE r.collection=? AND r.key IN (${keys.map(() => "?").join(",")})`)
             .bind(request.collection, ...keys)

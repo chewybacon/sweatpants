@@ -1,3 +1,5 @@
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { fromByteArray, toByteArray } from "base64-js";
 import {
   decodeJsonValue,
   durableKey,
@@ -6,9 +8,11 @@ import {
 } from "@sweatpants/durable-storage-kernel";
 import {
   canonicalJson,
+  assertJson,
   parseJsonText,
   sha256,
   sha256Bytes,
+  stableTupleHash,
   type Json,
 } from "@sweatpants/foundation";
 import {
@@ -110,13 +114,14 @@ export function decodeAuthorityControl(value: StoredAuthorityRecord): ExecutionC
   return control;
 }
 
-function validatePrivateEntryBounds(segment: StoredPrivateSegment): void {
+function validatePrivateEntryBounds(segment: StoredPrivateSegment, canonicalBytes?: number): void {
   const first = BigInt(counter(segment.firstSequence, "privateSegment.firstSequence"));
   const last = BigInt(counter(segment.lastSequence, "privateSegment.lastSequence"));
   if (last < first || last - first + 1n !== BigInt(segment.entries.length)) {
     return invalid(`Private segment ${segment.segmentId} has an invalid sequence range`);
   }
   if (
+    (canonicalBytes === undefined || canonicalBytes > 1024 * 1024) &&
     segment.entries.some(
       (entry) => new TextEncoder().encode(canonicalJson(entry)).byteLength > 1024 * 1024,
     )
@@ -153,19 +158,62 @@ export function encodePrivateSegmentEnvelope(value: StoredPrivateSegment): Uint8
   return encodePrivateSegmentEnvelopeFromCanonical(value, canonicalJson(value.entries));
 }
 
+const preparedPrivateSegments = new WeakMap<StoredPrivateSegment, Uint8Array>();
+
+/** Construct an owned segment and reuse its exact validated envelope at commit. */
+export async function createPrivateSegment(
+  fields: Omit<StoredPrivateSegment, "segmentId" | "contentHash" | "encodedBytes" | "entries">,
+  entries: readonly Json[],
+): Promise<StoredPrivateSegment> {
+  const metadata = structuredClone(fields);
+  const canonical = canonicalJson(entries);
+  const bytes = privateEnvelopeEncoder.encode(canonical);
+  const contentHash = await digestBytes(bytes);
+  const owned = JSON.parse(canonical) as Json[];
+  const pending: object[] = [owned];
+  while (pending.length) {
+    const current = pending.pop()!;
+    for (const child of Object.values(current)) {
+      if (child !== null && typeof child === "object") pending.push(child);
+    }
+    Object.freeze(current);
+  }
+  if (metadata.previous) Object.freeze(metadata.previous);
+  const value = Object.freeze({
+    ...metadata,
+    segmentId: stableTupleHash([
+      metadata.executionId,
+      metadata.taskId,
+      metadata.firstSequence,
+      contentHash,
+    ]),
+    entries: owned,
+    contentHash,
+    encodedBytes: bytes.byteLength,
+  });
+  validatePrivateEntryBounds(value, bytes.byteLength);
+  preparedPrivateSegments.set(value, encodePrivateSegmentEnvelopeFromCanonical(value, canonical));
+  return value;
+}
+
 export function encodePrivateSegment(value: StoredPrivateSegment): Uint8Array {
-  validatePrivateEntryBounds(value);
+  const prepared = preparedPrivateSegments.get(value);
+  if (prepared) return new Uint8Array(prepared);
   const canonical = canonicalJson(value.entries);
+  const byteLength = privateEnvelopeEncoder.encode(canonical).byteLength;
+  // Each entry is smaller than its enclosing canonical array. Only oversized
+  // batches need individual size checks; ordinary batches already prove it.
+  validatePrivateEntryBounds(value, byteLength);
   if (sha256(canonical) !== value.contentHash) {
     return invalid(`Private segment ${value.segmentId} content hash is invalid`);
   }
-  if (privateEnvelopeEncoder.encode(canonical).byteLength !== value.encodedBytes) {
+  if (byteLength !== value.encodedBytes) {
     return invalid(`Private segment ${value.segmentId} encoded byte count is invalid`);
   }
   return encodePrivateSegmentEnvelopeFromCanonical(value, canonical);
 }
 
-export function decodePrivateSegment(value: Uint8Array): StoredPrivateSegment {
+export async function decodePrivateSegment(value: Uint8Array): Promise<StoredPrivateSegment> {
   let envelope: string;
   try {
     envelope = privateEnvelopeDecoder.decode(value);
@@ -199,30 +247,13 @@ export function decodePrivateSegment(value: Uint8Array): StoredPrivateSegment {
     encodedBytes: natural(object["encodedBytes"], "privateSegment.encodedBytes"),
     createdAt: natural(object["createdAt"], "privateSegment.createdAt"),
   };
-  if (sha256(entriesJson) !== result.contentHash) {
+  if ((await digestBytes(privateEnvelopeEncoder.encode(entriesJson))) !== result.contentHash) {
     return invalid(`Private segment ${result.segmentId} content hash is invalid`);
   }
   if (privateEnvelopeEncoder.encode(entriesJson).byteLength !== result.encodedBytes) {
     return invalid(`Private segment ${result.segmentId} encoded byte count is invalid`);
   }
   validatePrivateEntryBounds(result);
-  return result;
-}
-
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-function encodeBase64(bytes: Uint8Array): string {
-  let result = "";
-  for (let offset = 0; offset < bytes.length; offset += 3) {
-    const first = bytes[offset]!;
-    const second = bytes[offset + 1];
-    const third = bytes[offset + 2];
-    const value = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
-    result += alphabet[(value >> 18) & 63];
-    result += alphabet[(value >> 12) & 63];
-    result += second === undefined ? "=" : alphabet[(value >> 6) & 63];
-    result += third === undefined ? "=" : alphabet[value & 63];
-  }
   return result;
 }
 
@@ -233,62 +264,92 @@ function decodeBase64(value: string): Uint8Array {
   ) {
     return invalid("execution object binary body is not canonical base64");
   }
-  const bytes: number[] = [];
-  for (let offset = 0; offset < value.length; offset += 4) {
-    const chars = value.slice(offset, offset + 4);
-    const a = alphabet.indexOf(chars[0]!);
-    const b = alphabet.indexOf(chars[1]!);
-    const c = chars[2] === "=" ? 0 : alphabet.indexOf(chars[2]!);
-    const d = chars[3] === "=" ? 0 : alphabet.indexOf(chars[3]!);
-    const bits = (a << 18) | (b << 12) | (c << 6) | d;
-    bytes.push((bits >> 16) & 255);
-    if (chars[2] !== "=") {
-      bytes.push((bits >> 8) & 255);
-    }
-    if (chars[3] !== "=") {
-      bytes.push(bits & 255);
-    }
-  }
-  return new Uint8Array(bytes);
+  return toByteArray(value);
 }
 
-// The body text is produced locally by canonicalJson, never supplied by a caller.
-// Reusing it avoids validating and encoding the whole body a second time.
-function executionObjectEnvelope(value: StoredExecutionObject, bodyJson: string): Uint8Array {
-  const metadata = canonicalJson({
-    objectId: value.objectId,
-    lifetimeScope: value.lifetimeScope,
-    scopeOwnerId: value.scopeOwnerId,
-    objectKind: value.objectKind,
-    contentHash: value.contentHash,
-    byteLength: value.byteLength,
-    bodyKind: value.body instanceof Uint8Array ? "binary" : "json",
-    createdAt: value.createdAt,
+// Content integrity belongs to the body. The envelope is ordinary storage JSON.
+function executionObjectEnvelope(value: StoredExecutionObject): Uint8Array {
+  const { body, ...metadata } = value;
+  return privateEnvelopeEncoder.encode(
+    JSON.stringify({
+      ...(assertJson(metadata) as Record<string, Json>),
+      body: body instanceof Uint8Array ? fromByteArray(body) : body,
+      bodyKind: value.body instanceof Uint8Array ? "binary" : "json",
+    }),
+  );
+}
+
+async function digestBytes(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return bytesToHex(digest);
+}
+
+const preparedObjects = new WeakMap<StoredExecutionObject, Uint8Array>();
+
+/** Own immutable text and its exact persistence envelope in one encoding pass. */
+export async function createTextExecutionObject(
+  fields: Omit<StoredExecutionObject, "contentHash" | "byteLength" | "body">,
+  body: string,
+): Promise<StoredExecutionObject> {
+  const metadata = { ...fields };
+  const canonical = canonicalJson(body);
+  const bytes = privateEnvelopeEncoder.encode(canonical);
+  const contentHash = await digestBytes(bytes);
+  const value = Object.freeze({ ...metadata, body, contentHash, byteLength: bytes.byteLength });
+  preparedObjects.set(value, executionObjectEnvelope(value));
+  return value;
+}
+
+/** Prepares content-addressed JSON once, retaining owned bytes for the eventual write. */
+export async function createContentAddressedExecutionObject(
+  fields: Omit<StoredExecutionObject, "objectId" | "contentHash" | "byteLength" | "body">,
+  identityPrefix: readonly string[],
+  body: unknown,
+): Promise<StoredExecutionObject> {
+  const metadata = { ...fields };
+  const prefix = [...identityPrefix];
+  const canonical = canonicalJson(body);
+  const bytes = privateEnvelopeEncoder.encode(canonical);
+  const owned = JSON.parse(canonical) as Json;
+  const pending: object[] = owned !== null && typeof owned === "object" ? [owned] : [];
+  while (pending.length) {
+    const current = pending.pop()!;
+    for (const child of Object.values(current)) {
+      if (child !== null && typeof child === "object") pending.push(child);
+    }
+    Object.freeze(current);
+  }
+  const contentHash = await digestBytes(bytes);
+  const value = Object.freeze({
+    ...metadata,
+    objectId: stableTupleHash([...prefix, contentHash]),
+    body: owned,
+    contentHash,
+    byteLength: bytes.byteLength,
   });
-  // "body" sorts before every metadata key, preserving canonical envelope bytes.
-  return new TextEncoder().encode(`{"body":${bodyJson},${metadata.slice(1)}`);
+  preparedObjects.set(value, executionObjectEnvelope(value));
+  return value;
 }
 
 export function encodeExecutionObjectEnvelope(value: StoredExecutionObject): Uint8Array {
-  const bodyJson = canonicalJson(
-    value.body instanceof Uint8Array ? encodeBase64(value.body) : value.body,
-  );
-  return executionObjectEnvelope(value, bodyJson);
+  return executionObjectEnvelope(value);
 }
 
 export function encodeExecutionObject(value: StoredExecutionObject): Uint8Array {
+  const prepared = preparedObjects.get(value);
+  if (prepared) return new Uint8Array(prepared);
   const body = value.body;
-  const bodyJson = canonicalJson(body instanceof Uint8Array ? encodeBase64(body) : body);
+  const bodyJson = canonicalJson(body instanceof Uint8Array ? fromByteArray(body) : body);
   const hash = body instanceof Uint8Array ? sha256Bytes(body) : sha256(bodyJson);
   const bytes =
     body instanceof Uint8Array ? body.byteLength : new TextEncoder().encode(bodyJson).byteLength;
   if (hash !== value.contentHash || bytes !== value.byteLength) {
     return invalid(`Execution object ${value.objectId} content metadata is invalid`);
   }
-  return executionObjectEnvelope(value, bodyJson);
+  return executionObjectEnvelope(value);
 }
 
-export function decodeExecutionObject(value: Uint8Array): StoredExecutionObject {
+export async function decodeExecutionObject(value: Uint8Array): Promise<StoredExecutionObject> {
   const object = record(decodeJsonValue(value, "execution object"), "execution object");
   const lifetimeScope = text(object["lifetimeScope"], "object.lifetimeScope");
   if (lifetimeScope !== "execution" && lifetimeScope !== "conversation") {
@@ -315,17 +376,11 @@ export function decodeExecutionObject(value: Uint8Array): StoredExecutionObject 
     body,
     createdAt: natural(object["createdAt"], "object.createdAt"),
   };
-  const content =
+  const bytes =
     result.body instanceof Uint8Array
-      ? { hash: sha256Bytes(result.body), bytes: result.body.byteLength }
-      : (() => {
-          const canonical = canonicalJson(result.body);
-          return {
-            hash: sha256(canonical),
-            bytes: new TextEncoder().encode(canonical).byteLength,
-          };
-        })();
-  if (content.hash !== result.contentHash || content.bytes !== result.byteLength) {
+      ? new Uint8Array(result.body)
+      : privateEnvelopeEncoder.encode(canonicalJson(result.body));
+  if (bytes.byteLength !== result.byteLength || (await digestBytes(bytes)) !== result.contentHash) {
     return invalid(`Execution object ${result.objectId} content metadata is invalid`);
   }
   return result;

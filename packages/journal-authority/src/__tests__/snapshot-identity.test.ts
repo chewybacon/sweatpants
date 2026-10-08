@@ -11,18 +11,22 @@ import type { ExecutionStore, StoredExecutionObject } from "../store/store.ts";
 it("publishes one UUID snapshot across a CAS retry and reuses it after cold reload", async () => {
   const store = createMemoryExecutionStore();
   const staged: StoredExecutionObject[] = [];
+  const proposedIds: string[] = [];
   let commits = 0;
   const measured: ExecutionStore = {
     ...store,
-    *putObject(object) {
-      staged.push(object);
-      return yield* store.putObject(object);
+    *putObject() {
+      throw new Error("Snapshots must be published inside the fenced commit");
     },
     *commitExecution(request) {
+      proposedIds.push(request.objects![0]!.objectId);
       if (commits++ === 0) {
+        expect(yield* store.getObject({ objectId: proposedIds[0]! })).toBeNull();
         return { status: "control_conflict", current: null };
       }
-      return yield* store.commitExecution(request);
+      const result = yield* store.commitExecution(request);
+      if (result.status === "committed") staged.push(...(request.objects ?? []));
+      return result;
     },
   };
   const options = {
@@ -59,6 +63,7 @@ it("publishes one UUID snapshot across a CAS retry and reuses it after cold relo
     const drivers = createStoredShellDrivers(measured, options);
     yield* drivers.authority.command({ type: "execution.open-task", request });
     expect(commits).toBe(2);
+    expect(proposedIds[1]).toBe(proposedIds[0]);
     expect(staged).toHaveLength(1);
     const snapshot = staged[0]!;
     expect(snapshot.objectId).toMatch(

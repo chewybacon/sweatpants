@@ -4,7 +4,7 @@ const statements = [
   `CREATE TABLE IF NOT EXISTS sp_d1_meta (id INTEGER PRIMARY KEY CHECK(id = 1), token TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS sp_d1_records (
     collection TEXT NOT NULL, key TEXT NOT NULL, revision TEXT, fence TEXT, fingerprint TEXT,
-    byte_length INTEGER NOT NULL, PRIMARY KEY(collection, key))`,
+    byte_length INTEGER NOT NULL, inline_value BLOB, PRIMARY KEY(collection, key))`,
   `CREATE TABLE IF NOT EXISTS sp_d1_chunks (
     collection TEXT NOT NULL, key TEXT NOT NULL, part INTEGER NOT NULL, value BLOB NOT NULL,
     PRIMARY KEY(collection, key, part), FOREIGN KEY(collection, key) REFERENCES sp_d1_records(collection, key))`,

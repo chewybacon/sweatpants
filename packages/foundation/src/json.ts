@@ -1,3 +1,4 @@
+import serializeCanonical from "canonicalize";
 import { sha256 as hashSha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
@@ -18,33 +19,25 @@ export class CanonicalJsonError extends TypeError {
   }
 }
 
-/** RFC 8785 uses ECMAScript JSON number serialization and UTF-16 key order. */
+/** Validate a JSON boundary value and encode deterministic content-identity bytes. */
 export function canonicalJson(value: unknown): string {
-  return encode(assertJson(value));
+  return serializeCanonical(assertJson(value))!;
 }
 
-/** Validate, canonicalize, and JSON-clone a JSON-representable value. */
+/** Capture a caller's value and the deterministic bytes used for its content identity. */
 export function canonicalSnapshot<T>(value: T): { value: T; canonical: string } {
-  const snapshot = parseJson(value, "$", new Set<object>(), true);
-  const canonical = encode(snapshot);
-  // SAFETY: The parser validates, normalizes, and orders this independent copy
-  // exactly as a canonical JSON round trip, preserving T's representable shape.
-  return { value: snapshot as T, canonical };
+  const canonical = canonicalJson(value);
+  return { value: JSON.parse(canonical) as T, canonical };
 }
 
-/** Validates and hashes canonical JSON without parsing an additional copy. */
+/** Hash deterministic JSON bytes. Ordinary storage envelopes do not need this. */
 export function canonicalDigest(value: unknown): string {
   return sha256(canonicalJson(value));
 }
 
-/**
- * Validates and deeply copies JSON with canonical object-key order, without
- * serializing, parsing, or hashing it. Normalization matches canonicalSnapshot.
- */
+/** Validate and detach a JSON boundary value using a canonical JSON round trip. */
 export function cloneJson<T>(value: T): T {
-  // SAFETY: The same parser constructs canonicalSnapshot's value, preserving
-  // its independent, normalized JSON-representable shape.
-  return parseJson(value, "$", new Set<object>(), true) as T;
+  return canonicalSnapshot(value).value;
 }
 
 /** Returns lowercase SHA-256 hex for a UTF-8 string. */
@@ -95,23 +88,15 @@ export function compareUnicodeCodePoints(left: string, right: string): number {
   return leftPoints.length - rightPoints.length;
 }
 
-/** Non-mutating stable insertion sort for protocol-visible string sets. */
+/** Non-mutating sort for protocol-visible string sets. */
 export function sortStrings(
   values: readonly string[],
   compare: (left: string, right: string) => number = compareUnicodeCodePoints,
 ): string[] {
-  const result: string[] = [];
-  for (const value of values) {
-    let index = 0;
-    while (index < result.length && compare(result[index]!, value) < 0) {
-      index += 1;
-    }
-    result.splice(index, 0, value);
-  }
-  return result;
+  return [...values].sort(compare);
 }
 
-/** Parses JSON text into a fresh canonical value, preserving the proof in `Json`. */
+/** Decode external JSON text and capture its portable value. */
 export function parseJsonText(text: string, path = "$"): Json {
   return assertJson(JSON.parse(text), path);
 }
@@ -133,118 +118,62 @@ export function requireJsonObject(value: Json, path = "$"): JsonObject {
 }
 
 /**
- * Parses unknown input into a fresh canonical-JSON projection, rejecting cycles,
- * accessors, sparse arrays, invalid Unicode, prototypes, and non-finite numbers.
+ * Capture unknown JSON at an ownership boundary. Reject values that JSON would
+ * silently discard or transform. Already accepted internal state needs no copy.
  */
-export function assertJson(value: unknown, path = "$", seen = new Set<object>()): Json {
-  return parseJson(value, path, seen, false);
-}
-
-function parseJson(value: unknown, path: string, seen: Set<object>, orderKeys: boolean): Json {
-  if (value === null || typeof value === "boolean") {
-    return value;
-  }
+export function assertJson(value: unknown, path = "$", ancestors = new Set<object>()): Json {
+  if (value === null || typeof value === "boolean") return value;
   if (typeof value === "string") {
     assertValidUnicode(value, path);
     return value;
   }
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw invalid(path, "non-finite number");
-    }
+    if (!Number.isFinite(value)) throw invalid(path, "non-finite number");
     return Object.is(value, -0) ? 0 : value;
   }
-  if (typeof value !== "object") {
-    throw invalid(path, typeof value);
-  }
-  if (seen.has(value)) {
-    throw invalid(path, "cycle");
-  }
-  seen.add(value);
+  if (typeof value !== "object") throw invalid(path, typeof value);
+  if (ancestors.has(value)) throw invalid(path, "cycle");
+  ancestors.add(value);
   try {
     if (Array.isArray(value)) {
       const output: Json[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw invalid(`${path}[${index}]`, "sparse array slot");
-        }
-        output.push(parseJson(value[index], `${path}[${index}]`, seen, orderKeys));
+      for (let index = 0; index < value.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor) throw invalid(`${path}[${index}]`, "sparse array slot");
+        if (!("value" in descriptor)) throw invalid(`${path}[${index}]`, "accessor property");
+        output.push(assertJson(descriptor.value, `${path}[${index}]`, ancestors));
       }
-      const extraKeys = Reflect.ownKeys(value).filter(
-        (key) =>
-          key !== "length" &&
-          !(typeof key === "string" && /^(0|[1-9]\d*)$/.test(key) && Number(key) < value.length),
-      );
-      if (extraKeys.length > 0) {
+      if (Reflect.ownKeys(value).length !== value.length + 1)
         throw invalid(path, "non-index array property");
-      }
       return output;
     }
-
     const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
+    if (prototype !== Object.prototype && prototype !== null)
       throw invalid(path, "non-plain object");
-    }
     const output: Record<string, Json> = {};
     for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== "string") {
-        throw invalid(path, "symbol-keyed property");
-      }
+      if (typeof key !== "string") throw invalid(path, "symbol-keyed property");
+      if (key === "__proto__") throw invalid(`${path}.${key}`, "prototype key");
       assertValidUnicode(key, `${path}.<key>`);
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor?.enumerable || !("value" in descriptor)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+      if (!descriptor.enumerable || !("value" in descriptor))
         throw invalid(`${path}.${key}`, "non-enumerable or accessor property");
-      }
-      output[key] = parseJson(descriptor.value, `${path}.${key}`, seen, orderKeys);
+      output[key] = assertJson(descriptor.value, `${path}.${key}`, ancestors);
     }
-    return orderKeys ? Object.fromEntries(sortedEntries(output)) : output;
+    return output;
   } finally {
-    seen.delete(value);
+    ancestors.delete(value);
   }
-}
-
-function encode(value: Json): string {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "number" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(encode).join(",")}]`;
-  }
-  return `{${sortedEntries(value)
-    .map(([key, child]) => `${JSON.stringify(key)}:${encode(child)}`)
-    .join(",")}}`;
-}
-
-function sortedEntries(value: Record<string, Json>): Array<[string, Json]> {
-  const result: Array<[string, Json]> = [];
-  for (const entry of Object.entries(value)) {
-    let index = 0;
-    while (index < result.length && (result[index]?.[0] ?? "") < entry[0]) {
-      index += 1;
-    }
-    result.splice(index, 0, entry);
-  }
-  return result;
 }
 
 function assertValidUnicode(value: string, path: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) {
-        throw invalid(path, "lone high surrogate");
-      }
-      index += 1;
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      throw invalid(path, "lone low surrogate");
-    }
-  }
+  // Unicode mode matches lone surrogates, never a valid surrogate pair.
+  const surrogate = /[\uD800-\uDFFF]/u.exec(value)?.[0];
+  if (surrogate)
+    throw invalid(
+      path,
+      surrogate.charCodeAt(0) <= 0xdbff ? "lone high surrogate" : "lone low surrogate",
+    );
 }
 
 function invalid(path: string, kind: string): CanonicalJsonError {

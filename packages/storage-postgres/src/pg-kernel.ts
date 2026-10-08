@@ -454,7 +454,7 @@ async function insertImmutable(
     }
     case DurableCollections.executionJournalSegments:
     case DurableCollections.executionReplaySegments: {
-      const value = decodePrivateSegment(record.value);
+      const value = await decodePrivateSegment(record.value);
       const table =
         record.collection === DurableCollections.executionJournalSegments
           ? spExecutionJournalSegments
@@ -482,7 +482,7 @@ async function insertImmutable(
               body: envelope["body"],
               createdAt: envelope["createdAt"],
             } as StoredExecutionObject)
-          : decodeExecutionObject(record.value);
+          : await decodeExecutionObject(record.value);
       const inserted = await database
         .insert(spExecutionObjects)
         .values(objectToRow(value))
@@ -620,7 +620,9 @@ async function insertPrivateBatch(
     collection === DurableCollections.executionJournalSegments
       ? spExecutionJournalSegments
       : spExecutionReplaySegments;
-  const values = ensures.map((ensure) => privateToRow(decodePrivateSegment(ensure.value)));
+  const values = await Promise.all(
+    ensures.map(async (ensure) => privateToRow(await decodePrivateSegment(ensure.value))),
+  );
   const inserted = await database
     .insert(table)
     .values(values)

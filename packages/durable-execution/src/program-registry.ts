@@ -27,7 +27,8 @@ export function createDurableToolRegistry(tools: Iterable<DurableTool>): Durable
 
 /** Canonical exact-key format shared by program registries and hosts. */
 export function exactProgramKey(program: PinnedProgram): string {
-  return stableTupleHash([program.id, program.version, program.digest]);
+  // The program digest is already verified at admission; this is only a lookup key.
+  return JSON.stringify([program.id, program.version, program.digest]);
 }
 
 /** Derives a stable attachment identifier from pinned program and task identity. */

@@ -16,12 +16,45 @@ import {
 } from "../json.ts";
 
 describe("foundation canonical JSON", () => {
+  it("captures current values and detaches copies regardless of freezing", () => {
+    const child = { value: 1 };
+    const shallow = Object.freeze({ child });
+    expect(canonicalJson(shallow)).toBe('{"child":{"value":1}}');
+    child.value = 2;
+    expect(canonicalJson(shallow)).toBe('{"child":{"value":2}}');
+    Object.freeze(child);
+    expect(canonicalJson(shallow)).toBe('{"child":{"value":2}}');
+    const copy = cloneJson(shallow);
+    copy.child.value = 3;
+    expect(canonicalJson(shallow)).toBe('{"child":{"value":2}}');
+    expect(canonicalJson(copy)).toBe('{"child":{"value":3}}');
+    const keyed = Object.freeze(JSON.parse('{"__proto__":{"value":1},"constructor":2}'));
+    expect(() => canonicalJson(keyed)).toThrow(CanonicalJsonError);
+  });
+
+  it("does not treat frozen array accessors as immutable data", () => {
+    let reads = 0;
+    const array = Object.freeze(
+      Object.defineProperty([0], "0", {
+        get() {
+          reads++;
+          return reads;
+        },
+      }),
+    );
+    expect(() => canonicalJson(array)).toThrow(CanonicalJsonError);
+    expect(reads).toBe(0);
+  });
   it("canonicalizes object keys and produces stable snapshot evidence", () => {
     const snapshot = canonicalSnapshot({ z: [true, -0], a: { y: "value" } });
 
     expect(snapshot.canonical).toBe('{"a":{"y":"value"},"z":[true,0]}');
     expect(snapshot.value).toEqual({ a: { y: "value" }, z: [true, 0] });
     expect(canonicalDigest(snapshot.value)).toBe(sha256(snapshot.canonical));
+    // RFC ordering is lexical UTF-16, including integer-looking object keys.
+    expect(canonicalJson({ "2": 2, "10": 10, "\uE000": 3, "𝄞": 4 })).toBe(
+      '{"10":10,"2":2,"𝄞":4,"\uE000":3}',
+    );
     expect(stableTupleHash(["a", "b"])).not.toBe(stableTupleHash(["a|b"]));
     expect(stableTupleHash(["a", "b"])).toMatch(/^[0-9a-f]{64}$/);
     expect(hasControlCharacter("safe")).toBe(false);

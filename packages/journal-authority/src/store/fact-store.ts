@@ -1,17 +1,12 @@
-import {
-  canonicalSnapshot,
-  parser,
-  sha256,
-  stableTupleHash,
-  type Json,
-} from "@sweatpants/foundation";
+import { parser, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
 import type {
   DurableReference,
   ProjectionFactEnvelope,
   ProjectionFrontier,
 } from "@sweatpants/durable-execution";
-import type { Operation } from "effection";
+import { call, type Operation } from "effection";
+import { createContentAddressedExecutionObject } from "./store-persistence.ts";
 import { createApi } from "effection/experimental";
 import { useExecutionStore } from "../api.ts";
 
@@ -58,21 +53,21 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
         kind: fact.kind,
         payload: fact.payload,
       }));
-      const encoded = canonicalSnapshot(factsValue);
-      const contentHash = sha256(encoded.canonical);
-      const objectId = stableTupleHash([request.executionId, "projection-facts", contentHash]);
-      const byteLength = new TextEncoder().encode(encoded.canonical).byteLength;
+      const object = yield* call(() =>
+        createContentAddressedExecutionObject(
+          {
+            lifetimeScope: "execution",
+            scopeOwnerId: request.executionId,
+            objectKind: "projection-facts",
+            createdAt: Date.now(),
+          },
+          [request.executionId, "projection-facts"],
+          factsValue,
+        ),
+      );
+      const { objectId, byteLength, contentHash } = object;
       const store = yield* useExecutionStore();
-      yield* store.putObject({
-        objectId,
-        lifetimeScope: "execution",
-        scopeOwnerId: request.executionId,
-        objectKind: "projection-facts",
-        contentHash,
-        byteLength,
-        body: encoded.value,
-        createdAt: Date.now(),
-      });
+      yield* store.putObject(object);
       return {
         id: objectId,
         byteLength,

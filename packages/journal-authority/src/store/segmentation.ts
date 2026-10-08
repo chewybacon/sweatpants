@@ -1,4 +1,4 @@
-import { canonicalJson, type Json } from "@sweatpants/foundation";
+import { type Json } from "@sweatpants/foundation";
 
 export interface PrivateSegmentTarget {
   readonly maxEntries: number;
@@ -15,8 +15,9 @@ export const LOW_PRIVATE_SEGMENT_TARGET: PrivateSegmentTarget = Object.freeze({
   maxEncodedBytes: 8 * 1024,
 });
 
+// Accepted JSON has the same byte length regardless of object-key ordering.
 export function encodedJsonBytes(value: Json): number {
-  return new TextEncoder().encode(canonicalJson(value)).byteLength;
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
 export function segmentPrivateEntries(

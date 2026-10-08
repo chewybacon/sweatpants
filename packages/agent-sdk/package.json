@@ -102,6 +102,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/model-provider": "workspace:*",
         "@sweatpants/model-sampling": "workspace:*",
+        "base64-js": "1.5.1",
         "effection": "catalog:",
         "zod": "catalog:"
     },

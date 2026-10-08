@@ -1,3 +1,4 @@
+import { fromByteArray, toByteArray } from "base64-js";
 import { call, type Operation } from "effection";
 import { canonicalJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import { z } from "zod";
@@ -44,19 +45,19 @@ function invalid(message: string): never {
   throw new McpContinuationError("mcp_continuation_invalid", message);
 }
 function base64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return fromByteArray(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 function unbase64(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
     invalid("Invalid continuation encoding");
   }
   let decoded: Uint8Array;
   try {
-    decoded = Uint8Array.from(atob(value.replace(/-/g, "+").replace(/_/g, "/")), (char) =>
-      char.charCodeAt(0),
+    decoded = toByteArray(
+      value
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(value.length / 4) * 4, "="),
     );
   } catch {
     return invalid("Invalid continuation encoding");
