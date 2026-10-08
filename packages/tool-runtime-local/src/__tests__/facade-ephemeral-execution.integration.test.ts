@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
 import type { Json } from "@sweatpants/foundation";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import {
+  createCapabilityKeyring,
+  JournalAuthorityPort,
+  ExecutionStorePort,
+} from "@sweatpants/journal-authority";
 import {
   createPinnedDurableProgram,
   defineDurableProgramManifest,
@@ -34,6 +38,8 @@ import {
 describe("facade workflow runtime ephemeral execution", () => {
   it("executes a backchannel-heavy ephemeral tool across one parked pull", async () => {
     let sampledPrompts = 0;
+    const observedCommands: string[] = [];
+    let observedCommits = 0;
     const elicitedCities: unknown[] = [];
 
     const weather = createTool("wf_weather")
@@ -139,6 +145,18 @@ describe("facade workflow runtime ephemeral execution", () => {
     // Drive the facade through its callable surface with a rejecting outer
     // context: nothing should reach it — ephemeral asks ride the relays.
     const outcome = await run(function* () {
+      yield* JournalAuthorityPort.api.around({
+        *command(args, next) {
+          observedCommands.push(args[0].type);
+          return yield* next(...args);
+        },
+      });
+      yield* ExecutionStorePort.api.around({
+        *commitExecution(args, next) {
+          observedCommits++;
+          return yield* next(...args);
+        },
+      });
       yield* createLocalToolInvocationRuntime({});
       const callableFacade = facade as unknown as (
         context: never,
@@ -154,6 +172,12 @@ describe("facade workflow runtime ephemeral execution", () => {
       return yield* invoke({ invocationId: "ephemeral-facade-inv-1", input: null });
     });
 
+    // Middleware inherited from the invocation host must surround workflow
+    // mutations and the facade's direct settlement between activations.
+    expect(observedCommands).toContain("execution.open-task");
+    expect(observedCommands).toContain("execution.resolve-pull");
+    expect(observedCommands).toContain("execution.mandate-complete");
+    expect(observedCommits).toBeGreaterThan(0);
     expect(outcome).toEqual({ report: "oslo: sunny (approved)" });
     expect(sampledPrompts).toBe(1);
     expect(elicitedCities).toEqual([{ city: "oslo" }]);

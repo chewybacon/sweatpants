@@ -284,6 +284,7 @@ export type CommandResult<C extends AuthorityCommand> = CommandResultByType[C["t
  * never mint a capability, append history, or advance authority state.
  */
 export type AuthorityQuery =
+  | { readonly type: "control.activation-status"; readonly sessionId: string }
   | { readonly type: "authority.identity" }
   | { readonly type: "authority.nonterminal-schema-digests" }
   | { readonly type: "authority.recoverable-sessions" }
@@ -332,6 +333,7 @@ export type AuthorityQuery =
     };
 
 export interface QueryResultByType {
+  readonly "control.activation-status": { readonly remainingMs: number };
   readonly "authority.identity": { readonly id: string; readonly incarnation: string };
   readonly "authority.nonterminal-schema-digests": readonly string[];
   readonly "authority.recoverable-sessions": readonly RecoverableSession[];

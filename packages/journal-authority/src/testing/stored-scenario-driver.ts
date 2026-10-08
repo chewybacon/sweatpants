@@ -1,13 +1,17 @@
+import type { ExecutionStore } from "../store/store.ts";
+import type { ProgramStep } from "@sweatpants/durable-execution";
+import type { Json } from "@sweatpants/foundation";
 import type { Operation } from "effection";
 
 import {
-  createStoredShellDrivers,
+  createJournal,
   type StoredJournalAuthorityOptions,
-  type StoredShellDrivers,
-} from "../shell/stored-shell.ts";
+  type Journal,
+} from "../shell/journal.ts";
 import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import type {
+  AppendEmissionRequest,
   AcceptAssistantPartialRequest,
   AcceptAssistantPartialResult,
   AcceptPullPreparationRequest,
@@ -51,10 +55,10 @@ import type {
 } from "../contract/authority-types.ts";
 import type { OrphanReason } from "../contract/authority-contract.ts";
 
-export type StoredScenarioDriver = StoredShellDrivers & {
+export type StoredScenarioDriver = Journal & {
   journalIdentity(): { readonly id: string; readonly incarnation: string };
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
-  taskInput(sessionId: string, taskId: string): Operation<import("@sweatpants/foundation").Json>;
+  taskInput(sessionId: string, taskId: string): Operation<Json>;
   taskRecoveryState(sessionId: string, taskId?: string): Operation<DurableTaskRecoveryState>;
   rootTaskCount(sessionId: string): Operation<number>;
   operationState(
@@ -85,7 +89,7 @@ export type StoredScenarioDriver = StoredShellDrivers & {
     taskId: string,
     restoredFrontier?: {
       proof: RestoredFrontierProof;
-      step: import("@sweatpants/durable-execution").ProgramStep;
+      step: ProgramStep;
     },
   ): Operation<DurableCancellationState>;
   bindProgramAttachment(
@@ -106,9 +110,7 @@ export type StoredScenarioDriver = StoredShellDrivers & {
     request: AcceptAssistantPartialRequest,
   ): Operation<AcceptAssistantPartialResult>;
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
-  emit(
-    request: import("../contract/authority-types.ts").AppendEmissionRequest,
-  ): Operation<EmissionReceipt>;
+  emit(request: AppendEmissionRequest): Operation<EmissionReceipt>;
   complete(request: CompleteTaskRequest): Operation<CompleteTaskResult>;
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   replaceAttachment(
@@ -144,14 +146,13 @@ export type StoredScenarioDriver = StoredShellDrivers & {
   exportSnapshot(): Operation<DurableAuthoritySnapshot>;
 };
 
-export function createStoredScenarioDriver(
-  store: import("../store/store.ts").ExecutionStore,
+export function* createStoredScenarioDriver(
+  store: ExecutionStore,
   options: StoredJournalAuthorityOptions,
-): StoredScenarioDriver {
-  const drivers = createStoredShellDrivers(store, options);
-  const authority = drivers.authority;
-  const query = authority.query.bind(authority);
-  const command = authority.command.bind(authority);
+): Operation<StoredScenarioDriver> {
+  const drivers = yield* createJournal(store, options);
+  const query = drivers.query;
+  const command = drivers.advance;
   return {
     ...drivers,
     journalIdentity() {
@@ -297,16 +298,16 @@ export function createStoredScenarioDriver(
       return yield* query({ type: "pull.resolution-capability", sessionId, taskId, pullId });
     },
     *readJournal(sessionId) {
-      return [...(yield* drivers.journal.readSession(sessionId))];
+      return [...(yield* drivers.readSession(sessionId))];
     },
     *readTaskJournal(sessionId, rootTaskId) {
-      return [...(yield* drivers.journal.readTree(sessionId, rootTaskId))];
+      return [...(yield* drivers.readTree(sessionId, rootTaskId))];
     },
     *runnableSessions() {
       return [...(yield* query({ type: "authority.runnable-sessions" }))];
     },
     *exportSnapshot() {
-      return yield* drivers.snapshot.exportSnapshot();
+      return yield* drivers.exportSnapshot();
     },
   };
 }

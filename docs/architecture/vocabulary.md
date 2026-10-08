@@ -432,14 +432,16 @@ Four stages, four words, no overlap:
 
 Preceding all four:
 
-0. **shell** — A complete named instantiation of the kernel's contract stack
-   `{authority, journal, snapshot}`: `createInMemoryShellDrivers` (decisions
-   applied directly to cloned state) and `createStoredShellDrivers`
-   (commit-loop over segmented storage, snapshots verified on load). Same
-   semantics, different state strategy — they must differ in nothing else,
-   so the current wiring duplication between them is a convicted seam.
-   Naming wart: the `...ShellDrivers` names use the driver impostor;
-   `createInMemoryShell` says it exactly.
+0. **journal resource** — An acquired authority instance whose accepted state
+   belongs to an Effection lifetime. `createJournal(store, options)` uses durable
+   storage; `createInMemoryJournal(options)` applies decisions in memory. Both
+   expose `journal.advance(command)`, queries, journal reads, and snapshot export.
+   `installJournal(journal)` adapts the resource to authority ports where scoped
+   middleware or workflow routing is needed. `useJournal()` reads that installed
+   capability with the same methods. Operations execute in their caller's
+   scope; acquiring the resource does not introduce a background command loop.
+   Resource exit releases retained state and closes the handle. Durable records
+   survive and can be admitted by a new resource.
 
 **scope** — Effection structured-concurrency lifetime container. Drives own
 scopes; scopes guarantee teardown of process-side resources. Reserve the word

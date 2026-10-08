@@ -1,3 +1,5 @@
+import type { AuthorityScenarioDriver } from "../testing/scenario-driver.ts";
+import { call } from "effection";
 import { createWorkflowProgramDriver } from "../workflow/program-driver.ts";
 import {
   createDurableEffectRegistration,
@@ -91,7 +93,7 @@ function authority(options: Partial<InMemoryJournalAuthorityOptions> = {}) {
 }
 
 function openTask(
-  selected: ReturnType<typeof authority>,
+  selected: AuthorityScenarioDriver,
   taskId: string,
   selectedManifest = manifest(`program.${taskId}`),
 ) {
@@ -165,208 +167,241 @@ describe("whole-contract effect digest", () => {
   });
 
   it("rejects same-key contract drift before opening another task", async () => {
-    await run(function* () {
-      const selected = authority();
-      yield* openTask(selected, "one", manifest("program.one", effect("1", false)));
-      let caught: unknown;
-      try {
-        yield* openTask(selected, "two", manifest("program.two", effect("1", true)));
-      } catch (error) {
-        caught = error;
-      }
-      expect(errorCode(caught)).toBe("invalid_manifest");
-      expect(
-        selected.readJournal("session").filter((record) => record.payload.type === "TaskOpened"),
-      ).toHaveLength(1);
+    return await run(function* () {
+      yield* call(() =>
+        run(function* () {
+          const selected = yield* authority();
+          yield* openTask(selected, "one", manifest("program.one", effect("1", false)));
+          let caught: unknown;
+          try {
+            yield* openTask(selected, "two", manifest("program.two", effect("1", true)));
+          } catch (error) {
+            caught = error;
+          }
+          expect(errorCode(caught)).toBe("invalid_manifest");
+          expect(
+            selected
+              .readJournal("session")
+              .filter((record) => record.payload.type === "TaskOpened"),
+          ).toHaveLength(1);
 
-      const restored = authority({ snapshot: selected.exportSnapshot() });
-      try {
-        yield* openTask(restored, "three", manifest("program.three", effect("1", true)));
-      } catch (error) {
-        caught = error;
-      }
-      expect(errorCode(caught)).toBe("invalid_manifest");
+          const restored = yield* authority({ snapshot: selected.exportSnapshot() });
+          try {
+            yield* openTask(restored, "three", manifest("program.three", effect("1", true)));
+          } catch (error) {
+            caught = error;
+          }
+          expect(errorCode(caught)).toBe("invalid_manifest");
+        }),
+      );
     });
   });
 });
 
 describe("semantic emission policy", () => {
   it("validates opt-in policy while preserving absent and empty behavior", async () => {
-    expect(() => authority({ emissionPolicy: { maxEmissionsPerTask: -1 } })).toThrowError(
-      expect.objectContaining({ code: "invalid_manifest" }),
-    );
-    expect(() =>
-      authority({ emissionPolicy: { maxCumulativeEmissionBytes: Number.MAX_SAFE_INTEGER + 1 } }),
-    ).toThrowError(expect.objectContaining({ code: "invalid_manifest" }));
+    return await run(function* () {
+      yield* call(() =>
+        expect(
+          run(() => authority({ emissionPolicy: { maxEmissionsPerTask: -1 } })),
+        ).rejects.toThrowError(expect.objectContaining({ code: "invalid_manifest" })),
+      );
+      yield* call(() =>
+        expect(
+          run(() =>
+            authority({
+              emissionPolicy: { maxCumulativeEmissionBytes: Number.MAX_SAFE_INTEGER + 1 },
+            }),
+          ),
+        ).rejects.toThrowError(expect.objectContaining({ code: "invalid_manifest" })),
+      );
 
-    await run(function* () {
-      for (const emissionPolicy of [undefined, {}] as const) {
-        const selected = authority(emissionPolicy ? { emissionPolicy } : {});
-        const { programCapability } = yield* openTask(selected, `task-${String(emissionPolicy)}`);
-        for (let actionIndex = 0; actionIndex < 5; actionIndex += 1) {
-          yield* selected.emit({
-            sessionId: "session",
-            taskId: `task-${String(emissionPolicy)}`,
-            actionIndex,
-            descriptor: { eventType: "token", payload: actionIndex },
-            programCapability,
-          });
-        }
-        const taskSnapshot = firstTask(selected.exportSnapshot())!;
-        expect(taskSnapshot.emissionPolicy).toBeUndefined();
-        // The direct snapshot mirrors current state, so counters are retained
-        // even when no policy consumes them.
-        expect(taskSnapshot.acceptedEmissionCount).toBe(5);
-        expect(taskSnapshot.cumulativeEmissionBytes).toBeGreaterThan(0);
-      }
+      yield* call(() =>
+        run(function* () {
+          for (const emissionPolicy of [undefined, {}] as const) {
+            const selected = yield* authority(emissionPolicy ? { emissionPolicy } : {});
+            const { programCapability } = yield* openTask(
+              selected,
+              `task-${String(emissionPolicy)}`,
+            );
+            for (let actionIndex = 0; actionIndex < 5; actionIndex += 1) {
+              yield* selected.emit({
+                sessionId: "session",
+                taskId: `task-${String(emissionPolicy)}`,
+                actionIndex,
+                descriptor: { eventType: "token", payload: actionIndex },
+                programCapability,
+              });
+            }
+            const taskSnapshot = firstTask(selected.exportSnapshot())!;
+            expect(taskSnapshot.emissionPolicy).toBeUndefined();
+            // The direct snapshot mirrors current state, so counters are retained
+            // even when no policy consumes them.
+            expect(taskSnapshot.acceptedEmissionCount).toBe(5);
+            expect(taskSnapshot.cumulativeEmissionBytes).toBeGreaterThan(0);
+          }
+        }),
+      );
     });
   });
 
   it("enforces count atomically and does not double-count duplicates", async () => {
-    await run(function* () {
-      const selected = authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
-      const { programCapability } = yield* openTask(selected, "quota");
-      const request = {
-        sessionId: "session",
-        taskId: "quota",
-        actionIndex: 0,
-        descriptor: { eventType: "semantic", payload: { ok: true } },
-        programCapability,
-      } as const;
-      expect((yield* selected.emit(request)).duplicate).toBe(false);
-      expect((yield* selected.emit(request)).duplicate).toBe(true);
+    return await run(function* () {
+      yield* call(() =>
+        run(function* () {
+          const selected = yield* authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
+          const { programCapability } = yield* openTask(selected, "quota");
+          const request = {
+            sessionId: "session",
+            taskId: "quota",
+            actionIndex: 0,
+            descriptor: { eventType: "semantic", payload: { ok: true } },
+            programCapability,
+          } as const;
+          expect((yield* selected.emit(request)).duplicate).toBe(false);
+          expect((yield* selected.emit(request)).duplicate).toBe(true);
 
-      let caught: unknown;
-      try {
-        yield* selected.emit({
-          ...request,
-          actionIndex: 1,
-          descriptor: { eventType: "semantic", payload: { ok: false } },
-        });
-      } catch (error) {
-        caught = error;
-      }
-      expect(errorCode(caught)).toBe("emission_quota_exceeded");
-      const snapshot = selected.exportSnapshot();
-      expect(firstTask(snapshot)?.nextActionIndex).toBe(1);
-      expect(firstTask(snapshot)?.nextEmissionIndex).toBe(1);
-      expect(firstTask(snapshot)?.acceptedEmissionCount).toBe(1);
-      expect(
-        selected
-          .readJournal("session")
-          .filter((record) => record.payload.type === "DurableEmission"),
-      ).toHaveLength(1);
+          let caught: unknown;
+          try {
+            yield* selected.emit({
+              ...request,
+              actionIndex: 1,
+              descriptor: { eventType: "semantic", payload: { ok: false } },
+            });
+          } catch (error) {
+            caught = error;
+          }
+          expect(errorCode(caught)).toBe("emission_quota_exceeded");
+          const snapshot = selected.exportSnapshot();
+          expect(firstTask(snapshot)?.nextActionIndex).toBe(1);
+          expect(firstTask(snapshot)?.nextEmissionIndex).toBe(1);
+          expect(firstTask(snapshot)?.acceptedEmissionCount).toBe(1);
+          expect(
+            selected
+              .readJournal("session")
+              .filter((record) => record.payload.type === "DurableEmission"),
+          ).toHaveLength(1);
+        }),
+      );
     });
   });
 
   it("counts canonical UTF-8 payload bytes and preserves task policy across restore", async () => {
-    await run(function* () {
-      const payload = "é";
-      const exactBytes = new TextEncoder().encode(canonicalJson(payload)).byteLength;
-      const selected = authority({
-        emissionPolicy: {
-          maxEmissionsPerTask: 2,
-          maxCumulativeEmissionBytes: exactBytes * 2,
-        },
-      });
-      const { programCapability } = yield* openTask(selected, "bytes");
-      yield* selected.emit({
-        sessionId: "session",
-        taskId: "bytes",
-        actionIndex: 0,
-        descriptor: { eventType: "semantic", payload },
-        programCapability,
-      });
+    return await run(function* () {
+      yield* call(() =>
+        run(function* () {
+          const payload = "é";
+          const exactBytes = new TextEncoder().encode(canonicalJson(payload)).byteLength;
+          const selected = yield* authority({
+            emissionPolicy: {
+              maxEmissionsPerTask: 2,
+              maxCumulativeEmissionBytes: exactBytes * 2,
+            },
+          });
+          const { programCapability } = yield* openTask(selected, "bytes");
+          yield* selected.emit({
+            sessionId: "session",
+            taskId: "bytes",
+            actionIndex: 0,
+            descriptor: { eventType: "semantic", payload },
+            programCapability,
+          });
 
-      const restored = authority({
-        emissionPolicy: { maxEmissionsPerTask: 1, maxCumulativeEmissionBytes: 1 },
-        snapshot: selected.exportSnapshot(),
-      });
-      const rebound = yield* restored.bindProgramAttachment(
-        "session",
-        "bytes",
-        "attachment:bytes",
-        1,
+          const restored = yield* authority({
+            emissionPolicy: { maxEmissionsPerTask: 1, maxCumulativeEmissionBytes: 1 },
+            snapshot: selected.exportSnapshot(),
+          });
+          const rebound = yield* restored.bindProgramAttachment(
+            "session",
+            "bytes",
+            "attachment:bytes",
+            1,
+          );
+          yield* restored.emit({
+            sessionId: "session",
+            taskId: "bytes",
+            actionIndex: 1,
+            descriptor: { eventType: "semantic", payload },
+            programCapability: rebound.programCapability,
+          });
+
+          let caught: unknown;
+          try {
+            yield* restored.emit({
+              sessionId: "session",
+              taskId: "bytes",
+              actionIndex: 2,
+              descriptor: { eventType: "semantic", payload },
+              programCapability: rebound.programCapability,
+            });
+          } catch (error) {
+            caught = error;
+          }
+          expect(errorCode(caught)).toBe("emission_quota_exceeded");
+          expect(firstTask(restored.exportSnapshot())).toMatchObject({
+            acceptedEmissionCount: 2,
+            cumulativeEmissionBytes: exactBytes * 2,
+          });
+        }),
       );
-      yield* restored.emit({
-        sessionId: "session",
-        taskId: "bytes",
-        actionIndex: 1,
-        descriptor: { eventType: "semantic", payload },
-        programCapability: rebound.programCapability,
-      });
-
-      let caught: unknown;
-      try {
-        yield* restored.emit({
-          sessionId: "session",
-          taskId: "bytes",
-          actionIndex: 2,
-          descriptor: { eventType: "semantic", payload },
-          programCapability: rebound.programCapability,
-        });
-      } catch (error) {
-        caught = error;
-      }
-      expect(errorCode(caught)).toBe("emission_quota_exceeded");
-      expect(firstTask(restored.exportSnapshot())).toMatchObject({
-        acceptedEmissionCount: 2,
-        cumulativeEmissionBytes: exactBytes * 2,
-      });
     });
   });
 
   it("turns an uncaught quota error into a journaled runtime failure", async () => {
-    const runtimeManifest = { ...manifest("quota.runtime"), effects: {} };
-    const tool = createPinnedDurableProgram(runtimeManifest, function* (_input, context) {
-      yield* context.emit("semantic", { ordinal: 1 });
-      yield* context.emit("semantic", { ordinal: 2 });
-      return null;
-    });
-    const drivers = createProgramDriverRegistry([
-      ["program", createWorkflowProgramDriver(createDurableToolRegistry([tool]))],
-    ]);
-    const selected = authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
-    const attach = {
-      sessionId: "session",
-      taskId: "runtime",
-      program: {
-        id: runtimeManifest.programId,
-        version: runtimeManifest.version,
-        digest: runtimeManifest.digest,
-      },
-      input: null,
-      route: { driverKind: "program" },
-      executionEpoch: 1,
-    } as const;
-
-    await run(function* () {
-      yield* selected.openTask({
-        sessionId: attach.sessionId,
-        turnId: "runtime",
-        taskId: attach.taskId,
-        manifest: runtimeManifest,
-        input: attach.input,
-        executionEpoch: 1,
-        attachmentId: stableProgramAttachmentId(attach),
-        audience: "test",
+    return await run(function* () {
+      const runtimeManifest = { ...manifest("quota.runtime"), effects: {} };
+      const tool = createPinnedDurableProgram(runtimeManifest, function* (_input, context) {
+        yield* context.emit("semantic", { ordinal: 1 });
+        yield* context.emit("semantic", { ordinal: 2 });
+        return null;
       });
-      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withProgramDriverTestScope(selected, function* () {
-          return yield* driveInstalledTestProgramTree({ attach });
-        });
-      });
-      expect(result).toMatchObject({
-        state: "failed",
-        error: { code: "emission_quota_exceeded" },
-      });
-      expect(selected.readJournal("session").map((record) => record.payload.type)).toEqual([
-        "TaskOpened",
-        "AdvancementBound",
-        "DurableEmission",
-        "TaskClosed",
-        "AdvancementReleased",
+      const drivers = createProgramDriverRegistry([
+        ["program", createWorkflowProgramDriver(createDurableToolRegistry([tool]))],
       ]);
+      const selected = yield* authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
+      const attach = {
+        sessionId: "session",
+        taskId: "runtime",
+        program: {
+          id: runtimeManifest.programId,
+          version: runtimeManifest.version,
+          digest: runtimeManifest.digest,
+        },
+        input: null,
+        route: { driverKind: "program" },
+        executionEpoch: 1,
+      } as const;
+
+      yield* call(() =>
+        run(function* () {
+          yield* selected.openTask({
+            sessionId: attach.sessionId,
+            turnId: "runtime",
+            taskId: attach.taskId,
+            manifest: runtimeManifest,
+            input: attach.input,
+            executionEpoch: 1,
+            attachmentId: stableProgramAttachmentId(attach),
+            audience: "test",
+          });
+          const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+            return yield* withProgramDriverTestScope(selected, function* () {
+              return yield* driveInstalledTestProgramTree({ attach });
+            });
+          });
+          expect(result).toMatchObject({
+            state: "failed",
+            error: { code: "emission_quota_exceeded" },
+          });
+          expect(selected.readJournal("session").map((record) => record.payload.type)).toEqual([
+            "TaskOpened",
+            "AdvancementBound",
+            "DurableEmission",
+            "TaskClosed",
+            "AdvancementReleased",
+          ]);
+        }),
+      );
     });
   });
 });

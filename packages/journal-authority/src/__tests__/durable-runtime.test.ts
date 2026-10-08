@@ -172,11 +172,14 @@ function captureError(action: () => unknown): unknown {
 }
 
 describe("persisted boundary parsing", () => {
-  it("accepts only the current direct snapshot format", () => {
-    const snapshot = createAuthorityScenarioDriver({
-      journalId: "current-format-only",
-      keyring,
-    }).exportSnapshot();
+  it("accepts only the current direct snapshot format", async () => {
+    const snapshot = await run(function* () {
+      const journal = yield* createAuthorityScenarioDriver({
+        journalId: "current-format-only",
+        keyring,
+      });
+      return journal.exportSnapshot();
+    });
     expect(durableAuthoritySnapshotParser.parse(snapshot)).toEqual({
       ok: true,
       value: snapshot,
@@ -293,8 +296,8 @@ function attachRequest(sessionId = "session-1"): AttachProgramRequest {
   };
 }
 
-function createAuthority(sessionId = "session-1", now: () => number = () => 1_000) {
-  const authority = createAuthorityScenarioDriver({
+function* createAuthority(sessionId = "session-1", now: () => number = () => 1_000) {
+  const authority = yield* createAuthorityScenarioDriver({
     journalId: "journal-1",
     journalIncarnation: "incarnation-1",
     keyring,
@@ -307,8 +310,8 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 
 describe("crank-native durable runtime", () => {
   it("accepts one closed model preparation before provider settlement", async () => {
-    const { authority, attach } = createAuthority("model-preparation");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("model-preparation");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -328,7 +331,9 @@ describe("crank-native durable runtime", () => {
         descriptor: { kind: "sample", input: "hello" },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("model sample did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("model sample did not park");
+      }
       const fact = {
         type: "ModelContextPrepared" as const,
         executionId: "execution-1",
@@ -435,7 +440,9 @@ describe("crank-native durable runtime", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (unrelated.status !== "authorized") throw new Error("unrelated effect was not authorized");
+      if (unrelated.status !== "authorized") {
+        throw new Error("unrelated effect was not authorized");
+      }
       expect(
         yield* authority.acceptPullPreparation({
           ...request,
@@ -448,8 +455,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("rejects the 65th open elicitation before recording a pull", async () => {
-    const { authority } = createAuthority("interrupt-bound");
     await run(function* () {
+      const { authority } = yield* createAuthority("interrupt-bound");
       const opened: Array<{ taskId: string; programCapability: string }> = [];
       for (let index = 0; index < 65; index += 1) {
         const taskId = `task-${index}`;
@@ -602,8 +609,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("reserves before dispatch and resolves processlessly with audience-bound idempotent receipts", async () => {
-    const { authority, attach } = createAuthority();
     await run(function* () {
+      const { authority, attach } = yield* createAuthority();
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -689,8 +696,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("rehydrates authority snapshots without losing pull capability or runnable state", async () => {
-    const { authority, attach } = createAuthority("snapshot");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("snapshot");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -719,7 +726,7 @@ describe("crank-native durable runtime", () => {
       if (reserved.status !== "authorized") {
         throw new Error("not authorized");
       }
-      const recovered = createAuthorityScenarioDriver({
+      const recovered = yield* createAuthorityScenarioDriver({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",
         keyring,
@@ -739,8 +746,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("fences old program authority and settles a detached unsafe attempt as indeterminate", async () => {
-    const { authority, attach } = createAuthority("takeover");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("takeover");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -825,8 +832,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("retries a detached repeatable recording with one pull and distinct attempts", async () => {
-    const { authority, attach } = createAuthority("repeatable-record");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("repeatable-record");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -904,8 +911,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("fails a detached unsafe recording without retrying", async () => {
-    const { authority, attach } = createAuthority("unsafe-record");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("unsafe-record");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -959,8 +966,8 @@ describe("crank-native durable runtime", () => {
 
   it("journals relative waits verbatim and rejects early scheduler resolution", async () => {
     let now = 10_000;
-    const { authority, attach } = createAuthority("wait", () => now);
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("wait", () => now);
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1014,8 +1021,8 @@ describe("crank-native durable runtime", () => {
   });
 
   it("keeps payload commands pending when a retained validator bundle is unavailable", async () => {
-    const { authority, attach } = createAuthority("missing-schema");
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("missing-schema");
       const opened = yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1044,7 +1051,7 @@ describe("crank-native durable runtime", () => {
       if (reserved.status !== "authorized") {
         throw new Error("effect not authorized");
       }
-      const unavailable = createAuthorityScenarioDriver({
+      const unavailable = yield* createAuthorityScenarioDriver({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",
         keyring,
@@ -1101,9 +1108,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("ordinary-operation-replay");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("ordinary-operation-replay");
       yield* OrdinaryFiles.around({
         *read([path]) {
           ordinaryReads += 1;
@@ -1223,9 +1230,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("descriptor-divergence");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("descriptor-divergence");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1257,7 +1264,9 @@ describe("crank-native durable runtime", () => {
         (record) =>
           record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
       );
-      if (pending?.payload.type !== "PullRequested") throw new Error("no pending elicit");
+      if (pending?.payload.type !== "PullRequested") {
+        throw new Error("no pending elicit");
+      }
       yield* authority.resolve({
         capability: authority.resolutionCapability(
           attach.sessionId,
@@ -1328,12 +1337,7 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([parent, child]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const authority = createAuthorityScenarioDriver({
-      journalId: "ordinary-child-journal",
-      journalIncarnation: "ordinary-child-incarnation",
-      keyring,
-      schemaRegistry: fixtureSchemaRegistry(),
-    });
+
     const attach = {
       sessionId: "ordinary-child-session",
       taskId: "turn-0/root",
@@ -1348,6 +1352,12 @@ describe("crank-native durable runtime", () => {
     };
 
     await run(function* () {
+      const authority = yield* createAuthorityScenarioDriver({
+        journalId: "ordinary-child-journal",
+        journalIncarnation: "ordinary-child-incarnation",
+        keyring,
+        schemaRegistry: fixtureSchemaRegistry(),
+      });
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1430,9 +1440,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("ordinary-operation-failure");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("ordinary-operation-failure");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1462,7 +1472,9 @@ describe("crank-native durable runtime", () => {
           (record) =>
             record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
         );
-      if (pending?.payload.type !== "PullRequested") throw new Error("no pending elicit");
+      if (pending?.payload.type !== "PullRequested") {
+        throw new Error("no pending elicit");
+      }
       yield* authority.resolve({
         capability: authority.resolutionCapability(
           attach.sessionId,
@@ -1513,9 +1525,9 @@ describe("crank-native durable runtime", () => {
         }),
       ],
     ]);
-    const { authority, attach } = createAuthority("execution-route");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("execution-route");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1568,9 +1580,9 @@ describe("crank-native durable runtime", () => {
         }),
       ],
     ]);
-    const { authority, attach } = createAuthority("missing-execution-route");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("missing-execution-route");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1611,9 +1623,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("record-runtime");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("record-runtime");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1635,32 +1647,32 @@ describe("crank-native durable runtime", () => {
         });
       });
       expect(result).toEqual({ state: "completed", value: "ace-of-spades" });
-    });
 
-    expect(executions).toBe(1);
-    expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
-      "TaskOpened",
-      "AdvancementBound",
-      "PullRequested",
-      "AttemptStarted",
-      "PullResolved",
-      "AdvancementReleased",
-      "AdvancementBound",
-      "TaskClosed",
-      "AdvancementReleased",
-    ]);
-    expect(
-      authority
-        .readJournal(attach.sessionId)
-        .find((record) => record.payload.type === "PullRequested"),
-    ).toMatchObject({
-      payload: {
-        descriptor: {
-          kind: "record",
-          key: "draw-card",
-          retrySafety: { mode: "repeatable" },
+      expect(executions).toBe(1);
+      expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
+        "TaskOpened",
+        "AdvancementBound",
+        "PullRequested",
+        "AttemptStarted",
+        "PullResolved",
+        "AdvancementReleased",
+        "AdvancementBound",
+        "TaskClosed",
+        "AdvancementReleased",
+      ]);
+      expect(
+        authority
+          .readJournal(attach.sessionId)
+          .find((record) => record.payload.type === "PullRequested"),
+      ).toMatchObject({
+        payload: {
+          descriptor: {
+            kind: "record",
+            key: "draw-card",
+            retrySafety: { mode: "repeatable" },
+          },
         },
-      },
+      });
     });
   });
 
@@ -1672,9 +1684,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("oversized-record-runtime");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("oversized-record-runtime");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1712,9 +1724,9 @@ describe("crank-native durable runtime", () => {
     });
     const tools = createDurableToolRegistry([tool]);
     const drivers = createProgramDriverRegistry([["program", createWorkflowProgramDriver(tools)]]);
-    const { authority, attach } = createAuthority("nested-record-runtime");
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("nested-record-runtime");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",
@@ -1739,12 +1751,12 @@ describe("crank-native durable runtime", () => {
         state: "failed",
         error: { code: "nested_durable_operation" },
       });
+      expect(
+        authority
+          .readJournal(attach.sessionId)
+          .filter((record) => record.payload.type === "PullRequested"),
+      ).toHaveLength(1);
     });
-    expect(
-      authority
-        .readJournal(attach.sessionId)
-        .filter((record) => record.payload.type === "PullRequested"),
-    ).toHaveLength(1);
   });
 
   it("uses native createApi max/min middleware and runs host effects through durable receipt gating", async () => {
@@ -1764,10 +1776,10 @@ describe("crank-native durable runtime", () => {
           })(),
       },
     ]);
-    const { authority, attach } = createAuthority("runtime");
     const order: string[] = [];
 
     await run(function* () {
+      const { authority, attach } = yield* createAuthority("runtime");
       yield* authority.openTask({
         sessionId: attach.sessionId,
         turnId: "turn-0",

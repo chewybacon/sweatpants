@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring } from "../index.ts";
 import {
   createAuthorityScenarioDriver,
+  type AuthorityScenarioDriver,
   createPeerSimulator,
   PeerTransportError,
 } from "../testing/testing.ts";
@@ -65,7 +66,7 @@ function authority(now: () => number) {
 }
 
 function* openMixedGroup(
-  value: ReturnType<typeof authority>,
+  value: AuthorityScenarioDriver,
   remoteChild: DurableChildDescriptor = peerChild,
 ) {
   const opened = yield* value.openTask({
@@ -92,7 +93,9 @@ function* openMixedGroup(
     },
     programCapability: opened.programCapability,
   });
-  if (reserved.status !== "pending") throw new Error("fork pull did not park");
+  if (reserved.status !== "pending") {
+    throw new Error("fork pull did not park");
+  }
   const group = yield* value.openForkGroup({
     sessionId: "s1",
     turnId: "t1",
@@ -108,10 +111,12 @@ function* openMixedGroup(
   return { opened, reserved, group };
 }
 
-function* bindPeer(value: ReturnType<typeof authority>, memberTaskId = "task.1") {
+function* bindPeer(value: AuthorityScenarioDriver, memberTaskId = "task.1") {
   const plan = yield* value.query({ type: "forest.replay-plan", sessionId: "s1" });
   const ready = plan.peers.find((candidate) => candidate.address.taskId === memberTaskId);
-  if (ready === undefined) throw new Error("peer target was not prepared");
+  if (ready === undefined) {
+    throw new Error("peer target was not prepared");
+  }
   const bound = yield* value.command({
     type: "execution.bind-delivery-mandate",
     request: {
@@ -131,14 +136,16 @@ function* bindPeer(value: ReturnType<typeof authority>, memberTaskId = "task.1")
       },
     },
   });
-  if (bound.status !== "bound") throw new Error(`peer bind was stale: ${bound.mismatch}`);
+  if (bound.status !== "bound") {
+    throw new Error(`peer bind was stale: ${bound.mismatch}`);
+  }
   return bound.mandate;
 }
 
 describe("peer members: classification and admission (REQ-035, REQ-042)", () => {
   it("stores the closed durability class and derives peer audiences locally", async () => {
-    const value = authority(() => 1_000);
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       yield* openMixedGroup(value);
       const snapshot = value.exportSnapshot();
       const tasks = snapshot.sessions[0]![1].execution.tasks;
@@ -154,8 +161,8 @@ describe("peer members: classification and admission (REQ-035, REQ-042)", () => 
   });
 
   it("rejects a peer member without a sampling declaration at admission", async () => {
-    const value = authority(() => 1_000);
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       const opened = yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -184,7 +191,9 @@ describe("peer members: classification and admission (REQ-035, REQ-042)", () => 
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("fork pull did not park");
+      }
       let code: string | undefined;
       try {
         yield* value.openForkGroup({
@@ -208,8 +217,8 @@ describe("peer members: classification and admission (REQ-035, REQ-042)", () => 
 
 describe("peer sampling trust boundary (REQ-041, REQ-042, REQ-054)", () => {
   it("journals delegated sampling locally and rejects private or peer-supplied authority", async () => {
-    const delegated = authority(() => 1_000);
     await run(function* () {
+      const delegated = yield* authority(() => 1_000);
       yield* openMixedGroup(delegated);
       const mandate = yield* bindPeer(delegated);
       yield* delegated.commitPeerDelegation({ mandate });
@@ -231,7 +240,9 @@ describe("peer sampling trust boundary (REQ-041, REQ-042, REQ-054)", () => {
         .exportSnapshot()
         .sessions[0]?.[1].execution.tasks.find((task) => task.taskId === "task.1");
       const action = peerTask?.actions[0];
-      if (action?.kind !== "pull") throw new Error("delegated sample slot missing");
+      if (action?.kind !== "pull") {
+        throw new Error("delegated sample slot missing");
+      }
       expect(action.pull.resolutionAuthority.audience).not.toBe("peer-supplied");
       yield* delegated.resolve({
         capability: sample.resolutionCapability!,
@@ -264,8 +275,8 @@ describe("peer sampling trust boundary (REQ-041, REQ-042, REQ-054)", () => {
       expect(injectedCode).toBe("invalid_descriptor");
     });
 
-    const privatePeer = authority(() => 1_000);
     await run(function* () {
+      const privatePeer = yield* authority(() => 1_000);
       const privateChild: DurableChildDescriptor = {
         ...peerChild,
         durability: { kind: "peer_hosted", peer: "peer-1", sampling: "private" },
@@ -297,9 +308,9 @@ describe("peer sampling trust boundary (REQ-041, REQ-042, REQ-054)", () => {
 
 describe("peer delivery: journal-first, correlators, mandates (REQ-038, REQ-040, REQ-074)", () => {
   it("commits before send, dedupes by correlator, and never serializes capabilities", async () => {
-    const value = authority(() => 1_000);
     const simulator = createPeerSimulator();
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       const { group } = yield* openMixedGroup(value);
       const mandate = yield* bindPeer(value);
 
@@ -365,12 +376,14 @@ describe("peer delivery: journal-first, correlators, mandates (REQ-038, REQ-040,
 
 describe("peer bind CAS (REQ-012, REQ-074, REQ-075)", () => {
   it("rejects a prepared peer target when cancellation lands before bind", async () => {
-    const value = authority(() => 1_000);
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       yield* openMixedGroup(value);
       const plan = yield* value.query({ type: "forest.replay-plan", sessionId: "s1" });
       const ready = plan.peers.find((candidate) => candidate.address.taskId === "task.1");
-      if (ready === undefined) throw new Error("peer target was not prepared");
+      if (ready === undefined) {
+        throw new Error("peer target was not prepared");
+      }
       yield* value.requestCancellation("s1", "task.1", "bind-race");
       const bound = yield* value.command({
         type: "execution.bind-delivery-mandate",
@@ -403,9 +416,9 @@ describe("peer bind CAS (REQ-012, REQ-074, REQ-075)", () => {
 
 describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
   it("commits peer evidence through the reducer and resolves the group", async () => {
-    const value = authority(() => 1_000);
     const simulator = createPeerSimulator();
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       const { reserved, group } = yield* openMixedGroup(value);
       const mandate = yield* bindPeer(value);
       const delegation = yield* value.commitPeerDelegation({ mandate });
@@ -435,7 +448,9 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
         outcome: { status: "ok", value: "P" },
       });
       const frame = yield* simulator.transport.nextEvidence();
-      if (frame === null) throw new Error("peer died unexpectedly");
+      if (frame === null) {
+        throw new Error("peer died unexpectedly");
+      }
       yield* value.commitPeerEvidence({
         mandate,
         correlator: frame.correlator,
@@ -473,9 +488,9 @@ describe("peer evidence and loss (REQ-026, REQ-032, REQ-043)", () => {
   });
 
   it("types peer loss and flows it through one-for-all supervision", async () => {
-    const value = authority(() => 1_000);
     const simulator = createPeerSimulator();
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       const { reserved, group } = yield* openMixedGroup(value);
       const mandate = yield* bindPeer(value);
       const delegation = yield* value.commitPeerDelegation({ mandate });

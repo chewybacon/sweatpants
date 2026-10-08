@@ -303,9 +303,7 @@ export function createProgramWorkflowHost(
             createParkedSamplePullResolver({
               service: options.modelSamplingService,
               *journalIdentity() {
-                return yield* journal.withAuthority((authority) =>
-                  authority.query({ type: "authority.identity" }),
-                );
+                return yield* journal.query({ type: "authority.identity" });
               },
               sourceResolver: options.modelContextSourceResolver,
             }),
@@ -362,39 +360,38 @@ export function createProgramWorkflowHost(
       );
     };
     const drive = function* (): Operation<AdvancementResult> {
-      return yield* journal.withAuthority(function* (authority) {
-        return yield* driveWorkflowTree({
-          authority,
-          attach: rootAttach,
-          rootScope: {
-            activate,
-            *manifest(child) {
-              const tool = findTool(child);
-              if (!tool) {
-                throw new CrankError(
-                  "program_version_unavailable",
-                  `No exact program ${exactProgramKey(child)}`,
-                );
-              }
-              return tool.manifest;
-            },
-            route,
-            *settle(parked, currentAttach) {
-              const resolver = pullResolvers.get(parked.reason);
-              if (!resolver) {
-                return false;
-              }
-              yield* settleParkedPull({
-                authority,
-                resolver,
-                attach: currentAttach,
-                pullId: parked.pullId,
-                driverKind: "workflow",
-              });
-              return true;
-            },
+      const authority = { command: journal.advance, query: journal.query };
+      return yield* driveWorkflowTree({
+        authority,
+        attach: rootAttach,
+        rootScope: {
+          activate,
+          *manifest(child) {
+            const tool = findTool(child);
+            if (!tool) {
+              throw new CrankError(
+                "program_version_unavailable",
+                `No exact program ${exactProgramKey(child)}`,
+              );
+            }
+            return tool.manifest;
           },
-        });
+          route,
+          *settle(parked, currentAttach) {
+            const resolver = pullResolvers.get(parked.reason);
+            if (!resolver) {
+              return false;
+            }
+            yield* settleParkedPull({
+              authority,
+              resolver,
+              attach: currentAttach,
+              pullId: parked.pullId,
+              driverKind: "workflow",
+            });
+            return true;
+          },
+        },
       });
     };
     return yield* runWithModelSamplingService(options.modelSamplingService, function* () {

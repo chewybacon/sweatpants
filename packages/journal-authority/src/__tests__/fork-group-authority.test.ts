@@ -56,8 +56,8 @@ function* codeOf(operation: () => Operation<unknown>): Operation<string | undefi
 describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => {
   it("opens all members atomically, dedupes retries, and freezes the parent", async () => {
     const clock = () => 1_000;
-    const value = authority(clock);
     await run(function* () {
+      const value = yield* authority(clock);
       const opened = yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -83,7 +83,9 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("fork pull did not park");
+      }
 
       const group = yield* value.openForkGroup({
         sessionId: "s1",
@@ -166,8 +168,8 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
   });
 
   it("fails admission closed on unresolvable or expired policies", async () => {
-    const value = authority(() => 1_000);
     await run(function* () {
+      const value = yield* authority(() => 1_000);
       const opened = yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -193,7 +195,9 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("fork pull did not park");
+      }
       expect(
         yield* codeOf(() =>
           value.openForkGroup({
@@ -214,54 +218,53 @@ describe("fork groups: admission and freeze (REQ-021, REQ-023, REQ-030)", () => 
 });
 
 describe("fork groups: terminal algebra (REQ-026)", () => {
-  async function openAllGroup(clock: () => number) {
-    const value = authority(clock);
-    const result = await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "all",
-          supervision: "one_for_all",
-          children: [childA, childB],
-          expiry: { kind: "after", durationMs: 50_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      return { pullId: reserved.pullId, group };
+  function* openAllGroup(clock: () => number) {
+    const value = yield* authority(clock);
+    const opened = yield* value.openTask({
+      sessionId: "s1",
+      turnId: "t1",
+      taskId: "task",
+      manifest: parentManifest,
+      input: {},
+      executionEpoch: 1,
+      attachmentId: "initial",
+      audience: "workflow-host",
     });
-    return { value, ...result };
+    const reserved = yield* value.reserve({
+      sessionId: "s1",
+      turnId: "t1",
+      taskId: "task",
+      actionIndex: 0,
+      pullIndex: 0,
+      descriptor: {
+        kind: "all",
+        supervision: "one_for_all",
+        children: [childA, childB],
+        expiry: { kind: "after", durationMs: 50_000 },
+      },
+      programCapability: opened.programCapability,
+    });
+    if (reserved.status !== "pending") {
+      throw new Error("fork pull did not park");
+    }
+    const group = yield* value.openForkGroup({
+      sessionId: "s1",
+      turnId: "t1",
+      parentTaskId: "task",
+      parentPullId: reserved.pullId,
+      members: [
+        { child: childA, manifest: childManifest(childA.id, "b") },
+        { child: childB, manifest: childManifest(childB.id, "c") },
+      ],
+      executionEpoch: 1,
+      audience: "workflow-host",
+    });
+    return { value, pullId: reserved.pullId, group };
   }
 
   it("resolves the parent slot once with biographies in descriptor order", async () => {
-    const { value, pullId } = await openAllGroup(() => 1_000);
     await run(function* () {
+      const { value, pullId } = yield* openAllGroup(() => 1_000);
       // Either completion order resolves the same value.
       yield* value.complete({
         sessionId: "s1",
@@ -303,8 +306,8 @@ describe("fork groups: terminal algebra (REQ-026)", () => {
   });
 
   it("one-for-all: first failure cancels the sibling and fails after drain", async () => {
-    const { value, pullId } = await openAllGroup(() => 1_000);
     await run(function* () {
+      const { value, pullId } = yield* openAllGroup(() => 1_000);
       yield* value.complete({
         sessionId: "s1",
         taskId: "task.0",
@@ -340,54 +343,53 @@ describe("fork groups: terminal algebra (REQ-026)", () => {
 });
 
 describe("fork groups: race precedence (REQ-026, REQ-032)", () => {
-  async function openRaceGroup(clock: () => number) {
-    const value = authority(clock);
-    const result = await run(function* () {
-      const opened = yield* value.openTask({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        manifest: parentManifest,
-        input: {},
-        executionEpoch: 1,
-        attachmentId: "initial",
-        audience: "workflow-host",
-      });
-      const reserved = yield* value.reserve({
-        sessionId: "s1",
-        turnId: "t1",
-        taskId: "task",
-        actionIndex: 0,
-        pullIndex: 0,
-        descriptor: {
-          kind: "race",
-          supervision: "first_success",
-          children: [childA, childB],
-          expiry: { kind: "at", atMs: 60_000 },
-        },
-        programCapability: opened.programCapability,
-      });
-      if (reserved.status !== "pending") throw new Error("race pull did not park");
-      const group = yield* value.openForkGroup({
-        sessionId: "s1",
-        turnId: "t1",
-        parentTaskId: "task",
-        parentPullId: reserved.pullId,
-        members: [
-          { child: childA, manifest: childManifest(childA.id, "b") },
-          { child: childB, manifest: childManifest(childB.id, "c") },
-        ],
-        executionEpoch: 1,
-        audience: "workflow-host",
-      });
-      return { pullId: reserved.pullId, group };
+  function* openRaceGroup(clock: () => number) {
+    const value = yield* authority(clock);
+    const opened = yield* value.openTask({
+      sessionId: "s1",
+      turnId: "t1",
+      taskId: "task",
+      manifest: parentManifest,
+      input: {},
+      executionEpoch: 1,
+      attachmentId: "initial",
+      audience: "workflow-host",
     });
-    return { value, ...result };
+    const reserved = yield* value.reserve({
+      sessionId: "s1",
+      turnId: "t1",
+      taskId: "task",
+      actionIndex: 0,
+      pullIndex: 0,
+      descriptor: {
+        kind: "race",
+        supervision: "first_success",
+        children: [childA, childB],
+        expiry: { kind: "at", atMs: 60_000 },
+      },
+      programCapability: opened.programCapability,
+    });
+    if (reserved.status !== "pending") {
+      throw new Error("race pull did not park");
+    }
+    const group = yield* value.openForkGroup({
+      sessionId: "s1",
+      turnId: "t1",
+      parentTaskId: "task",
+      parentPullId: reserved.pullId,
+      members: [
+        { child: childA, manifest: childManifest(childA.id, "b") },
+        { child: childB, manifest: childManifest(childB.id, "c") },
+      ],
+      executionEpoch: 1,
+      audience: "workflow-host",
+    });
+    return { value, pullId: reserved.pullId, group };
   }
 
   it("selects the first committed winner and resolves after losers drain", async () => {
-    const { value, pullId, group } = await openRaceGroup(() => 1_000);
     await run(function* () {
+      const { value, pullId, group } = yield* openRaceGroup(() => 1_000);
       yield* value.complete({
         sessionId: "s1",
         taskId: "task.0",
@@ -431,8 +433,8 @@ describe("fork groups: race precedence (REQ-026, REQ-032)", () => {
 
   it("breach first: late success is confined and the group resolves expired", async () => {
     let clock = 1_000;
-    const { value, pullId, group } = await openRaceGroup(() => clock);
     await run(function* () {
+      const { value, pullId, group } = yield* openRaceGroup(() => clock);
       // Too early: no breach before the deadline.
       expect(
         yield* codeOf(() =>
@@ -489,8 +491,8 @@ describe("fork groups: snapshot restart (REQ-071)", () => {
   it("restores a mid-group forest from the snapshot and resolves identically", async () => {
     const keyring = createCapabilityKeyring("tests", [{ keyId: "k1", secret: "x".repeat(32) }]);
     const options = { journalId: "journal", journalIncarnation: "incarnation", keyring };
-    const value = createAuthorityScenarioDriver({ ...options, now: () => 1_000 });
     const { snapshot, pullId } = await run(function* () {
+      const value = yield* createAuthorityScenarioDriver({ ...options, now: () => 1_000 });
       const opened = yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -515,7 +517,9 @@ describe("fork groups: snapshot restart (REQ-071)", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("fork pull did not park");
+      }
       yield* value.openForkGroup({
         sessionId: "s1",
         turnId: "t1",
@@ -539,8 +543,12 @@ describe("fork groups: snapshot restart (REQ-071)", () => {
       return { snapshot: value.exportSnapshot(), pullId: reserved.pullId };
     });
 
-    const restored = createAuthorityScenarioDriver({ ...options, now: () => 1_000, snapshot });
     await run(function* () {
+      const restored = yield* createAuthorityScenarioDriver({
+        ...options,
+        now: () => 1_000,
+        snapshot,
+      });
       // Idempotent replay of the recorded member terminal.
       yield* restored.complete({
         sessionId: "s1",
@@ -580,8 +588,8 @@ describe("fork groups: snapshot restart (REQ-071)", () => {
 describe("fork groups: force orphan (REQ-034)", () => {
   it("records orphaned honestly and settles the parent with the Terminal value", async () => {
     let clock = 1_000;
-    const value = authority(() => clock);
     await run(function* () {
+      const value = yield* authority(() => clock);
       const opened = yield* value.openTask({
         sessionId: "s1",
         turnId: "t1",
@@ -606,7 +614,9 @@ describe("fork groups: force orphan (REQ-034)", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "pending") throw new Error("fork pull did not park");
+      if (reserved.status !== "pending") {
+        throw new Error("fork pull did not park");
+      }
       const group = yield* value.openForkGroup({
         sessionId: "s1",
         turnId: "t1",

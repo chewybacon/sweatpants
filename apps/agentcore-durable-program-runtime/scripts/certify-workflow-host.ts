@@ -1,3 +1,4 @@
+import { call } from "effection";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -81,138 +82,146 @@ const connector = createSigV4AgentCoreWebSocketConnector();
 const driver = createAgentCoreDurableProgramDriver(
   createAgentCoreWebSocketProgramTransport(connector),
 );
-const authority = createAuthorityScenarioDriver({
-  journalId: "live-workflow-host",
-  journalIncarnation: "1",
-  keyring: createCapabilityKeyring("live-workflow-host", [
-    { keyId: "live", secret: randomUUID().repeat(2) },
-  ]),
-  schemaRegistry: createDurableSchemaRegistry(pickCard.artifacts.catalog),
-});
-const effects = createDurableEffectRegistry([
-  createDurableEffectRegistration(
-    drawPickCards,
-    { mode: "idempotent", mechanism: "pull_id_key" },
-    function* () {
-      return {
-        status: "ok" as const,
-        value: {
-          cards: [
-            { rank: "A", suit: "spades", display: "A♠" },
-            { rank: "K", suit: "hearts", display: "K♥" },
-            { rank: "Q", suit: "clubs", display: "Q♣" },
-          ],
-        },
-      };
-    },
-  ),
-]);
-const drivers = createProgramDriverRegistry([["agentcore", driver]]);
-await run(() =>
-  authority.openTask({
-    sessionId,
-    turnId: "turn-0",
-    taskId,
-    manifest: pickCard.manifest,
-    input: { count: 3 },
-    executionEpoch: 1,
-    attachmentId: "unattached",
-    audience: "workflow-host",
-  }),
-);
+await run(function* () {
+  const authority = yield* createAuthorityScenarioDriver({
+    journalId: "live-workflow-host",
+    journalIncarnation: "1",
+    keyring: createCapabilityKeyring("live-workflow-host", [
+      { keyId: "live", secret: randomUUID().repeat(2) },
+    ]),
+    schemaRegistry: createDurableSchemaRegistry(pickCard.artifacts.catalog),
+  });
+  const effects = createDurableEffectRegistry([
+    createDurableEffectRegistration(
+      drawPickCards,
+      { mode: "idempotent", mechanism: "pull_id_key" },
+      function* () {
+        return {
+          status: "ok" as const,
+          value: {
+            cards: [
+              { rank: "A", suit: "spades", display: "A♠" },
+              { rank: "K", suit: "hearts", display: "K♥" },
+              { rank: "Q", suit: "clubs", display: "Q♣" },
+            ],
+          },
+        };
+      },
+    ),
+  ]);
+  const drivers = createProgramDriverRegistry([["agentcore", driver]]);
+  yield* call(() =>
+    run(() =>
+      authority.openTask({
+        sessionId,
+        turnId: "turn-0",
+        taskId,
+        manifest: pickCard.manifest,
+        input: { count: 3 },
+        executionEpoch: 1,
+        attachmentId: "unattached",
+        audience: "workflow-host",
+      }),
+    ),
+  );
 
-async function activate(ownerId: string): Promise<AdvancementResult> {
-  return await run(function* () {
-    const claim = yield* authority.claimActivation({ sessionId, ownerId });
-    if (claim.status !== "claimed") {
-      throw new Error(`activation claim failed: ${claim.status}`);
-    }
-    let reason: "parked" | "terminal" | "failed" = "failed";
-    try {
-      const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-        return yield* withProgramDriverTestScope(authority, function* () {
-          return yield* DurableEffectRegistryContext.with(effects, function* () {
-            return yield* driveInstalledTestProgramTree({
-              attach: {
-                sessionId,
-                taskId,
-                program,
-                input: { count: 3 },
-                route,
-                executionEpoch: claim.epoch,
-              },
-              activationOwnerId: ownerId,
+  async function activate(ownerId: string): Promise<AdvancementResult> {
+    return await run(function* () {
+      const claim = yield* authority.claimActivation({ sessionId, ownerId });
+      if (claim.status !== "claimed") {
+        throw new Error(`activation claim failed: ${claim.status}`);
+      }
+      let reason: "parked" | "terminal" | "failed" = "failed";
+      try {
+        const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+          return yield* withProgramDriverTestScope(authority, function* () {
+            return yield* DurableEffectRegistryContext.with(effects, function* () {
+              return yield* driveInstalledTestProgramTree({
+                attach: {
+                  sessionId,
+                  taskId,
+                  program,
+                  input: { count: 3 },
+                  route,
+                  executionEpoch: claim.epoch,
+                },
+                activationOwnerId: ownerId,
+              });
             });
           });
         });
-      });
-      reason = outcome.state === "parked" ? "parked" : "terminal";
-      return outcome;
-    } finally {
-      yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
-    }
-  });
-}
-
-const firstStarted = Date.now();
-const first = await activate("live-owner-1");
-if (first.state !== "parked") {
-  throw new Error(`first activation did not park: ${first.state}`);
-}
-const journal = authority.readJournal(sessionId);
-const elicit = [...journal]
-  .reverse()
-  .find(
-    (record) =>
-      record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
-  );
-if (
-  !elicit ||
-  elicit.payload.type !== "PullRequested" ||
-  elicit.payload.descriptor.kind !== "elicit"
-) {
-  throw new Error("parked pick_card elicit was not journaled");
-}
-const context = elicit.payload.descriptor.context as {
-  cards: Array<{ rank: string; suit: string; display: string }>;
-};
-const selected = context.cards[0];
-if (!selected) {
-  throw new Error("pick_card context contained no cards");
-}
-const capability = authority.resolutionCapability(sessionId, taskId, elicit.payload.pullId);
-const resolution = await run(() =>
-  authority.resolve({
-    capability,
-    audience: "user:pickCard",
-    outcome: { status: "ok", value: { action: "accept", content: { picked: selected } } },
-  }),
-);
-if (resolution.status === "rejected") {
-  throw new Error(`elicit resolution failed: ${resolution.code}`);
-}
-const resumeStarted = Date.now();
-const second = await activate("live-owner-2");
-if (second.state !== "completed") {
-  throw new Error(`second activation did not complete: ${second.state}`);
-}
-const streamedResumeMs = Date.now() - resumeStarted;
-await run(function* () {
-  if (connector.stopRuntimeSession) {
-    const controller = new AbortController();
-    yield* connector.stopRuntimeSession({
-      release,
-      runtimeSessionId: placement.runtimeSessionId,
-      signal: controller.signal,
+        reason = outcome.state === "parked" ? "parked" : "terminal";
+        return outcome;
+      } finally {
+        yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
+      }
     });
   }
+
+  const firstStarted = Date.now();
+  const first = yield* call(() => activate("live-owner-1"));
+  if (first.state !== "parked") {
+    throw new Error(`first activation did not park: ${first.state}`);
+  }
+  const journal = authority.readJournal(sessionId);
+  const elicit = [...journal]
+    .reverse()
+    .find(
+      (record) =>
+        record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
+    );
+  if (
+    !elicit ||
+    elicit.payload.type !== "PullRequested" ||
+    elicit.payload.descriptor.kind !== "elicit"
+  ) {
+    throw new Error("parked pick_card elicit was not journaled");
+  }
+  const context = elicit.payload.descriptor.context as {
+    cards: Array<{ rank: string; suit: string; display: string }>;
+  };
+  const selected = context.cards[0];
+  if (!selected) {
+    throw new Error("pick_card context contained no cards");
+  }
+  const capability = authority.resolutionCapability(sessionId, taskId, elicit.payload.pullId);
+  const resolution = yield* call(() =>
+    run(() =>
+      authority.resolve({
+        capability,
+        audience: "user:pickCard",
+        outcome: { status: "ok", value: { action: "accept", content: { picked: selected } } },
+      }),
+    ),
+  );
+  if (resolution.status === "rejected") {
+    throw new Error(`elicit resolution failed: ${resolution.code}`);
+  }
+  const resumeStarted = Date.now();
+  const second = yield* call(() => activate("live-owner-2"));
+  if (second.state !== "completed") {
+    throw new Error(`second activation did not complete: ${second.state}`);
+  }
+  const streamedResumeMs = Date.now() - resumeStarted;
+  yield* call(() =>
+    run(function* () {
+      if (connector.stopRuntimeSession) {
+        const controller = new AbortController();
+        yield* connector.stopRuntimeSession({
+          release,
+          runtimeSessionId: placement.runtimeSessionId,
+          signal: controller.signal,
+        });
+      }
+    }),
+  );
+  console.log(
+    JSON.stringify({
+      releaseId: release.releaseId,
+      firstActivationMs: resumeStarted - firstStarted,
+      streamedResumeMs,
+      journalRecordTypes: authority.readJournal(sessionId).map((record) => record.payload.type),
+      completed: true,
+    }),
+  );
 });
-console.log(
-  JSON.stringify({
-    releaseId: release.releaseId,
-    firstActivationMs: resumeStarted - firstStarted,
-    streamedResumeMs,
-    journalRecordTypes: authority.readJournal(sessionId).map((record) => record.payload.type),
-    completed: true,
-  }),
-);

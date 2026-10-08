@@ -9,7 +9,7 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { assertJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import { LOW_CHECKPOINT_TARGETS } from "@sweatpants/history-store";
 import type { CommandReceipt, ConversationHead } from "@sweatpants/history-store/contract";
-import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
+import { createTurnJournal } from "@sweatpants/journal-authority/turn-authority";
 import { useModel, useStreamOptions } from "@sweatpants/model-provider";
 import { ToolRuntimeApi, ToolRuntimePort } from "@sweatpants/tool-runtime";
 import type { Operation } from "effection";
@@ -484,9 +484,8 @@ export function* executeChatTurn(
           recoveryCommandId,
         ]);
       }
-      const activeRecord = yield* TurnJournalAuthority.operations.read(
-        resolvedHead.activeExecutionId,
-      );
+      const turnJournal = yield* createTurnJournal(resolvedHead.activeExecutionId);
+      const activeRecord = yield* turnJournal.read();
       if (activeRecord && activeRecord.format !== "sweatpants.terminal-execution.v1") {
         authorityTurn = {
           ...proposedAuthorityTurn,
@@ -524,9 +523,8 @@ export function* executeChatTurn(
         }
         throw error;
       }
-      const activeRecord = yield* TurnJournalAuthority.operations.read(
-        interruptCommand.executionId,
-      );
+      const turnJournal = yield* createTurnJournal(interruptCommand.executionId);
+      const activeRecord = yield* turnJournal.read();
       if (!activeRecord || activeRecord.format === "sweatpants.terminal-execution.v1") {
         return yield* createConversationCommandErrorResponse({
           conversationId: requestedConversationId,

@@ -233,9 +233,7 @@ export function* composeChatExecutionRuntime(
         );
       },
       *journalIdentity() {
-        return yield* journal.withAuthority((authority) =>
-          authority.query({ type: "authority.identity" }),
-        );
+        return yield* journal.query({ type: "authority.identity" });
       },
       sourceResolver: modelContextSourceResolver,
     }),
@@ -269,7 +267,9 @@ export function* composeChatExecutionRuntime(
                   },
                   effects: {
                     *route({ authorization, definition }) {
-                      if (kind === "program") return "execution";
+                      if (kind === "program") {
+                        return "execution";
+                      }
                       const routed = yield* DurableEffectRouting.operations.route({
                         definition,
                         effectContractDigest: authorization.effectContractDigest,
@@ -302,7 +302,9 @@ export function* composeChatExecutionRuntime(
       });
 
     if (kind !== "program") {
-      if (environment.native?.setup) yield* environment.native.setup();
+      if (environment.native?.setup) {
+        yield* environment.native.setup();
+      }
       return yield* drive(authority);
     }
     return yield* runWorkflowProgramActivation(
@@ -326,41 +328,40 @@ export function* composeChatExecutionRuntime(
     activationOwnerId?: string,
   ): Operation<AdvancementResult> {
     const rootAttach = { ...attach, executionEpoch };
-    return yield* journal.withAuthority(function* (authority) {
-      return yield* driveWorkflowTree({
-        authority,
-        attach: rootAttach,
-        rootScope: {
-          activate(request) {
-            return activateTask(authority, request, activationOwnerId);
-          },
-          *manifest(program) {
-            const tool = tools.get(exactProgramKey(program));
-            if (!tool) {
-              throw new CrankError(
-                "program_version_unavailable",
-                `No pinned program ${exactProgramKey(program)}`,
-              );
-            }
-            return tool.manifest;
-          },
-          route: routeResolverFn,
-          *settle(parked, currentAttach) {
-            const resolver = parkedPullResolvers.get(parked.reason);
-            if (!resolver) {
-              return false;
-            }
-            yield* settleParkedPull({
-              authority,
-              resolver,
-              attach: currentAttach,
-              pullId: parked.pullId,
-              driverKind: programRouteDriverKind(currentAttach.route),
-            });
-            return true;
-          },
+    const authority = { command: journal.advance, query: journal.query };
+    return yield* driveWorkflowTree({
+      authority,
+      attach: rootAttach,
+      rootScope: {
+        activate(request) {
+          return activateTask(authority, request, activationOwnerId);
         },
-      });
+        *manifest(program) {
+          const tool = tools.get(exactProgramKey(program));
+          if (!tool) {
+            throw new CrankError(
+              "program_version_unavailable",
+              `No pinned program ${exactProgramKey(program)}`,
+            );
+          }
+          return tool.manifest;
+        },
+        route: routeResolverFn,
+        *settle(parked, currentAttach) {
+          const resolver = parkedPullResolvers.get(parked.reason);
+          if (!resolver) {
+            return false;
+          }
+          yield* settleParkedPull({
+            authority,
+            resolver,
+            attach: currentAttach,
+            pullId: parked.pullId,
+            driverKind: programRouteDriverKind(currentAttach.route),
+          });
+          return true;
+        },
+      },
     });
   };
   return { driveTreeAtEpoch, liveMessageIds, endedLiveMessageIds };

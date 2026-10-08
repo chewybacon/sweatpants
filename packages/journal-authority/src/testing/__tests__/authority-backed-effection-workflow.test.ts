@@ -14,8 +14,8 @@ import { type Json, canonicalDigest } from "@sweatpants/foundation";
 import { createCapabilityKeyring } from "../../contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "../../contract/schema-registry.ts";
 import { createSchemaFixture, stringGuard } from "../schema-fixtures.ts";
-import { createInMemoryShellDrivers } from "../../shell/in-memory-shell.ts";
-import { createStoredShellDrivers } from "../../shell/stored-shell.ts";
+import { createInMemoryJournal } from "../../shell/in-memory-journal.ts";
+import { createJournal } from "../../shell/journal.ts";
 import { createMemoryExecutionStore } from "../../store/memory.ts";
 import { AuthorityJournalPort, JournalAuthorityPort } from "../../contract/authority-ports.ts";
 import { projectExecutionForest } from "../../forest/execution-forest.ts";
@@ -106,7 +106,7 @@ function conflictStore(delegate: ExecutionStore): {
   };
 }
 
-function shell(mode: ShellMode) {
+function* shell(mode: ShellMode) {
   const options = {
     journalId: `proof-${mode}`,
     journalIncarnation: "1",
@@ -115,8 +115,8 @@ function shell(mode: ShellMode) {
     now: () => 1_000,
   };
   return mode === "memory"
-    ? createInMemoryShellDrivers(options)
-    : createStoredShellDrivers(createMemoryExecutionStore(), options);
+    ? yield* createInMemoryJournal(options)
+    : yield* createJournal(createMemoryExecutionStore(), options);
 }
 
 function attach(sessionId: string): AttachProgramRequest {
@@ -131,9 +131,9 @@ function attach(sessionId: string): AttachProgramRequest {
 }
 
 function* installAndOpen(mode: ShellMode, request: AttachProgramRequest): Operation<string> {
-  const drivers = shell(mode);
-  yield* JournalAuthorityPort.installDriver(drivers.authority);
-  yield* AuthorityJournalPort.installDriver(drivers.journal);
+  const drivers = yield* shell(mode);
+  yield* JournalAuthorityPort.installDriver({ command: drivers.advance, query: drivers.query });
+  yield* AuthorityJournalPort.installDriver(drivers);
   const opened = yield* JournalAuthorityPort.api.operations.command({
     type: "execution.open-task",
     request: {
@@ -446,17 +446,18 @@ describe("authority-backed Effection Workflow proof", () => {
   it("reevaluates reservation and resolution after stored CAS conflicts", async () => {
     const request = attach("stored-cas");
     const controlled = conflictStore(createMemoryExecutionStore());
-    const drivers = createStoredShellDrivers(controlled.store, {
-      journalId: "proof-stored-cas",
-      journalIncarnation: "1",
-      keyring,
-      schemaRegistry: schemaRegistry(),
-      now: () => 1_000,
-    });
     let closureRuns = 0;
     await run(function* () {
-      yield* JournalAuthorityPort.installDriver(drivers.authority);
-      yield* AuthorityJournalPort.installDriver(drivers.journal);
+      const drivers = yield* createJournal(controlled.store, {
+        journalId: "proof-stored-cas",
+        journalIncarnation: "1",
+        keyring,
+        schemaRegistry: schemaRegistry(),
+        now: () => 1_000,
+      });
+
+      yield* JournalAuthorityPort.installDriver({ command: drivers.advance, query: drivers.query });
+      yield* AuthorityJournalPort.installDriver(drivers);
       const opened = yield* JournalAuthorityPort.api.operations.command({
         type: "execution.open-task",
         request: {
@@ -796,7 +797,9 @@ describe("authority-backed Effection Workflow proof", () => {
           type: "record-attempt-completed",
           outcome: { status: "ok", value: "value" },
         });
-        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
+        if (attempted.type !== "record-attempt-completed") {
+          throw new Error("attempt missing");
+        }
         const terminal = yield* handle.exchange({
           type: "resume-record",
           actionIndex: 0,
@@ -856,7 +859,9 @@ describe("authority-backed Effection Workflow proof", () => {
           type: "record-attempt-completed",
           outcome: { status: "error", error: { code: "lost_settlement" } },
         });
-        if (attempted.type !== "record-attempt-completed") throw new Error("attempt missing");
+        if (attempted.type !== "record-attempt-completed") {
+          throw new Error("attempt missing");
+        }
         const terminal = yield* handle.exchange({
           type: "resume-record",
           actionIndex: 0,

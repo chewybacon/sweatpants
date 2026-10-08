@@ -16,47 +16,29 @@ export type ExecutionCommitDecision<Result> =
       readonly journalSegments?: readonly StoredPrivateSegment[];
       readonly replaySegments?: readonly StoredPrivateSegment[];
       readonly objects?: readonly StoredExecutionObject[];
-      readonly onCommitted?: (control: ExecutionControl) => void;
       readonly result: Result;
     };
 
-/** The sole bounded execution-control CAS loop. */
+export type ExecutionCommitOutcome<Result> =
+  | { readonly status: "returned"; readonly result: Result }
+  | {
+      readonly status: "committed";
+      readonly result: Result;
+      readonly control: ExecutionControl;
+    };
+
+/** The sole bounded execution-control CAS loop. Returns only the winning decision. */
 export function* runExecutionCommitLoop<Result>(
   store: Pick<ExecutionStore, "loadControl" | "commitExecution">,
   executionId: string,
   evaluate: (current: ExecutionControl | null) => Operation<ExecutionCommitDecision<Result>>,
   maximumAttempts = 64,
-  initialControl?: ExecutionControl,
-): Operation<Result> {
+): Operation<ExecutionCommitOutcome<Result>> {
   for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
-    const optimistic = attempt === 0 && initialControl !== undefined;
-    const current = optimistic ? initialControl : yield* store.loadControl(executionId);
-    let decision: ExecutionCommitDecision<Result>;
-    try {
-      decision = yield* evaluate(current);
-    } catch (error) {
-      if (!optimistic) throw error;
-      const latest = yield* store.loadControl(executionId);
-      if (
-        latest?.controlRevision === current?.controlRevision &&
-        latest?.ownerFence === current?.ownerFence
-      )
-        throw error;
-      // The rejection described a replaced view. Reevaluate the actual state;
-      // a genuine rejection against that state is still surfaced to the caller.
-      continue;
-    }
+    const current = yield* store.loadControl(executionId);
+    const decision = yield* evaluate(current);
     if (decision.status === "return") {
-      // No CAS will check a no-op, so confirm the read before returning it.
-      if (optimistic) {
-        const latest = yield* store.loadControl(executionId);
-        if (
-          latest?.controlRevision !== current?.controlRevision ||
-          latest?.ownerFence !== current?.ownerFence
-        )
-          continue;
-      }
-      return decision.result;
+      return { status: "returned", result: decision.result };
     }
     const committed = yield* store.commitExecution({
       executionId,
@@ -69,10 +51,9 @@ export function* runExecutionCommitLoop<Result>(
       updatedAt: Date.now(),
     });
     if (committed.status === "committed") {
-      decision.onCommitted?.(committed.control);
-      return decision.result;
+      return { status: "committed", result: decision.result, control: committed.control };
     }
-    if (committed.status === "stale_owner" && !optimistic) {
+    if (committed.status === "stale_owner") {
       throw new CrankError("stale_owner", `Execution ${executionId} lost its owner fence`);
     }
   }

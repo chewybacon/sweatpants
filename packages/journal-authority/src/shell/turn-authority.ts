@@ -8,12 +8,11 @@ import {
   type StoredJson,
   type TerminalCapsule,
 } from "@sweatpants/durable-execution";
-import { call, type Operation } from "effection";
+import { call, resource, type Operation } from "effection";
 import {
   createContentAddressedExecutionObject,
   createPrivateSegment,
 } from "../store/store-persistence.ts";
-import { createApi } from "effection/experimental";
 import { ExecutionStoreApi } from "../api.ts";
 import { AcceptedProjectionFactStore } from "../store/fact-store.ts";
 import { inlineControl, runExecutionCommitLoop } from "../store/commit-loop.ts";
@@ -30,7 +29,6 @@ import type {
 import { ExecutionStoreError } from "../store/store.ts";
 
 export interface OpenAuthorityTurnRequest {
-  readonly executionId: string;
   readonly sessionId: string;
   readonly turnId: string;
   readonly rootTaskId: string;
@@ -38,7 +36,6 @@ export interface OpenAuthorityTurnRequest {
 }
 
 export interface CompleteAuthorityTurnRequest {
-  readonly executionId: string;
   readonly outcome: StoredJson;
   readonly disposition: TerminalCapsule["disposition"];
   readonly completedAt: number;
@@ -61,127 +58,207 @@ interface TurnControlPayload {
   readonly journalHead: PrivateSegmentPointer | null;
 }
 
-export const TurnJournalAuthority = createApi("turn-journal-authority", {
-  *open(request: OpenAuthorityTurnRequest): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
-    return yield* runExecutionCommitLoop(
-      ExecutionStoreApi.operations,
-      request.executionId,
-      function* (current) {
-        if (current) {
-          const record = yield* loadRecord(current);
-          assertIdentity(record, request);
-          return { status: "return", result: record };
-        }
-        const snapshot = initialSnapshot(request);
-        return {
-          status: "commit",
-          next: yield* controlForRecord(snapshot, "0", null),
-          result: snapshot,
-        };
-      },
-    );
-  },
+export interface TurnJournal {
+  open(request: OpenAuthorityTurnRequest): Operation<ExecutionTreeSnapshot | TerminalCapsule>;
+  complete(request: CompleteAuthorityTurnRequest): Operation<TerminalCapsule>;
+  read(): Operation<ExecutionTreeSnapshot | TerminalCapsule | null>;
+  readAcceptedFacts(capsule: TerminalCapsule): Operation<readonly ProjectionFactEnvelope[]>;
+  markPublished(): Operation<TerminalCapsule>;
+}
 
-  *complete(request: CompleteAuthorityTurnRequest): Operation<TerminalCapsule> {
-    return yield* runExecutionCommitLoop(
-      ExecutionStoreApi.operations,
-      request.executionId,
-      function* (current) {
-        if (!current) {
-          throw new TurnAuthorityBoundaryError(`Execution ${request.executionId} is not open`);
-        }
-        const parsed = parseTurnControl(current.control);
-        const record = yield* loadRecord(current);
-        if (record.format === "sweatpants.terminal-execution.v1") {
-          return { status: "return", result: requireTerminalCapsule(record) };
-        }
-        assertFacts(record, request.facts);
-        const facts = yield* AcceptedProjectionFactStore.operations.put({
-          executionId: request.executionId,
-          facts: request.facts,
-        });
-        const withFrontier: ExecutionTreeSnapshot = {
-          ...record,
-          unpublishedProjection: { throughSequence: request.facts.length, facts },
-        };
-        const decision = completeRoot(withFrontier, {
-          outcome: request.outcome,
-          disposition: request.disposition,
-          finalRevision: capsuleRevision(current.controlRevision),
-          completedAt: request.completedAt,
-        });
-        const capsule = decision.next as TerminalCapsule;
-        const journalSegments = yield* privateSegments(
-          request.executionId,
-          "authority",
-          parsed.journalHead,
-          decision.privateRecords,
-          request.completedAt,
-        );
-        const journalHead =
-          journalSegments.at(-1) === undefined
-            ? parsed.journalHead
-            : {
-                segmentId: journalSegments.at(-1)!.segmentId,
-                lastSequence: journalSegments.at(-1)!.lastSequence,
-              };
-        return {
-          status: "commit",
-          next: yield* controlForRecord(capsule, current.ownerFence, journalHead),
-          ...(journalSegments.length > 0 ? { journalSegments } : {}),
-          result: capsule,
-        };
-      },
-    );
-  },
+/** Own one execution's admitted record for the caller's Effection lifetime. */
+export function* createTurnJournal(executionId: string): Operation<TurnJournal> {
+  return yield* resource<TurnJournal>(function* (provide) {
+    let active = true;
+    let accepted:
+      | { control: ExecutionControl; record: ExecutionTreeSnapshot | TerminalCapsule }
+      | undefined;
 
-  *read(executionId: string): Operation<TerminalCapsule | ExecutionTreeSnapshot | null> {
-    const current = yield* ExecutionStoreApi.operations.loadControl(executionId);
-    if (!current) return null;
-    const record = yield* loadRecord(current);
-    return record.format === "sweatpants.terminal-execution.v1"
-      ? requireTerminalCapsule(record)
-      : record;
-  },
-
-  *readAcceptedFacts(capsule: TerminalCapsule): Operation<readonly ProjectionFactEnvelope[]> {
-    if (capsule.projection.throughSequence === 0) return [];
-    if (!capsule.projection.facts) {
-      throw new TurnAuthorityBoundaryError("Terminal Capsule fact frontier has no reference");
+    function assertOpen(): void {
+      if (!active) {
+        throw new TurnAuthorityBoundaryError("Turn journal owning scope has exited");
+      }
     }
-    const facts = yield* AcceptedProjectionFactStore.operations.read({
-      executionId: capsule.executionId,
-      frontier: capsule.projection,
-    });
-    assertFacts(capsule, facts);
-    return facts;
-  },
 
-  *markPublished(executionId: string): Operation<TerminalCapsule> {
-    return yield* runExecutionCommitLoop(
-      ExecutionStoreApi.operations,
-      executionId,
-      function* (current) {
-        if (!current) {
-          throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not terminal`);
+    function* loadRecord(
+      control: ExecutionControl,
+    ): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
+      if (
+        accepted?.control.controlRevision === control.controlRevision &&
+        accepted.control.ownerFence === control.ownerFence &&
+        parseTurnControl(accepted.control.control).recordObjectId ===
+          parseTurnControl(control.control).recordObjectId
+      ) {
+        return accepted.record;
+      }
+      const record = yield* readStoredRecord(control);
+      assertOpen();
+      accepted = { control, record };
+      return record;
+    }
+
+    const journal: TurnJournal = {
+      *open(input: OpenAuthorityTurnRequest): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
+        assertOpen();
+        const request = structuredClone(input);
+        const outcome = yield* runExecutionCommitLoop(
+          ExecutionStoreApi.operations,
+          executionId,
+          function* (current) {
+            if (current) {
+              const record = yield* loadRecord(current);
+              assertIdentity(record, { ...request, executionId });
+              return { status: "return", result: record };
+            }
+            const snapshot = initialSnapshot({ ...request, executionId });
+            return {
+              status: "commit",
+              next: yield* controlForRecord(snapshot, "0", null),
+              result: snapshot,
+            };
+          },
+        );
+        assertOpen();
+        if (outcome.status === "committed") {
+          accepted = { control: outcome.control, record: outcome.result };
         }
-        const parsed = parseTurnControl(current.control);
-        const capsule = requireTerminalCapsule(yield* loadRecord(current));
-        if (capsule.publication === "published") {
-          return { status: "return", result: capsule };
-        }
-        const next: TerminalCapsule = { ...capsule, publication: "published" };
-        return {
-          status: "commit",
-          next: yield* controlForRecord(next, current.ownerFence, parsed.journalHead),
-          result: next,
-        };
+        return structuredClone(outcome.result);
       },
-    );
-  },
-});
 
-function initialSnapshot(request: OpenAuthorityTurnRequest): ExecutionTreeSnapshot {
+      *complete(input: CompleteAuthorityTurnRequest): Operation<TerminalCapsule> {
+        assertOpen();
+        const request = structuredClone(input);
+        const outcome = yield* runExecutionCommitLoop(
+          ExecutionStoreApi.operations,
+          executionId,
+          function* (current) {
+            if (!current) {
+              throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not open`);
+            }
+            const parsed = parseTurnControl(current.control);
+            const record = yield* loadRecord(current);
+            if (record.format === "sweatpants.terminal-execution.v1") {
+              return { status: "return", result: requireTerminalCapsule(record) };
+            }
+            assertFacts(record, request.facts);
+            const facts = yield* AcceptedProjectionFactStore.operations.put({
+              executionId,
+              facts: request.facts,
+            });
+            const withFrontier: ExecutionTreeSnapshot = {
+              ...record,
+              unpublishedProjection: { throughSequence: request.facts.length, facts },
+            };
+            const decision = completeRoot(withFrontier, {
+              outcome: request.outcome,
+              disposition: request.disposition,
+              finalRevision: capsuleRevision(current.controlRevision),
+              completedAt: request.completedAt,
+            });
+            const capsule = decision.next as TerminalCapsule;
+            const journalSegments = yield* privateSegments(
+              executionId,
+              "authority",
+              parsed.journalHead,
+              decision.privateRecords,
+              request.completedAt,
+            );
+            const journalHead =
+              journalSegments.at(-1) === undefined
+                ? parsed.journalHead
+                : {
+                    segmentId: journalSegments.at(-1)!.segmentId,
+                    lastSequence: journalSegments.at(-1)!.lastSequence,
+                  };
+            return {
+              status: "commit",
+              next: yield* controlForRecord(capsule, current.ownerFence, journalHead),
+              ...(journalSegments.length > 0 ? { journalSegments } : {}),
+              result: capsule,
+            };
+          },
+        );
+        assertOpen();
+        if (outcome.status === "committed") {
+          accepted = { control: outcome.control, record: outcome.result };
+        }
+        return structuredClone(outcome.result);
+      },
+
+      *read(): Operation<TerminalCapsule | ExecutionTreeSnapshot | null> {
+        assertOpen();
+        const current = yield* ExecutionStoreApi.operations.loadControl(executionId);
+        assertOpen();
+        if (!current) {
+          accepted = undefined;
+          return null;
+        }
+        const record = yield* loadRecord(current);
+        return structuredClone(record);
+      },
+
+      *readAcceptedFacts(capsule: TerminalCapsule): Operation<readonly ProjectionFactEnvelope[]> {
+        assertOpen();
+        if (capsule.executionId !== executionId) {
+          throw new TurnAuthorityBoundaryError("Capsule belongs to another execution");
+        }
+        if (capsule.projection.throughSequence === 0) {
+          return [];
+        }
+        if (!capsule.projection.facts) {
+          throw new TurnAuthorityBoundaryError("Terminal Capsule fact frontier has no reference");
+        }
+        const facts = yield* AcceptedProjectionFactStore.operations.read({
+          executionId: capsule.executionId,
+          frontier: capsule.projection,
+        });
+        assertOpen();
+        assertFacts(capsule, facts);
+        return facts;
+      },
+
+      *markPublished(): Operation<TerminalCapsule> {
+        assertOpen();
+        const outcome = yield* runExecutionCommitLoop(
+          ExecutionStoreApi.operations,
+          executionId,
+          function* (current) {
+            if (!current) {
+              throw new TurnAuthorityBoundaryError(`Execution ${executionId} is not terminal`);
+            }
+            const parsed = parseTurnControl(current.control);
+            const capsule = requireTerminalCapsule(yield* loadRecord(current));
+            if (capsule.publication === "published") {
+              return { status: "return", result: capsule };
+            }
+            const next: TerminalCapsule = { ...capsule, publication: "published" };
+            return {
+              status: "commit",
+              next: yield* controlForRecord(next, current.ownerFence, parsed.journalHead),
+              result: next,
+            };
+          },
+        );
+        assertOpen();
+        if (outcome.status === "committed") {
+          accepted = { control: outcome.control, record: outcome.result };
+        }
+        return structuredClone(outcome.result);
+      },
+    };
+
+    try {
+      yield* provide(journal);
+    } finally {
+      active = false;
+      accepted = undefined;
+    }
+  });
+}
+
+function initialSnapshot(
+  request: OpenAuthorityTurnRequest & { executionId: string },
+): ExecutionTreeSnapshot {
   return {
     format: "sweatpants.execution-tree.v1",
     executionId: request.executionId,
@@ -224,7 +301,9 @@ function parseTurnControl(value: Json): TurnControlPayload {
 }
 
 function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) {
+    return null;
+  }
   if (
     typeof value !== "object" ||
     Array.isArray(value) ||
@@ -239,7 +318,7 @@ function parsePrivatePointer(value: unknown): PrivateSegmentPointer | null {
   };
 }
 
-function* loadRecord(
+function* readStoredRecord(
   control: ExecutionControl,
 ): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
   const parsed = parseTurnControl(control.control);
@@ -268,7 +347,9 @@ function parseStoredRecord(
     return value as unknown as ExecutionTreeSnapshot;
   }
   const parsed = terminalCapsuleParser.parse(value);
-  if (parsed.ok) return parsed.value;
+  if (parsed.ok) {
+    return parsed.value;
+  }
   throw new TurnAuthorityBoundaryError(`Execution ${executionId} control record is invalid`);
 }
 
@@ -302,7 +383,9 @@ function* controlForRecord(
 
 function assertIdentity(
   record: ExecutionTreeSnapshot | TerminalCapsule,
-  expected: Pick<OpenAuthorityTurnRequest, "executionId" | "sessionId" | "turnId" | "rootTaskId">,
+  expected: Pick<OpenAuthorityTurnRequest, "sessionId" | "turnId" | "rootTaskId"> & {
+    executionId: string;
+  },
 ): void {
   if (
     record.executionId !== expected.executionId ||
@@ -331,9 +414,10 @@ function assertFacts(
 }
 
 function requireTerminalCapsule(value: ExecutionTreeSnapshot | TerminalCapsule): TerminalCapsule {
-  const parsed = terminalCapsuleParser.parse(value);
-  if (!parsed.ok) throw new TurnAuthorityBoundaryError("Stored Terminal Capsule is invalid");
-  return parsed.value;
+  if (value.format !== "sweatpants.terminal-execution.v1") {
+    throw new TurnAuthorityBoundaryError("Stored Terminal Capsule is invalid");
+  }
+  return value;
 }
 
 function capsuleRevision(controlRevision: string): number {
@@ -389,7 +473,9 @@ function* privateSegments(
   createdAt: number,
   target: PrivateSegmentTarget = DEFAULT_PRIVATE_SEGMENT_TARGET,
 ): Operation<StoredPrivateSegment[]> {
-  if (entries.length === 0) return [];
+  if (entries.length === 0) {
+    return [];
+  }
   const segments: StoredPrivateSegment[] = [];
   let cursor = previous;
   for (const batch of segmentPrivateEntries(entries, target)) {

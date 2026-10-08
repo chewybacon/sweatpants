@@ -2,6 +2,7 @@ import { CrankError, assertInlineSize } from "@sweatpants/durable-execution";
 import type { Json } from "@sweatpants/foundation";
 
 import type {
+  PullState,
   AuthorityCommand,
   AuthorityDecisionFrame,
   AuthorityQuery,
@@ -53,6 +54,11 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
 ): QueryResult<Q> {
   let result: unknown;
   switch (query.type) {
+    case "control.activation-status": {
+      const lease = state.sessions.get(query.sessionId)?.control.activationLease;
+      result = { remainingMs: Math.max(0, (lease?.expiresAtMs ?? 0) - context.nowMs) };
+      break;
+    }
     case "authority.identity":
       result = { ...context.journalIdentity };
       break;
@@ -128,7 +134,7 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
 
 function matchesModelPreparationOwner(
   task: TaskState,
-  pull: import("../contract/authority-contract.ts").PullState,
+  pull: PullState,
   expectedOwnerFence: string,
 ): boolean {
   const attempt = currentAttempt(pull);
@@ -143,14 +149,17 @@ function authorizeModelDispatch(
   request: AuthorizeModelDispatchRequest,
 ): AuthorizeModelDispatchResult {
   const found = findTaskPullById(state, request.taskId, request.pullId);
-  if (found === undefined) return { status: "pull_not_pending" };
+  if (found === undefined) {
+    return { status: "pull_not_pending" };
+  }
   const [, task, pull] = found;
   if (
     task.lifecycle.status !== "active" ||
     pull.resolution.status !== "open" ||
     pull.resolution.revoked
-  )
+  ) {
     return { status: "pull_not_pending" };
+  }
   if (!isModelSampleDescriptor(pull.request.proposedDescriptor)) {
     return { status: "identity_conflict" };
   }
@@ -158,8 +167,12 @@ function authorizeModelDispatch(
     return { status: "stale_owner" };
   }
   const preparation = pull.acceptedFacts.preparation;
-  if (preparation === undefined) return { status: "not_prepared" };
-  if (preparation.executionId !== request.executionId) return { status: "identity_conflict" };
+  if (preparation === undefined) {
+    return { status: "not_prepared" };
+  }
+  if (preparation.executionId !== request.executionId) {
+    return { status: "identity_conflict" };
+  }
   if (preparation.invocationDigest !== request.invocationDigest) {
     return {
       status: "identity_conflict",
@@ -180,7 +193,9 @@ function validateElicitResponse(
   request: ValidateElicitResponseRequest,
 ): ValidateElicitResponseResult {
   const found = findPullById(state, request.pullId);
-  if (found === undefined) return { status: "not_pending" };
+  if (found === undefined) {
+    return { status: "not_pending" };
+  }
   const [sessionId, task, pull] = found;
   if (
     sessionId !== request.sessionId ||
@@ -188,9 +203,12 @@ function validateElicitResponse(
     pull.request.proposedDescriptor.kind !== "elicit" ||
     pull.resolution.status !== "open" ||
     pull.resolution.revoked
-  )
+  ) {
     return { status: "not_pending" };
-  if (request.participantId !== pullAudience(pull)) return { status: "audience_invalid" };
+  }
+  if (request.participantId !== pullAudience(pull)) {
+    return { status: "audience_invalid" };
+  }
   const descriptorContext = pull.request.proposedDescriptor.context;
   if (
     descriptorContext !== null &&
@@ -202,11 +220,14 @@ function validateElicitResponse(
       typeof expiresAt === "string" &&
       Number.isFinite(Date.parse(expiresAt)) &&
       context.nowMs >= Date.parse(expiresAt)
-    )
+    ) {
       return { status: "expired" };
+    }
   }
   const envelope = parseProgramElicitResult(request.completion);
-  if (envelope === undefined) return { status: "schema_validation_failed" };
+  if (envelope === undefined) {
+    return { status: "schema_validation_failed" };
+  }
   let value: Json;
   if (envelope.action === "accept") {
     const validated = parseRegisteredSchema(
@@ -214,8 +235,12 @@ function validateElicitResponse(
       pull.request.resultSchemaDigest,
       envelope.content,
     );
-    if (validated.status === "unavailable") return { status: "schema_version_unavailable" };
-    if (validated.status !== "ok") return { status: "schema_validation_failed" };
+    if (validated.status === "unavailable") {
+      return { status: "schema_version_unavailable" };
+    }
+    if (validated.status !== "ok") {
+      return { status: "schema_validation_failed" };
+    }
     value = { action: "accept", content: validated.value };
   } else {
     const reason = sanitizeCancellationReason(
@@ -240,8 +265,12 @@ function nonterminalSchemaDigests(state: AuthorityState): string[] {
   const result = new Set<string>();
   for (const session of state.sessions.values()) {
     for (const task of session.execution.tasks.values()) {
-      if (task.lifecycle.status !== "active") continue;
-      for (const digest of manifestSchemaDigests(task.program.manifest)) result.add(digest);
+      if (task.lifecycle.status !== "active") {
+        continue;
+      }
+      for (const digest of manifestSchemaDigests(task.program.manifest)) {
+        result.add(digest);
+      }
       for (const action of task.actions) {
         if (action.kind === "pull" && action.pull.resolution.status === "open") {
           result.add(action.pull.request.resultSchemaDigest);
@@ -259,8 +288,9 @@ function recoverableSessions(state: AuthorityState, now: number): RecoverableSes
       session.control.runnable &&
       (session.control.activationNotBeforeMs === undefined ||
         now >= session.control.activationNotBeforeMs)
-    )
+    ) {
       result.set(id, { sessionId: id, reason: "runnable" });
+    }
     if (
       session.control.activationLease !== undefined &&
       now >= session.control.activationLease.expiresAtMs
@@ -274,7 +304,9 @@ function recoverableSessions(state: AuthorityState, now: number): RecoverableSes
 /** Turn identity is admitted data; task-id text is never parsed. */
 function rootTaskCount(state: AuthorityState, sessionId: string): number {
   const session = state.sessions.get(sessionId);
-  if (session === undefined) return 0;
+  if (session === undefined) {
+    return 0;
+  }
   return (
     session.control.nextRootOrdinal ??
     [...session.execution.tasks.values()].filter((task) => task.origin.kind === "root").length
@@ -309,7 +341,9 @@ function operationState(
   const action = task?.actions.find(
     (candidate) => candidate.kind === "pull" && candidate.pull.pullId === pullId,
   );
-  if (action?.kind !== "pull") return { status: "not_found" };
+  if (action?.kind !== "pull") {
+    return { status: "not_found" };
+  }
   return {
     status: "found",
     descriptor: structuredClone(action.pull.request.proposedDescriptor),

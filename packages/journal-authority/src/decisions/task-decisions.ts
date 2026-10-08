@@ -12,6 +12,7 @@ import {
   cloneJson,
 } from "@sweatpants/foundation";
 import type { AuthorityState } from "../contract/authority-contract.ts";
+import { parseDurableProgramManifest } from "../store/durable-authority-snapshot-schema.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
 import { pullById, terminalOutcome, type DraftTask } from "./decision-state.ts";
@@ -35,11 +36,15 @@ import type {
 
 export function openTask(
   draft: DecisionDraft,
-  request: OpenDurableTaskRequest,
+  supplied: OpenDurableTaskRequest,
 ): { programCapability: string } {
+  // Manifest schemas may normalize their representation. Admit them at task
+  // creation so the owned state and its persisted projection already agree.
+  const request = { ...supplied, manifest: parseDurableProgramManifest(supplied.manifest) };
   const session = draft.session(request.sessionId);
-  if (session.execution.tasks.has(request.taskId))
+  if (session.execution.tasks.has(request.taskId)) {
     throw new CrankError("invalid_journal", "Task already exists");
+  }
   const input = draft.parseSchema(
     request.manifest.inputSchema.digest,
     request.input,
@@ -59,9 +64,12 @@ export function openTask(
     (typeof catalog !== "object" ||
       Array.isArray(catalog) ||
       (catalog as Record<string, Json>)["digest"] !== request.catalogDigest)
-  )
+  ) {
     throw new CrankError("invalid_manifest", "Accepted catalog digest differs");
-  if (catalog !== undefined) assertInlineSize(catalog, draft.maxOutcomeBytes);
+  }
+  if (catalog !== undefined) {
+    assertInlineSize(catalog, draft.maxOutcomeBytes);
+  }
   const origin = request.parentTaskId
     ? {
         kind: "child" as const,
@@ -92,7 +100,7 @@ export function openTask(
         version: request.manifest.version,
         digest: request.manifest.digest,
       },
-      manifest: structuredClone(request.manifest),
+      manifest: request.manifest,
       input,
     },
     execution: taskExecution(request, catalog),
@@ -144,8 +152,9 @@ export function bindAttachment(
   const task = draft.task(request.sessionId, request.taskId);
   draft.assertActive(task);
   session.control.runnable = false;
-  if (task.execution.epoch !== request.executionEpoch)
+  if (task.execution.epoch !== request.executionEpoch) {
     throw new CrankError("stale_program_capability");
+  }
   if (task.execution.attachmentId !== request.attachmentId) {
     kernel.detachAttempts(request.sessionId, task, "attachment_replaced");
     task.execution.attachmentId = request.attachmentId;
@@ -310,7 +319,9 @@ export function replaceAttachment(
   kernel.detachAttempts(request.sessionId, task, "attachment_replaced");
   task.execution.epoch += 1;
   task.execution.attachmentId = request.attachmentId;
-  if (request.audience !== undefined) task.execution.audience = request.audience;
+  if (request.audience !== undefined) {
+    task.execution.audience = request.audience;
+  }
   return { executionEpoch: task.execution.epoch, programCapability: draft.programCapability(task) };
 }
 
@@ -330,8 +341,9 @@ export function ensureChild(
     expected.version !== request.child.version ||
     expected.digest !== request.child.digest ||
     canonicalJson(expected.input) !== canonicalJson(request.child.input)
-  )
+  ) {
     throw new CrankError("nondeterminism_detected", "Child descriptor differs from parent pull");
+  }
   const existing = [...draft.session(request.sessionId).execution.tasks.values()].find(
     (task) =>
       task.origin.kind === "child" &&

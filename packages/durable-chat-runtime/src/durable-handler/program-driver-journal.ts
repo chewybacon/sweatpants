@@ -4,7 +4,9 @@ import {
   AuthorityJournalPort,
   JournalAuthorityPort,
   createCapabilityKeyring,
-  createStoredJournalAuthority,
+  createJournal,
+  installJournal,
+  type Journal,
   type AcceptAssistantPartialRequest,
   type AcceptAssistantPartialResult,
   type AcceptPullPreparationRequest,
@@ -24,7 +26,7 @@ import {
   type ValidateElicitResponseRequest,
   type ValidateElicitResponseResult,
 } from "@sweatpants/journal-authority";
-import { installExecutionStore } from "@sweatpants/journal-authority/api";
+import { ExecutionStorePort, installExecutionStore } from "@sweatpants/journal-authority/api";
 import type { ExecutionStore } from "@sweatpants/journal-authority/store";
 import {
   createDurableSchemaRegistry,
@@ -48,7 +50,8 @@ export function programDriverSchemaRegistry(
 /** Conversation-scoped composition and narrow host operations. */
 export interface ProgramDriverJournal {
   install(): Operation<void>;
-  withAuthority<T>(operation: (authority: JournalAuthorityContract) => Operation<T>): Operation<T>;
+  advance: Journal["advance"];
+  query: Journal["query"];
   openTask(request: OpenDurableTaskRequest): Operation<{ readonly programCapability: string }>;
   executionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   recoveryState(sessionId: string, requestedTaskId?: string): Operation<DurableTaskRecoveryState>;
@@ -137,12 +140,14 @@ export function createProgramDriverJournalStore(
         schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
       };
 
-      const authorityInstance = yield* createStoredJournalAuthority(authorityOptions);
+      const owned = yield* createJournal(ExecutionStorePort.api.operations, authorityOptions);
       const install = function* (): Operation<void> {
         yield* installExecutionStore(executionStore);
-        yield* authorityInstance.install();
+        yield* installJournal(owned);
       };
-      const withAuthority = function* <T>(
+      // Selecting a journal installs its storage and port drivers in a child scope.
+      // This preserves caller middleware and permits independent journals in one caller.
+      const dispatch = function* <T>(
         operation: (authority: JournalAuthorityContract) => Operation<T>,
       ): Operation<T> {
         return yield* scoped(function* () {
@@ -152,103 +157,85 @@ export function createProgramDriverJournalStore(
         });
       };
 
-      return {
+      const journal: ProgramDriverJournal = {
         install,
-        withAuthority,
+        *advance(command) {
+          return yield* dispatch((authority) => authority.command(command));
+        },
+        *query(query) {
+          return yield* dispatch((authority) => authority.query(query));
+        },
         *openTask(request) {
-          return yield* withAuthority((authority) =>
-            authority.command({ type: "execution.open-task", request }),
-          );
+          return yield* journal.advance({ type: "execution.open-task", request });
         },
         *executionState(sessionId, taskId) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "task.execution-state", sessionId, taskId }),
-          );
+          return yield* journal.query({ type: "task.execution-state", sessionId, taskId });
         },
         *recoveryState(sessionId, requestedTaskId) {
-          return yield* withAuthority((authority) =>
-            authority.query({
-              type: "task.recovery-state",
-              sessionId,
-              ...(requestedTaskId !== undefined ? { taskId: requestedTaskId } : {}),
-            }),
-          );
+          return yield* journal.query({
+            type: "task.recovery-state",
+            sessionId,
+            ...(requestedTaskId !== undefined ? { taskId: requestedTaskId } : {}),
+          });
         },
         *rootTaskCount(sessionId) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "session.root-task-count", sessionId }),
-          );
+          return yield* journal.query({ type: "session.root-task-count", sessionId });
         },
         *operationState(sessionId, taskId, pullId) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "pull.state", sessionId, taskId, pullId }),
-          );
+          return yield* journal.query({ type: "pull.state", sessionId, taskId, pullId });
         },
         *readJournal(sessionId, rootTaskId) {
           return yield* scoped(function* () {
             yield* install();
-            const journal = yield* AuthorityJournalPort.use();
+            const records = yield* AuthorityJournalPort.use();
             // Journal reads already return detached records at their boundary.
             return [
               ...(rootTaskId
-                ? yield* journal.readTree(sessionId, rootTaskId)
-                : yield* journal.readSession(sessionId)),
+                ? yield* records.readTree(sessionId, rootTaskId)
+                : yield* records.readSession(sessionId)),
             ];
           });
         },
         *requestCancellation(sessionId, taskId, reason, commandId) {
-          yield* withAuthority((authority) =>
-            authority.command({
-              type: "execution.request-cancellation",
-              request: {
-                sessionId,
-                taskId,
-                ...(reason !== undefined ? { reason } : {}),
-                ...(commandId !== undefined ? { commandId } : {}),
-              },
-            }),
-          );
+          yield* journal.advance({
+            type: "execution.request-cancellation",
+            request: {
+              sessionId,
+              taskId,
+              ...(reason !== undefined ? { reason } : {}),
+              ...(commandId !== undefined ? { commandId } : {}),
+            },
+          });
         },
         *resolvePending(request) {
-          return yield* withAuthority(function* (authority) {
-            const capability = yield* authority.query({
-              type: "pull.resolution-capability",
-              sessionId: request.sessionId,
-              taskId: request.taskId,
-              pullId: request.pullId,
-            });
-            return yield* authority.command({
-              type: "execution.resolve-pull",
-              request: { capability, audience: request.audience, outcome: request.outcome },
-            });
+          const capability = yield* journal.query({
+            type: "pull.resolution-capability",
+            sessionId: request.sessionId,
+            taskId: request.taskId,
+            pullId: request.pullId,
+          });
+          return yield* journal.advance({
+            type: "execution.resolve-pull",
+            request: { capability, audience: request.audience, outcome: request.outcome },
           });
         },
         *validateElicitResponse(request) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "pull.validate-elicit-response", request }),
-          );
+          return yield* journal.query({ type: "pull.validate-elicit-response", request });
         },
         *pullPreparation(sessionId, taskId, pullId) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "pull.preparation", sessionId, taskId, pullId }),
-          );
+          return yield* journal.query({ type: "pull.preparation", sessionId, taskId, pullId });
         },
         *acceptPullPreparation(request) {
-          return yield* withAuthority((authority) =>
-            authority.command({ type: "execution.accept-preparation", request }),
-          );
+          return yield* journal.advance({ type: "execution.accept-preparation", request });
         },
         *authorizeModelDispatch(request) {
-          return yield* withAuthority((authority) =>
-            authority.query({ type: "pull.authorize-model-dispatch", request }),
-          );
+          return yield* journal.query({ type: "pull.authorize-model-dispatch", request });
         },
         *acceptAssistantPartial(request) {
-          return yield* withAuthority((authority) =>
-            authority.command({ type: "execution.accept-assistant-partial", request }),
-          );
+          return yield* journal.advance({ type: "execution.accept-assistant-partial", request });
         },
       };
+      return journal;
     },
   };
 }

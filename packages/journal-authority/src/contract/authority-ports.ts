@@ -1,13 +1,14 @@
 import { definePort, type PortFacade } from "@sweatpants/foundation/port";
-import { resource, type Operation } from "effection";
+import type { Operation } from "effection";
 
 import { ExecutionStorePort } from "../api.ts";
 import type { InMemoryJournalAuthorityOptions } from "../state/authority-snapshot.ts";
-import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
+import { createInMemoryJournal } from "../shell/in-memory-journal.ts";
 import {
-  createStoredShellDrivers,
+  createJournal,
+  type Journal,
   type StoredJournalAuthorityOptions,
-} from "../shell/stored-shell.ts";
+} from "../shell/journal.ts";
 import type {
   AuthorityJournalContract,
   AuthoritySnapshotContract,
@@ -46,44 +47,41 @@ export type JournalAuthorityFacade = PortFacade<JournalAuthorityContract>;
 export type AuthorityJournalFacade = PortFacade<AuthorityJournalContract>;
 export type AuthoritySnapshotFacade = PortFacade<AuthoritySnapshotContract>;
 
+/** Read the installed journal capability, retaining current-scope middleware. */
+export function* useJournal(): Operation<Journal> {
+  const authority = yield* JournalAuthorityPort.use();
+  const records = yield* AuthorityJournalPort.use();
+  const snapshot = yield* AuthoritySnapshotPort.use();
+  return {
+    advance: authority.command,
+    query: authority.query,
+    readSession: records.readSession,
+    readTree: records.readTree,
+    exportSnapshot: snapshot.exportSnapshot,
+  };
+}
+
+/** Bind a journal resource at the transport/workflow port boundary. */
+export function* installJournal(journal: Journal): Operation<void> {
+  yield* JournalAuthorityPort.installDriver({
+    command: journal.advance,
+    query: journal.query,
+  });
+  yield* AuthorityJournalPort.installDriver(journal);
+  yield* AuthoritySnapshotPort.installDriver(journal);
+}
+
 export function* installInMemoryJournalAuthority(
   options: InMemoryJournalAuthorityOptions,
 ): Operation<void> {
-  const drivers = createInMemoryShellDrivers(options);
-  yield* JournalAuthorityPort.installDriver(drivers.authority);
-  yield* AuthorityJournalPort.installDriver(drivers.journal);
-  yield* AuthoritySnapshotPort.installDriver(drivers.snapshot);
+  const journal = yield* createInMemoryJournal(options);
+  yield* installJournal(journal);
 }
 
 export function* installStoredJournalAuthority(
   options: StoredJournalAuthorityOptions,
 ): Operation<void> {
-  const authority = yield* createStoredJournalAuthority(options);
-  yield* authority.install();
-}
-
-/** One scope-owned view; child scopes install access without reconstructing it. */
-export function* createStoredJournalAuthority(
-  options: StoredJournalAuthorityOptions,
-): Operation<{ install(): Operation<void> }> {
-  return yield* resource(function* (provide) {
-    // The facade dispatches in the caller's scope, preserving storage middleware
-    // and overrides. It does not capture an installing scope or a raw driver.
-    let drivers: ReturnType<typeof createStoredShellDrivers> | undefined = createStoredShellDrivers(
-      ExecutionStorePort.api.operations,
-      options,
-    );
-    try {
-      yield* provide({
-        *install() {
-          if (!drivers) throw new Error("Journal authority owning scope has exited");
-          yield* JournalAuthorityPort.installDriver(drivers.authority);
-          yield* AuthorityJournalPort.installDriver(drivers.journal);
-          yield* AuthoritySnapshotPort.installDriver(drivers.snapshot);
-        },
-      });
-    } finally {
-      drivers = undefined;
-    }
-  });
+  // The facade resolves storage middleware and overrides in each caller's scope.
+  const journal = yield* createJournal(ExecutionStorePort.api.operations, options);
+  yield* installJournal(journal);
 }

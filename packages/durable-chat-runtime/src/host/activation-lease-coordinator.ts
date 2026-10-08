@@ -1,8 +1,7 @@
-import { CrankError } from "@sweatpants/durable-execution";
-import { race, sleep, type Operation } from "effection";
+import { CrankError, type AdvancementResult } from "@sweatpants/durable-execution";
+import { ensure, race, scoped, sleep, type Operation } from "effection";
 
-import { type JournalAuthorityContract } from "@sweatpants/journal-authority";
-import { type AdvancementResult } from "@sweatpants/durable-execution";
+import type { JournalAuthorityContract } from "@sweatpants/journal-authority";
 
 /** Host coordinator timer; deliberately outside the durable crank implementation. */
 export function* runWithRenewedActivationLease(
@@ -12,20 +11,28 @@ export function* runWithRenewedActivationLease(
   activate: (epoch: number, ownerId: string) => Operation<AdvancementResult>,
   timing: { readonly leaseDurationMs?: number; readonly renewalIntervalMs?: number } = {},
 ): Operation<AdvancementResult> {
-  const leaseDurationMs = timing.leaseDurationMs ?? 30_000;
-  const renewalIntervalMs = timing.renewalIntervalMs ?? 10_000;
-  const claim = yield* authority.command({
-    type: "control.claim-activation",
-    request: { sessionId, ownerId, leaseDurationMs },
-  });
-  if (claim.status === "busy") {
-    throw new CrankError("activation_busy", "Durable activation is owned by another host");
-  }
-  if (claim.status === "not_runnable") {
-    throw new CrankError("activation_busy", "Durable task has no runnable command");
-  }
-  let reason: "parked" | "terminal" | "failed" | "lease_lost" = "failed";
-  try {
+  return yield* scoped(function* () {
+    const leaseDurationMs = timing.leaseDurationMs ?? 30_000;
+    const renewalIntervalMs = timing.renewalIntervalMs ?? 10_000;
+    const claim = yield* authority.command({
+      type: "control.claim-activation",
+      request: { sessionId, ownerId, leaseDurationMs },
+    });
+    if (claim.status === "busy") {
+      throw new CrankError("activation_busy", "Durable activation is owned by another host");
+    }
+    if (claim.status === "not_runnable") {
+      throw new CrankError("activation_busy", "Durable task has no runnable command");
+    }
+    let reason: "parked" | "terminal" | "failed" | "lease_lost" = "failed";
+    // Cleanup belongs to this activation scope. A yielding delegated finally
+    // can resume a cancelled caller with undefined; ensure keeps unwind structural.
+    yield* ensure(function* () {
+      yield* authority.command({
+        type: "control.release-activation",
+        request: { sessionId, ownerId, epoch: claim.epoch, reason },
+      });
+    });
     const outcome = yield* race([
       (function* (): Operation<AdvancementResult> {
         // Retries stay inside the same fenced activation epoch. On the third
@@ -57,10 +64,5 @@ export function* runWithRenewedActivationLease(
     ]);
     reason = outcome.state === "parked" ? "parked" : "terminal";
     return outcome;
-  } finally {
-    yield* authority.command({
-      type: "control.release-activation",
-      request: { sessionId, ownerId, epoch: claim.epoch, reason },
-    });
-  }
+  });
 }

@@ -78,23 +78,17 @@ export function* runProgramDriverChatActivation(
     // host-side activation lease (claim/renew/release). The kernel's
     // epoch-gated bind + session lease state provide zombie protection.
     try {
-      outcome = yield* journal.withAuthority(function* (rootAuthority) {
-        return yield* runFencedActivation(
-          rootAuthority,
-          context.sessionId,
-          attach.executionEpoch,
-          true,
-          function* (claimedEpoch, activationOwnerId) {
-            return yield* execution.driveTreeAtEpoch(claimedEpoch, activationOwnerId);
-          },
-        );
-      });
+      outcome = yield* runFencedActivation(
+        { command: journal.advance, query: journal.query },
+        context.sessionId,
+        attach.executionEpoch,
+        true,
+        function* (claimedEpoch, activationOwnerId) {
+          return yield* execution.driveTreeAtEpoch(claimedEpoch, activationOwnerId);
+        },
+      );
     } catch (error) {
-      if (
-        !(yield* journal.withAuthority((authority) =>
-          isExpectedCancellationFenceLoss(authority, context.sessionId, taskId, error),
-        ))
-      ) {
+      if (!(yield* isExpectedCancellationFenceLoss(journal, context.sessionId, taskId, error))) {
         throw error;
       }
       // A concurrent explicit stop owns journal terminalization. This activation
@@ -121,7 +115,7 @@ export function* runProgramDriverChatActivation(
 let activationOwnerCounter = 0;
 
 function* isExpectedCancellationFenceLoss(
-  authority: JournalAuthorityContract,
+  authority: Pick<JournalAuthorityContract, "query">,
   sessionId: string,
   taskId: string,
   error: unknown,

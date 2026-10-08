@@ -94,18 +94,16 @@ it("reloads after another authority commits, then reuses that validated view", a
     expect((yield* journal.recoveryState("session")).status).toBe("active");
     yield* scoped(function* () {
       const peer = yield* journals.open("session");
-      yield* peer.withAuthority((authority) =>
-        authority.command({
-          type: "execution.complete-task",
-          request: {
-            sessionId: "session",
-            taskId: "root",
-            actionIndex: 0,
-            outcome: { status: "ok", value: "done" },
-            programCapability: opened.programCapability,
-          },
-        }),
-      );
+      yield* peer.advance({
+        type: "execution.complete-task",
+        request: {
+          sessionId: "session",
+          taskId: "root",
+          actionIndex: 0,
+          outcome: { status: "ok", value: "done" },
+          programCapability: opened.programCapability,
+        },
+      });
     });
     let objectReads = 0;
     yield* ExecutionStoreApi.around({
@@ -183,5 +181,51 @@ it("retries an interleaved commit on the same instance without publishing the lo
     ).toEqual(["peer", "root"]);
     const cold = yield* journals.open("session");
     expect(yield* cold.readJournal("session")).toEqual(records);
+  });
+});
+
+it("routes resource operations through caller middleware while selecting each journal's store", async () => {
+  const firstStore = createMemoryExecutionStore();
+  const secondStore = createMemoryExecutionStore();
+  await run(function* () {
+    let advances = 0;
+    let queries = 0;
+    yield* JournalAuthorityPort.api.around({
+      *command([command], next) {
+        advances++;
+        return yield* next(command);
+      },
+      *query([query], next) {
+        queries++;
+        return yield* next(query);
+      },
+    });
+    // Identical journal identities in different stores must never share accepted state.
+    const first = yield* createProgramDriverJournalStore({
+      keyring,
+      executionStore: firstStore,
+    }).open("session");
+    const second = yield* createProgramDriverJournalStore({
+      keyring,
+      executionStore: secondStore,
+    }).open("session");
+    yield* first.advance({ type: "execution.open-task", request });
+    expect(yield* first.query({ type: "session.root-task-count", sessionId: "session" })).toBe(1);
+    expect(yield* second.query({ type: "session.root-task-count", sessionId: "session" })).toBe(0);
+    expect(advances).toBe(1);
+    expect(queries).toBe(2);
+    let childQueries = 0;
+    yield* scoped(function* () {
+      yield* JournalAuthorityPort.api.around({
+        *query([query], next) {
+          childQueries++;
+          return yield* next(query);
+        },
+      });
+      expect(yield* first.rootTaskCount("session")).toBe(1);
+      expect(yield* second.rootTaskCount("session")).toBe(0);
+    });
+    expect(childQueries).toBe(2);
+    expect(queries).toBe(4);
   });
 });

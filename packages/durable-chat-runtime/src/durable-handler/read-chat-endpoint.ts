@@ -8,6 +8,7 @@ import { executeChatTurn } from "./chat-execution.ts";
 import { readChatBody, type PreparedChatRequest } from "./chat-request.ts";
 import { createChatStreamEndpoint } from "./chat-stream-endpoint.ts";
 import { createStoredConversationCheckpointResponse } from "./hydrate-responses.ts";
+import { waitForForeignActivation } from "./reconnect-response.ts";
 import type { DurableChatReadRequest } from "./types.ts";
 
 function* prepareReadChat(input: DurableChatReadRequest): Operation<PreparedChatRequest> {
@@ -31,7 +32,16 @@ export function createReadChatEndpoint(
 ): ScopedEndpoint<DurableChatReadRequest> {
   const { config, projectionTokens } = execution;
   return createChatStreamEndpoint(config, execution.storage, prepareReadChat, function* (context) {
-    const { body, ctx, selectedHead, stores, conversationId: requestedConversationId } = context;
+    const { body, ctx, stores, conversationId: requestedConversationId } = context;
+    const selectedHead = yield* waitForForeignActivation({
+      head: context.selectedHead,
+      signal: context.request.signal,
+      conversationId: requestedConversationId,
+      liveActivations: execution.liveProgramActivations,
+      journalStore: execution.programDriverJournalStore,
+      conversationStore: stores.conversation,
+    });
+    ctx.headers.set("Cache-Control", "private, no-store");
     const storedConversationCheckpoint = selectedHead?.checkpoint
       ? yield* stores.conversation.getCheckpoint(selectedHead.checkpoint)
       : null;
@@ -40,7 +50,6 @@ export function createReadChatEndpoint(
       return yield* createEmptyStream();
     }
 
-    ctx.headers.set("Cache-Control", "private, no-store");
     if (
       selectedHead &&
       storedConversationCheckpoint &&
@@ -62,6 +71,6 @@ export function createReadChatEndpoint(
       });
     }
 
-    return yield* executeChatTurn(execution, context, selectedHead, null);
+    return yield* executeChatTurn(execution, { ...context, selectedHead }, selectedHead, null);
   });
 }

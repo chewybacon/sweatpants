@@ -2,8 +2,8 @@ import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
-import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
-import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import { createInMemoryJournal } from "../shell/in-memory-journal.ts";
+import { createJournal } from "../shell/journal.ts";
 import { authorityStateFromSnapshot } from "../state/authority-state.ts";
 import { createMemoryExecutionStore } from "../store/memory.ts";
 
@@ -27,11 +27,12 @@ for (const backend of ["memory", "stored"] as const) {
   describe(`${backend} semantic head identity`, () => {
     it("survives cold restore and control updates, and fences a ticket after a semantic append", async () => {
       const store = createMemoryExecutionStore();
-      let drivers =
-        backend === "stored"
-          ? createStoredShellDrivers(store, options)
-          : createInMemoryShellDrivers(options);
       await run(function* () {
+        let drivers =
+          backend === "stored"
+            ? yield* createJournal(store, options)
+            : yield* createInMemoryJournal(options);
+
         const open = {
           sessionId: "one",
           turnId: "turn",
@@ -42,11 +43,11 @@ for (const backend of ["memory", "stored"] as const) {
           attachmentId: "attachment",
           audience: "host",
         };
-        const opened = yield* drivers.authority.command({
+        const opened = yield* drivers.advance({
           type: "execution.open-task",
           request: open,
         });
-        const initial = yield* drivers.snapshot.exportSnapshot();
+        const initial = yield* drivers.exportSnapshot();
         const initialHead = initial.sessions[0]![1].control.journalHeadId;
         expect(initialHead).toMatch(
           /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -60,20 +61,19 @@ for (const backend of ["memory", "stored"] as const) {
           "invalid journal head identity",
         );
         // Another session must not advance this session's head.
-        yield* drivers.authority.command({
+        yield* drivers.advance({
           type: "execution.open-task",
           request: { ...open, sessionId: "two" },
         });
         expect(
-          (yield* drivers.authority.query({ type: "forest.replay-plan", sessionId: "one" }))
-            .journalHeadId,
+          (yield* drivers.query({ type: "forest.replay-plan", sessionId: "one" })).journalHeadId,
         ).toBe(initialHead);
-        const claim = yield* drivers.authority.command({
+        const claim = yield* drivers.advance({
           type: "control.claim-activation",
           request: { sessionId: "one", ownerId: "owner" },
         });
         expect(claim).toMatchObject({ status: "claimed", journalHeadId: initialHead });
-        const ticket = yield* drivers.authority.command({
+        const ticket = yield* drivers.advance({
           type: "recovery.issue-ticket",
           request: {
             sessionId: "one",
@@ -84,18 +84,18 @@ for (const backend of ["memory", "stored"] as const) {
             replayChainDigest: "b".repeat(64),
           },
         });
-        yield* drivers.authority.command({
+        yield* drivers.advance({
           type: "control.renew-activation",
           request: { sessionId: "one", ownerId: "owner", epoch: 1 },
         });
-        const saved = yield* drivers.snapshot.exportSnapshot();
+        const saved = yield* drivers.exportSnapshot();
         expect(saved.sessions.find(([id]) => id === "one")![1].control.journalHeadId).toBe(
           initialHead,
         );
         drivers =
           backend === "stored"
-            ? createStoredShellDrivers(store, options)
-            : createInMemoryShellDrivers({ ...options, snapshot: saved });
+            ? yield* createJournal(store, options)
+            : yield* createInMemoryJournal({ ...options, snapshot: saved });
         const bind = {
           sessionId: "one",
           taskId: "root",
@@ -105,9 +105,9 @@ for (const backend of ["memory", "stored"] as const) {
           frontierDigest: "c".repeat(64),
         };
         expect(
-          yield* drivers.authority.command({ type: "recovery.bind-frontier", request: bind }),
+          yield* drivers.advance({ type: "recovery.bind-frontier", request: bind }),
         ).toMatchObject({ status: "bound" });
-        yield* drivers.authority.command({
+        yield* drivers.advance({
           type: "execution.append-emission",
           request: {
             sessionId: "one",
@@ -117,7 +117,7 @@ for (const backend of ["memory", "stored"] as const) {
             descriptor: { eventType: "changed", payload: null },
           },
         });
-        const advanced = yield* drivers.snapshot.exportSnapshot();
+        const advanced = yield* drivers.exportSnapshot();
         expect(advanced.sessions.find(([id]) => id === "one")![1].control.journalHeadId).not.toBe(
           initialHead,
         );
@@ -125,7 +125,7 @@ for (const backend of ["memory", "stored"] as const) {
           saved.sessions.find(([id]) => id === "two")![1].control.journalHeadId,
         );
         expect(
-          yield* drivers.authority.command({ type: "recovery.bind-frontier", request: bind }),
+          yield* drivers.advance({ type: "recovery.bind-frontier", request: bind }),
         ).toMatchObject({ status: "restore_stale" });
       });
     });
@@ -134,10 +134,11 @@ for (const backend of ["memory", "stored"] as const) {
 
 it("publishes the winning head with concurrent journal appends after a control conflict", async () => {
   const store = createMemoryExecutionStore();
-  const peer = createStoredShellDrivers(store, options);
-  let conflict = true;
-  let peerHead: string | null | undefined;
   await run(function* () {
+    const peer = yield* createJournal(store, options);
+    let conflict = true;
+    let peerHead: string | null | undefined;
+
     const open = {
       sessionId: "session",
       turnId: "turn",
@@ -148,13 +149,13 @@ it("publishes the winning head with concurrent journal appends after a control c
       attachmentId: "attachment",
       audience: "host",
     };
-    const initial = yield* peer.authority.command({ type: "execution.open-task", request: open });
+    const initial = yield* peer.advance({ type: "execution.open-task", request: open });
     const measured = {
       ...store,
       *commitExecution(request: Parameters<typeof store.commitExecution>[0]) {
         if (conflict) {
           conflict = false;
-          yield* peer.authority.command({
+          yield* peer.advance({
             type: "execution.append-emission",
             request: {
               sessionId: "session",
@@ -164,23 +165,25 @@ it("publishes the winning head with concurrent journal appends after a control c
               descriptor: { eventType: "peer", payload: null },
             },
           });
-          peerHead = (yield* peer.snapshot.exportSnapshot()).sessions[0]![1].control.journalHeadId;
+          peerHead = (yield* peer.exportSnapshot()).sessions[0]![1].control.journalHeadId;
         }
         return yield* store.commitExecution(request);
       },
     };
-    const contender = createStoredShellDrivers(measured, options);
-    yield* contender.authority.command({
+    const contender = yield* createJournal(measured, options);
+    yield* contender.advance({
       type: "execution.open-task",
       request: { ...open, taskId: "second" },
     });
-    const restarted = createStoredShellDrivers(store, options);
-    const final = yield* restarted.snapshot.exportSnapshot();
+    const restarted = yield* createJournal(store, options);
+    const final = yield* restarted.exportSnapshot();
     expect(final.sessions[0]![1].control.journalHeadId).not.toBe(peerHead);
     expect(final.sessions[0]![1].control.revision).toBe(3);
-    expect(
-      (yield* restarted.journal.readSession("session")).map((record) => record.payload.type),
-    ).toEqual(["TaskOpened", "DurableEmission", "TaskOpened"]);
-    expect(yield* contender.snapshot.exportSnapshot()).toEqual(final);
+    expect((yield* restarted.readSession("session")).map((record) => record.payload.type)).toEqual([
+      "TaskOpened",
+      "DurableEmission",
+      "TaskOpened",
+    ]);
+    expect(yield* contender.exportSnapshot()).toEqual(final);
   });
 });

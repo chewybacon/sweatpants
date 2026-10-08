@@ -1,3 +1,4 @@
+import { scoped } from "effection";
 import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { assertJson } from "@sweatpants/foundation";
 import { ephemeralToolSchemaEntries } from "@sweatpants/tool-session/ephemeral";
@@ -11,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { createCapabilityKeyring, type DurableSemanticRecord } from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
+  type AuthorityScenarioDriver,
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
@@ -115,184 +117,186 @@ const innerManifest = defineDurableProgramManifest<InnerInput, InnerOutput>({
 
 describe("durable tool behind an ordinary ToolSession harness", () => {
   it("recreates its inner crank runtime across multi-turn sample and elicit rounds without extension support", async () => {
-    let innerFactories = 0;
-    let innerActivations = 0;
-    let outerModelSamples = 0;
-    const innerTool = createPinnedDurableProgram(innerManifest, function* ({ topic }, context) {
-      innerFactories += 1;
-      const answers: string[] = [];
-      for (let round = 0; round < 2; round += 1) {
-        // Native workflow sampling boundary: journals the request and parks
-        // until the owning session resolves it (Decision 3 semantics).
-        const sampled = (yield* context.pull(
-          assertJson({
-            kind: "sample",
-            input: { prompt: `Suggest ${topic}, round ${round}` },
-          }),
-        )) as { text: string };
-        const result = (yield* context.pull(
-          assertJson({
-            kind: "elicit",
-            key: "choice",
-            message: sampled.text,
-            response: choiceSchema.descriptor,
-          }),
-        )) as ProgramElicitResult<Choice>;
-        if (result.action !== "accept") {
-          break;
+    return await run(function* () {
+      let innerFactories = 0;
+      let innerActivations = 0;
+      let outerModelSamples = 0;
+      const innerTool = createPinnedDurableProgram(innerManifest, function* ({ topic }, context) {
+        innerFactories += 1;
+        const answers: string[] = [];
+        for (let round = 0; round < 2; round += 1) {
+          // Native workflow sampling boundary: journals the request and parks
+          // until the owning session resolves it (Decision 3 semantics).
+          const sampled = (yield* context.pull(
+            assertJson({
+              kind: "sample",
+              input: { prompt: `Suggest ${topic}, round ${round}` },
+            }),
+          )) as { text: string };
+          const result = (yield* context.pull(
+            assertJson({
+              kind: "elicit",
+              key: "choice",
+              message: sampled.text,
+              response: choiceSchema.descriptor,
+            }),
+          )) as ProgramElicitResult<Choice>;
+          if (result.action !== "accept") {
+            break;
+          }
+          answers.push(result.content.answer);
+          if (!result.content.continue) {
+            break;
+          }
         }
-        answers.push(result.content.answer);
-        if (!result.content.continue) {
-          break;
-        }
-      }
-      return { answers };
-    });
+        return { answers };
+      });
 
-    const stateStore = createInMemoryDurableToolFacadeStateStore();
-    const keyring = createCapabilityKeyring("ordinary-harness-inner", [
-      { keyId: "active", secret: "ordinary-harness-inner-key-32bytes" },
-    ]);
-    const facade = createDurableToolSessionFacade({
-      tool: innerTool,
-      stateStore,
-      keyring,
-      name: "ordinary_durable_tool",
-      schemaRegistry: innerSchemas(),
-      onActivation: function* () {
-        innerActivations += 1;
-      },
-    });
-    const request: EphemeralToolRequest = {
-      driver: "tool-session",
-      tool: facade.name,
-      input: { topic: "durability" },
-      durability: "ephemeral_handle",
-    };
-    const adapterTools = createDurableToolRegistry([ephemeralToolAdapter]);
-    const drivers = createProgramDriverRegistry([
-      ["program", createWorkflowProgramDriver(adapterTools)],
-    ]);
-    const outerKeyring = createCapabilityKeyring("ordinary-harness-outer", [
-      { keyId: "active", secret: "ordinary-harness-outer-key-32bytes" },
-    ]);
-    let authority = createAuthorityScenarioDriver({
-      journalId: "ordinary-harness-outer",
-      journalIncarnation: "1",
-      keyring: outerKeyring,
-      schemaRegistry: innerSchemas(),
-    });
-    const sessionId = "ordinary-harness-session";
-    const taskId = "turn-0/root";
-    const attach = attachRequest(sessionId, taskId, request);
-
-    await run(function* () {
-      yield* createLocalToolInvocationRuntime({});
-      const effects = createDurableEffectRegistry([
-        ...createToolInvocationEphemeralEffectRegistrations({
-          // SAFETY: the facade implements the callable RuntimeTool boundary;
-          // its older AnyToolContract declaration omits the schemas property.
-          tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
-        }),
+      const stateStore = createInMemoryDurableToolFacadeStateStore();
+      const keyring = createCapabilityKeyring("ordinary-harness-inner", [
+        { keyId: "active", secret: "ordinary-harness-inner-key-32bytes" },
       ]);
-      const sample: Parameters<typeof withModelSampleTestBoundary>[0] = function* () {
-        const round = outerModelSamples;
-        outerModelSamples += 1;
-        return {
-          message: {
-            message: {
-              role: "assistant",
-              content: [{ type: "text", text: `suggestion-${round}` }],
-            },
-            source: null,
-            usage: null,
-            stopReason: null,
-            responseId: null,
-            errorMessage: null,
-          },
-          output: { type: "message" },
-        };
-      };
-      yield* authority.openTask({
-        sessionId,
-        turnId: "turn-0",
-        taskId,
-        manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
-        input: request,
-        executionEpoch: 1,
-        attachmentId: "unattached-outer-adapter",
-        audience: "workflow-host",
-      });
-
-      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
-        state: "parked",
-        reason: "elicit",
-      });
-      authority = recreateAuthority(authority, outerKeyring);
-      yield* acceptPending(authority, sessionId, taskId, {
-        answer: "answer-0",
-        continue: true,
-      });
-      authority = recreateAuthority(authority, outerKeyring);
-
-      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
-        state: "parked",
-        reason: "elicit",
-      });
-      authority = recreateAuthority(authority, outerKeyring);
-      yield* acceptPending(authority, sessionId, taskId, {
-        answer: "answer-1",
-        continue: false,
-      });
-      authority = recreateAuthority(authority, outerKeyring);
-
-      expect(yield* runProgram(attach, authority, drivers, effects, sample)).toEqual({
-        state: "completed",
-        value: { answers: ["answer-0", "answer-1"] },
-      });
-
-      const innerSnapshot = yield* stateStore.load(taskId);
-      expect(innerSnapshot).toBeDefined();
-      if (!innerSnapshot) {
-        throw new Error("Missing inner durable journal snapshot");
-      }
-      const innerAuthority = createAuthorityScenarioDriver({
-        journalId: `durable-tool-facade:${innerManifest.programId}`,
-        journalIncarnation: "1",
+      const facade = createDurableToolSessionFacade({
+        tool: innerTool,
+        stateStore,
         keyring,
-        snapshot: innerSnapshot,
+        name: "ordinary_durable_tool",
         schemaRegistry: innerSchemas(),
-      });
-      const innerJournal = innerAuthority.readJournal(taskId);
-      // Sampling parks as a native kernel pull under the workflow runtime.
-      expect(countPulls(innerJournal, "sample")).toBe(2);
-      expect(countPulls(innerJournal, "elicit")).toBe(2);
-      expect(
-        innerJournal
-          .slice()
-          .reverse()
-          .find((record) => record.payload.type === "TaskClosed")?.payload,
-      ).toMatchObject({
-        type: "TaskClosed",
-        outcome: {
-          status: "ok",
-          value: { answers: ["answer-0", "answer-1"] },
+        onActivation: function* () {
+          innerActivations += 1;
         },
       });
+      const request: EphemeralToolRequest = {
+        driver: "tool-session",
+        tool: facade.name,
+        input: { topic: "durability" },
+        durability: "ephemeral_handle",
+      };
+      const adapterTools = createDurableToolRegistry([ephemeralToolAdapter]);
+      const drivers = createProgramDriverRegistry([
+        ["program", createWorkflowProgramDriver(adapterTools)],
+      ]);
+      const outerKeyring = createCapabilityKeyring("ordinary-harness-outer", [
+        { keyId: "active", secret: "ordinary-harness-outer-key-32bytes" },
+      ]);
+      let authority = yield* createAuthorityScenarioDriver({
+        journalId: "ordinary-harness-outer",
+        journalIncarnation: "1",
+        keyring: outerKeyring,
+        schemaRegistry: innerSchemas(),
+      });
+      const sessionId = "ordinary-harness-session";
+      const taskId = "turn-0/root";
+      const attach = attachRequest(sessionId, taskId, request);
 
-      const outerJournal = authority.readJournal(sessionId);
-      expect(countEffectPulls(outerJournal, "ephemeral.tool.start")).toBe(1);
-      expect(countEffectPulls(outerJournal, "ephemeral.tool.continue")).toBe(4);
-      expect(countPulls(outerJournal, "sample")).toBe(2);
-      expect(countPulls(outerJournal, "elicit")).toBe(2);
-      expect(JSON.stringify(outerJournal)).not.toContain("inner-model");
+      yield* scoped(function* () {
+        yield* createLocalToolInvocationRuntime({});
+        const effects = createDurableEffectRegistry([
+          ...createToolInvocationEphemeralEffectRegistrations({
+            // SAFETY: the facade implements the callable RuntimeTool boundary;
+            // its older AnyToolContract declaration omits the schemas property.
+            tools: new Map<string, RuntimeTool>([[facade.name, facade as unknown as RuntimeTool]]),
+          }),
+        ]);
+        const sample: Parameters<typeof withModelSampleTestBoundary>[0] = function* () {
+          const round = outerModelSamples;
+          outerModelSamples += 1;
+          return {
+            message: {
+              message: {
+                role: "assistant",
+                content: [{ type: "text", text: `suggestion-${round}` }],
+              },
+              source: null,
+              usage: null,
+              stopReason: null,
+              responseId: null,
+              errorMessage: null,
+            },
+            output: { type: "message" },
+          };
+        };
+        yield* authority.openTask({
+          sessionId,
+          turnId: "turn-0",
+          taskId,
+          manifest: EPHEMERAL_TOOL_ADAPTER_MANIFEST,
+          input: request,
+          executionEpoch: 1,
+          attachmentId: "unattached-outer-adapter",
+          audience: "workflow-host",
+        });
+
+        expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
+          state: "parked",
+          reason: "elicit",
+        });
+        authority = yield* recreateAuthority(authority, outerKeyring);
+        yield* acceptPending(authority, sessionId, taskId, {
+          answer: "answer-0",
+          continue: true,
+        });
+        authority = yield* recreateAuthority(authority, outerKeyring);
+
+        expect(yield* runProgram(attach, authority, drivers, effects, sample)).toMatchObject({
+          state: "parked",
+          reason: "elicit",
+        });
+        authority = yield* recreateAuthority(authority, outerKeyring);
+        yield* acceptPending(authority, sessionId, taskId, {
+          answer: "answer-1",
+          continue: false,
+        });
+        authority = yield* recreateAuthority(authority, outerKeyring);
+
+        expect(yield* runProgram(attach, authority, drivers, effects, sample)).toEqual({
+          state: "completed",
+          value: { answers: ["answer-0", "answer-1"] },
+        });
+
+        const innerSnapshot = yield* stateStore.load(taskId);
+        expect(innerSnapshot).toBeDefined();
+        if (!innerSnapshot) {
+          throw new Error("Missing inner durable journal snapshot");
+        }
+        const innerAuthority = yield* createAuthorityScenarioDriver({
+          journalId: `durable-tool-facade:${innerManifest.programId}`,
+          journalIncarnation: "1",
+          keyring,
+          snapshot: innerSnapshot,
+          schemaRegistry: innerSchemas(),
+        });
+        const innerJournal = innerAuthority.readJournal(taskId);
+        // Sampling parks as a native kernel pull under the workflow runtime.
+        expect(countPulls(innerJournal, "sample")).toBe(2);
+        expect(countPulls(innerJournal, "elicit")).toBe(2);
+        expect(
+          innerJournal
+            .slice()
+            .reverse()
+            .find((record) => record.payload.type === "TaskClosed")?.payload,
+        ).toMatchObject({
+          type: "TaskClosed",
+          outcome: {
+            status: "ok",
+            value: { answers: ["answer-0", "answer-1"] },
+          },
+        });
+
+        const outerJournal = authority.readJournal(sessionId);
+        expect(countEffectPulls(outerJournal, "ephemeral.tool.start")).toBe(1);
+        expect(countEffectPulls(outerJournal, "ephemeral.tool.continue")).toBe(4);
+        expect(countPulls(outerJournal, "sample")).toBe(2);
+        expect(countPulls(outerJournal, "elicit")).toBe(2);
+        expect(JSON.stringify(outerJournal)).not.toContain("inner-model");
+      });
+
+      // Workflow runtime replays the program body once per parked pull
+      // (2 samples + 2 elicits + completing run), not per journal batch.
+      expect(innerFactories).toBe(5);
+      expect(innerActivations).toBe(5);
+      expect(outerModelSamples).toBe(2);
     });
-
-    // Workflow runtime replays the program body once per parked pull
-    // (2 samples + 2 elicits + completing run), not per journal batch.
-    expect(innerFactories).toBe(5);
-    expect(innerActivations).toBe(5);
-    expect(outerModelSamples).toBe(2);
   });
 });
 
@@ -317,7 +321,7 @@ function attachRequest(
 
 function runProgram(
   attach: AttachProgramRequest,
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+  authority: AuthorityScenarioDriver,
   drivers: ReturnType<typeof createProgramDriverRegistry>,
   effects: ReturnType<typeof createDurableEffectRegistry>,
   sample: Parameters<typeof withModelSampleTestBoundary>[0],
@@ -333,11 +337,11 @@ function runProgram(
   });
 }
 
-function recreateAuthority(
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+function* recreateAuthority(
+  authority: AuthorityScenarioDriver,
   keyring: ReturnType<typeof createCapabilityKeyring>,
 ) {
-  return createAuthorityScenarioDriver({
+  return yield* createAuthorityScenarioDriver({
     journalId: "ordinary-harness-outer",
     journalIncarnation: "1",
     keyring,
@@ -347,7 +351,7 @@ function recreateAuthority(
 }
 
 function* acceptPending(
-  authority: ReturnType<typeof createAuthorityScenarioDriver>,
+  authority: AuthorityScenarioDriver,
   sessionId: string,
   taskId: string,
   content: Choice,

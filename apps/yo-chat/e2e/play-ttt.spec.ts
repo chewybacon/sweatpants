@@ -32,7 +32,6 @@ test.describe("play_ttt Agentic Tool", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chat/play-ttt/", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Agentic Tic-Tac-Toe" })).toBeVisible();
-    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
     const threadId = `play-ttt:e2e-${crypto.randomUUID()}`;
     const created = await page.request.post("/api/threaded-chat/threads", {
       data: { namespace: "play-ttt", id: threadId },
@@ -48,6 +47,7 @@ test.describe("play_ttt Agentic Tool", () => {
       threadId,
       { timeout: 15000 },
     );
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
   });
 
   // =============================================================================

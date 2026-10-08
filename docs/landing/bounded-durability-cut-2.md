@@ -46,7 +46,7 @@ The authority-visible active execution is selected after request normalization a
 
 ## Terminal and publication evidence
 
-- `TurnJournalAuthority` opens one bounded execution, stores accepted Projection Facts behind the capsule frontier, commits a real `TerminalCapsule`, and marks publication idempotently.
+- `createTurnJournal(executionId)` acquires a resource that opens one bounded execution, stores accepted Projection Facts behind the capsule frontier, commits a real `TerminalCapsule`, and marks publication idempotently.
 - `publishTurn` reads only the capsule-named fact reference, validates execution/Session/Turn identity and contiguous sequence, writes immutable history, CAS-advances Session Head, and then marks the capsule published.
 - The normal handler blocks final response completion while Session Head CAS is held; `RUN_FINISHED` appears only after release and successful publication.
 - Production-style handler recovery after a fault immediately following Terminal Capsule commit publishes exactly one history entry and leaves provider invocation count unchanged.

@@ -3,10 +3,9 @@ import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 import { validateJournalCollectionBounds } from "../store/snapshot-codec.ts";
 import { MAX_RECORDS_PER_SESSION } from "../store/durable-authority-snapshot-schema.ts";
 import { durableAuthoritySnapshotBoundsParser } from "../store/durable-authority-snapshot-schema.ts";
-import { retainParsedValue } from "../state/accepted-values.ts";
 
-it("counts retained values at every occurrence and at their new nesting depth", () => {
-  const fragment = retainParsedValue(Array.from({ length: 2000 }, () => 0));
+it("counts shared values at every occurrence and at their new nesting depth", () => {
+  const fragment = Array.from({ length: 2000 }, () => 0);
   expect(durableAuthoritySnapshotBoundsParser.parse([fragment, fragment]).ok).toBe(true);
   const many = durableAuthoritySnapshotBoundsParser.parse(
     Array.from({ length: 1001 }, () => fragment),
@@ -17,10 +16,13 @@ it("counts retained values at every occurrence and at their new nesting depth", 
   });
 
   let value: object = {};
-  for (let i = 0; i < 100; i++) value = { child: value };
-  retainParsedValue(value);
+  for (let i = 0; i < 100; i++) {
+    value = { child: value };
+  }
   expect(durableAuthoritySnapshotBoundsParser.parse(value).ok).toBe(true);
-  for (let i = 0; i < 30; i++) value = { child: value };
+  for (let i = 0; i < 30; i++) {
+    value = { child: value };
+  }
   expect(durableAuthoritySnapshotBoundsParser.parse(value)).toMatchObject({
     ok: false,
     issues: [{ message: "snapshot depth exceeds limit" }],
@@ -52,4 +54,16 @@ it("rejects malformed Unicode and prototype keys before snapshot encoding", () =
   expect(durableAuthoritySnapshotBoundsParser.parse({ "bad\udfff": "value" }).ok).toBe(false);
   expect(durableAuthoritySnapshotBoundsParser.parse(JSON.parse('{"__proto__":{}}')).ok).toBe(false);
   expect(durableAuthoritySnapshotBoundsParser.parse({ sessionId: "valid😀" }).ok).toBe(true);
+});
+
+it("inspects the current boundary value when the same object is presented again", () => {
+  const value: { message: string; child?: object } = { message: "valid" };
+  expect(durableAuthoritySnapshotBoundsParser.parse(value).ok).toBe(true);
+
+  value.message = "bad\ud800";
+  expect(durableAuthoritySnapshotBoundsParser.parse(value).ok).toBe(false);
+
+  value.message = "valid";
+  value.child = value;
+  expect(durableAuthoritySnapshotBoundsParser.parse(value).ok).toBe(false);
 });

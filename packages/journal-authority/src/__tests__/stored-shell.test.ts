@@ -1,6 +1,6 @@
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
-import { createStoredShellDrivers } from "../shell/stored-shell.ts";
+import { createJournal } from "../shell/journal.ts";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
@@ -15,7 +15,7 @@ const store = createMemoryExecutionStore();
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "memory-execution-store",
   *open(options) {
-    return createStoredScenarioDriver(store, {
+    return yield* createStoredScenarioDriver(store, {
       journalId: options.journalId,
       journalIncarnation: "conformance-v1",
       keyring: options.keyring,
@@ -40,15 +40,15 @@ it("exports private snapshots before the first commit, including imported state"
   const initialSnapshot = { version: 1 as const, sessions: [], nextNonce: 7, records: [] };
   await run(function* () {
     for (const initial of [undefined, initialSnapshot]) {
-      const drivers = createStoredShellDrivers(createMemoryExecutionStore(), {
+      const drivers = yield* createJournal(createMemoryExecutionStore(), {
         journalId: "unpersisted-export",
         keyring,
         initialSnapshot: initial,
       });
-      const exported = yield* drivers.snapshot.exportSnapshot();
+      const exported = yield* drivers.exportSnapshot();
       Reflect.set(exported, "nextNonce", 999);
       Reflect.set(exported.sessions, "0", ["injected", {}]);
-      const next = yield* drivers.snapshot.exportSnapshot();
+      const next = yield* drivers.exportSnapshot();
       expect(next.nextNonce).toBe(initial?.nextNonce ?? 0);
       expect(next.sessions).toEqual([]);
       expect(initialSnapshot).toEqual({ version: 1, sessions: [], nextNonce: 7, records: [] });
@@ -82,11 +82,12 @@ it("reuses a validated journal view while checking control, and reloads after re
       { keyId: "test", secret: "test-secret-material-at-least-32-bytes" },
     ]),
   };
-  const drivers = createStoredShellDrivers(measured, options);
-  const peer = createStoredShellDrivers(measured, options);
   await run(function* () {
+    const drivers = yield* createJournal(measured, options);
+    const peer = yield* createJournal(measured, options);
+
     for (const sessionId of ["one", "two"]) {
-      yield* drivers.authority.command({
+      yield* drivers.advance({
         type: "execution.open-task",
         request: {
           sessionId,
@@ -111,31 +112,31 @@ it("reuses a validated journal view while checking control, and reloads after re
       traversals = 0;
       objectReads = 0;
       controlReads = 0;
-      expect((yield* drivers.journal.readSession(sessionId)).length).toBeGreaterThan(0);
+      expect((yield* drivers.readSession(sessionId)).length).toBeGreaterThan(0);
       expect(traversals).toBe(0);
       expect(objectReads).toBe(0);
       expect(controlReads).toBe(1);
-      expect((yield* peer.journal.readSession(sessionId)).length).toBeGreaterThan(0);
+      expect((yield* peer.readSession(sessionId)).length).toBeGreaterThan(0);
       expect(traversals).toBe(1);
     }
-    for (const reader of [drivers, createStoredShellDrivers(measured, options)]) {
+    for (const reader of [drivers, yield* createJournal(measured, options)]) {
       traversals = 0;
-      const records = yield* reader.journal.readSession("one");
+      const records = yield* reader.readSession("one");
       expect(records.length).toBeGreaterThan(0);
       expect(records.every((record) => record.sessionId === "one")).toBe(true);
       expect(traversals).toBe(reader === drivers ? 0 : 1);
-      const exported = yield* reader.snapshot.exportSnapshot();
+      const exported = yield* reader.exportSnapshot();
       const expected = structuredClone(exported);
       Reflect.set(exported.sessions[0]![1].control, "revision", -1);
       Reflect.set(exported.sessions[0]![1].execution.tasks, "length", 0);
       Reflect.set(exported.records, "length", 0);
-      expect(yield* reader.snapshot.exportSnapshot()).toEqual(expected);
+      expect(yield* reader.exportSnapshot()).toEqual(expected);
       // A JavaScript caller can still mutate a readonly TypeScript result.
       Reflect.set(records, "length", 0);
-      expect((yield* reader.journal.readSession("one")).length).toBeGreaterThan(0);
+      expect((yield* reader.readSession("one")).length).toBeGreaterThan(0);
       traversals = 0;
       controlReads = 0;
-      expect(yield* reader.journal.readSession("absent")).toEqual([]);
+      expect(yield* reader.readSession("absent")).toEqual([]);
       expect(traversals).toBe(0);
       expect(controlReads).toBe(1);
     }

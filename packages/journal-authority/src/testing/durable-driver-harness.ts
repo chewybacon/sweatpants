@@ -289,7 +289,7 @@ export function* runDurableDriverRecoveryFixture(
       },
     ),
   ]);
-  const authority = createAuthorityScenarioDriver({
+  const authority = yield* createAuthorityScenarioDriver({
     journalId: `driver-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring: createCapabilityKeyring("driver-integration", [
@@ -461,7 +461,7 @@ export function* runDurableDriverCancellationFixture(
   const keyring = createCapabilityKeyring("driver-cancellation-integration", [
     { keyId: "fixture-key", secret: "driver-cancellation-secret-32-bytes!!" },
   ]);
-  let authority = createAuthorityScenarioDriver({
+  let authority = yield* createAuthorityScenarioDriver({
     journalId: `driver-cancellation-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring,
@@ -510,7 +510,7 @@ export function* runDurableDriverCancellationFixture(
     "cancel-command-1",
   );
 
-  authority = createAuthorityScenarioDriver({
+  authority = yield* createAuthorityScenarioDriver({
     journalId: `driver-cancellation-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring,

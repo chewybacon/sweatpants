@@ -1,20 +1,21 @@
+import type { Journal } from "../shell/journal.ts";
 import { run } from "effection";
 import { describe, it } from "vitest";
 
-import { createInMemoryShellDrivers } from "../shell/in-memory-shell.ts";
+import { createInMemoryJournal } from "../shell/in-memory-journal.ts";
 import {
   adaptAuthorityPortsForConformance,
   createJournalAuthorityConformanceCases,
   type JournalAuthorityConformanceFactory,
 } from "../testing/conformance.ts";
 
-const authorities = new Map<string, ReturnType<typeof createInMemoryShellDrivers>>();
+const authorities = new Map<string, Journal>();
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "in-memory",
   *open(options) {
     let authority = authorities.get(options.journalId);
     if (!authority) {
-      authority = createInMemoryShellDrivers({
+      authority = yield* createInMemoryJournal({
         journalId: options.journalId,
         journalIncarnation: "conformance-v1",
         keyring: options.keyring,
@@ -23,10 +24,14 @@ const factory: JournalAuthorityConformanceFactory = {
       });
       authorities.set(options.journalId, authority);
     }
-    return adaptAuthorityPortsForConformance(authority.authority, authority.journal, {
-      id: options.journalId,
-      incarnation: "conformance-v1",
-    });
+    return adaptAuthorityPortsForConformance(
+      { command: authority.advance, query: authority.query },
+      authority,
+      {
+        id: options.journalId,
+        incarnation: "conformance-v1",
+      },
+    );
   },
 };
 

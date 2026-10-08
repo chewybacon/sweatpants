@@ -1,3 +1,4 @@
+import { call } from "effection";
 import {
   decodeModelSampleRequest,
   decodeModelSampleSourceRequest,
@@ -184,130 +185,140 @@ async function main(): Promise<void> {
       };
     },
   };
-  const authority = createAuthorityScenarioDriver({
-    journalId: "live-development-play-ttt",
-    journalIncarnation: "1",
-    keyring: createCapabilityKeyring("live-development-play-ttt", [
-      { keyId: "live", secret: randomUUID().repeat(2) },
-    ]),
-    schemaRegistry: createDurableSchemaRegistry(playTttTool.artifacts.catalog),
-  });
-  const drivers = createProgramDriverRegistry([["agentcore", driver]]);
-  await run(() =>
-    authority.openTask({
-      sessionId,
-      turnId: "turn-0",
-      taskId,
-      manifest: releaseProgram.manifest,
-      input: {},
-      executionEpoch: 1,
-      attachmentId: "unattached",
-      audience: "workflow-host",
-    }),
-  );
+  await run(function* () {
+    const authority = yield* createAuthorityScenarioDriver({
+      journalId: "live-development-play-ttt",
+      journalIncarnation: "1",
+      keyring: createCapabilityKeyring("live-development-play-ttt", [
+        { keyId: "live", secret: randomUUID().repeat(2) },
+      ]),
+      schemaRegistry: createDurableSchemaRegistry(playTttTool.artifacts.catalog),
+    });
+    const drivers = createProgramDriverRegistry([["agentcore", driver]]);
+    yield* call(() =>
+      run(() =>
+        authority.openTask({
+          sessionId,
+          turnId: "turn-0",
+          taskId,
+          manifest: releaseProgram.manifest,
+          input: {},
+          executionEpoch: 1,
+          attachmentId: "unattached",
+          audience: "workflow-host",
+        }),
+      ),
+    );
 
-  async function activate(ownerId: string): Promise<AdvancementResult> {
-    return await run(function* () {
-      const claim = yield* authority.claimActivation({ sessionId, ownerId });
-      if (claim.status !== "claimed") {
-        throw new Error(`activation claim failed: ${claim.status}`);
-      }
-      let reason: "parked" | "terminal" | "failed" = "failed";
-      try {
-        const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-          return yield* withProgramDriverTestScope(authority, function* () {
-            return yield* withProgramDriverTestSampleStager(stageSampleInput, function* () {
-              return yield* withProgramDriverTestPullResolvers([sampleResolver], function* () {
-                return yield* DurableEffectRegistryContext.with(effects, function* () {
-                  return yield* driveInstalledTestProgramTree({
-                    attach: {
-                      sessionId,
-                      taskId,
-                      program,
-                      input: {},
-                      route,
-                      executionEpoch: claim.epoch,
-                    },
-                    activationOwnerId: ownerId,
+    async function activate(ownerId: string): Promise<AdvancementResult> {
+      return await run(function* () {
+        const claim = yield* authority.claimActivation({ sessionId, ownerId });
+        if (claim.status !== "claimed") {
+          throw new Error(`activation claim failed: ${claim.status}`);
+        }
+        let reason: "parked" | "terminal" | "failed" = "failed";
+        try {
+          const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+            return yield* withProgramDriverTestScope(authority, function* () {
+              return yield* withProgramDriverTestSampleStager(stageSampleInput, function* () {
+                return yield* withProgramDriverTestPullResolvers([sampleResolver], function* () {
+                  return yield* DurableEffectRegistryContext.with(effects, function* () {
+                    return yield* driveInstalledTestProgramTree({
+                      attach: {
+                        sessionId,
+                        taskId,
+                        program,
+                        input: {},
+                        route,
+                        executionEpoch: claim.epoch,
+                      },
+                      activationOwnerId: ownerId,
+                    });
                   });
                 });
               });
             });
           });
-        });
-        reason = outcome.state === "parked" ? "parked" : "terminal";
-        return outcome;
-      } finally {
-        yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
-      }
-    });
-  }
-
-  const started = Date.now();
-  let outcome = await activate("live-owner-0");
-  let responses = 0;
-  for (let round = 0; outcome.state === "parked" && round < 12; round += 1) {
-    const pending = [...authority.readJournal(sessionId)]
-      .reverse()
-      .find(
-        (record) =>
-          record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
-      );
-    if (
-      !pending ||
-      pending.payload.type !== "PullRequested" ||
-      pending.payload.descriptor.kind !== "elicit"
-    ) {
-      throw new Error("parked play_ttt elicitation was not journaled");
-    }
-    const context = pending.payload.descriptor.context as Json;
-    const pullId = pending.payload.pullId;
-    const position = containsGameOver(context) ? -1 : firstEmptyBoardPosition(context);
-    const resolution = await run(() =>
-      authority.resolve({
-        capability: authority.resolutionCapability(sessionId, taskId, pullId),
-        audience: "user:pickMove",
-        outcome: { status: "ok", value: { action: "accept", content: { position } } },
-      }),
-    );
-    if (resolution.status === "rejected") {
-      throw new Error(`elicit resolution failed: ${resolution.code}`);
-    }
-    responses += 1;
-    outcome = await activate(`live-owner-${round + 1}`);
-  }
-  if (outcome.state !== "completed") {
-    throw new Error(`play_ttt did not complete: ${outcome.state}`);
-  }
-  await run(function* () {
-    if (connector.stopRuntimeSession) {
-      const controller = new AbortController();
-      yield* connector.stopRuntimeSession({
-        release,
-        runtimeSessionId: placement.runtimeSessionId,
-        signal: controller.signal,
+          reason = outcome.state === "parked" ? "parked" : "terminal";
+          return outcome;
+        } finally {
+          yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
+        }
       });
     }
+
+    const started = Date.now();
+    let outcome = yield* call(() => activate("live-owner-0"));
+    let responses = 0;
+    for (let round = 0; outcome.state === "parked" && round < 12; round += 1) {
+      const pending = [...authority.readJournal(sessionId)]
+        .reverse()
+        .find(
+          (record) =>
+            record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
+        );
+      if (
+        !pending ||
+        pending.payload.type !== "PullRequested" ||
+        pending.payload.descriptor.kind !== "elicit"
+      ) {
+        throw new Error("parked play_ttt elicitation was not journaled");
+      }
+      const context = pending.payload.descriptor.context as Json;
+      const pullId = pending.payload.pullId;
+      const position = containsGameOver(context) ? -1 : firstEmptyBoardPosition(context);
+      const resolution = yield* call(() =>
+        run(() =>
+          authority.resolve({
+            capability: authority.resolutionCapability(sessionId, taskId, pullId),
+            audience: "user:pickMove",
+            outcome: { status: "ok", value: { action: "accept", content: { position } } },
+          }),
+        ),
+      );
+      if (resolution.status === "rejected") {
+        throw new Error(`elicit resolution failed: ${resolution.code}`);
+      }
+      responses += 1;
+      outcome = yield* call(() => activate(`live-owner-${round + 1}`));
+    }
+    if (outcome.state !== "completed") {
+      throw new Error(`play_ttt did not complete: ${outcome.state}`);
+    }
+    yield* call(() =>
+      run(function* () {
+        if (connector.stopRuntimeSession) {
+          const controller = new AbortController();
+          yield* connector.stopRuntimeSession({
+            release,
+            runtimeSessionId: placement.runtimeSessionId,
+            signal: controller.signal,
+          });
+        }
+      }),
+    );
+    const evidence = {
+      releaseId: release.releaseId,
+      runtimeArn: release.runtimeArn,
+      runtimeSessionId: placement.runtimeSessionId,
+      collectionDigest: collection.collectionDigest,
+      exactProgramArtifactDigest: program.digest,
+      modelSamples,
+      elicitResponses: responses,
+      journalRecordTypes: authority.readJournal(sessionId).map((record) => record.payload.type),
+      durationMs: Date.now() - started,
+      completed: true,
+      certifiedAt: new Date().toISOString(),
+    };
+    yield* call(() =>
+      writeFile(
+        `live-evidence/${release.releaseId}-development-play-ttt.json`,
+        JSON.stringify(evidence, null, 2),
+        "utf8",
+      ),
+    );
+    console.log(JSON.stringify(evidence));
   });
-  const evidence = {
-    releaseId: release.releaseId,
-    runtimeArn: release.runtimeArn,
-    runtimeSessionId: placement.runtimeSessionId,
-    collectionDigest: collection.collectionDigest,
-    exactProgramArtifactDigest: program.digest,
-    modelSamples,
-    elicitResponses: responses,
-    journalRecordTypes: authority.readJournal(sessionId).map((record) => record.payload.type),
-    durationMs: Date.now() - started,
-    completed: true,
-    certifiedAt: new Date().toISOString(),
-  };
-  await writeFile(
-    `live-evidence/${release.releaseId}-development-play-ttt.json`,
-    JSON.stringify(evidence, null, 2),
-    "utf8",
-  );
-  console.log(JSON.stringify(evidence));
 }
 
 function firstEmptyPosition(messages: unknown): number {

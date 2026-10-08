@@ -9,7 +9,7 @@ import {
   type StoredJson,
   type TerminalCapsule,
 } from "@sweatpants/durable-execution";
-import { TurnJournalAuthority } from "@sweatpants/journal-authority/turn-authority";
+import { createTurnJournal, type TurnJournal } from "@sweatpants/journal-authority/turn-authority";
 import {
   DEFAULT_CHECKPOINT_TARGETS,
   type CheckpointPublicationTargets,
@@ -317,9 +317,10 @@ export function* beginTurnPublication(
         `Conversation ${request.sessionId} active Turn changed`,
       );
     }
-    existingActive = head.activeExecutionId
-      ? yield* TurnJournalAuthority.operations.read(head.activeExecutionId)
-      : null;
+    if (head.activeExecutionId) {
+      const journal = yield* createTurnJournal(head.activeExecutionId);
+      existingActive = yield* journal.read();
+    }
     if (!existingActive || existingActive.format === "sweatpants.terminal-execution.v1") {
       throw commandConflict(
         "active_turn_changed",
@@ -420,8 +421,9 @@ export function* beginTurnPublication(
       ...(admission.status === "idempotent" ? { idempotent: true } : {}),
     };
   }
+  const journal = yield* createTurnJournal(admittedRequest.executionId);
   if (admission.status === "idempotent") {
-    const existing = yield* TurnJournalAuthority.operations.read(admittedRequest.executionId);
+    const existing = yield* journal.read();
     if (existing !== null) {
       return { ...admittedRequest, idempotent: true };
     }
@@ -431,8 +433,7 @@ export function* beginTurnPublication(
   // If opening private authority fails, do not lie by moving the public head
   // back to idle: an exact retry reuses the receipt and idempotently opens the
   // same deterministic execution, while other state-derived commands reject.
-  yield* TurnJournalAuthority.operations.open({
-    executionId: admittedRequest.executionId,
+  yield* journal.open({
     sessionId: admittedRequest.sessionId,
     turnId: admittedRequest.turnId,
     rootTaskId: admittedRequest.rootTaskId,
@@ -454,8 +455,10 @@ export interface CompleteAndPublishTurnRequest<Entry extends Json = Json> {
 export function* completeAndPublishTurn<Entry extends Json = Json>(
   request: CompleteAndPublishTurnRequest<Entry>,
 ): Operation<PublishTurnResult> {
-  const capsule = yield* TurnJournalAuthority.operations.complete(request);
-  return yield* publishAuthorityCapsule(capsule, request.project);
+  const { executionId, project, ...completion } = request;
+  const journal = yield* createTurnJournal(executionId);
+  const capsule = yield* journal.complete(completion);
+  return yield* publishAuthorityCapsule(journal, capsule, project);
 }
 
 export interface RecoveredTurnPublication {
@@ -473,7 +476,8 @@ export function* recoverTerminalPublication<Entry extends Json = Json>(
   if (!executionId) {
     return null;
   }
-  const record = yield* TurnJournalAuthority.operations.read(executionId);
+  const journal = yield* createTurnJournal(executionId);
+  const record = yield* journal.read();
   if (
     !record ||
     record.format !== "sweatpants.terminal-execution.v1" ||
@@ -481,12 +485,13 @@ export function* recoverTerminalPublication<Entry extends Json = Json>(
   ) {
     return null;
   }
-  const facts = yield* TurnJournalAuthority.operations.readAcceptedFacts(record);
-  const result = yield* publishAuthorityCapsule(record, project);
+  const facts = yield* journal.readAcceptedFacts(record);
+  const result = yield* publishAuthorityCapsule(journal, record, project);
   return { capsule: record, facts, result };
 }
 
 function* publishAuthorityCapsule<Entry extends Json>(
+  journal: TurnJournal,
   capsule: TerminalCapsule,
   project: (facts: readonly ProjectionFactEnvelope[]) => readonly Entry[],
 ): Operation<PublishTurnResult> {
@@ -500,11 +505,11 @@ function* publishAuthorityCapsule<Entry extends Json>(
         ) {
           throw new ProjectionFactsInvalid("Publication requested a non-accepted fact frontier");
         }
-        return TurnJournalAuthority.operations.readAcceptedFacts(capsule);
+        return journal.readAcceptedFacts(capsule);
       },
       project,
       markPublished: function* () {
-        yield* TurnJournalAuthority.operations.markPublished(capsule.executionId);
+        yield* journal.markPublished();
       },
     });
     if (result.status !== "conflict") {
