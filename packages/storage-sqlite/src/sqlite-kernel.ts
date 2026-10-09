@@ -15,7 +15,7 @@ import {
 import {
   controlFromRow,
   controlToRow,
-  privateEnvelopeFromRow,
+  privateFromRow,
   objectFromRow,
   privateToRow,
   objectToRow,
@@ -27,7 +27,6 @@ import {
   evaluateMutation,
   evaluateMutationPreconditions,
   decodeDurableKey,
-  decodeJsonValue,
   validateMutationStructure,
   validateScan,
   planScanPage,
@@ -43,33 +42,23 @@ import {
   type StoredScanPage,
   type TransactionRunner,
 } from "@sweatpants/durable-storage-kernel";
-import { type Json, canonicalDigest } from "@sweatpants/foundation";
-import {
-  conversationKeys,
-  decodeArchivedPublicRootIndex,
-  decodeCheckpoint,
-  decodeCommandReceipt,
-  decodeConversationHead,
-  decodePublicSegment,
-  decodeTerminalSegment,
-  encodeArchivedPublicRootIndex,
-  encodeCheckpoint,
-  encodeCommandReceipt,
-  encodeConversationHead,
-  encodePublicSegment,
-  encodeTerminalSegment,
-} from "@sweatpants/history-store/persistence";
-import type { ConversationHead } from "@sweatpants/history-store/contract";
-import {
-  decodeExecutionControl,
-  decodeExecutionObject,
-  decodePrivateSegment,
-  encodeExecutionControl,
-  encodeExecutionObjectEnvelope,
-  executionKeys,
-} from "@sweatpants/journal-authority/store-persistence";
-import type { StoredExecutionObject } from "@sweatpants/journal-authority/store";
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
+import { canonicalDigest } from "@sweatpants/foundation";
+import { conversationKeys } from "@sweatpants/history-store/persistence";
+import type {
+  ArchivedPublicRootIndex,
+  StoredCheckpoint,
+  CommandReceipt,
+  ConversationHead,
+  StoredPublicArchiveSegment,
+  StoredTerminalSegment,
+} from "@sweatpants/history-store/contract";
+import type {
+  ExecutionControl,
+  StoredExecutionObject,
+  StoredPrivateSegment,
+} from "@sweatpants/journal-authority/store";
+import { executionKeys } from "@sweatpants/journal-authority/store-persistence";
+import { sql, and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { call, sleep, type Operation } from "effection";
 import {
@@ -184,7 +173,7 @@ async function readAuthorityIn(
       key,
       revision: head.revision,
       fence: head.ownerEpoch,
-      value: encodeConversationHead(head),
+      value: head,
     };
   }
   const row = await selectControl(database, id!);
@@ -197,7 +186,7 @@ async function readAuthorityIn(
     key,
     revision: control.controlRevision,
     fence: control.ownerFence,
-    value: encodeExecutionControl(control),
+    value: control,
   };
 }
 
@@ -205,7 +194,7 @@ function immutableRecord(
   collection: ImmutableCollectionId,
   key: string,
   fingerprint: string,
-  value: Uint8Array,
+  value: unknown,
 ): StoredImmutableRecord {
   return { collection, key, fingerprint, value };
 }
@@ -239,7 +228,7 @@ async function readImmutableIn(
         collection,
         conversationKeys.receipt(value.conversationId, value.commandId),
         value.commandDigest,
-        encodeCommandReceipt(value),
+        value,
       );
     }
     case DurableCollections.conversationCheckpoints: {
@@ -268,7 +257,7 @@ async function readImmutableIn(
         collection,
         conversationKeys.checkpoint(value.checkpointId),
         value.contentHash,
-        encodeCheckpoint(value),
+        value,
       );
     }
     case DurableCollections.conversationPublicSegments: {
@@ -298,7 +287,7 @@ async function readImmutableIn(
         collection,
         conversationKeys.publicSegment(value.segmentId),
         value.contentHash,
-        encodePublicSegment(value),
+        value,
       );
     }
     case DurableCollections.conversationPublicRootIndex: {
@@ -326,7 +315,7 @@ async function readImmutableIn(
         collection,
         conversationKeys.publicRootIndex(entry.conversationId, entry.position),
         canonicalDigest(entry),
-        encodeArchivedPublicRootIndex(entry),
+        entry,
       );
     }
     case DurableCollections.conversationTerminalSegments: {
@@ -357,7 +346,7 @@ async function readImmutableIn(
         collection,
         conversationKeys.terminalSegment(value.segmentId),
         value.contentHash,
-        encodeTerminalSegment(value),
+        value,
       );
     }
     case DurableCollections.executionJournalSegments:
@@ -388,7 +377,7 @@ async function readImmutableIn(
         collection,
         executionKeys.segment(row.segmentId),
         row.contentHash,
-        privateEnvelopeFromRow(row),
+        privateFromRow(row),
       );
     }
     case DurableCollections.executionObjects: {
@@ -408,7 +397,7 @@ async function readImmutableIn(
         collection,
         executionKeys.object(value.objectId),
         value.contentHash,
-        encodeExecutionObjectEnvelope(value),
+        value,
       );
     }
   }
@@ -416,39 +405,39 @@ async function readImmutableIn(
 
 async function insertImmutable(
   database: Database,
-  record: { collection: ImmutableCollectionId; value: Uint8Array },
+  record: { collection: ImmutableCollectionId; value: unknown },
 ): Promise<void> {
   switch (record.collection) {
     case DurableCollections.conversationCommandReceipts: {
-      const value = decodeCommandReceipt(record.value);
+      const value = record.value as CommandReceipt;
       await resolved(
         database.insert(spConversationCommandReceipts).values(receiptToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationCheckpoints: {
-      const value = decodeCheckpoint(record.value);
+      const value = record.value as StoredCheckpoint;
       await resolved(
         database.insert(spConversationCheckpoints).values(checkpointToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationPublicSegments: {
-      const value = decodePublicSegment(record.value);
+      const value = record.value as StoredPublicArchiveSegment;
       await resolved(
         database.insert(spConversationPublicSegments).values(publicToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationPublicRootIndex: {
-      const value = decodeArchivedPublicRootIndex(record.value);
+      const value = record.value as ArchivedPublicRootIndex;
       await resolved(
         database.insert(spConversationPublicRootIndex).values(publicRootIndexToRow(value)).run(),
       );
       return;
     }
     case DurableCollections.conversationTerminalSegments: {
-      const value = decodeTerminalSegment(record.value);
+      const value = record.value as StoredTerminalSegment;
       await resolved(
         database.insert(spConversationTerminalSegments).values(terminalToRow(value)).run(),
       );
@@ -458,8 +447,8 @@ async function insertImmutable(
     case DurableCollections.executionReplaySegments: {
       // Mutation values come from the mandatory semantic codec, which already
       // checked hashes, ranges, byte counts, and entry bounds. The SQLite
-      // binding only needs the canonical envelope fields for insertion.
-      const value = await decodePrivateSegment(record.value);
+      // binding maps structured segment fields directly into domain columns.
+      const value = record.value as StoredPrivateSegment;
       const table =
         record.collection === DurableCollections.executionJournalSegments
           ? spExecutionJournalSegments
@@ -468,22 +457,7 @@ async function insertImmutable(
       return;
     }
     case DurableCollections.executionObjects: {
-      const envelope = decodeJsonValue(record.value, "execution object mutation") as Readonly<
-        Record<string, Json>
-      >;
-      const value =
-        envelope["bodyKind"] === "json"
-          ? ({
-              objectId: envelope["objectId"],
-              lifetimeScope: envelope["lifetimeScope"],
-              scopeOwnerId: envelope["scopeOwnerId"],
-              objectKind: envelope["objectKind"],
-              contentHash: envelope["contentHash"],
-              byteLength: envelope["byteLength"],
-              body: envelope["body"],
-              createdAt: envelope["createdAt"],
-            } as StoredExecutionObject)
-          : await decodeExecutionObject(record.value);
+      const value = record.value as StoredExecutionObject;
       await resolved(database.insert(spExecutionObjects).values(objectToRow(value)).run());
     }
   }
@@ -495,7 +469,7 @@ async function replaceAuthority(
   current: StoredAuthorityRecord | null,
 ): Promise<void> {
   if (next.collection === DurableCollections.conversationHeads) {
-    const value = decodeConversationHead(next.value);
+    const value = next.value as ConversationHead;
     const row = headToRow(value);
     if (current === null) {
       await resolved(
@@ -515,7 +489,7 @@ async function replaceAuthority(
     }
     return;
   }
-  const value = decodeExecutionControl(next.value);
+  const value = next.value as ExecutionControl;
   const row = controlToRow(value);
   if (current === null) {
     await resolved(
@@ -545,7 +519,7 @@ function privateRecord(
     collection,
     executionKeys.segment(row.segmentId),
     row.contentHash,
-    privateEnvelopeFromRow(row),
+    privateFromRow(row),
   );
 }
 
@@ -630,9 +604,7 @@ async function insertPrivateBatch(
     collection === DurableCollections.executionJournalSegments
       ? spExecutionJournalSegments
       : spExecutionReplaySegments;
-  const values = await Promise.all(
-    ensures.map(async (ensure) => privateToRow(await decodePrivateSegment(ensure.value))),
-  );
+  const values = ensures.map((ensure) => privateToRow(ensure.value as StoredPrivateSegment));
   await resolved(database.insert(table).values(values).run());
 }
 
@@ -790,6 +762,11 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
           ? table.firstPosition
           : table.firstSequence;
   const idColumn = rootIndex ? spConversationPublicRootIndex.position : table.segmentId;
+  const payloadBytesColumn = rootIndex
+    ? sql<number>`0`
+    : "encodedBytes" in table
+      ? table.encodedBytes
+      : sql<number>`octet_length(${table.entriesJson})`;
   const conditions: SQL[] =
     "conversationId" in table
       ? [eq(table.conversationId, scope[0]!)]
@@ -810,21 +787,21 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
   }
   const metadataRows = await resolved(
     database
-      .select({ id: idColumn, position: positionColumn, storedBytes: table.storedBytes })
+      .select({ id: idColumn, position: positionColumn, payloadBytes: payloadBytesColumn })
       .from(table)
       .where(and(...conditions))
       .orderBy(request.direction === "forward" ? asc(positionColumn) : desc(positionColumn))
       .limit(request.maxRecords + 1)
       .all() as
-      | { id: string; position: string; storedBytes: number }[]
-      | Promise<{ id: string; position: string; storedBytes: number }[]>,
+      | { id: string; position: string; payloadBytes: number }[]
+      | Promise<{ id: string; position: string; payloadBytes: number }[]>,
   );
   const page = planScanPage(
     request,
     metadataRows.map((row) => ({
       key: row.id,
       position: row.position,
-      storedBytes: numberValue(row.storedBytes, "stored_bytes"),
+      payloadBytes: numberValue(row.payloadBytes, "payload_bytes"),
     })),
   );
   if (page.selected.length === 0) {
@@ -858,7 +835,7 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
               request.collection,
               conversationKeys.publicRootIndex(entry.conversationId, entry.position),
               canonicalDigest(entry),
-              encodeArchivedPublicRootIndex(entry),
+              entry,
             );
           })()
         : request.collection === DurableCollections.conversationPublicSegments
@@ -866,25 +843,22 @@ async function scanIn(database: Database, request: BoundedScan): Promise<StoredS
               request.collection,
               conversationKeys.publicSegment(row.segmentId),
               row.contentHash,
-              encodePublicSegment(publicFromRow(row as PublicRow)),
+              publicFromRow(row as PublicRow),
             )
           : request.collection === DurableCollections.conversationTerminalSegments
             ? immutableRecord(
                 request.collection,
                 conversationKeys.terminalSegment(row.segmentId),
                 row.contentHash,
-                encodeTerminalSegment(terminalFromRow(row as TerminalRow)),
+                terminalFromRow(row as TerminalRow),
               )
             : immutableRecord(
                 request.collection,
                 executionKeys.segment(row.segmentId),
                 row.contentHash,
-                privateEnvelopeFromRow(row as PrivateRow),
+                privateFromRow(row as PrivateRow),
               );
-    if (record.value.byteLength !== metadata.storedBytes) {
-      return invalid("Indexed record byte count disagrees with payload");
-    }
-    return { ...record, position: metadata.position, storedBytes: metadata.storedBytes };
+    return { ...record, position: metadata.position, payloadBytes: metadata.payloadBytes };
   });
   return { records, nextCursor: page.nextCursor };
 }

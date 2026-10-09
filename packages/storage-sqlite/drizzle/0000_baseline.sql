@@ -2,13 +2,13 @@ CREATE TABLE `sp_conversation_checkpoints` (
 	`checkpoint_id` text PRIMARY KEY NOT NULL,
 	`conversation_id` text NOT NULL,
 	`cause_key` text NOT NULL,
-	`cause_json` text NOT NULL,
+	`cause_json` text,
 	`content_hash` text NOT NULL,
 	`lineage_id` text NOT NULL,
 	`archive_head_segment_id` text,
 	`archive_frontier_ordinal` integer NOT NULL,
 	`next_public_position` integer NOT NULL,
-	`payload_json` text NOT NULL,
+	`payload_json` text,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,
 	CONSTRAINT "sp_checkpoint_archive_frontier" CHECK("sp_conversation_checkpoints"."archive_frontier_ordinal" >= 0),
@@ -62,6 +62,7 @@ CREATE TABLE `sp_conversation_heads` (
       ))
 );
 --> statement-breakpoint
+CREATE INDEX `sp_heads_live_updated` ON `sp_conversation_heads` (`deleted_at`,`updated_at`,`conversation_id`);--> statement-breakpoint
 CREATE TABLE `sp_conversation_public_root_index` (
 	`conversation_id` text NOT NULL,
 	`position` integer NOT NULL,
@@ -69,7 +70,6 @@ CREATE TABLE `sp_conversation_public_root_index` (
 	`segment_id` text NOT NULL,
 	`segment_root_index` integer NOT NULL,
 	`archive_ordinal` integer NOT NULL,
-	`stored_bytes` integer NOT NULL,
 	`content_hash` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	PRIMARY KEY(`conversation_id`, `position`),
@@ -89,7 +89,6 @@ CREATE TABLE `sp_conversation_public_segments` (
 	`min_position` integer NOT NULL,
 	`max_position` integer NOT NULL,
 	`roots_json` text NOT NULL,
-	`stored_bytes` integer NOT NULL,
 	`content_hash` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,
@@ -109,7 +108,6 @@ CREATE TABLE `sp_conversation_terminal_segments` (
 	`first_position` integer NOT NULL,
 	`last_position` integer NOT NULL,
 	`entries_json` text NOT NULL,
-	`stored_bytes` integer NOT NULL,
 	`content_hash` text NOT NULL,
 	`created_at` integer NOT NULL,
 	CONSTRAINT "sp_terminal_segment_first_position" CHECK("sp_conversation_terminal_segments"."first_position" >= 0),
@@ -126,7 +124,7 @@ CREATE TABLE `sp_execution_control` (
 	`root_task_id` text NOT NULL,
 	`stop_generation` integer NOT NULL,
 	`requested_disposition` text,
-	`control_json` text NOT NULL,
+	`control_json` text,
 	`updated_at` integer NOT NULL,
 	CONSTRAINT "sp_execution_control_status" CHECK("sp_execution_control"."status" IN ('active', 'parked', 'cancelling', 'terminal')),
 	CONSTRAINT "sp_execution_control_disposition" CHECK("sp_execution_control"."requested_disposition" IS NULL OR "sp_execution_control"."requested_disposition" IN ('cancelled', 'superseded')),
@@ -143,7 +141,6 @@ CREATE TABLE `sp_execution_journal_segments` (
 	`first_sequence` integer NOT NULL,
 	`last_sequence` integer NOT NULL,
 	`entries_json` text NOT NULL,
-	`stored_bytes` integer NOT NULL,
 	`content_hash` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,
@@ -162,11 +159,9 @@ CREATE TABLE `sp_execution_objects` (
 	`content_hash` text NOT NULL,
 	`byte_length` integer NOT NULL,
 	`json_body` text,
-	`blob_body` blob,
 	`created_at` integer NOT NULL,
 	CONSTRAINT "sp_execution_object_scope" CHECK("sp_execution_objects"."lifetime_scope" IN ('execution', 'conversation')),
-	CONSTRAINT "sp_execution_object_bytes" CHECK("sp_execution_objects"."byte_length" >= 0),
-	CONSTRAINT "sp_execution_object_one_body" CHECK(("sp_execution_objects"."json_body" IS NULL) <> ("sp_execution_objects"."blob_body" IS NULL))
+	CONSTRAINT "sp_execution_object_bytes" CHECK("sp_execution_objects"."byte_length" >= 0)
 );
 --> statement-breakpoint
 CREATE INDEX `sp_execution_object_scope_index` ON `sp_execution_objects` (`lifetime_scope`,`scope_owner_id`,`object_kind`);--> statement-breakpoint
@@ -179,7 +174,6 @@ CREATE TABLE `sp_execution_replay_segments` (
 	`first_sequence` integer NOT NULL,
 	`last_sequence` integer NOT NULL,
 	`entries_json` text NOT NULL,
-	`stored_bytes` integer NOT NULL,
 	`content_hash` text NOT NULL,
 	`encoded_bytes` integer NOT NULL,
 	`created_at` integer NOT NULL,

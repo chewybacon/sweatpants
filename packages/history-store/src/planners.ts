@@ -21,12 +21,10 @@ import type {
 import {
   conversationKeys,
   decodeAuthorityHead,
-  encodeArchivedPublicRootIndex,
-  encodeCheckpoint,
-  encodeCommandReceipt,
-  encodeConversationHead,
-  encodePublicSegment,
-  encodeTerminalSegment,
+  prepareArchivedPublicRootIndex,
+  prepareCheckpoint,
+  preparePublicSegment,
+  prepareTerminalSegment,
 } from "./persistence.ts";
 
 export type ConversationPlan<Result> =
@@ -116,7 +114,7 @@ function headMutation(
       next: {
         revision: head.revision,
         fence: head.ownerEpoch,
-        value: encodeConversationHead(head),
+        value: head,
       },
     },
   };
@@ -161,7 +159,7 @@ export function checkpointEnsure(checkpoint: StoredCheckpoint): ImmutableEnsure 
       conversationKeys.checkpointCause(checkpoint.conversationId, checkpoint.causeKey),
     ],
     fingerprint: checkpoint.contentHash,
-    value: encodeCheckpoint(checkpoint),
+    value: prepareCheckpoint(checkpoint),
   };
 }
 
@@ -181,7 +179,7 @@ export function publicSegmentEnsure(
       ),
     ],
     fingerprint: segment.contentHash,
-    value: encodePublicSegment(segment),
+    value: preparePublicSegment(segment),
   };
 }
 
@@ -192,7 +190,7 @@ export function publicRootIndexEnsure(entry: ArchivedPublicRootIndex): Immutable
     key: conversationKeys.publicRootIndex(entry.conversationId, entry.position),
     alternateKeys: [conversationKeys.publicRootIdentity(entry.conversationId, entry.rootId)],
     fingerprint: canonicalDigest(entry),
-    value: encodeArchivedPublicRootIndex(entry),
+    value: prepareArchivedPublicRootIndex(entry),
   };
 }
 
@@ -210,7 +208,7 @@ export function terminalSegmentEnsure(segment: StoredTerminalSegment): Immutable
       ),
     ],
     fingerprint: segment.contentHash,
-    value: encodeTerminalSegment(segment),
+    value: prepareTerminalSegment(segment),
   };
 }
 
@@ -377,7 +375,7 @@ export function planCommandAdmission(input: {
         collection: DurableCollections.conversationCommandReceipts,
         key: conversationKeys.receipt(request.conversationId, request.commandId),
         fingerprint: request.commandDigest,
-        value: encodeCommandReceipt(receipt),
+        value: receipt,
       },
       ensures: [],
       authority: {
@@ -388,7 +386,7 @@ export function planCommandAdmission(input: {
         next: {
           revision: head.revision,
           fence: head.ownerEpoch,
-          value: encodeConversationHead(head),
+          value: head,
         },
       },
     },

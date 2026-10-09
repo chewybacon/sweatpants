@@ -1,25 +1,18 @@
-import { canonicalJson, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
+import { canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { expect, it } from "vitest";
-import {
-  decodeExecutionObject,
-  encodeExecutionObject,
-  encodeExecutionObjectEnvelope,
-} from "../store/store-persistence.ts";
+import { readExecutionObject, prepareExecutionObject } from "../store/store-persistence.ts";
 import type { StoredExecutionObject } from "../store/store.ts";
 
-function executionObject(body: Json | Uint8Array): StoredExecutionObject {
-  const canonical = body instanceof Uint8Array ? null : canonicalJson(body);
+function executionObject(body: Json): StoredExecutionObject {
+  const canonical = canonicalJson(body);
   return {
     objectId: "object",
     lifetimeScope: "execution",
     scopeOwnerId: "execution",
     objectKind: "test",
     body,
-    contentHash: body instanceof Uint8Array ? sha256Bytes(body) : sha256(canonical!),
-    byteLength:
-      body instanceof Uint8Array
-        ? body.byteLength
-        : new TextEncoder().encode(canonical!).byteLength,
+    contentHash: sha256(canonical),
+    byteLength: new TextEncoder().encode(canonical).byteLength,
     createdAt: 1,
   };
 }
@@ -28,49 +21,27 @@ it.each<Json>([
   null,
   [],
   { z: [true, null, -0, { '\"\\\n': '雪 😀 \",\"body\":null,\"x\":\"' }], a: 2 },
-])("stores ordinary JSON envelopes without changing body integrity for %j", async (body) => {
+])("passes structured records without changing body integrity for %j", async (body) => {
   const object = executionObject(body);
-  const encoded = encodeExecutionObject(object);
-  expect(JSON.parse(new TextDecoder().decode(encoded))).toEqual({
-    ...object,
-    body: JSON.parse(JSON.stringify(body)),
-    bodyKind: "json",
-  });
-  expect(encodeExecutionObjectEnvelope(object)).toEqual(encoded);
-  expect(await decodeExecutionObject(encoded)).toEqual({
-    ...object,
-    body: JSON.parse(canonicalJson(body)),
-  });
+  const encoded = prepareExecutionObject(object);
+  expect(encoded).toBe(object);
+  expect(await readExecutionObject(encoded)).toEqual(object);
 });
 
-it("preserves exact binary envelope bytes and owns the encoded result", async () => {
-  const body = new Uint8Array([0, 255, 1, 128]);
-  const object = executionObject(body);
-  const encoded = encodeExecutionObject(object);
-  expect(JSON.parse(new TextDecoder().decode(encoded))).toEqual({
-    ...object,
-    bodyKind: "binary",
-    body: "AP8BgA==",
-  });
-  expect(encodeExecutionObjectEnvelope(object)).toEqual(encoded);
-  body.fill(0);
-  expect((await decodeExecutionObject(encoded)).body).toEqual(new Uint8Array([0, 255, 1, 128]));
-});
-
-it("owns encoded JSON independently of later source mutation", async () => {
+it("rejects payloads changed after preparation instead of caching stale encodings", async () => {
   const body = { nested: { value: "original" } };
-  const encoded = encodeExecutionObject(executionObject(body));
+  const prepared = prepareExecutionObject(executionObject(body));
   body.nested.value = "mutated";
-  expect((await decodeExecutionObject(encoded)).body).toEqual({ nested: { value: "original" } });
+  await expect(readExecutionObject(prepared)).rejects.toThrow(/content metadata/);
 });
 
-it("rejects inconsistent metadata and invalid JSON before encoding", () => {
+it("rejects inconsistent metadata and invalid JSON before persistence", () => {
   const object = executionObject({ ok: true });
-  expect(() => encodeExecutionObject({ ...object, contentHash: "wrong" })).toThrow();
-  expect(() => encodeExecutionObject({ ...object, byteLength: 0 })).toThrow();
-  expect(() => encodeExecutionObject({ ...object, createdAt: NaN })).toThrow();
-  expect(() => encodeExecutionObject({ ...object, body: { invalid: NaN } })).toThrow();
+  expect(() => prepareExecutionObject({ ...object, contentHash: "wrong" })).toThrow();
+  expect(() => prepareExecutionObject({ ...object, byteLength: 0 })).toThrow();
+  expect(() => prepareExecutionObject({ ...object, createdAt: NaN })).toThrow();
+  expect(() => prepareExecutionObject({ ...object, body: { invalid: NaN } })).toThrow();
   const cyclic: Record<string, Json> = {};
   cyclic["self"] = cyclic;
-  expect(() => encodeExecutionObject({ ...object, body: cyclic })).toThrow();
+  expect(() => prepareExecutionObject({ ...object, body: cyclic })).toThrow();
 });

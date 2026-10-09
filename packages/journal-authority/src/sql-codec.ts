@@ -1,33 +1,28 @@
 import {
   sqlNatural as numberValue,
   type SqlNumbers,
-  invalidStoredSqlValue as invalid,
   priorSqlPosition as priorPosition,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalJson, cloneJson, parseJsonText } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
 import type {
   ExecutionControl,
   StoredExecutionObject,
   StoredPrivateSegment,
 } from "./store/store.ts";
-import {
-  decodeExecutionControlJson,
-  encodePrivateSegmentEnvelopeFromCanonical,
-} from "./store/store-persistence.ts";
+import { readExecutionControl } from "./store/store-persistence.ts";
 type ControlRow = SqlNumbers<
   Omit<ExecutionControl, "status" | "requestedDisposition" | "control">
-> & { status: string; requestedDisposition: string | null; controlJson: string };
+> & { status: string; requestedDisposition: string | null; controlJson: Json };
 type PrivateRow = SqlNumbers<Omit<StoredPrivateSegment, "previous" | "entries">> & {
   previousSegmentId: string | null;
-  entriesJson: string;
+  entriesJson: readonly Json[];
 };
 type ObjectRow = SqlNumbers<Omit<StoredExecutionObject, "lifetimeScope" | "body">> & {
   lifetimeScope: string;
-  jsonBody: string | null;
-  blobBody: Uint8Array | null;
+  jsonBody: Json;
 };
 export function controlFromRow(row: ControlRow): ExecutionControl {
-  const metadata = cloneJson({
+  const metadata = {
     executionId: row.executionId,
     controlRevision: row.controlRevision,
     ownerFence: row.ownerFence,
@@ -36,35 +31,33 @@ export function controlFromRow(row: ControlRow): ExecutionControl {
     stopGeneration: row.stopGeneration,
     requestedDisposition: row.requestedDisposition,
     updatedAt: numberValue(row.updatedAt, "updated_at"),
-  });
-  return decodeExecutionControlJson({
+  };
+  return readExecutionControl({
     ...metadata,
-    control: parseJsonText(row.controlJson, "control_json"),
+    control: row.controlJson,
   });
 }
-export function privateEnvelopeFromRow(row: PrivateRow): Uint8Array {
-  return encodePrivateSegmentEnvelopeFromCanonical(
-    {
-      segmentId: row.segmentId,
-      executionId: row.executionId,
-      taskId: row.taskId,
-      previous:
-        row.previousSegmentId === null
-          ? null
-          : { segmentId: row.previousSegmentId, lastSequence: priorPosition(row.firstSequence) },
-      firstSequence: row.firstSequence,
-      lastSequence: row.lastSequence,
-      contentHash: row.contentHash,
-      encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
-      createdAt: numberValue(row.createdAt, "created_at"),
-    },
-    row.entriesJson,
-  );
+export function privateFromRow(row: PrivateRow): StoredPrivateSegment {
+  return {
+    segmentId: row.segmentId,
+    executionId: row.executionId,
+    taskId: row.taskId,
+    previous:
+      row.previousSegmentId === null
+        ? null
+        : {
+            segmentId: row.previousSegmentId,
+            lastSequence: priorPosition(row.firstSequence),
+          },
+    firstSequence: row.firstSequence,
+    lastSequence: row.lastSequence,
+    contentHash: row.contentHash,
+    encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
+    createdAt: numberValue(row.createdAt, "created_at"),
+    entries: row.entriesJson as StoredPrivateSegment["entries"],
+  };
 }
 export function objectFromRow(row: ObjectRow): StoredExecutionObject {
-  if ((row.jsonBody === null) === (row.blobBody === null)) {
-    return invalid(`Execution object ${row.objectId} has invalid body cardinality`);
-  }
   const value: StoredExecutionObject = {
     objectId: row.objectId,
     lifetimeScope: row.lifetimeScope as StoredExecutionObject["lifetimeScope"],
@@ -72,16 +65,12 @@ export function objectFromRow(row: ObjectRow): StoredExecutionObject {
     objectKind: row.objectKind,
     contentHash: row.contentHash,
     byteLength: numberValue(row.byteLength, "byte_length"),
-    body:
-      row.jsonBody === null
-        ? new Uint8Array(row.blobBody!)
-        : parseJsonText(row.jsonBody, "json_body"),
+    body: row.jsonBody,
     createdAt: numberValue(row.createdAt, "created_at"),
   };
   return value;
 }
 export function privateToRow(value: StoredPrivateSegment) {
-  const entriesJson = canonicalJson(value.entries);
   return {
     segmentId: value.segmentId,
     executionId: value.executionId,
@@ -89,16 +78,13 @@ export function privateToRow(value: StoredPrivateSegment) {
     previousSegmentId: value.previous?.segmentId ?? null,
     firstSequence: value.firstSequence,
     lastSequence: value.lastSequence,
-    entriesJson,
+    entriesJson: value.entries,
     contentHash: value.contentHash,
     encodedBytes: value.encodedBytes,
     createdAt: value.createdAt,
-    storedBytes:
-      encodePrivateSegmentEnvelopeFromCanonical(value, "").byteLength + value.encodedBytes,
   };
 }
 export function objectToRow(value: StoredExecutionObject) {
-  const binary = value.body instanceof Uint8Array;
   return {
     objectId: value.objectId,
     lifetimeScope: value.lifetimeScope,
@@ -106,8 +92,7 @@ export function objectToRow(value: StoredExecutionObject) {
     objectKind: value.objectKind,
     contentHash: value.contentHash,
     byteLength: value.byteLength,
-    jsonBody: binary ? null : canonicalJson(value.body),
-    blobBody: binary ? value.body : null,
+    jsonBody: value.body,
     createdAt: value.createdAt,
   };
 }
@@ -120,7 +105,7 @@ export function controlToRow(value: ExecutionControl) {
     rootTaskId: value.rootTaskId,
     stopGeneration: value.stopGeneration,
     requestedDisposition: value.requestedDisposition,
-    controlJson: canonicalJson(value.control),
+    controlJson: value.control,
     updatedAt: value.updatedAt,
   };
 }

@@ -9,21 +9,21 @@ const ensure: ImmutableEnsure = {
   key: durableKey("segment"),
   alternateKeys: [durableKey("execution", "task", "0", "1")],
   fingerprint: "hash",
-  value: new Uint8Array([1, 2]),
+  value: [1, 2],
 };
 const current: StoredAuthorityRecord = {
   collection: "execution-controls",
   key: durableKey("execution"),
   revision: "3",
   fence: "7",
-  value: new Uint8Array([0]),
+  value: [0],
 };
 const authority: NonNullable<DurableMutation["authority"]> = {
   name: "control",
   collection: current.collection,
   key: current.key,
   expected: { revision: "3", fence: "7" },
-  next: { revision: "4", value: new Uint8Array([2]) },
+  next: { revision: "4", value: [2] },
 };
 
 describe("mutation decisions", () => {
@@ -68,7 +68,7 @@ describe("mutation decisions", () => {
     ).toEqual({ status: "immutable_conflict", write: "segment", existing: other });
   });
 
-  it("rejects conflicting bytes by fingerprint even when the primary identity matches", () => {
+  it("rejects conflicting content by fingerprint even when the primary identity matches", () => {
     const existing = { ...ensure, fingerprint: "different" };
     expect(
       evaluateMutation(
@@ -104,10 +104,10 @@ describe("mutation decisions", () => {
     });
   });
 
-  it("plans only missing inserts and snapshots the values returned after commit", () => {
+  it("plans only missing inserts and retains admitted values for the commit", () => {
     const missing = { ...ensure, name: "new", key: durableKey("new"), alternateKeys: [] };
-    const nextValue = new Uint8Array([4]);
-    const missingValue = new Uint8Array([5]);
+    const nextValue = [4];
+    const missingValue = [5];
     const result = evaluateMutation(
       {
         authority: { ...authority, next: { revision: "4", value: nextValue } },
@@ -124,10 +124,8 @@ describe("mutation decisions", () => {
       throw new Error("Expected a write plan");
     }
     expect(result.inserts.map((entry) => entry.name)).toEqual(["new"]);
-    nextValue[0] = 99;
-    missingValue[0] = 99;
-    expect(result.outcome.authority?.value).toEqual(new Uint8Array([4]));
-    expect(result.outcome.ensured.new?.value).toEqual(new Uint8Array([5]));
+    expect(result.outcome.authority?.value).toBe(nextValue);
+    expect(result.outcome.ensured.new?.value).toBe(missingValue);
     expect(result.outcome.ensured.segment).toEqual(ensure);
   });
 

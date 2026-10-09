@@ -262,7 +262,7 @@ async function benchBackend(
           direction: "forward",
           after,
           maxRecords: PAGE_SIZE,
-          maxStoredBytes: 16 * 1024 * 1024,
+          maxPayloadBytes: 16 * 1024 * 1024,
         });
         rows += page.records.length;
         after = page.nextCursor;

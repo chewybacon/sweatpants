@@ -9,12 +9,12 @@ const request: BoundedScan = {
   direction: "forward",
   after: null,
   maxRecords: 3,
-  maxStoredBytes: 10,
+  maxPayloadBytes: 10,
 };
 const rows = [
-  { key: "a", position: "9007199254740992", storedBytes: 4 },
-  { key: "b", position: "9007199254740993", storedBytes: 6 },
-  { key: "c", position: "9007199254740994", storedBytes: 1 },
+  { key: "a", position: "9007199254740992", payloadBytes: 4 },
+  { key: "b", position: "9007199254740993", payloadBytes: 6 },
+  { key: "c", position: "9007199254740994", payloadBytes: 1 },
 ];
 
 describe("metadata page selection", () => {
@@ -23,18 +23,36 @@ describe("metadata page selection", () => {
       selected: rows.slice(0, 2),
       nextCursor: rows[1]!.position,
     });
-    expect(planScanPage({ ...request, maxStoredBytes: 11 }, rows)).toEqual({
+    expect(planScanPage({ ...request, maxPayloadBytes: 11 }, rows)).toEqual({
       selected: rows,
       nextCursor: null,
     });
   });
   it("stops at the first oversized row instead of skipping ahead", () => {
-    expect(planScanPage({ ...request, maxStoredBytes: 5 }, rows)).toEqual({
+    expect(planScanPage({ ...request, maxPayloadBytes: 5 }, rows)).toEqual({
       selected: [rows[0]],
       nextCursor: rows[0]!.position,
     });
-    expect(planScanPage({ ...request, maxStoredBytes: 3 }, rows)).toEqual({
-      selected: [],
+    expect(() => planScanPage({ ...request, maxPayloadBytes: 3 }, rows)).toThrow(
+      expect.objectContaining({ code: "durable_kernel_scan_limit_exceeded" }),
+    );
+  });
+  it("counts metadata-only rows and keeps payload continuation contiguous", () => {
+    const metadata = { ...rows[0]!, payloadBytes: 0 };
+    expect(planScanPage({ ...request, maxRecords: 1 }, [metadata, rows[1]!])).toEqual({
+      selected: [metadata],
+      nextCursor: metadata.position,
+    });
+    expect(
+      planScanPage({ ...request, maxPayloadBytes: 6 }, [metadata, rows[1]!, rows[2]!]),
+    ).toEqual({
+      selected: [metadata, rows[1]],
+      nextCursor: rows[1]!.position,
+    });
+    expect(
+      planScanPage({ ...request, after: rows[1]!.position, maxPayloadBytes: 6 }, [rows[2]!]),
+    ).toEqual({
+      selected: [rows[2]],
       nextCursor: null,
     });
   });
@@ -46,8 +64,8 @@ describe("metadata page selection", () => {
     });
     expect(planScanPage(request, [])).toEqual({ selected: [], nextCursor: null });
   });
-  it.each([-1, NaN, Infinity, 0.5])("rejects corrupt size metadata %s", (storedBytes) => {
-    expect(() => planScanPage(request, [{ ...rows[0]!, storedBytes }])).toThrow(
+  it.each([-1, NaN, Infinity, 0.5])("rejects corrupt size metadata %s", (payloadBytes) => {
+    expect(() => planScanPage(request, [{ ...rows[0]!, payloadBytes }])).toThrow(
       "Invalid indexed record byte count",
     );
   });

@@ -1,5 +1,5 @@
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, asc, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import type { Json } from "@sweatpants/foundation";
 import { createSqliteReaderBinding, type BetterSqliteBinding } from "./better-sqlite3.ts";
 import { spConversationHeads, spConversationTerminalSegments, sqliteSchema } from "./schema.ts";
@@ -36,8 +36,8 @@ export interface TranscriptPage {
  */
 export interface ChatStorageClient {
   readonly threads: {
-    /** Non-deleted threads, newest first. */
-    list(): ThreadSummary[];
+    /** Non-deleted threads, newest first. Pass the last summary as before for the next page. */
+    list(options?: { limit?: number; before?: { updatedAt: number; id: string } }): ThreadSummary[];
     /** One thread summary, including soft-deleted rows; `null` when absent. */
     get(conversationId: string): ThreadSummary | null;
   };
@@ -51,6 +51,14 @@ export interface ChatStorageClient {
 }
 
 const DEFAULT_TRANSCRIPT_LIMIT = 100;
+const MAX_PAGE_LIMIT = 1000;
+
+function pageLimit(value = DEFAULT_TRANSCRIPT_LIMIT): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_PAGE_LIMIT) {
+    throw new RangeError(`Page limit must be an integer between 0 and ${MAX_PAGE_LIMIT}`);
+  }
+  return value;
+}
 
 function toNumber(value: string | number | bigint): number {
   return typeof value === "number" ? value : Number(value);
@@ -75,12 +83,21 @@ export function createChatStorageClient(database: ChatStorageDatabase): ChatStor
 
   return {
     threads: {
-      list() {
+      list(options = {}) {
+        const limit = pageLimit(options.limit);
         const rows = database
           .select(headColumns)
           .from(spConversationHeads)
-          .where(isNull(spConversationHeads.deletedAt))
-          .orderBy(desc(spConversationHeads.updatedAt))
+          .where(
+            and(
+              isNull(spConversationHeads.deletedAt),
+              options.before
+                ? sql`(${spConversationHeads.updatedAt}, ${spConversationHeads.conversationId}) < (${options.before.updatedAt}, ${options.before.id})`
+                : undefined,
+            ),
+          )
+          .orderBy(desc(spConversationHeads.updatedAt), desc(spConversationHeads.conversationId))
+          .limit(limit)
           .all();
         return rows.map(toSummary);
       },
@@ -96,34 +113,50 @@ export function createChatStorageClient(database: ChatStorageDatabase): ChatStor
     transcript: {
       page(conversationId, options = {}) {
         const after = options.after ?? -1;
-        const limit = options.limit ?? DEFAULT_TRANSCRIPT_LIMIT;
+        const limit = pageLimit(options.limit);
+        if (!Number.isSafeInteger(after) || after < -1) {
+          throw new RangeError("Transcript cursor must be a safe integer at least -1");
+        }
         if (limit <= 0) {
           return { entries: [], nextAfter: null };
         }
-        // Push the cursor into the scan: segments entirely at or before
-        // `after` are skipped, so page cost tracks the page, not the
-        // conversation length.
-        const segments = database
-          .select({
-            firstPosition: spConversationTerminalSegments.firstPosition,
-            entriesJson: spConversationTerminalSegments.entriesJson,
-          })
-          .from(spConversationTerminalSegments)
-          .where(
-            after >= 0
-              ? and(
-                  eq(spConversationTerminalSegments.conversationId, conversationId),
-                  gt(spConversationTerminalSegments.lastPosition, String(after)),
+        const table = spConversationTerminalSegments;
+        const columns = { firstPosition: table.firstPosition, entriesJson: table.entriesJson };
+        // Seek the single segment containing the cursor, then seek forward.
+        // Filtering last_position while ordering first_position scanned old history.
+        const containing =
+          after >= 0
+            ? database
+                .select(columns)
+                .from(table)
+                .where(
+                  and(
+                    eq(table.conversationId, conversationId),
+                    lte(table.firstPosition, String(after)),
+                  ),
                 )
-              : eq(spConversationTerminalSegments.conversationId, conversationId),
+                .orderBy(desc(table.firstPosition))
+                .limit(1)
+                .get()
+            : undefined;
+        const following = database
+          .select(columns)
+          .from(table)
+          .where(
+            and(
+              eq(table.conversationId, conversationId),
+              after >= 0 ? gt(table.firstPosition, String(after)) : undefined,
+            ),
           )
-          .orderBy(asc(spConversationTerminalSegments.firstPosition))
+          .orderBy(asc(table.firstPosition))
+          .limit(limit + 1)
           .all();
+        const segments = containing ? [containing, ...following] : following;
 
         const entries: TranscriptEntry[] = [];
         let sawEntryBeyondLimit = false;
         outer: for (const segment of segments) {
-          const parsed = JSON.parse(segment.entriesJson) as Json[];
+          const parsed = segment.entriesJson;
           const first = toNumber(segment.firstPosition);
           for (let offset = 0; offset < parsed.length; offset += 1) {
             const position = first + offset;

@@ -4,8 +4,6 @@ import { durableKey } from "../codec.ts";
 import { DurableCollections } from "../collections.ts";
 import { createMemoryDurableKernel } from "../memory.ts";
 
-const bytes = (value: string) => new TextEncoder().encode(value);
-
 describe("memory durable kernel", () => {
   it("short-circuits an existing claim before authority guards", async () => {
     const kernel = createMemoryDurableKernel();
@@ -15,7 +13,7 @@ describe("memory durable kernel", () => {
         collection: DurableCollections.conversationCommandReceipts,
         key: durableKey("conversation", "command"),
         fingerprint: "digest",
-        value: bytes("receipt"),
+        value: "receipt",
       } as const;
       expect(yield* kernel.apply({ claim, ensures: [] })).toMatchObject({ status: "committed" });
       expect(
@@ -27,7 +25,7 @@ describe("memory durable kernel", () => {
             collection: DurableCollections.conversationHeads,
             key: durableKey("conversation"),
             expected: { revision: "99", fence: "99" },
-            next: { revision: "100", fence: "99", value: bytes("head") },
+            next: { revision: "100", fence: "99", value: "head" },
           },
         }),
       ).toMatchObject({ status: "claim_exists", claim: "receipt" });
@@ -45,7 +43,7 @@ describe("memory durable kernel", () => {
           collection: DurableCollections.conversationHeads,
           key,
           expected: { revision: null, fence: null },
-          next: { revision: "0", fence: "0", value: bytes("head-0") },
+          next: { revision: "0", fence: "0", value: "head-0" },
         },
       });
       const immutableKey = durableKey("checkpoint");
@@ -57,7 +55,7 @@ describe("memory durable kernel", () => {
               collection: DurableCollections.conversationCheckpoints,
               key: immutableKey,
               fingerprint: "hash",
-              value: bytes("checkpoint"),
+              value: "checkpoint",
             },
           ],
           authority: {
@@ -65,7 +63,7 @@ describe("memory durable kernel", () => {
             collection: DurableCollections.conversationHeads,
             key,
             expected: { revision: "9", fence: "0" },
-            next: { revision: "10", fence: "0", value: bytes("head-10") },
+            next: { revision: "10", fence: "0", value: "head-10" },
           },
         }),
       ).toMatchObject({ status: "authority_conflict", mismatch: "revision" });
@@ -87,7 +85,7 @@ describe("memory durable kernel", () => {
             key: durableKey("checkpoint-1"),
             alternateKeys: [alternate],
             fingerprint: "same",
-            value: bytes("one"),
+            value: "one",
           },
         ],
       });
@@ -99,7 +97,7 @@ describe("memory durable kernel", () => {
             key: durableKey("checkpoint-2"),
             alternateKeys: [alternate],
             fingerprint: "same",
-            value: bytes("two"),
+            value: "two",
           },
         ],
       });
@@ -116,7 +114,7 @@ describe("memory durable kernel", () => {
               key: durableKey("checkpoint-2"),
               alternateKeys: [alternate],
               fingerprint: "same",
-              value: bytes("two"),
+              value: "two",
             },
           ],
           authority: {
@@ -124,7 +122,7 @@ describe("memory durable kernel", () => {
             collection: DurableCollections.conversationHeads,
             key: durableKey("conversation"),
             expected: { revision: null, fence: null },
-            next: { revision: "0", fence: "0", value: bytes("head") },
+            next: { revision: "0", fence: "0", value: "head" },
           },
         }),
       ).toMatchObject({ status: "immutable_conflict", write: "publication-checkpoint" });

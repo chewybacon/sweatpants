@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canonicalSnapshot, sha256 } from "@sweatpants/foundation";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
-import { cleanupCheckpointOrphans } from "../inspection.ts";
+import { cleanupCheckpointOrphans, inspectionSql } from "../inspection.ts";
 
 const databases: string[] = [];
 
@@ -79,6 +80,12 @@ describe("checkpoint orphan cleanup", () => {
         }),
       );
 
+      const plan = handle.database.all(
+        sql.raw(`EXPLAIN QUERY PLAN ${inspectionSql.cleanupCheckpointOrphans.replace("?", "11")}`),
+      ) as { detail: string }[];
+      const details = plan.map((row) => row.detail).join("\n");
+      expect(details).toMatch(/SEARCH head USING INDEX .*conversation_id=/);
+      expect(details).not.toMatch(/SCAN head/);
       expect(cleanupCheckpointOrphans(handle.database, 10)).toBe(0);
       expect(cleanupCheckpointOrphans(handle.database, 11)).toBe(1);
       expect(

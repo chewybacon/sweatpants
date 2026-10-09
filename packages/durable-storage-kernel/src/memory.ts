@@ -10,6 +10,7 @@ import type {
 } from "./contract.ts";
 import { decodeDurableKey, durableKey } from "./codec.ts";
 import { seek } from "./ordered-seek.ts";
+import { planScanPage } from "./scan.ts";
 import {
   authorityMismatch,
   parseCounter,
@@ -22,20 +23,35 @@ interface ImmutableEntry {
   readonly aliases: readonly string[];
 }
 
-function cloneBytes(value: Uint8Array): Uint8Array {
-  return new Uint8Array(value);
+// The memory adapter owns persisted values independently of callers, just as a
+// database does. Clone only when crossing this storage boundary.
+function cloneValue(value: unknown): unknown {
+  return structuredClone(value);
 }
 
 function cloneAuthority(value: StoredAuthorityRecord | null): StoredAuthorityRecord | null {
-  return value === null ? null : { ...value, value: cloneBytes(value.value) };
+  return value === null ? null : { ...value, value: cloneValue(value.value) };
 }
 
 function cloneImmutable(value: StoredImmutableRecord): StoredImmutableRecord {
-  return { ...value, value: cloneBytes(value.value) };
+  return { ...value, value: cloneValue(value.value) };
 }
 
 function identity(collection: string, key: string): string {
   return `${collection}\u0000${key}`;
+}
+
+// Only payload-bearing scans need a byte budget. Root index rows carry metadata,
+// and are bounded by maxRecords; their encodedBytes describes a referenced root.
+function scanPayloadBytes(record: StoredImmutableRecord): number {
+  if (record.collection === "conversation-public-root-index") {
+    return 0;
+  }
+  if (record.collection === "conversation-terminal-segments") {
+    const { entries } = record.value as { entries: unknown };
+    return new TextEncoder().encode(JSON.stringify(entries)).byteLength;
+  }
+  return (record.value as { encodedBytes: number }).encodedBytes;
 }
 
 export function createMemoryDurableKernel(): DurableKernel {
@@ -56,14 +72,19 @@ export function createMemoryDurableKernel(): DurableKernel {
       !root &&
       collection !== "conversation-public-segments" &&
       collection !== "conversation-terminal-segments"
-    )
+    ) {
       return [];
+    }
     const found = new Map<string, IndexedRecord>();
     for (const alias of entry.aliases) {
       const parts = decodeDurableKey(alias);
-      if (parts.length < (task ? 4 : root ? 2 : 3)) continue;
+      if (parts.length < (task ? 4 : root ? 2 : 3)) {
+        continue;
+      }
       const scope = identity(collection, durableKey(...parts.slice(0, task ? 2 : 1)));
-      if (found.has(scope)) continue;
+      if (found.has(scope)) {
+        continue;
+      }
       const position = parts[task ? 2 : 1]!;
       found.set(scope, {
         record: entry.record,
@@ -155,7 +176,7 @@ export function createMemoryDurableKernel(): DurableKernel {
           collection: ensure.collection,
           key: ensure.key,
           fingerprint: ensure.fingerprint,
-          value: cloneBytes(ensure.value),
+          value: cloneValue(ensure.value),
         };
         const entry = { record, aliases: [ensure.key, ...(ensure.alternateKeys ?? [])] };
         return { name: ensure.name, entry, positions: positions(entry) };
@@ -167,7 +188,7 @@ export function createMemoryDurableKernel(): DurableKernel {
             collection: mutation.claim.collection,
             key: mutation.claim.key,
             fingerprint: mutation.claim.fingerprint,
-            value: cloneBytes(mutation.claim.value),
+            value: cloneValue(mutation.claim.value),
           },
           aliases: [mutation.claim.key],
         }
@@ -177,14 +198,19 @@ export function createMemoryDurableKernel(): DurableKernel {
     if (claimEntry) {
       const record = claimEntry.record;
       immutableAliases.set(identity(record.collection, record.key), claimEntry);
-      for (const position of claimPositions) insert(position.scope, position.value);
+      for (const position of claimPositions) {
+        insert(position.scope, position.value);
+      }
     }
 
     for (const item of pending) {
-      for (const key of item.entry.aliases)
+      for (const key of item.entry.aliases) {
         immutableAliases.set(identity(item.entry.record.collection, key), item.entry);
-      for (const position of item.positions) insert(position.scope, position.value);
-      resolved.set(item.name, cloneImmutable(item.entry.record));
+      }
+      for (const position of item.positions) {
+        insert(position.scope, position.value);
+      }
+      resolved.set(item.name, item.entry.record);
     }
 
     let authority: StoredAuthorityRecord | null = null;
@@ -194,7 +220,7 @@ export function createMemoryDurableKernel(): DurableKernel {
         key: mutation.authority.key,
         revision: mutation.authority.next.revision,
         fence: mutation.authority.next.fence ?? current?.fence ?? null,
-        value: cloneBytes(mutation.authority.next.value),
+        value: cloneValue(mutation.authority.next.value),
       };
       authorities.set(identity(authority.collection, authority.key), authority);
       authority = cloneAuthority(authority);
@@ -215,9 +241,7 @@ export function createMemoryDurableKernel(): DurableKernel {
     const after = request.after === null ? null : parseCounter(request.after, "scan cursor");
     const through =
       request.through === undefined ? null : parseCounter(request.through, "scan frontier");
-    const selected = [];
-    let bytes = 0;
-    let hasMore = false;
+    const candidates = [];
     const forward = request.direction === "forward";
     const start =
       after === null
@@ -229,23 +253,29 @@ export function createMemoryDurableKernel(): DurableKernel {
           : seek(records.length, (index) => records[index]!.numeric < after) - 1;
     for (let index = start; index >= 0 && index < records.length; index += forward ? 1 : -1) {
       const candidate = records[index]!;
-      if (through !== null && (forward ? candidate.numeric > through : candidate.numeric < through))
-        break;
-      const storedBytes = candidate.record.value.byteLength;
-      if (selected.length >= request.maxRecords || bytes + storedBytes > request.maxStoredBytes) {
-        hasMore = true;
+      if (
+        through !== null &&
+        (forward ? candidate.numeric > through : candidate.numeric < through)
+      ) {
         break;
       }
-      selected.push({
+      candidates.push({
+        ...candidate,
+        key: candidate.record.key,
+        payloadBytes: scanPayloadBytes(candidate.record),
+      });
+      if (candidates.length > request.maxRecords) {
+        break;
+      }
+    }
+    const page = planScanPage(request, candidates);
+    return {
+      records: page.selected.map((candidate) => ({
         ...cloneImmutable(candidate.record),
         position: candidate.position,
-        storedBytes,
-      });
-      bytes += storedBytes;
-    }
-    return {
-      records: selected,
-      nextCursor: hasMore && selected.length > 0 ? selected.at(-1)!.position : null,
+        payloadBytes: candidate.payloadBytes,
+      })),
+      nextCursor: page.nextCursor,
     };
   }
 

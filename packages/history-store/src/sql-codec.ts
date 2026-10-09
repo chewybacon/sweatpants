@@ -1,11 +1,10 @@
 import {
   sqlNatural as numberValue,
-  encodeJsonValue,
   type SqlNumbers,
   invalidStoredSqlValue as invalid,
   priorSqlPosition as priorPosition,
 } from "@sweatpants/durable-storage-kernel";
-import { canonicalJson, parseJsonText, type Json } from "@sweatpants/foundation";
+import type { Json } from "@sweatpants/foundation";
 import type {
   ArchivedPublicRootIndex,
   CommandReceipt,
@@ -14,41 +13,38 @@ import type {
   StoredPublicArchiveSegment,
   StoredTerminalSegment,
 } from "./contract.ts";
-import { decodeConversationHead, encodeConversationHead } from "./persistence.ts";
+import { readConversationHead } from "./persistence.ts";
 type HeadRow = SqlNumbers<
   Omit<
     ConversationHead,
     "ownerRoute" | "state" | "checkpoint" | "terminalHistory" | "activeSegment" | "activeCommand"
   >
 > & {
-  ownerRouteJson: string | null;
+  ownerRouteJson: Json | null;
   state: string;
   checkpointId: string | null;
   terminalSegmentId: string | null;
-  activeSegmentJson: string | null;
-  activeCommandJson: string | null;
+  activeSegmentJson: Json | null;
+  activeCommandJson: Json | null;
 };
 type ReceiptRow = SqlNumbers<Omit<CommandReceipt, "logicalTurnId" | "executionId">> & {
   logicalTurnId: string | null;
   executionId: string | null;
 };
 type CheckpointRow = SqlNumbers<Omit<StoredCheckpoint, "cause" | "archiveHead" | "payload">> & {
-  causeJson: string;
+  causeJson: Json;
   archiveHeadSegmentId: string | null;
-  payloadJson: string;
+  payloadJson: Json;
 };
 type PublicRow = SqlNumbers<Omit<StoredPublicArchiveSegment, "previous" | "roots">> & {
   previousSegmentId: string | null;
-  rootsJson: string;
+  rootsJson: readonly Json[];
 };
 type PublicRootIndexRow = SqlNumbers<ArchivedPublicRootIndex>;
 type TerminalRow = SqlNumbers<Omit<StoredTerminalSegment, "previous" | "entries">> & {
   previousSegmentId: string | null;
-  entriesJson: string;
+  entriesJson: readonly Json[];
 };
-function nullableJson(value: string | null, field: string): Json | null {
-  return value === null ? null : parseJsonText(value, field);
-}
 export function headFromRow(
   row: HeadRow,
   terminal: { lastPosition: string } | null | undefined,
@@ -56,27 +52,25 @@ export function headFromRow(
   if (row.terminalSegmentId !== null && terminal == null) {
     return invalid(`Head ${row.conversationId} points to missing terminal segment`);
   }
-  return decodeConversationHead(
-    encodeConversationHead({
-      conversationId: row.conversationId,
-      revision: row.revision,
-      ownerEpoch: row.ownerEpoch,
-      ownerRoute: nullableJson(row.ownerRouteJson, "owner_route_json"),
-      state: row.state as ConversationHead["state"],
-      checkpoint: row.checkpointId === null ? null : { checkpointId: row.checkpointId },
-      terminalHistory:
-        row.terminalSegmentId === null
-          ? null
-          : { segmentId: row.terminalSegmentId, lastPosition: terminal!.lastPosition },
-      activeLogicalTurnId: row.activeLogicalTurnId,
-      activeExecutionId: row.activeExecutionId,
-      latestCompletedExecutionId: row.latestCompletedExecutionId,
-      activeSegment: nullableJson(row.activeSegmentJson, "active_segment_json"),
-      activeCommand: nullableJson(row.activeCommandJson, "active_command_json"),
-      deletedAt: row.deletedAt === null ? null : numberValue(row.deletedAt, "deleted_at"),
-      updatedAt: numberValue(row.updatedAt, "updated_at"),
-    }),
-  );
+  return readConversationHead({
+    conversationId: row.conversationId,
+    revision: row.revision,
+    ownerEpoch: row.ownerEpoch,
+    ownerRoute: row.ownerRouteJson,
+    state: row.state as ConversationHead["state"],
+    checkpoint: row.checkpointId === null ? null : { checkpointId: row.checkpointId },
+    terminalHistory:
+      row.terminalSegmentId === null
+        ? null
+        : { segmentId: row.terminalSegmentId, lastPosition: terminal!.lastPosition },
+    activeLogicalTurnId: row.activeLogicalTurnId,
+    activeExecutionId: row.activeExecutionId,
+    latestCompletedExecutionId: row.latestCompletedExecutionId,
+    activeSegment: row.activeSegmentJson,
+    activeCommand: row.activeCommandJson,
+    deletedAt: row.deletedAt === null ? null : numberValue(row.deletedAt, "deleted_at"),
+    updatedAt: numberValue(row.updatedAt, "updated_at"),
+  });
 }
 export function receiptFromRow(row: ReceiptRow): CommandReceipt {
   return {
@@ -97,13 +91,13 @@ export function checkpointFromRow(row: CheckpointRow): StoredCheckpoint {
     checkpointId: row.checkpointId,
     conversationId: row.conversationId,
     causeKey: row.causeKey,
-    cause: parseJsonText(row.causeJson, "cause_json"),
+    cause: row.causeJson,
     contentHash: row.contentHash,
     lineageId: row.lineageId,
     archiveHead: row.archiveHeadSegmentId === null ? null : { segmentId: row.archiveHeadSegmentId },
     archiveFrontierOrdinal: row.archiveFrontierOrdinal,
     nextPublicPosition: row.nextPublicPosition,
-    payload: parseJsonText(row.payloadJson, "payload_json"),
+    payload: row.payloadJson,
     encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
     createdAt: numberValue(row.createdAt, "created_at"),
   };
@@ -116,7 +110,7 @@ export function publicFromRow(row: PublicRow): StoredPublicArchiveSegment {
     previous: row.previousSegmentId === null ? null : { segmentId: row.previousSegmentId },
     minPosition: row.minPosition,
     maxPosition: row.maxPosition,
-    roots: parseJsonText(row.rootsJson, "roots_json") as readonly Json[],
+    roots: row.rootsJson as readonly Json[],
     contentHash: row.contentHash,
     encodedBytes: numberValue(row.encodedBytes, "encoded_bytes"),
     createdAt: numberValue(row.createdAt, "created_at"),
@@ -148,7 +142,7 @@ export function terminalFromRow(row: TerminalRow): StoredTerminalSegment {
         : { segmentId: row.previousSegmentId, lastPosition: priorPosition(row.firstPosition) },
     firstPosition: row.firstPosition,
     lastPosition: row.lastPosition,
-    entries: parseJsonText(row.entriesJson, "entries_json") as readonly Json[],
+    entries: row.entriesJson as readonly Json[],
     contentHash: row.contentHash,
     createdAt: numberValue(row.createdAt, "created_at"),
   };
@@ -173,13 +167,13 @@ export function checkpointToRow(value: StoredCheckpoint) {
     checkpointId: value.checkpointId,
     conversationId: value.conversationId,
     causeKey: value.causeKey,
-    causeJson: canonicalJson(value.cause),
+    causeJson: value.cause,
     contentHash: value.contentHash,
     lineageId: value.lineageId,
     archiveHeadSegmentId: value.archiveHead?.segmentId ?? null,
     archiveFrontierOrdinal: value.archiveFrontierOrdinal,
     nextPublicPosition: value.nextPublicPosition,
-    payloadJson: canonicalJson(value.payload),
+    payloadJson: value.payload,
     encodedBytes: value.encodedBytes,
     createdAt: value.createdAt,
   };
@@ -191,14 +185,10 @@ export function publicToRow(value: StoredPublicArchiveSegment) {
     previousSegmentId: value.previous?.segmentId ?? null,
     minPosition: value.minPosition,
     maxPosition: value.maxPosition,
-    rootsJson: canonicalJson(value.roots),
+    rootsJson: value.roots,
     contentHash: value.contentHash,
     encodedBytes: value.encodedBytes,
     createdAt: value.createdAt,
-    storedBytes:
-      encodeJsonValue({ ...value, roots: [] } as unknown as Json).byteLength -
-      2 +
-      value.encodedBytes,
   };
 }
 export function publicRootIndexToRow(value: ArchivedPublicRootIndex) {
@@ -211,11 +201,9 @@ export function publicRootIndexToRow(value: ArchivedPublicRootIndex) {
     archiveOrdinal: value.archiveOrdinal,
     contentHash: value.contentHash,
     encodedBytes: value.encodedBytes,
-    storedBytes: encodeJsonValue(value as unknown as Json).byteLength,
   };
 }
 export function terminalToRow(value: StoredTerminalSegment) {
-  const entriesJson = canonicalJson(value.entries);
   return {
     segmentId: value.segmentId,
     conversationId: value.conversationId,
@@ -225,13 +213,9 @@ export function terminalToRow(value: StoredTerminalSegment) {
     previousSegmentId: value.previous?.segmentId ?? null,
     firstPosition: value.firstPosition,
     lastPosition: value.lastPosition,
-    entriesJson,
+    entriesJson: value.entries,
     contentHash: value.contentHash,
     createdAt: value.createdAt,
-    storedBytes:
-      encodeJsonValue({ ...value, entries: [] } as unknown as Json).byteLength -
-      2 +
-      new TextEncoder().encode(entriesJson).byteLength,
   };
 }
 
@@ -239,15 +223,15 @@ export function headToRow(value: ConversationHead) {
   return {
     revision: value.revision,
     ownerEpoch: value.ownerEpoch,
-    ownerRouteJson: value.ownerRoute === null ? null : canonicalJson(value.ownerRoute),
+    ownerRouteJson: value.ownerRoute === null ? null : value.ownerRoute,
     state: value.state,
     checkpointId: value.checkpoint?.checkpointId ?? null,
     terminalSegmentId: value.terminalHistory?.segmentId ?? null,
     activeLogicalTurnId: value.activeLogicalTurnId,
     activeExecutionId: value.activeExecutionId,
     latestCompletedExecutionId: value.latestCompletedExecutionId,
-    activeSegmentJson: value.activeSegment === null ? null : canonicalJson(value.activeSegment),
-    activeCommandJson: value.activeCommand === null ? null : canonicalJson(value.activeCommand),
+    activeSegmentJson: value.activeSegment === null ? null : value.activeSegment,
+    activeCommandJson: value.activeCommand === null ? null : value.activeCommand,
     deletedAt: value.deletedAt,
     updatedAt: value.updatedAt,
   };

@@ -45,7 +45,7 @@ export interface StoredExecutionObject {
   readonly objectKind: string;
   readonly contentHash: string;
   readonly byteLength: number;
-  readonly body: Json | Uint8Array;
+  readonly body: Json;
   readonly createdAt: Milliseconds;
 }
 

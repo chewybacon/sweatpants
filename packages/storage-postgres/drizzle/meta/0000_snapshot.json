@@ -1,5 +1,5 @@
 {
-    "id": "c4303d7d-9974-4b72-b7dc-97c2739ea406",
+    "id": "8122e7de-5409-42ee-998b-3c5606113bf3",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "version": "7",
     "dialect": "postgresql",
@@ -28,9 +28,9 @@
                 },
                 "cause_json": {
                     "name": "cause_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
-                    "notNull": true
+                    "notNull": false
                 },
                 "content_hash": {
                     "name": "content_hash",
@@ -64,9 +64,9 @@
                 },
                 "payload_json": {
                     "name": "payload_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
-                    "notNull": true
+                    "notNull": false
                 },
                 "encoded_bytes": {
                     "name": "encoded_bytes",
@@ -272,7 +272,7 @@
                 },
                 "owner_route_json": {
                     "name": "owner_route_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": false
                 },
@@ -314,13 +314,13 @@
                 },
                 "active_segment_json": {
                     "name": "active_segment_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": false
                 },
                 "active_command_json": {
                     "name": "active_command_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": false
                 },
@@ -403,12 +403,6 @@
                 "archive_ordinal": {
                     "name": "archive_ordinal",
                     "type": "bigint",
-                    "primaryKey": false,
-                    "notNull": true
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -555,13 +549,7 @@
                 },
                 "roots_json": {
                     "name": "roots_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -687,13 +675,7 @@
                 },
                 "entries_json": {
                     "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -765,6 +747,10 @@
             "uniqueConstraints": {},
             "policies": {},
             "checkConstraints": {
+                "sp_terminal_segment_payload_limit": {
+                    "name": "sp_terminal_segment_payload_limit",
+                    "value": "octet_length(\"sp_conversation_terminal_segments\".\"entries_json\"::text) <= 16777216"
+                },
                 "sp_terminal_segment_first_position": {
                     "name": "sp_terminal_segment_first_position",
                     "value": "\"sp_conversation_terminal_segments\".\"first_position\" >= 0"
@@ -824,9 +810,9 @@
                 },
                 "control_json": {
                     "name": "control_json",
-                    "type": "text",
+                    "type": "jsonb",
                     "primaryKey": false,
-                    "notNull": true
+                    "notNull": false
                 },
                 "updated_at": {
                     "name": "updated_at",
@@ -906,13 +892,7 @@
                 },
                 "entries_json": {
                     "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": true
                 },
@@ -1059,13 +1039,7 @@
                 },
                 "json_body": {
                     "name": "json_body",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false
-                },
-                "blob_body": {
-                    "name": "blob_body",
-                    "type": "bytea",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": false
                 },
@@ -1132,10 +1106,6 @@
                 "sp_execution_object_bytes": {
                     "name": "sp_execution_object_bytes",
                     "value": "\"sp_execution_objects\".\"byte_length\" >= 0"
-                },
-                "sp_execution_object_one_body": {
-                    "name": "sp_execution_object_one_body",
-                    "value": "(\"sp_execution_objects\".\"json_body\" IS NULL) <> (\"sp_execution_objects\".\"blob_body\" IS NULL)"
                 }
             },
             "isRLSEnabled": false
@@ -1182,13 +1152,7 @@
                 },
                 "entries_json": {
                     "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
+                    "type": "jsonb",
                     "primaryKey": false,
                     "notNull": true
                 },

@@ -2,8 +2,10 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { run } from "effection";
 import { Miniflare } from "miniflare";
 import { beforeAll, afterAll, expect, it } from "vitest";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { durableKey } from "@sweatpants/durable-storage-kernel";
 import { createD1DurableKernel, initializeD1Storage } from "../index.ts";
+import { headValue, checkpointEnsure, publicEnsure } from "./fixtures/domain-records.ts";
 import { meterD1 } from "./fixtures/d1-meter.ts";
 let mf: Miniflare;
 let db: D1Database;
@@ -39,45 +41,23 @@ it("keeps point reads, deep range seeks and writes bounded as unrelated records 
   const meter = meterD1(db);
   const kernel = createD1DurableKernel(meter.database);
   const seed = createD1DurableKernel(db);
-  for (let position = 0; position < 30; position++)
-    await run(() =>
-      seed.apply({
-        ensures: [
-          {
-            name: "segment",
-            collection: "conversation-public-segments",
-            key: durableKey("target", String(position)),
-            alternateKeys: [durableKey("target", String(position), String(position))],
-            fingerprint: String(position),
-            value: new Uint8Array([1]),
-          },
-        ],
-      }),
-    );
+  for (let position = 0; position < 30; position++) {
+    await run(() => seed.apply({ ensures: [publicEnsure("target", String(position), position)] }));
+  }
   for (const count of [100, 10000]) {
     // Index entries preceding the requested cursor and other scopes must not be scanned.
     await db
-      .prepare(
-        `WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?) INSERT OR IGNORE INTO sp_d1_records(collection,key,byte_length) SELECT 'conversation-public-segments','noise-'||x,0 FROM n`,
-      )
+      .prepare(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?)
+      INSERT OR IGNORE INTO sp_conversation_public_segments
+      (segment_id,conversation_id,previous_segment_id,min_position,max_position,roots_json,content_hash,encoded_bytes,created_at)
+      SELECT 'noise-'||x,'target',NULL,0,0,'[]','noise',2,0 FROM n`)
       .bind(count)
-      .run();
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO sp_d1_positions(collection,index_name,scope,position,digits,key) SELECT collection,'conversation-position',?, '0',1,key FROM sp_d1_records WHERE key LIKE 'noise-%'`,
-      )
-      .bind(durableKey("target"))
-      .run();
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO sp_d1_aliases(collection,alias,key) SELECT collection,key,key FROM sp_d1_records WHERE key LIKE 'noise-%'`,
-      )
       .run();
     meter.queries.length = 0;
     const point = await run(() =>
-      kernel.readImmutable("conversation-public-segments", durableKey("target", "29")),
+      kernel.readImmutable("conversation-public-segments", durableKey("target-29")),
     );
-    expect(point?.value).toEqual(new Uint8Array([1]));
+    expect(point?.value).toEqual(publicEnsure("target", "29", 29).value);
     const forward = await run(() =>
       kernel.scan({
         collection: "conversation-public-segments",
@@ -86,7 +66,7 @@ it("keeps point reads, deep range seeks and writes bounded as unrelated records 
         after: "24",
         direction: "forward",
         maxRecords: 3,
-        maxStoredBytes: 100,
+        maxPayloadBytes: 10000,
       }),
     );
     expect(forward.records.map((record) => record.position)).toEqual(["25", "26", "27"]);
@@ -99,7 +79,7 @@ it("keeps point reads, deep range seeks and writes bounded as unrelated records 
         through: "20",
         direction: "backward",
         maxRecords: 3,
-        maxStoredBytes: 100,
+        maxPayloadBytes: 10000,
       }),
     );
     expect(backward.records.map((record) => record.position)).toEqual(["28", "27", "26"]);
@@ -113,9 +93,9 @@ it("keeps point reads, deep range seeks and writes bounded as unrelated records 
         authority: {
           name: "head",
           collection: "conversation-heads",
-          key: durableKey("cost", String(count)),
+          key: durableKey(`cost-${count}`),
           expected: { revision: null },
-          next: { revision: "0", value: new Uint8Array([1]) },
+          next: { revision: "0", ...headValue(`cost-${count}`, "0") },
         },
       }),
     );
@@ -169,7 +149,7 @@ it("bounds authority replacement and rejects stale writes before the write batch
       collection: "conversation-heads" as const,
       key,
       expected: { revision: expected },
-      next: { revision: next, value: new Uint8Array([1]) },
+      next: { revision: next, ...headValue("rewrite", next) },
     },
   });
   await run(() => kernel.apply(mutation(null, "0")));
@@ -199,18 +179,16 @@ it("commits unrelated writers once each without charging them for retries", asyn
           authority: {
             name: "head",
             collection: "conversation-heads",
-            key: durableKey("independent", String(i)),
+            key: durableKey(`independent-${i}`),
             expected: { revision: null },
-            next: { revision: "0", value: new Uint8Array([i]) },
+            next: { revision: "0", ...headValue(`independent-${i}`, "0") },
           },
         }),
       ),
     ),
   );
   expect(results.every((result) => result.status === "committed")).toBe(true);
-  expect(meter.queries.filter((query) => query.sql.startsWith("UPDATE sp_d1_meta"))).toHaveLength(
-    32,
-  );
+  expect(meter.queries.filter((query) => query.sql.includes("UPDATE sp_d1_meta"))).toHaveLength(32);
   const reads = meter.queries.reduce((sum, query) => sum + query.rowsRead, 0);
   const writes = meter.queries.reduce((sum, query) => sum + query.rowsWritten, 0);
   expect(reads).toBeLessThanOrEqual(192);
@@ -227,22 +205,13 @@ it("protects shared immutable aliases even when authority identities differ", as
     ["left", "right"].map((name) =>
       run(() =>
         kernel.apply({
-          ensures: [
-            {
-              name: "object",
-              collection: "execution-objects",
-              key: durableKey(name),
-              alternateKeys: [durableKey("shared-cost-alias")],
-              fingerprint: name,
-              value: new Uint8Array([1]),
-            },
-          ],
+          ensures: [checkpointEnsure(name, "shared-cost", "alias", { name })],
           authority: {
             name: "head",
             collection: "conversation-heads",
-            key: durableKey("alias-race", name),
+            key: durableKey(`alias-race-${name}`),
             expected: { revision: null },
-            next: { revision: "0", value: new Uint8Array([1]) },
+            next: { revision: "0", ...headValue(`alias-race-${name}`, "0") },
           },
         }),
       ),
@@ -252,19 +221,19 @@ it("protects shared immutable aliases even when authority identities differ", as
   expect(results.filter((result) => result.status === "immutable_conflict")).toHaveLength(1);
   const heads = await Promise.all(
     ["left", "right"].map((name) =>
-      run(() => kernel.readAuthority("conversation-heads", durableKey("alias-race", name))),
+      run(() => kernel.readAuthority("conversation-heads", durableKey(`alias-race-${name}`))),
     ),
   );
   expect(heads.filter(Boolean)).toHaveLength(1);
-  for (const query of meter.queries.filter((query) => query.sql.startsWith("UPDATE sp_d1_meta"))) {
+  for (const query of meter.queries.filter((query) => query.sql.includes("UPDATE sp_d1_meta"))) {
     const plan = await db
       .prepare(`EXPLAIN QUERY PLAN ${query.sql}`)
       .bind(...query.bindings)
       .all<{ detail: string }>();
     const details = plan.results.map((row) => row.detail).join("\n");
-    // json_each scans the bounded mutation input, never the stored alias table.
-    expect(details).toContain("SEARCH a USING INDEX");
-    expect(details).not.toMatch(/SCAN (?:sp_d1_|a\b)|USE TEMP B-TREE/);
+    // Conflict checks must seek the domain identity indexes.
+    expect(details).toContain("SEARCH");
+    expect(details).not.toMatch(/SCAN (?:sp_conversation_|sp_execution_|a\b)|USE TEMP B-TREE/);
     expect(query.rowsRead).toBeLessThanOrEqual(10);
   }
 });
@@ -272,17 +241,7 @@ it("protects shared immutable aliases even when authority identities differ", as
 it("performs no billable writes for an ensure-only replay", async () => {
   const meter = meterD1(db);
   const kernel = createD1DurableKernel(meter.database);
-  const mutation = {
-    ensures: [
-      {
-        name: "existing",
-        collection: "conversation-checkpoints" as const,
-        key: durableKey("noop-replay"),
-        fingerprint: "same",
-        value: new Uint8Array([1, 2]),
-      },
-    ],
-  };
+  const mutation = { ensures: [checkpointEnsure("noop-replay", "noop", "same", { same: true })] };
   expect((await run(() => kernel.apply(mutation))).status).toBe("committed");
   meter.queries.length = 0;
   const replay = await run(() => kernel.apply(mutation));
@@ -297,20 +256,7 @@ it("fetches a selected scan page in bounded batches, preserving direction and by
   const kernel = createD1DurableKernel(meter.database);
   const seed = createD1DurableKernel(db);
   for (let position = 0; position < 105; position++) {
-    await run(() =>
-      seed.apply({
-        ensures: [
-          {
-            name: "segment",
-            collection: "conversation-public-segments",
-            key: durableKey("batched", String(position)),
-            alternateKeys: [durableKey("batched", String(position), String(position))],
-            fingerprint: String(position),
-            value: new Uint8Array([position]),
-          },
-        ],
-      }),
-    );
+    await run(() => seed.apply({ ensures: [publicEnsure("batched", String(position), position)] }));
   }
   for (const direction of ["forward", "backward"] as const) {
     meter.queries.length = 0;
@@ -322,14 +268,16 @@ it("fetches a selected scan page in bounded batches, preserving direction and by
         after: null,
         direction,
         maxRecords: 105,
-        maxStoredBytes: 105,
+        maxPayloadBytes: 100000,
       }),
     );
     const positions = Array.from({ length: 105 }, (_, i) =>
       direction === "forward" ? i : 104 - i,
     );
     expect(page.records.map((record) => Number(record.position))).toEqual(positions);
-    expect(page.records.map((record) => record.value[0])).toEqual(positions);
+    expect(page.records.map((record) => record.value)).toEqual(
+      positions.map((position) => publicEnsure("batched", String(position), position).value),
+    );
     expect(page.nextCursor).toBeNull();
     // One metadata seek, then two payload queries, including the parameter-limit boundary.
     expect(meter.queries).toHaveLength(3);
@@ -357,50 +305,166 @@ it("fetches a selected scan page in bounded batches, preserving direction and by
       after: null,
       direction: "forward",
       maxRecords: 105,
-      maxStoredBytes: 2,
+      maxPayloadBytes:
+        publicEnsure("batched", "0", 0).value.encodedBytes +
+        publicEnsure("batched", "1", 1).value.encodedBytes,
     }),
   );
   expect(bounded.records.map((record) => record.position)).toEqual(["0", "1"]);
   expect(bounded.nextCursor).toBe("1");
   expect(meter.queries).toHaveLength(2);
-  expect(meter.queries[1]!.bindings).toEqual([
-    "conversation-public-segments",
-    durableKey("batched", "0"),
-    durableKey("batched", "1"),
-  ]);
+  expect(meter.queries[1]!.bindings).toEqual(["batched-0", "batched-1"]);
 });
 
 it("assembles batched scan chunks and rejects a missing chunk", async () => {
   const kernel = createD1DurableKernel(db);
-  const key = durableKey("scan-chunks", "0");
-  const value = new Uint8Array(1024 * 1024 + 3).fill(7);
-  await run(() =>
-    kernel.apply({
-      ensures: [
-        {
-          name: "segment",
-          collection: "conversation-public-segments",
-          key,
-          alternateKeys: [durableKey("scan-chunks", "0", "0")],
-          fingerprint: "chunks",
-          value,
-        },
-      ],
-    }),
-  );
+  const entries = ["x".repeat(600 * 1024), "y".repeat(600 * 1024)];
+  const encoded = canonicalJson(entries);
+  const value = {
+    segmentId: "scan-chunks",
+    executionId: "scan-chunks",
+    taskId: "root",
+    previous: null,
+    firstSequence: "0",
+    lastSequence: "1",
+    entries,
+    contentHash: sha256(encoded),
+    encodedBytes: new TextEncoder().encode(encoded).byteLength,
+    createdAt: 1,
+  };
+  const key = durableKey(value.segmentId);
+  const ensure = {
+    name: "segment",
+    collection: "execution-journal-segments" as const,
+    key,
+    alternateKeys: [durableKey(value.executionId, value.taskId, "0", "1")],
+    fingerprint: value.contentHash,
+    value,
+  };
+  await run(() => kernel.apply({ ensures: [ensure] }));
   const request = {
-    collection: "conversation-public-segments" as const,
-    index: "conversation-position" as const,
-    scope: durableKey("scan-chunks"),
+    collection: "execution-journal-segments" as const,
+    index: "task-sequence" as const,
+    scope: durableKey("scan-chunks", "root"),
     after: null,
     direction: "forward" as const,
     maxRecords: 2,
-    maxStoredBytes: value.byteLength,
+    maxPayloadBytes: ensure.value.encodedBytes,
   };
   expect((await run(() => kernel.scan(request))).records[0]?.value).toEqual(value);
   await db
-    .prepare("DELETE FROM sp_d1_chunks WHERE collection=? AND key=? AND part=0")
+    .prepare("DELETE FROM sp_d1_payload_chunks WHERE collection=? AND key=? AND part=0")
     .bind(request.collection, key)
     .run();
-  await expect(run(() => kernel.scan(request))).rejects.toThrow("Missing journal chunk");
+  await expect(run(() => kernel.scan(request))).rejects.toThrow("Missing journal payload chunk");
+});
+
+it("bounds terminal scans by encoded entries including overflow payloads", async () => {
+  const seed = createD1DurableKernel(db);
+  const entriesByPosition = [["hello 🌍"], ["🌍".repeat(300_000)], ["tail"]];
+  const sizes = entriesByPosition.map(
+    (entries) => new TextEncoder().encode(JSON.stringify(entries)).byteLength,
+  );
+  for (const [position, entries] of entriesByPosition.entries()) {
+    const value = {
+      segmentId: `terminal-size-${position}`,
+      conversationId: "terminal-size",
+      logicalTurnId: "turn",
+      executionId: "execution",
+      publicationKey: String(position),
+      previous: null,
+      firstPosition: String(position),
+      lastPosition: String(position),
+      entries,
+      contentHash: sha256(canonicalJson(entries)),
+      createdAt: 1,
+    };
+    await run(() =>
+      seed.apply({
+        ensures: [
+          {
+            name: "segment",
+            collection: "conversation-terminal-segments",
+            key: durableKey(value.segmentId),
+            fingerprint: value.contentHash,
+            value,
+          },
+        ],
+      }),
+    );
+  }
+  const meter = meterD1(db);
+  const kernel = createD1DurableKernel(meter.database);
+  const page = await run(() =>
+    kernel.scan({
+      collection: "conversation-terminal-segments",
+      index: "conversation-position",
+      scope: durableKey("terminal-size"),
+      after: null,
+      direction: "forward",
+      maxRecords: 3,
+      maxPayloadBytes: sizes[0]! + sizes[1]!,
+    }),
+  );
+  expect(page.records.map((record) => record.position)).toEqual(["0", "1"]);
+  expect(page.records.map((record) => record.payloadBytes)).toEqual(sizes.slice(0, 2));
+  expect(page.records[1]?.value).toMatchObject({ entries: entriesByPosition[1] });
+  expect(page.nextCursor).toBe("1");
+  expect(meter.queries).toHaveLength(3);
+  const metadata = meter.queries[0]!;
+  const plan = await db
+    .prepare(`EXPLAIN QUERY PLAN ${metadata.sql}`)
+    .bind(...metadata.bindings)
+    .all<{ detail: string }>();
+  expect(plan.results.map((row) => row.detail).join("\n")).not.toMatch(/\bSCAN\b|USE TEMP B-TREE/);
+});
+
+it("seeks root-index pages numerically without sorting the whole conversation", async () => {
+  const meter = meterD1(db);
+  const kernel = createD1DurableKernel(meter.database);
+  for (const count of [100, 10000]) {
+    await db
+      .prepare(`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < ?)
+      INSERT OR IGNORE INTO sp_conversation_public_root_index
+      (conversation_id,position,root_id,segment_id,segment_root_index,archive_ordinal,content_hash,encoded_bytes)
+      SELECT 'root-cost',x,'root-'||x,'segment-'||x,0,x,'hash',1 FROM n`)
+      .bind(count)
+      .run();
+    meter.queries.length = 0;
+    for (const direction of ["forward", "backward"] as const) {
+      const page = await run(() =>
+        kernel.scan({
+          collection: "conversation-public-root-index",
+          index: "conversation-position",
+          scope: durableKey("root-cost"),
+          direction,
+          after: direction === "forward" ? "8" : String(count - 8),
+          maxRecords: 3,
+          maxPayloadBytes: 1,
+        }),
+      );
+      expect(page.records.map((record) => record.position)).toEqual(
+        direction === "forward"
+          ? ["9", "10", "11"]
+          : [count - 9, count - 10, count - 11].map(String),
+      );
+    }
+    for (const query of meter.queries) {
+      const plan = await db
+        .prepare(`EXPLAIN QUERY PLAN ${query.sql}`)
+        .bind(...query.bindings)
+        .all<{ detail: string }>();
+      expect(plan.results.map((row) => row.detail).join("\n"), query.sql).not.toMatch(
+        /\bSCAN\b|USE TEMP B-TREE/,
+      );
+      expect(query.rowsRead).toBeLessThanOrEqual(10);
+    }
+    console.info(
+      JSON.stringify({
+        scenario: "root-index-pages",
+        records: count,
+        rowsRead: meter.queries.map((query) => query.rowsRead),
+      }),
+    );
+  }
 });

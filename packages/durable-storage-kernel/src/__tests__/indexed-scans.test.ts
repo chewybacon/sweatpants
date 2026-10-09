@@ -14,7 +14,7 @@ const request: BoundedScan = {
   direction: "forward",
   after: null,
   maxRecords: 2,
-  maxStoredBytes: 100,
+  maxPayloadBytes: 100,
 };
 const segment = (position: string, execution = "execution") => ({
   name: `segment-${execution}-${position}`,
@@ -22,7 +22,7 @@ const segment = (position: string, execution = "execution") => ({
   key: durableKey(`id-${execution}-${position}`),
   alternateKeys: [durableKey(execution, "task", position, "segment")],
   fingerprint: position,
-  value: new Uint8Array([1, 2, 3]),
+  value: { entries: [1, 2, 3], encodedBytes: 7 },
 });
 
 describe("indexed memory scans", () => {
@@ -39,8 +39,9 @@ describe("indexed memory scans", () => {
   it("pages numerically in both directions, isolating scopes and respecting frontiers", async () => {
     const kernel = createMemoryDurableKernel();
     await run(function* () {
-      for (const position of ["9007199254740993", "10", "2", "9007199254740992"])
+      for (const position of ["9007199254740993", "10", "2", "9007199254740992"]) {
         yield* kernel.apply({ ensures: [segment(position), segment(position, "unrelated")] });
+      }
       const first = yield* kernel.scan(request);
       expect(first.records.map((record) => record.position)).toEqual(["2", "10"]);
       expect(first.nextCursor).toBe("10");
@@ -81,13 +82,14 @@ describe("indexed memory scans", () => {
         ],
       });
       yield* kernel.apply({ ensures: [first] });
-      const page = yield* kernel.scan({ ...request, maxStoredBytes: 3 });
+      const page = yield* kernel.scan({ ...request, maxPayloadBytes: 7 });
       expect(page.records.map((record) => record.position)).toEqual(["1"]);
       expect(page.nextCursor).toBe("1");
-      page.records[0]!.value[0] = 99;
-      expect((yield* kernel.readImmutable(collection, first.key))!.value).toEqual(
-        new Uint8Array([1, 2, 3]),
-      );
+      (page.records[0]!.value as { entries: number[] }).entries[0] = 99;
+      expect((yield* kernel.readImmutable(collection, first.key))!.value).toEqual({
+        entries: [1, 2, 3],
+        encodedBytes: 7,
+      });
       const next = yield* kernel.scan({ ...request, after: page.nextCursor });
       expect(next.records.map((record) => record.position)).toEqual(["2"]);
       expect(next.nextCursor).toBeNull();
@@ -106,7 +108,7 @@ describe("indexed memory scans", () => {
           collection: DurableCollections.executionControls,
           key: durableKey("execution"),
           expected: { revision: "99" },
-          next: { revision: "100", value: new Uint8Array() },
+          next: { revision: "100", value: null },
         },
       });
       expect(result.status).toBe("authority_conflict");

@@ -16,6 +16,6 @@ it.each([9007199254740992, "9223372036854775808", -1n, "1.5", "", "NaN"])(
 );
 
 it("normalizes safe SQL sizes and rejects oversized byte metadata", () => {
-  expect([7, 7n, "7"].map((value) => sqlNatural(value, "stored_bytes"))).toEqual([7, 7, 7]);
-  expect(() => sqlNatural(9007199254740993n, "stored_bytes")).toThrow("safe integer range");
+  expect([7, 7n, "7"].map((value) => sqlNatural(value, "payload_bytes"))).toEqual([7, 7, 7]);
+  expect(() => sqlNatural(9007199254740993n, "payload_bytes")).toThrow("safe integer range");
 });

@@ -24,7 +24,6 @@ export interface StorageReport {
   readonly hydrationReadBytes: number;
   readonly archivePageReads: number;
   readonly publicHistoryIndexRows: number;
-  readonly publicHistoryIndexBytes: number;
   readonly publicHistorySegmentReads: number;
   readonly publicHistorySegmentReadBytes: number;
   readonly peakPublicHistoryPageBytes: number;
@@ -94,7 +93,10 @@ function taskAggregates(
   }));
 }
 
-/** Read-only physical storage evidence. This function does not mutate the database. */
+/**
+ * Offline physical storage evidence. Exact totals deliberately scan the database;
+ * never call this from chat requests or a D1 billing-sensitive polling loop.
+ */
 export function readStorageReport(
   database: SweatpantsSqliteDatabase,
   metrics?: StorageReadMetricsSnapshot,
@@ -153,7 +155,6 @@ export function readStorageReport(
     hydrationReadBytes: metrics ? safeNumber(metrics.checkpointReadBytes) : 0,
     archivePageReads: metrics ? safeNumber(metrics.archivePageReads) : 0,
     publicHistoryIndexRows: metrics ? safeNumber(metrics.publicHistoryIndexRows) : 0,
-    publicHistoryIndexBytes: metrics ? safeNumber(metrics.publicHistoryIndexBytes) : 0,
     publicHistorySegmentReads: metrics ? safeNumber(metrics.publicHistorySegmentReads) : 0,
     publicHistorySegmentReadBytes: metrics ? safeNumber(metrics.publicHistorySegmentReadBytes) : 0,
     peakPublicHistoryPageBytes: metrics ? safeNumber(metrics.peakPublicHistoryPageBytes) : 0,
@@ -166,6 +167,7 @@ export function readStorageReport(
   };
 }
 
+/** Offline whole-database maintenance; visits checkpoints, with one indexed owner lookup each. */
 export function cleanupCheckpointOrphans(
   database: SweatpantsSqliteDatabase,
   graceCutoff: number,
@@ -174,7 +176,8 @@ export function cleanupCheckpointOrphans(
     WHERE checkpoint.created_at < ${graceCutoff}
       AND NOT EXISTS (
         SELECT 1 FROM sp_conversation_heads AS head
-        WHERE head.checkpoint_id = checkpoint.checkpoint_id
+        WHERE head.conversation_id = checkpoint.conversation_id
+          AND head.checkpoint_id = checkpoint.checkpoint_id
       )`);
   const changes = (result as { changes: number | bigint }).changes;
   return safeNumber(changes);
@@ -222,12 +225,14 @@ FROM sp_conversation_checkpoints AS checkpoint
 WHERE checkpoint.created_at < ?
   AND NOT EXISTS (
     SELECT 1 FROM sp_conversation_heads AS head
-    WHERE head.checkpoint_id = checkpoint.checkpoint_id
+    WHERE head.conversation_id = checkpoint.conversation_id
+          AND head.checkpoint_id = checkpoint.checkpoint_id
   )`,
   cleanupCheckpointOrphans: `DELETE FROM sp_conversation_checkpoints AS checkpoint
 WHERE checkpoint.created_at < ?
   AND NOT EXISTS (
     SELECT 1 FROM sp_conversation_heads AS head
-    WHERE head.checkpoint_id = checkpoint.checkpoint_id
+    WHERE head.conversation_id = checkpoint.conversation_id
+          AND head.checkpoint_id = checkpoint.checkpoint_id
   )`,
 });

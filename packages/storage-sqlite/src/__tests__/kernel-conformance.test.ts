@@ -1,6 +1,5 @@
 import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
-import { encodeCommandReceipt, encodeConversationHead } from "@sweatpants/history-store";
-import { encodeExecutionControl, encodeExecutionObject } from "@sweatpants/journal-authority";
+import { prepareExecutionObject } from "@sweatpants/journal-authority";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -75,7 +74,7 @@ describe("SQLite durable kernel conformance", () => {
           collection: DurableCollections.conversationCommandReceipts,
           key: durableKey("conversation", "command"),
           fingerprint: receipt.commandDigest,
-          value: encodeCommandReceipt(receipt),
+          value: receipt,
         } as const;
         expect(yield* handle.kernel.apply({ claim, ensures: [] })).toMatchObject({
           status: "committed",
@@ -89,7 +88,11 @@ describe("SQLite durable kernel conformance", () => {
               collection: DurableCollections.conversationHeads,
               key: durableKey("conversation"),
               expected: { revision: "99", fence: "99" },
-              next: { revision: "100", fence: "99", value: encodeConversationHead(head) },
+              next: {
+                revision: "100",
+                fence: "99",
+                value: head,
+              },
             },
           }),
         ).toMatchObject({ status: "claim_exists", claim: "receipt" });
@@ -113,7 +116,11 @@ describe("SQLite durable kernel conformance", () => {
             collection: DurableCollections.executionControls,
             key: durableKey("execution"),
             expected: { revision: null, fence: "0" },
-            next: { revision: "0", fence: "0", value: encodeExecutionControl(control) },
+            next: {
+              revision: "0",
+              fence: "0",
+              value: control,
+            },
           },
         });
         const body = { payload: true };
@@ -138,7 +145,7 @@ describe("SQLite durable kernel conformance", () => {
                 collection: DurableCollections.executionObjects,
                 key: objectKey,
                 fingerprint: object.contentHash,
-                value: encodeExecutionObject(object),
+                value: prepareExecutionObject(object),
               },
             ],
             authority: {
@@ -149,7 +156,7 @@ describe("SQLite durable kernel conformance", () => {
               next: {
                 revision: "10",
                 fence: "0",
-                value: encodeExecutionControl({ ...control, controlRevision: "10" }),
+                value: { ...control, controlRevision: "10" },
               },
             },
           }),

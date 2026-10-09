@@ -19,14 +19,14 @@ export interface StoredAuthorityRecord {
   readonly key: DurableKey;
   readonly revision: DurableCounter;
   readonly fence: DurableCounter | null;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 
 export interface StoredImmutableRecord {
   readonly collection: ImmutableCollectionId;
   readonly key: DurableKey;
   readonly fingerprint: string;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 
 export interface ImmutableClaim {
@@ -34,7 +34,7 @@ export interface ImmutableClaim {
   readonly collection: ImmutableCollectionId;
   readonly key: DurableKey;
   readonly fingerprint: string;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 
 export interface ImmutableEnsure {
@@ -43,7 +43,7 @@ export interface ImmutableEnsure {
   readonly key: DurableKey;
   readonly alternateKeys?: readonly DurableKey[];
   readonly fingerprint: string;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 
 export interface AuthorityReplacement {
@@ -57,10 +57,15 @@ export interface AuthorityReplacement {
   readonly next: {
     readonly revision: DurableCounter;
     readonly fence?: DurableCounter | null;
-    readonly value: Uint8Array;
+    readonly value: unknown;
   };
 }
 
+/** Semantic repositories admit structured values before constructing a mutation.
+ * Values remain stable for the lifetime of apply(); adapters own persistence and
+ * returned read values. Domain repositories enforce value bounds; adapters enforce
+ * their native transport limits when encoding. The kernel bounds mutation cardinality.
+ */
 export interface DurableMutation {
   readonly claim?: ImmutableClaim;
   readonly ensures: readonly ImmutableEnsure[];
@@ -98,12 +103,13 @@ export interface BoundedScan {
   readonly after: DurableCursor | null;
   readonly through?: DurablePosition;
   readonly maxRecords: number;
-  readonly maxStoredBytes: number;
+  /** Logical payload bytes, excluding row identity and envelope metadata. */
+  readonly maxPayloadBytes: number;
 }
 
 export interface StoredScanRecord extends StoredImmutableRecord {
   readonly position: DurablePosition;
-  readonly storedBytes: number;
+  readonly payloadBytes: number;
 }
 
 export interface StoredScanPage {
@@ -141,6 +147,7 @@ export type DurableKernelErrorCode =
   | "durable_kernel_transaction_failed"
   | "durable_kernel_integer_out_of_range"
   | "durable_kernel_response_invalid"
+  | "durable_kernel_scan_limit_exceeded"
   | "durable_kernel_persisted_data_invalid";
 
 /**
@@ -165,6 +172,5 @@ export class DurableKernelError extends Error {
 }
 
 export const DURABLE_MUTATION_MAX_ENSURES = 256;
-export const DURABLE_MUTATION_MAX_BYTES = 16 * 1024 * 1024;
 export const DURABLE_SCAN_MAX_RECORDS = 1024;
 export const DURABLE_SCAN_MAX_BYTES = 16 * 1024 * 1024;

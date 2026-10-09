@@ -1,6 +1,5 @@
 import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
 import { describe, expect, it } from "vitest";
-import { encodeExecutionControl } from "../store/store-persistence.ts";
 import { planExecutionCommit } from "../store/store-planners.ts";
 
 const control = {
@@ -20,7 +19,7 @@ const currentRecord = {
   key: durableKey("execution"),
   revision: control.controlRevision,
   fence: control.ownerFence,
-  value: encodeExecutionControl(control),
+  value: control,
 } as const;
 
 describe("execution storage planner", () => {

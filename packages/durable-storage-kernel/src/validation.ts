@@ -1,6 +1,5 @@
 import { decodeDurableKey, DurableMutationInvalid } from "./codec.ts";
 import {
-  DURABLE_MUTATION_MAX_BYTES,
   DURABLE_MUTATION_MAX_ENSURES,
   DURABLE_SCAN_MAX_BYTES,
   DURABLE_SCAN_MAX_RECORDS,
@@ -33,10 +32,6 @@ function validateFingerprint(value: string, field: string): void {
   }
 }
 
-function encodedTextBytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
 export function validateMutationStructure(mutation: DurableMutation): void {
   if (mutation.ensures.length > DURABLE_MUTATION_MAX_ENSURES) {
     throw new DurableMutationInvalid(
@@ -45,7 +40,6 @@ export function validateMutationStructure(mutation: DurableMutation): void {
   }
   const names = new Set<string>();
   const identities = new Set<string>();
-  let bytes = 0;
 
   if (mutation.claim) {
     validateName(mutation.claim.name, names);
@@ -54,11 +48,6 @@ export function validateMutationStructure(mutation: DurableMutation): void {
     }
     decodeDurableKey(mutation.claim.key);
     validateFingerprint(mutation.claim.fingerprint, "claim fingerprint");
-    bytes +=
-      mutation.claim.value.byteLength +
-      encodedTextBytes(mutation.claim.name) +
-      encodedTextBytes(mutation.claim.key) +
-      encodedTextBytes(mutation.claim.fingerprint);
     identities.add(`${mutation.claim.collection}\u0000${mutation.claim.key}`);
   }
 
@@ -80,11 +69,6 @@ export function validateMutationStructure(mutation: DurableMutation): void {
       }
       identities.add(identity);
     }
-    bytes +=
-      ensure.value.byteLength +
-      encodedTextBytes(ensure.name) +
-      encodedTextBytes(ensure.fingerprint) +
-      keys.reduce((total, key) => total + encodedTextBytes(key), 0);
   }
 
   if (mutation.authority) {
@@ -108,24 +92,11 @@ export function validateMutationStructure(mutation: DurableMutation): void {
     if (mutation.authority.next.fence !== undefined && mutation.authority.next.fence !== null) {
       parseCounter(mutation.authority.next.fence, "next fence");
     }
-    bytes +=
-      mutation.authority.next.value.byteLength +
-      encodedTextBytes(mutation.authority.name) +
-      encodedTextBytes(mutation.authority.key) +
-      encodedTextBytes(mutation.authority.next.revision) +
-      encodedTextBytes(mutation.authority.next.fence ?? "") +
-      encodedTextBytes(mutation.authority.expected.revision ?? "") +
-      encodedTextBytes(mutation.authority.expected.fence ?? "");
   }
 
   if (!mutation.claim && mutation.ensures.length === 0 && !mutation.authority) {
     throw new DurableMutationInvalid(
       "Mutation must contain a claim, ensure, or authority replacement",
-    );
-  }
-  if (bytes > DURABLE_MUTATION_MAX_BYTES) {
-    throw new DurableMutationInvalid(
-      `Mutation body is ${bytes} bytes; maximum is ${DURABLE_MUTATION_MAX_BYTES}`,
     );
   }
 }
@@ -178,11 +149,11 @@ export function validateScan(request: BoundedScan): void {
     throw new DurableMutationInvalid(`Invalid scan record bound ${request.maxRecords}`);
   }
   if (
-    !Number.isSafeInteger(request.maxStoredBytes) ||
-    request.maxStoredBytes <= 0 ||
-    request.maxStoredBytes > DURABLE_SCAN_MAX_BYTES
+    !Number.isSafeInteger(request.maxPayloadBytes) ||
+    request.maxPayloadBytes <= 0 ||
+    request.maxPayloadBytes > DURABLE_SCAN_MAX_BYTES
   ) {
-    throw new DurableMutationInvalid(`Invalid scan byte bound ${request.maxStoredBytes}`);
+    throw new DurableMutationInvalid(`Invalid scan byte bound ${request.maxPayloadBytes}`);
   }
   if (request.after !== null) {
     parseCounter(request.after, "scan cursor");

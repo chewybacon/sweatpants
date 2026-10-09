@@ -13,7 +13,6 @@ export interface StorageReadMetricsSnapshot {
   readonly checkpointReadBytes: number;
   readonly archivePageReads: number;
   readonly publicHistoryIndexRows: number;
-  readonly publicHistoryIndexBytes: number;
   readonly publicHistorySegmentReads: number;
   readonly publicHistorySegmentReadBytes: number;
   readonly peakPublicHistoryPageBytes: number;
@@ -38,7 +37,6 @@ export function* installStorageReadMetrics(): Operation<StorageReadMetricsRecord
   let checkpointReadBytes = 0;
   let archivePageReads = 0;
   let publicHistoryIndexRows = 0;
-  let publicHistoryIndexBytes = 0;
   let publicHistorySegmentReads = 0;
   let publicHistorySegmentReadBytes = 0;
   let peakPublicHistoryPageBytes = 0;
@@ -48,9 +46,8 @@ export function* installStorageReadMetrics(): Operation<StorageReadMetricsRecord
   let peakMaterializedReplayBytes = 0;
 
   const historyObservation: HistoryStoreReadObserver = {
-    publicHistoryIndexPage(rows, storedBytes) {
+    publicHistoryIndexPage(rows) {
       publicHistoryIndexRows += rows;
-      publicHistoryIndexBytes += storedBytes;
     },
     publicHistorySegment(encodedBytes) {
       publicHistorySegmentReads += 1;
@@ -115,7 +112,6 @@ export function* installStorageReadMetrics(): Operation<StorageReadMetricsRecord
         checkpointReadBytes,
         archivePageReads,
         publicHistoryIndexRows,
-        publicHistoryIndexBytes,
         publicHistorySegmentReads,
         publicHistorySegmentReadBytes,
         peakPublicHistoryPageBytes,
@@ -131,7 +127,6 @@ export function* installStorageReadMetrics(): Operation<StorageReadMetricsRecord
       checkpointReadBytes = 0;
       archivePageReads = 0;
       publicHistoryIndexRows = 0;
-      publicHistoryIndexBytes = 0;
       publicHistorySegmentReads = 0;
       publicHistorySegmentReadBytes = 0;
       peakPublicHistoryPageBytes = 0;

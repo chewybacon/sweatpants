@@ -10,6 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { Json } from "@sweatpants/foundation";
 import { sqlCounter } from "@sweatpants/durable-storage-kernel";
 
 /**
@@ -32,39 +33,40 @@ export const durableCounter = customType<{
   },
 });
 
-/** Epoch-millisecond timestamps; bigint because PG INTEGER is 32-bit. */
-export const epochMillis = (name: string) => bigint(name, { mode: "number" });
-
-export const binaryBody = customType<{
-  data: Uint8Array;
-  driverData: Buffer;
-}>({
+// node-postgres already decodes JSONB. Drizzle's built-in JSONB column tries
+// to parse string values again, corrupting JSON strings containing JSON text.
+const jsonb = customType<{ data: Json; driverData: unknown }>({
   dataType() {
-    return "bytea";
+    return "jsonb";
   },
   toDriver(value) {
-    return Buffer.from(value);
+    return JSON.stringify(value);
   },
   fromDriver(value) {
-    return new Uint8Array(value);
+    return value as Json;
   },
 });
 
+/** Epoch-millisecond timestamps; bigint because PG INTEGER is 32-bit. */
+export const epochMillis = (name: string) => bigint(name, { mode: "number" });
+
+// Drizzle represents a top-level JSON null as SQL NULL. Scalar JSON columns
+// therefore allow NULL; JSON arrays remain NOT NULL. Row mapping preserves null.
 export const spConversationHeads = pgTable(
   "sp_conversation_heads",
   {
     conversationId: text("conversation_id").primaryKey().notNull(),
     revision: durableCounter("revision").notNull(),
     ownerEpoch: durableCounter("owner_epoch").notNull(),
-    ownerRouteJson: text("owner_route_json"),
+    ownerRouteJson: jsonb("owner_route_json").$type<Json>(),
     state: text("state").notNull(),
     checkpointId: text("checkpoint_id"),
     terminalSegmentId: text("terminal_segment_id"),
     activeLogicalTurnId: text("active_logical_turn_id"),
     activeExecutionId: text("active_execution_id"),
     latestCompletedExecutionId: text("latest_completed_execution_id"),
-    activeSegmentJson: text("active_segment_json"),
-    activeCommandJson: text("active_command_json"),
+    activeSegmentJson: jsonb("active_segment_json").$type<Json>(),
+    activeCommandJson: jsonb("active_command_json").$type<Json>(),
     deletedAt: epochMillis("deleted_at"),
     updatedAt: epochMillis("updated_at").notNull(),
   },
@@ -97,13 +99,13 @@ export const spConversationCheckpoints = pgTable(
     checkpointId: text("checkpoint_id").primaryKey().notNull(),
     conversationId: text("conversation_id").notNull(),
     causeKey: text("cause_key").notNull(),
-    causeJson: text("cause_json").notNull(),
+    causeJson: jsonb("cause_json").$type<Json>(),
     contentHash: text("content_hash").notNull(),
     lineageId: text("lineage_id").notNull(),
     archiveHeadSegmentId: text("archive_head_segment_id"),
     archiveFrontierOrdinal: durableCounter("archive_frontier_ordinal").notNull(),
     nextPublicPosition: durableCounter("next_public_position").notNull(),
-    payloadJson: text("payload_json").notNull(),
+    payloadJson: jsonb("payload_json").$type<Json>(),
     encodedBytes: integer("encoded_bytes").notNull(),
     createdAt: epochMillis("created_at").notNull(),
   },
@@ -124,8 +126,8 @@ export const spConversationPublicSegments = pgTable(
     previousSegmentId: text("previous_segment_id"),
     minPosition: durableCounter("min_position").notNull(),
     maxPosition: durableCounter("max_position").notNull(),
-    rootsJson: text("roots_json").notNull(),
-    storedBytes: integer("stored_bytes").notNull(),
+    rootsJson: jsonb("roots_json").$type<readonly Json[]>().notNull(),
+
     contentHash: text("content_hash").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
     createdAt: epochMillis("created_at").notNull(),
@@ -151,7 +153,7 @@ export const spConversationPublicRootIndex = pgTable(
     segmentId: text("segment_id").notNull(),
     segmentRootIndex: integer("segment_root_index").notNull(),
     archiveOrdinal: durableCounter("archive_ordinal").notNull(),
-    storedBytes: integer("stored_bytes").notNull(),
+
     contentHash: text("content_hash").notNull(),
     encodedBytes: integer("encoded_bytes").notNull(),
   },
@@ -178,8 +180,8 @@ export const spConversationTerminalSegments = pgTable(
     previousSegmentId: text("previous_segment_id"),
     firstPosition: durableCounter("first_position").notNull(),
     lastPosition: durableCounter("last_position").notNull(),
-    entriesJson: text("entries_json").notNull(),
-    storedBytes: integer("stored_bytes").notNull(),
+    entriesJson: jsonb("entries_json").$type<readonly Json[]>().notNull(),
+
     contentHash: text("content_hash").notNull(),
     createdAt: epochMillis("created_at").notNull(),
   },
@@ -189,6 +191,11 @@ export const spConversationTerminalSegments = pgTable(
       table.conversationId,
       table.firstPosition,
       table.lastPosition,
+    ),
+    // JSONB may expand numeric notation; bound the representation scans actually return.
+    check(
+      "sp_terminal_segment_payload_limit",
+      sql`octet_length(${table.entriesJson}::text) <= 16777216`,
     ),
     check("sp_terminal_segment_first_position", sql`${table.firstPosition} >= 0`),
     check("sp_terminal_segment_positions", sql`${table.lastPosition} >= ${table.firstPosition}`),
@@ -230,7 +237,7 @@ export const spExecutionControl = pgTable(
     rootTaskId: text("root_task_id").notNull(),
     stopGeneration: durableCounter("stop_generation").notNull(),
     requestedDisposition: text("requested_disposition"),
-    controlJson: text("control_json").notNull(),
+    controlJson: jsonb("control_json").$type<Json>(),
     updatedAt: epochMillis("updated_at").notNull(),
   },
   (table) => [
@@ -255,8 +262,8 @@ const privateSegmentColumns = {
   previousSegmentId: text("previous_segment_id"),
   firstSequence: durableCounter("first_sequence").notNull(),
   lastSequence: durableCounter("last_sequence").notNull(),
-  entriesJson: text("entries_json").notNull(),
-  storedBytes: integer("stored_bytes").notNull(),
+  entriesJson: jsonb("entries_json").$type<readonly Json[]>().notNull(),
+
   contentHash: text("content_hash").notNull(),
   encodedBytes: integer("encoded_bytes").notNull(),
   createdAt: epochMillis("created_at").notNull(),
@@ -305,8 +312,7 @@ export const spExecutionObjects = pgTable(
     objectKind: text("object_kind").notNull(),
     contentHash: text("content_hash").notNull(),
     byteLength: integer("byte_length").notNull(),
-    jsonBody: text("json_body"),
-    blobBody: binaryBody("blob_body"),
+    jsonBody: jsonb("json_body").$type<Json>(),
     createdAt: epochMillis("created_at").notNull(),
   },
   (table) => [
@@ -315,10 +321,6 @@ export const spExecutionObjects = pgTable(
       sql`${table.lifetimeScope} IN ('execution', 'conversation')`,
     ),
     check("sp_execution_object_bytes", sql`${table.byteLength} >= 0`),
-    check(
-      "sp_execution_object_one_body",
-      sql`(${table.jsonBody} IS NULL) <> (${table.blobBody} IS NULL)`,
-    ),
     index("sp_execution_object_scope_index").on(
       table.lifetimeScope,
       table.scopeOwnerId,

@@ -15,15 +15,11 @@ export {
 export { createMemoryExecutionStore } from "./store/memory.ts";
 export {
   decodeAuthorityControl,
-  decodeExecutionControl,
-  decodeExecutionObject,
-  decodePrivateSegment,
-  encodeExecutionControl,
-  encodeExecutionObject,
-  encodeExecutionObjectEnvelope,
-  encodePrivateSegment,
-  encodePrivateSegmentEnvelope,
-  encodePrivateSegmentEnvelopeFromCanonical,
+  readExecutionControl,
+  readExecutionObject,
+  readPrivateSegment,
+  prepareExecutionObject,
+  preparePrivateSegment,
   executionKeys,
 } from "./store/store-persistence.ts";
 export {
