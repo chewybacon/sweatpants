@@ -5,7 +5,7 @@ import {
   type ReplayEntry,
   type ReplayOperationEntry,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import { canonicalJson, encodeCanonicalJson, sha256 } from "@sweatpants/foundation";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { DraftSession, DraftTask } from "./decision-state.ts";
 import type {
@@ -32,7 +32,7 @@ export function issueRestoreTicket(
 ): IssueRestoreTicketResult {
   const session = draft.session(request.sessionId);
   const lease = requireLease(draft, session, request.ownerId, request.activationEpoch);
-  draft.task(request.sessionId, request.taskId);
+  draft.readTask(request.sessionId, request.taskId);
   const restoreNonce = draft.nonce();
   session.control.restoreNonce = restoreNonce;
   session.control.activationLease = { ...lease, restoreNonce };
@@ -57,8 +57,10 @@ export function prepareRestore(
 ): PreparedProgramRestore {
   const session = draft.session(request.sessionId);
   const lease = requireLease(draft, session, request.ownerId, request.activationEpoch);
-  const task = draft.task(request.sessionId, request.taskId);
-  if (task.execution.epoch !== request.activationEpoch) throw new CrankError("stale_activation");
+  const task = draft.readTask(request.sessionId, request.taskId);
+  if (task.execution.epoch !== request.activationEpoch) {
+    throw new CrankError("stale_activation");
+  }
   const restoreNonce = draft.nonce();
   const replayChainSeed = sha256(
     canonicalJson({
@@ -78,9 +80,11 @@ export function prepareRestore(
   let replayedThroughActionIndex = -1;
   for (let actionIndex = 0; actionIndex < task.nextActionIndex; actionIndex += 1) {
     const action = task.actions.find((candidate) => candidate.actionIndex === actionIndex);
-    if (!action) throw new CrankError("invalid_journal", "Replay history has an action gap");
+    if (!action) {
+      throw new CrankError("invalid_journal", "Replay history has an action gap");
+    }
     let body: Omit<ReplayOperationEntry, "entryDigest"> | Omit<ReplayEmissionEntry, "entryDigest">;
-    if (action.kind === "pull" && action.pull.resolution.status === "settled")
+    if (action.kind === "pull" && action.pull.resolution.status === "settled") {
       body = {
         type: "operation",
         actionIndex,
@@ -90,7 +94,7 @@ export function prepareRestore(
         outcome: structuredClone(action.pull.resolution.settlement.outcome),
         receipt: structuredClone(action.pull.resolution.settlement.receipt),
       };
-    else if (action.kind === "emission")
+    } else if (action.kind === "emission") {
       body = {
         type: "emission",
         actionIndex,
@@ -99,9 +103,11 @@ export function prepareRestore(
         previousEntryDigest,
         offset: action.receipt.offset,
       };
-    else throw new CrankError("invalid_journal", "Replay history has an action gap");
+    } else {
+      throw new CrankError("invalid_journal", "Replay history has an action gap");
+    }
     const entryDigest = sha256(
-      canonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
+      encodeCanonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
     );
     replay.push({ ...body, entryDigest } as ReplayEntry);
     previousEntryDigest = entryDigest;
@@ -141,7 +147,7 @@ export function bindFrontier(
   } catch {
     return { status: "restore_stale" };
   }
-  const session = draft.session(request.sessionId);
+  const session = draft.readSession(request.sessionId);
   const lease = session.control.activationLease;
   if (
     !/^[0-9a-f]{64}$/.test(request.frontierDigest) ||
@@ -156,9 +162,12 @@ export function bindFrontier(
     claims.taskRevision !== session.control.revision ||
     claims.journalHeadId !== draft.context.journalHeadId ||
     claims.restoreNonce !== session.control.restoreNonce
-  )
+  ) {
     return { status: "restore_stale" };
-  session.control.restoreFrontierDigest = request.frontierDigest;
+  }
+  if (session.control.restoreFrontierDigest !== request.frontierDigest) {
+    draft.session(request.sessionId).control.restoreFrontierDigest = request.frontierDigest;
+  }
   return {
     status: "bound",
     proof: { restoreTicket: request.restoreTicket, frontierDigest: request.frontierDigest },
@@ -198,7 +207,9 @@ export function consumeTicket(
     claims.journalHeadId === draft.context.journalHeadId &&
     claims.restoreNonce === session.control.restoreNonce &&
     request.proof.frontierDigest === session.control.restoreFrontierDigest;
-  if (!valid) return recordRestoreStale(draft, request.sessionId);
+  if (!valid) {
+    return recordRestoreStale(draft, request.sessionId);
+  }
   const nonce = draft.nonce();
   session.control.restoreNonce = nonce;
   Reflect.deleteProperty(session.control, "restoreFrontierDigest");
@@ -215,9 +226,11 @@ export function consumeRestoredFrontier(
   proof: RestoredFrontierProof,
   step: ProgramStep | undefined,
 ): void {
-  const session = draft.session(sessionId);
+  const session = draft.readSession(sessionId);
   const lease = session.control.activationLease;
-  if (!lease || step === undefined) throw new CrankError("restore_stale");
+  if (!lease || step === undefined) {
+    throw new CrankError("restore_stale");
+  }
   let claims;
   try {
     claims = parseRestoreTicketClaims(
@@ -226,7 +239,9 @@ export function consumeRestoredFrontier(
   } catch {
     throw new CrankError("restore_stale");
   }
-  if (!claims.releaseId || !claims.frontierDomain) throw new CrankError("restore_stale");
+  if (!claims.releaseId || !claims.frontierDomain) {
+    throw new CrankError("restore_stale");
+  }
   const expected = sha256(
     canonicalJson({
       domain: claims.frontierDomain,
@@ -239,7 +254,9 @@ export function consumeRestoredFrontier(
       step,
     }),
   );
-  if (proof.frontierDigest !== expected) throw new CrankError("restore_stale");
+  if (proof.frontierDigest !== expected) {
+    throw new CrankError("restore_stale");
+  }
   const result = consumeTicket(draft, {
     sessionId,
     taskId: task.taskId,
@@ -247,7 +264,9 @@ export function consumeRestoredFrontier(
     activationEpoch: task.execution.epoch,
     proof,
   });
-  if (result.status === "restore_stale") throw new CrankError("restore_stale");
+  if (result.status === "restore_stale") {
+    throw new CrankError("restore_stale");
+  }
 }
 
 function requireLease(
@@ -262,8 +281,9 @@ function requireLease(
     lease.ownerId !== ownerId ||
     lease.epoch !== epoch ||
     draft.context.nowMs >= lease.expiresAtMs
-  )
+  ) {
     throw new CrankError("stale_activation");
+  }
   return lease;
 }
 function restoreClaims(
@@ -314,13 +334,14 @@ function recordRestoreStale(
   Reflect.deleteProperty(session.control, "restoreFrontierDigest");
   const count = session.control.consecutiveRestoreStales + 1;
   session.control.consecutiveRestoreStales = count;
-  if (count < 3)
+  if (count < 3) {
     return {
       status: "restore_stale",
       consecutiveStales: count,
       retryAfterMs: 0,
       releaseRequired: false,
     };
+  }
   const retryAfterMs = Math.min(250 * 2 ** (count - 3), 5_000);
   session.control.activationNotBeforeMs = draft.context.nowMs + retryAfterMs;
   delete session.control.activationLease;

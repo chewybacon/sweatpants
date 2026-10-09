@@ -11,7 +11,6 @@ import type {
   AuthorityState,
   CommandResult,
   KernelContext,
-  KernelTransition,
   QueryResult,
 } from "../contract/authority-contract.ts";
 import {
@@ -69,7 +68,11 @@ export function createInMemoryJournal(
           state: selectedState,
           context,
           command,
-        }) as KernelTransition<C>;
+        });
+        if (transition.kind === "unchanged") {
+          signalCommittedCancellation(command, transition.state);
+          return structuredClone(transition.result);
+        }
         state = advanceJournalHeadIdentities(transition.state, transition.entries);
         history = [...selectedHistory, ...structuredClone(transition.entries)];
         signalCommittedCancellation(command, transition.state);

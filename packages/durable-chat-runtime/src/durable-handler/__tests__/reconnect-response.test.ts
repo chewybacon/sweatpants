@@ -1,9 +1,9 @@
-import { run } from "effection";
+import { run, type Operation } from "effection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationStreamEvent } from "@sweatpants/chat-core";
 import type { SessionRegistry } from "../../response-streams/index.ts";
 import type { ConversationHead } from "@sweatpants/history-store/contract";
-import type { ProgramDriverJournalStore } from "../program-driver-journal.ts";
+import type { ProgramDriverJournalStore, ProgramDriverJournal } from "../program-driver-journal.ts";
 import { reconnectResponse, waitForForeignActivation } from "../reconnect-response.ts";
 
 describe("response reconnect after host loss", () => {
@@ -36,13 +36,13 @@ describe("foreign request-scoped activation reconnect", () => {
 
   function journalStore(remaining: () => number): ProgramDriverJournalStore {
     return {
-      *open() {
-        return {
+      *withJournal<T>(_id: string, operation: (journal: ProgramDriverJournal) => Operation<T>) {
+        return yield* operation({
           *query(query: { type: string }) {
             expect(query.type).toBe("control.activation-status");
             return { remainingMs: remaining() };
           },
-        };
+        } as unknown as ProgramDriverJournal);
       },
     } as unknown as ProgramDriverJournalStore;
   }

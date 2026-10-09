@@ -8,12 +8,12 @@ export type TaskId = string;
 export type PullId = string;
 export type DurableRevision = number;
 
-export interface DurableReference {
+export type DurableReference = {
   readonly id: string;
   readonly byteLength?: number;
   readonly version?: string;
   readonly integrity?: { readonly algorithm: string; readonly value: string };
-}
+};
 
 export type StoredJson =
   | { readonly storage: "inline"; readonly value: Json }

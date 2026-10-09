@@ -1,7 +1,7 @@
 import {
   type Json,
   type SerializedApplicationError,
-  canonicalJson,
+  encodeCanonicalJson,
   cloneJson,
 } from "@sweatpants/foundation";
 
@@ -22,12 +22,19 @@ export function assertReplayedCanonicalValue<T extends Json = Json>(
   }
 }
 
-/** Enforces a canonical UTF-8 payload limit before persistence or transport. */
-export function assertInlineSize(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTES): void {
-  const bytes = new TextEncoder().encode(canonicalJson(value)).byteLength;
+/** Encode admitted JSON once and enforce its canonical UTF-8 transport limit. */
+export function encodeInlineJson(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTES): string {
+  const canonical = encodeCanonicalJson(value);
+  const bytes = new TextEncoder().encode(canonical).byteLength;
   if (bytes > maxBytes) {
     throw new CrankError("payload_too_large", `Canonical payload is ${bytes} bytes`);
   }
+  return canonical;
+}
+
+/** Enforces a canonical UTF-8 payload limit before persistence or transport. */
+export function assertInlineSize(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTES): void {
+  encodeInlineJson(value, maxBytes);
 }
 
 /** Structured cancellation signal raised inside a resumed durable program task. */

@@ -30,8 +30,9 @@ export async function inspectProgramDriverJournal(
 ): Promise<ProgramJournalInspection> {
   const journalStore = store ?? (await activeJournalStore());
   const records = await run(function* () {
-    const journal = yield* journalStore.open(conversationId);
-    return yield* journal.readJournal(conversationId);
+    return yield* journalStore.withJournal(conversationId, (journal) =>
+      journal.readJournal(conversationId),
+    );
   });
   const redacted = records.map((record) => redactSensitive(record));
   return {

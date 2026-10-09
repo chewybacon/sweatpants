@@ -1,5 +1,3 @@
-import { canonicalDigest, canonicalJson } from "@sweatpants/foundation";
-
 import type {
   AuthorityCommand,
   AuthorityDecisionFrame,
@@ -114,10 +112,13 @@ function validateIdempotentTransition<C extends AuthorityCommand>(
     | { readonly status?: string; readonly duplicate?: boolean }
     | undefined;
   const duplicate = result?.status === "duplicate" || result?.duplicate === true;
-  if (!duplicate) return;
+  if (!duplicate) {
+    return;
+  }
   if (
     transition.entries.length !== 0 ||
-    canonicalState(transition.state) !== canonicalState(frame.state)
+    transition.kind !== "unchanged" ||
+    transition.state !== frame.state
   ) {
     throw new AuthorityCompositionError("Duplicate decision changed authority state or journal");
   }
@@ -128,6 +129,14 @@ function validateStructure<C extends AuthorityCommand>(
   frame: AuthorityDecisionFrame<C>,
   transition: KernelTransition<C>,
 ): void {
+  if (
+    transition.kind === "unchanged" &&
+    (transition.state !== frame.state || transition.entries.length !== 0)
+  ) {
+    throw new AuthorityCompositionError(
+      "Unchanged decision proposed authority state or journal edits",
+    );
+  }
   const commandSession = sessionIdOf(frame.command);
   if (
     transition.entries.length > 0 &&
@@ -154,11 +163,14 @@ function validateStructure<C extends AuthorityCommand>(
  * Private control values are deliberately not projected into the journal.
  */
 function validateSemanticConsistency<C extends AuthorityCommand>(
-  _frame: AuthorityDecisionFrame<C>,
+  frame: AuthorityDecisionFrame<C>,
   transition: KernelTransition<C>,
 ): void {
   for (const [sessionId, session] of transition.state.sessions) {
     for (const task of session.execution.tasks.values()) {
+      if (task === frame.state.sessions.get(sessionId)?.execution.tasks.get(task.taskId)) {
+        continue;
+      }
       let expectedAction = 0;
       let expectedPull = 0;
       let expectedEmission = 0;
@@ -188,7 +200,9 @@ function validateSemanticConsistency<C extends AuthorityCommand>(
       }
     }
   }
-  for (const entry of transition.entries) validateEntryEvidence(transition.state, entry);
+  for (const entry of transition.entries) {
+    validateEntryEvidence(transition.state, entry);
+  }
 }
 
 function validateEntryEvidence(
@@ -196,10 +210,14 @@ function validateEntryEvidence(
   entry: KernelTransition<AuthorityCommand>["entries"][number],
 ): void {
   const session = state.sessions.get(entry.sessionId);
-  if (!session) throw new AuthorityCompositionError("Proposal names an unknown session");
+  if (!session) {
+    throw new AuthorityCompositionError("Proposal names an unknown session");
+  }
   const payload = entry.payload;
   const task = session.execution.tasks.get(payload.taskId);
-  if (!task) throw new AuthorityCompositionError("Proposal names an unknown task");
+  if (!task) {
+    throw new AuthorityCompositionError("Proposal names an unknown task");
+  }
   const pull =
     "pullId" in payload
       ? task.actions.find(
@@ -217,8 +235,9 @@ function validateEntryEvidence(
         task.program.artifact.id !== payload.programId ||
         task.program.artifact.version !== payload.programVersion ||
         task.program.artifact.digest !== payload.programDigest
-      )
+      ) {
         throw new AuthorityCompositionError("Task proposal differs from replacement state");
+      }
       return;
     case "PullRequested":
       if (
@@ -227,8 +246,9 @@ function validateEntryEvidence(
         pull.actionIndex !== payload.actionIndex ||
         pull.pullIndex !== payload.pullIndex ||
         pull.pull.request.proposedDescriptorDigest !== payload.descriptorDigest
-      )
+      ) {
         throw new AuthorityCompositionError("Pull proposal differs from replacement state");
+      }
       return;
     case "DurableEmission": {
       const emission = task.actions.find(
@@ -239,8 +259,9 @@ function validateEntryEvidence(
         emission.kind !== "emission" ||
         emission.emissionIndex !== payload.emissionIndex ||
         emission.descriptorDigest !== payload.descriptorDigest
-      )
+      ) {
         throw new AuthorityCompositionError("Emission proposal differs from replacement state");
+      }
       return;
     }
     case "AttemptStarted":
@@ -306,8 +327,9 @@ function validateEntryEvidence(
         pull.kind !== "pull" ||
         pull.pull.resolution.status !== "settled" ||
         pull.pull.resolution.settlement.outcomeDigest !== payload.outcomeDigest
-      )
+      ) {
         throw new AuthorityCompositionError("Resolution proposal differs from replacement state");
+      }
       return;
     case "RaceWinnerSelected":
       // Winner selection commits while the group is cancelling; the parent
@@ -326,8 +348,9 @@ function validateEntryEvidence(
         task.lifecycle.status !== "active" ||
         task.lifecycle.cancellation.type === "none" ||
         task.lifecycle.cancellation.commandId !== payload.commandId
-      )
+      ) {
         throw new AuthorityCompositionError("Cancellation proposal differs from replacement state");
+      }
       return;
     case "CancellationPartialDiscarded":
       if (!pull || pull.kind !== "pull") {
@@ -360,52 +383,47 @@ function validateEntryEvidence(
     case "TaskClosed":
       if (
         (task.lifecycle.status !== "closed" && task.lifecycle.status !== "cancelled") ||
-        canonicalJson(task.lifecycle.outcome) !== canonicalJson(payload.outcome)
-      )
+        task.lifecycle.outcome !== payload.outcome
+      ) {
         throw new AuthorityCompositionError("Closure proposal differs from replacement state");
+      }
       return;
     case "ForkGroupOpened":
       if (
         task.forkGroup?.groupId !== payload.groupId ||
         task.forkGroup.members.length !== payload.memberTaskIds.length
-      )
+      ) {
         throw new AuthorityCompositionError("Fork-open proposal differs from replacement state");
+      }
       return;
     case "ForkGroupBreached":
-      if (task.forkGroup?.breachedAtMs !== payload.breachedAtMs)
+      if (task.forkGroup?.breachedAtMs !== payload.breachedAtMs) {
         throw new AuthorityCompositionError("Fork-breach proposal differs from replacement state");
+      }
       return;
     case "ForkGroupResolved":
-      if (
-        task.forkGroup?.resolution === undefined ||
-        canonicalDigest(task.forkGroup.resolution) !== payload.terminalDigest
-      )
+      if (task.forkGroup?.resolution === undefined) {
         throw new AuthorityCompositionError("Fork-resolve proposal differs from replacement state");
+      }
       return;
     case "ForkGroupOrphaned":
-      if (task.forkGroup?.resolution?.status !== "orphaned")
+      if (task.forkGroup?.resolution?.status !== "orphaned") {
         throw new AuthorityCompositionError("Fork-orphan proposal differs from replacement state");
+      }
       return;
     case "PeerDelegationCommitted":
       if (
         task.forkGroup?.members.find((member) => member.taskId === payload.memberTaskId)
           ?.delegationCorrelator !== payload.correlator
-      )
+      ) {
         throw new AuthorityCompositionError(
           "Peer-delegation proposal differs from replacement state",
         );
+      }
       return;
     default:
       return assertNever(payload);
   }
-}
-
-function canonicalState(state: AuthorityState): string {
-  const sessions = [...state.sessions].map(([sessionId, session]) => [
-    sessionId,
-    { control: session.control, tasks: [...session.execution.tasks] },
-  ]);
-  return canonicalJson({ nextNonce: state.nextNonce, sessions });
 }
 
 function sessionIdOf(command: AuthorityCommand): string | undefined {

@@ -8,6 +8,7 @@ import {
 } from "@sweatpants/durable-storage-kernel";
 import {
   canonicalJson,
+  encodeCanonicalJson,
   assertJson,
   parseJsonText,
   sha256,
@@ -123,7 +124,7 @@ function validatePrivateEntryBounds(segment: StoredPrivateSegment, canonicalByte
   if (
     (canonicalBytes === undefined || canonicalBytes > 1024 * 1024) &&
     segment.entries.some(
-      (entry) => new TextEncoder().encode(canonicalJson(entry)).byteLength > 1024 * 1024,
+      (entry) => privateEnvelopeEncoder.encode(encodeCanonicalJson(entry)).byteLength > 1024 * 1024,
     )
   ) {
     throw new ExecutionStoreError(
@@ -166,19 +167,23 @@ export async function createPrivateSegment(
   entries: readonly Json[],
 ): Promise<StoredPrivateSegment> {
   const metadata = structuredClone(fields);
-  const canonical = canonicalJson(entries);
+  const owned = assertJson(entries) as Json[];
+  const canonical = encodeCanonicalJson(owned);
   const bytes = privateEnvelopeEncoder.encode(canonical);
   const contentHash = await digestBytes(bytes);
-  const owned = JSON.parse(canonical) as Json[];
   const pending: object[] = [owned];
   while (pending.length) {
     const current = pending.pop()!;
     for (const child of Object.values(current)) {
-      if (child !== null && typeof child === "object") pending.push(child);
+      if (child !== null && typeof child === "object") {
+        pending.push(child);
+      }
     }
     Object.freeze(current);
   }
-  if (metadata.previous) Object.freeze(metadata.previous);
+  if (metadata.previous) {
+    Object.freeze(metadata.previous);
+  }
   const value = Object.freeze({
     ...metadata,
     segmentId: stableTupleHash([
@@ -198,7 +203,9 @@ export async function createPrivateSegment(
 
 export function encodePrivateSegment(value: StoredPrivateSegment): Uint8Array {
   const prepared = preparedPrivateSegments.get(value);
-  if (prepared) return new Uint8Array(prepared);
+  if (prepared) {
+    return new Uint8Array(prepared);
+  }
   const canonical = canonicalJson(value.entries);
   const byteLength = privateEnvelopeEncoder.encode(canonical).byteLength;
   // Each entry is smaller than its enclosing canonical array. Only oversized
@@ -247,13 +254,14 @@ export async function decodePrivateSegment(value: Uint8Array): Promise<StoredPri
     encodedBytes: natural(object["encodedBytes"], "privateSegment.encodedBytes"),
     createdAt: natural(object["createdAt"], "privateSegment.createdAt"),
   };
-  if ((await digestBytes(privateEnvelopeEncoder.encode(entriesJson))) !== result.contentHash) {
+  const bytes = privateEnvelopeEncoder.encode(entriesJson);
+  if ((await digestBytes(bytes)) !== result.contentHash) {
     return invalid(`Private segment ${result.segmentId} content hash is invalid`);
   }
-  if (privateEnvelopeEncoder.encode(entriesJson).byteLength !== result.encodedBytes) {
+  if (bytes.byteLength !== result.encodedBytes) {
     return invalid(`Private segment ${result.segmentId} encoded byte count is invalid`);
   }
-  validatePrivateEntryBounds(result);
+  validatePrivateEntryBounds(result, bytes.byteLength);
   return result;
 }
 
@@ -308,14 +316,16 @@ export async function createContentAddressedExecutionObject(
 ): Promise<StoredExecutionObject> {
   const metadata = { ...fields };
   const prefix = [...identityPrefix];
-  const canonical = canonicalJson(body);
+  const owned = assertJson(body);
+  const canonical = encodeCanonicalJson(owned);
   const bytes = privateEnvelopeEncoder.encode(canonical);
-  const owned = JSON.parse(canonical) as Json;
   const pending: object[] = owned !== null && typeof owned === "object" ? [owned] : [];
   while (pending.length) {
     const current = pending.pop()!;
     for (const child of Object.values(current)) {
-      if (child !== null && typeof child === "object") pending.push(child);
+      if (child !== null && typeof child === "object") {
+        pending.push(child);
+      }
     }
     Object.freeze(current);
   }
@@ -337,7 +347,9 @@ export function encodeExecutionObjectEnvelope(value: StoredExecutionObject): Uin
 
 export function encodeExecutionObject(value: StoredExecutionObject): Uint8Array {
   const prepared = preparedObjects.get(value);
-  if (prepared) return new Uint8Array(prepared);
+  if (prepared) {
+    return new Uint8Array(prepared);
+  }
   const body = value.body;
   const bodyJson = canonicalJson(body instanceof Uint8Array ? fromByteArray(body) : body);
   const hash = body instanceof Uint8Array ? sha256Bytes(body) : sha256(bodyJson);
@@ -379,7 +391,7 @@ export async function decodeExecutionObject(value: Uint8Array): Promise<StoredEx
   const bytes =
     result.body instanceof Uint8Array
       ? new Uint8Array(result.body)
-      : privateEnvelopeEncoder.encode(canonicalJson(result.body));
+      : privateEnvelopeEncoder.encode(encodeCanonicalJson(result.body));
   if (bytes.byteLength !== result.byteLength || (await digestBytes(bytes)) !== result.contentHash) {
     return invalid(`Execution object ${result.objectId} content metadata is invalid`);
   }

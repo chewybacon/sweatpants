@@ -1,9 +1,11 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { CrankError, type DurableProgramManifest } from "@sweatpants/durable-execution";
 import { registeredPullKinds } from "../pull-kinds/index.ts";
 import { parser, assertJson, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
+import type { AuthorityState } from "../contract/authority-contract.ts";
+import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
+import { JOURNAL_PAYLOAD_MAX_DEPTH } from "../contract/payload-limits.ts";
 
 /** Pull kinds whose snapshot variants come straight from the registry. */
 const PULL_KIND_SNAPSHOT_KINDS = new Set([
@@ -17,9 +19,7 @@ const PULL_KIND_SNAPSHOT_KINDS = new Set([
 ]);
 
 export const DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
-const MAX_SNAPSHOT_DEPTH = 128;
-const MAX_SNAPSHOT_NODES = 2_000_000;
-const MAX_SNAPSHOT_TASKS = 10_000;
+export const MAX_SNAPSHOT_TASKS = 10_000;
 const MAX_SNAPSHOT_COLLECTIONS = 10_000;
 export const MAX_RECORDS_PER_SESSION = 100_000;
 const MAX_ACTIONS_PER_TASK = 100_000;
@@ -27,9 +27,13 @@ const MAX_ATTEMPTS_PER_PULL = 10_000;
 const MAX_CHILDREN_PER_OPERATION = 10_000;
 const MAX_MANIFEST_ENTRIES = 10_000;
 
+const unicodeStringSchema = z
+  .string()
+  .refine((value) => !/[\uD800-\uDFFF]/u.test(value), "invalid Unicode");
+
 const jsonRecordSchema = z.unknown().transform((value, context) => {
   try {
-    const json = assertJson(value);
+    const json = assertJson(value, "$", { maxDepth: JOURNAL_PAYLOAD_MAX_DEPTH });
     if (json !== null && typeof json === "object" && !Array.isArray(json)) {
       return json;
     }
@@ -41,14 +45,14 @@ const jsonRecordSchema = z.unknown().transform((value, context) => {
 });
 const jsonValueSchema = z.unknown().transform((value, context) => {
   try {
-    return assertJson(value);
+    return assertJson(value, "$", { maxDepth: JOURNAL_PAYLOAD_MAX_DEPTH });
   } catch {
     context.addIssue({ code: "custom", message: "invalid JSON value" });
     return z.NEVER;
   }
 });
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
-const digestSchema = z.string().regex(/^[0-9a-f]{64}$/);
+const digestSchema = unicodeStringSchema.regex(/^[0-9a-f]{64}$/);
 const portableSchemaDescriptorSchema = z.unknown().transform((value, context) => {
   try {
     return parsePortableSchemaDescriptor(value);
@@ -67,8 +71,8 @@ const retrySafetySchema = z.discriminatedUnion("mode", [
   }),
 ]);
 const childSnapshotSchema = z.strictObject({
-  id: z.string(),
-  version: z.string(),
+  id: unicodeStringSchema,
+  version: unicodeStringSchema,
   digest: digestSchema,
   input: jsonValueSchema,
 });
@@ -94,10 +98,13 @@ const descriptorSchemas = new Map<string, z.ZodType>([
     "effect",
     z.strictObject({
       kind: z.literal("effect"),
-      name: z.string(),
-      version: z.string(),
+      name: unicodeStringSchema,
+      version: unicodeStringSchema,
       input: jsonValueSchema,
-      resolver: z.strictObject({ audience: z.string(), route: z.string().optional() }),
+      resolver: z.strictObject({
+        audience: unicodeStringSchema,
+        route: unicodeStringSchema.optional(),
+      }),
     }),
   ],
   [
@@ -105,8 +112,8 @@ const descriptorSchemas = new Map<string, z.ZodType>([
     z
       .strictObject({
         kind: z.literal("wait"),
-        key: z.string(),
-        notBefore: z.string().optional(),
+        key: unicodeStringSchema,
+        notBefore: unicodeStringSchema.optional(),
         durationMs: nonNegativeIntegerSchema.optional(),
       })
       .refine(
@@ -139,7 +146,7 @@ const descriptorSchemas = new Map<string, z.ZodType>([
     "join",
     z.strictObject({
       kind: z.literal("join"),
-      handle: z.strictObject({ __durableTask: z.string(), owner: z.string() }),
+      handle: z.strictObject({ __durableTask: unicodeStringSchema, owner: unicodeStringSchema }),
     }),
   ],
 ]);
@@ -168,27 +175,27 @@ const programPullDeclarationSchema = z.strictObject({
 });
 const effectCancellationSchema = z.strictObject({ partialSchema: portableSchemaDescriptorSchema });
 const effectDefinitionSchema = z.strictObject({
-  name: z.string(),
-  version: z.string(),
+  name: unicodeStringSchema,
+  version: unicodeStringSchema,
   inputSchema: portableSchemaDescriptorSchema,
   outputSchema: portableSchemaDescriptorSchema,
   retrySafety: retrySafetySchema,
   cancellation: effectCancellationSchema.optional(),
 });
 const durableProgramManifestSchema = z.strictObject({
-  programId: z.string(),
-  version: z.string(),
+  programId: unicodeStringSchema,
+  version: unicodeStringSchema,
   digest: digestSchema,
   inputSchema: portableSchemaDescriptorSchema,
   outputSchema: portableSchemaDescriptorSchema,
   elicits: z
-    .record(z.string(), programElicitDeclarationSchema)
+    .record(unicodeStringSchema, programElicitDeclarationSchema)
     .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES),
   effects: z
-    .record(z.string(), effectDefinitionSchema)
+    .record(unicodeStringSchema, effectDefinitionSchema)
     .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES),
   pulls: z
-    .record(z.string(), programPullDeclarationSchema)
+    .record(unicodeStringSchema, programPullDeclarationSchema)
     .refine((value) => Object.keys(value).length <= MAX_MANIFEST_ENTRIES)
     .optional(),
   capabilities: z.strictObject({
@@ -211,8 +218,8 @@ const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("error"),
     error: z.strictObject({
-      code: z.string(),
-      message: z.string(),
+      code: unicodeStringSchema,
+      message: unicodeStringSchema,
       details: jsonValueSchema.optional(),
     }),
   }),
@@ -225,7 +232,7 @@ const forkPolicySchema = z.discriminatedUnion("mode", [
 ]);
 const forkMemberBiographySchema = z.strictObject({
   ordinal: nonNegativeIntegerSchema,
-  taskId: z.string(),
+  taskId: unicodeStringSchema,
   outcome: operationOutcomeSchema,
 });
 const forkGroupTerminalSchema = z.discriminatedUnion("status", [
@@ -237,8 +244,8 @@ const forkGroupTerminalSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("failed"),
     error: z.strictObject({
-      code: z.string(),
-      message: z.string(),
+      code: unicodeStringSchema,
+      message: unicodeStringSchema,
       details: jsonValueSchema.optional(),
     }),
     outcomes: z.array(forkMemberBiographySchema),
@@ -251,84 +258,87 @@ const forkGroupTerminalSchema = z.discriminatedUnion("status", [
     status: z.literal("expired"),
     outcomes: z.array(forkMemberBiographySchema),
   }),
-  z.strictObject({ status: z.literal("orphaned"), reason: z.string() }),
+  z.strictObject({ status: z.literal("orphaned"), reason: unicodeStringSchema }),
 ]);
 const resolutionReceiptSchema = z.strictObject({
-  sessionId: z.string(),
-  taskId: z.string(),
-  pullId: z.string(),
-  resolutionOffset: z.string(),
-  outcomeDigest: z.string(),
+  sessionId: unicodeStringSchema,
+  taskId: unicodeStringSchema,
+  pullId: unicodeStringSchema,
+  resolutionOffset: unicodeStringSchema,
+  outcomeDigest: unicodeStringSchema,
   status: z.enum(["accepted", "duplicate"]),
 });
-const durablePositionSchema = z.string().regex(/^(0|[1-9]\d*)$/);
+const durablePositionSchema = unicodeStringSchema.regex(/^(0|[1-9]\d*)$/);
 const modelContextPolicyDecisionSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("include-range"),
     fromPositionInclusive: durablePositionSchema,
     beforePositionExclusive: durablePositionSchema,
-    reason: z.string().min(1),
+    reason: unicodeStringSchema.min(1),
   }),
   z.strictObject({
     type: z.literal("use-artifact"),
-    artifactDigest: z.string().min(1),
+    artifactDigest: unicodeStringSchema.min(1),
     firstUncoveredPosition: durablePositionSchema,
-    reason: z.string().min(1),
+    reason: unicodeStringSchema.min(1),
   }),
   z.strictObject({
     type: z.literal("drop-causal-group"),
     fromPositionInclusive: durablePositionSchema,
     beforePositionExclusive: durablePositionSchema,
-    reason: z.string().min(1),
+    reason: unicodeStringSchema.min(1),
   }),
   z.strictObject({
     type: z.literal("history-policy"),
-    policyId: z.string().min(1),
+    policyId: unicodeStringSchema.min(1),
     action: z.enum(["drop_turn", "drop_message"]),
-    reason: z.string().min(1),
-    roles: z.array(z.string()).max(64),
-    toolCallIds: z.array(z.string()).max(256),
+    reason: unicodeStringSchema.min(1),
+    roles: z.array(unicodeStringSchema).max(64),
+    toolCallIds: z.array(unicodeStringSchema).max(256),
   }),
 ]);
 const modelContextPreparedFactSchema = z.strictObject({
   type: z.literal("ModelContextPrepared"),
-  executionId: z.string().min(1),
-  taskId: z.string().min(1),
-  pullId: z.string().min(1),
-  contextObject: z.strictObject({ objectId: z.string().min(1) }),
-  contextDigest: z.string().min(1),
-  invocationDigest: z.string().min(1),
-  responseModeDigest: z.string().min(1),
-  generationOptionsDigest: z.string().min(1),
-  sourceCheckpoint: z.strictObject({ checkpointId: z.string().min(1) }),
-  sourceArchiveHeadSegmentId: z.string().min(1).nullable(),
+  executionId: unicodeStringSchema.min(1),
+  taskId: unicodeStringSchema.min(1),
+  pullId: unicodeStringSchema.min(1),
+  contextObject: z.strictObject({ objectId: unicodeStringSchema.min(1) }),
+  contextDigest: unicodeStringSchema.min(1),
+  invocationDigest: unicodeStringSchema.min(1),
+  responseModeDigest: unicodeStringSchema.min(1),
+  generationOptionsDigest: unicodeStringSchema.min(1),
+  sourceCheckpoint: z.strictObject({ checkpointId: unicodeStringSchema.min(1) }),
+  sourceArchiveHeadSegmentId: unicodeStringSchema.min(1).nullable(),
   sourceArchiveFrontierOrdinal: durablePositionSchema,
   sourceNextPublicPosition: durablePositionSchema,
-  acceptedCommandId: z.string().min(1),
-  policyId: z.string().min(1),
+  acceptedCommandId: unicodeStringSchema.min(1),
+  policyId: unicodeStringSchema.min(1),
   policyDecisions: z.array(modelContextPolicyDecisionSchema).max(1_024),
-  budgetId: z.string().min(1),
-  budgetDigest: z.string().min(1),
-  toolCatalogDigest: z.string().min(1),
-  model: z.strictObject({ provider: z.string().min(1), id: z.string().min(1) }),
-  publicMessageId: z.string().min(1),
+  budgetId: unicodeStringSchema.min(1),
+  budgetDigest: unicodeStringSchema.min(1),
+  toolCatalogDigest: unicodeStringSchema.min(1),
+  model: z.strictObject({ provider: unicodeStringSchema.min(1), id: unicodeStringSchema.min(1) }),
+  publicMessageId: unicodeStringSchema.min(1),
 });
 
 const assistantPartialAcceptedFactSchema = z.strictObject({
   type: z.literal("AssistantPartialAccepted"),
-  messageId: z.string().min(1),
-  text: z.string().min(1).max(32_768),
+  messageId: unicodeStringSchema.min(1),
+  text: unicodeStringSchema.min(1).max(32_768),
   disposition: z.enum(["interrupted", "provider-error"]),
 });
 
-const taskCloseReceiptSchema = z.strictObject({ offset: z.string(), duplicate: z.boolean() });
+const taskCloseReceiptSchema = z.strictObject({
+  offset: unicodeStringSchema,
+  duplicate: z.boolean(),
+});
 const emissionPolicySnapshotSchema = z.strictObject({
   maxEmissionsPerTask: nonNegativeIntegerSchema.optional(),
   maxCumulativeEmissionBytes: nonNegativeIntegerSchema.optional(),
 });
 const cancellationFrontierSchema = z.strictObject({
   actionIndex: nonNegativeIntegerSchema,
-  pullId: z.string().optional(),
+  pullId: unicodeStringSchema.optional(),
 });
 const orphanReasonSchema = z.enum([
   "program_version_unavailable",
@@ -341,53 +351,53 @@ const cancellationStateSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("none") }),
   z.strictObject({
     type: z.literal("requested"),
-    commandId: z.string(),
-    reason: z.string().optional(),
+    commandId: unicodeStringSchema,
+    reason: unicodeStringSchema.optional(),
     frontier: cancellationFrontierSchema,
   }),
   z.strictObject({
     type: z.literal("settling_pull"),
-    commandId: z.string(),
-    pullId: z.string(),
-    reason: z.string().optional(),
+    commandId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    reason: unicodeStringSchema.optional(),
     frontier: cancellationFrontierSchema,
   }),
   z.strictObject({
     type: z.literal("cancelling_children"),
-    commandId: z.string(),
-    childTaskIds: z.array(z.string()).max(MAX_CHILDREN_PER_OPERATION),
-    reason: z.string().optional(),
+    commandId: unicodeStringSchema,
+    childTaskIds: z.array(unicodeStringSchema).max(MAX_CHILDREN_PER_OPERATION),
+    reason: unicodeStringSchema.optional(),
     frontier: cancellationFrontierSchema,
   }),
   z.strictObject({
     type: z.literal("unwinding"),
-    commandId: z.string(),
-    reason: z.string().optional(),
+    commandId: unicodeStringSchema,
+    reason: unicodeStringSchema.optional(),
     frontier: cancellationFrontierSchema,
   }),
-  z.strictObject({ type: z.literal("cancelled"), commandId: z.string() }),
+  z.strictObject({ type: z.literal("cancelled"), commandId: unicodeStringSchema }),
   z.strictObject({ type: z.literal("orphaned"), reason: orphanReasonSchema }),
 ]);
 const semanticPayloadSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("TaskOpened"),
-    taskId: z.string(),
-    turnId: z.string(),
-    programId: z.string(),
-    programVersion: z.string(),
-    programDigest: z.string(),
+    taskId: unicodeStringSchema,
+    turnId: unicodeStringSchema,
+    programId: unicodeStringSchema,
+    programVersion: unicodeStringSchema,
+    programDigest: unicodeStringSchema,
     input: jsonValueSchema,
-    inputDigest: z.string(),
+    inputDigest: unicodeStringSchema,
     catalog: jsonRecordSchema.optional(),
-    catalogDigest: z.string().optional(),
-    parentTaskId: z.string().optional(),
-    parentPullId: z.string().optional(),
-    elicitAudience: z.string().optional(),
+    catalogDigest: unicodeStringSchema.optional(),
+    parentTaskId: unicodeStringSchema.optional(),
+    parentPullId: unicodeStringSchema.optional(),
+    elicitAudience: unicodeStringSchema.optional(),
   }),
   z.strictObject({
     type: z.literal("AdvancementBound"),
-    taskId: z.string(),
-    ownerId: z.string(),
+    taskId: unicodeStringSchema,
+    ownerId: unicodeStringSchema,
     leaseEpoch: nonNegativeIntegerSchema,
     expiresAtMs: z.number(),
     strandHeadDigest: digestSchema,
@@ -396,224 +406,228 @@ const semanticPayloadSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     type: z.literal("AdvancementReleased"),
-    taskId: z.string(),
+    taskId: unicodeStringSchema,
     leaseEpoch: nonNegativeIntegerSchema,
     reason: z.enum(["parked", "settled", "terminal", "failed", "scope_exit"]),
   }),
   z.strictObject({
     type: z.literal("PullRequested"),
-    taskId: z.string(),
-    turnId: z.string(),
+    taskId: unicodeStringSchema,
+    turnId: unicodeStringSchema,
     actionIndex: nonNegativeIntegerSchema,
     pullIndex: nonNegativeIntegerSchema,
-    pullId: z.string(),
+    pullId: unicodeStringSchema,
     descriptor: durableOperationDescriptorSchema,
-    descriptorDigest: z.string(),
-    publicMessageId: z.string().optional(),
+    descriptorDigest: unicodeStringSchema,
+    publicMessageId: unicodeStringSchema.optional(),
   }),
   z.strictObject({
     type: z.literal("ModelContextPrepared"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
     fact: modelContextPreparedFactSchema,
-    preparationDigest: z.string(),
+    preparationDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("AssistantPartialAccepted"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
     fact: assistantPartialAcceptedFactSchema,
-    factDigest: z.string(),
+    factDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("AttemptStarted"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
     attemptIndex: nonNegativeIntegerSchema,
   }),
   z.strictObject({
     type: z.literal("AttemptDetached"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
-    reason: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
+    reason: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("AttemptAbandoned"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
-    reason: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
+    reason: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("AttemptSuperseded"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
-    winnerAttemptId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
+    winnerAttemptId: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("PullIndeterminate"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("PullResolved"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string().optional(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema.optional(),
     outcome: operationOutcomeSchema,
-    outcomeDigest: z.string(),
+    outcomeDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("DurableEmission"),
-    taskId: z.string(),
+    taskId: unicodeStringSchema,
     actionIndex: nonNegativeIntegerSchema,
     emissionIndex: nonNegativeIntegerSchema,
-    descriptor: z.strictObject({ eventType: z.string(), payload: jsonValueSchema }),
-    descriptorDigest: z.string(),
+    descriptor: z.strictObject({ eventType: unicodeStringSchema, payload: jsonValueSchema }),
+    descriptorDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("RaceWinnerSelected"),
-    taskId: z.string(),
-    pullId: z.string(),
-    winnerTaskId: z.string(),
-    closeOffset: z.string(),
-    outcomeDigest: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    winnerTaskId: unicodeStringSchema,
+    closeOffset: unicodeStringSchema,
+    outcomeDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("CancellationRequested"),
-    taskId: z.string(),
-    commandId: z.string(),
-    reason: z.string().optional(),
+    taskId: unicodeStringSchema,
+    commandId: unicodeStringSchema,
+    reason: unicodeStringSchema.optional(),
     frontier: cancellationFrontierSchema,
   }),
   z.strictObject({
     type: z.literal("CancellationPartialDiscarded"),
-    taskId: z.string(),
-    pullId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
     reason: z.enum(["schema_validation_failed", "payload_too_large", "schema_version_unavailable"]),
   }),
   z.strictObject({
     type: z.literal("AttemptOutcomeUnknown"),
-    taskId: z.string(),
-    pullId: z.string(),
-    attemptId: z.string().optional(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    attemptId: unicodeStringSchema.optional(),
     reason: z.enum(["no_settlement_path", "force_orphaned"]),
   }),
   z.strictObject({
     type: z.literal("CleanupSkipped"),
-    taskId: z.string(),
+    taskId: unicodeStringSchema,
     reason: orphanReasonSchema,
   }),
   z.strictObject({
     type: z.literal("TaskOrphaned"),
-    taskId: z.string(),
+    taskId: unicodeStringSchema,
     reason: orphanReasonSchema,
   }),
   z.strictObject({
     type: z.literal("TaskClosed"),
-    taskId: z.string(),
+    taskId: unicodeStringSchema,
     outcome: operationOutcomeSchema,
   }),
   z.strictObject({
     type: z.literal("ForkGroupOpened"),
-    taskId: z.string(),
-    pullId: z.string(),
-    groupId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    groupId: unicodeStringSchema,
     policy: forkPolicySchema,
     deadlineMs: z.number(),
-    memberTaskIds: z.array(z.string()).max(MAX_CHILDREN_PER_OPERATION),
-    descriptorDigest: z.string(),
+    memberTaskIds: z.array(unicodeStringSchema).max(MAX_CHILDREN_PER_OPERATION),
+    descriptorDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("ForkGroupBreached"),
-    taskId: z.string(),
-    groupId: z.string(),
+    taskId: unicodeStringSchema,
+    groupId: unicodeStringSchema,
     deadlineMs: z.number(),
     breachedAtMs: z.number(),
   }),
   z.strictObject({
     type: z.literal("ForkGroupResolved"),
-    taskId: z.string(),
-    pullId: z.string(),
-    groupId: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    groupId: unicodeStringSchema,
     terminal: forkGroupTerminalSchema,
-    terminalDigest: z.string(),
+    terminalDigest: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("ForkGroupOrphaned"),
-    taskId: z.string(),
-    pullId: z.string(),
-    groupId: z.string(),
-    reason: z.string(),
+    taskId: unicodeStringSchema,
+    pullId: unicodeStringSchema,
+    groupId: unicodeStringSchema,
+    reason: unicodeStringSchema,
   }),
   z.strictObject({
     type: z.literal("PeerDelegationCommitted"),
-    taskId: z.string(),
-    groupId: z.string(),
-    memberTaskId: z.string(),
-    correlator: z.string(),
-    peer: z.string(),
+    taskId: unicodeStringSchema,
+    groupId: unicodeStringSchema,
+    memberTaskId: unicodeStringSchema,
+    correlator: unicodeStringSchema,
+    peer: unicodeStringSchema,
     deadlineMs: z.number(),
   }),
 ]);
 const semanticRecordSchema = z.strictObject({
-  offset: z.string(),
-  eventId: z.string(),
-  sessionId: z.string(),
+  offset: unicodeStringSchema,
+  eventId: unicodeStringSchema,
+  sessionId: unicodeStringSchema,
   ownerEpoch: nonNegativeIntegerSchema.optional(),
   payload: semanticPayloadSchema,
 });
 const recordCollectionSchema = z.tuple([
-  z.string(),
+  unicodeStringSchema,
   z.array(semanticRecordSchema).max(MAX_RECORDS_PER_SESSION),
 ]);
 const activationLeaseValueSchema = z.strictObject({
-  sessionId: z.string(),
-  ownerId: z.string(),
+  sessionId: unicodeStringSchema,
+  ownerId: unicodeStringSchema,
   epoch: nonNegativeIntegerSchema,
   expiresAtMs: nonNegativeIntegerSchema,
   leaseDurationMs: nonNegativeIntegerSchema,
   claimedTaskRevision: nonNegativeIntegerSchema,
-  claimedHeadId: z.string(),
-  restoreNonce: z.string(),
+  claimedHeadId: unicodeStringSchema,
+  restoreNonce: unicodeStringSchema,
 });
 const taskOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("root") }),
   z.strictObject({
     kind: z.literal("child"),
-    invokedBy: z.strictObject({ taskId: z.string(), pullId: z.string() }),
+    invokedBy: z.strictObject({ taskId: unicodeStringSchema, pullId: unicodeStringSchema }),
   }),
 ]);
 const resolutionAuthoritySchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("attempt"),
     owner: z.enum(["program", "effect"]),
-    audience: z.string(),
+    audience: unicodeStringSchema,
   }),
-  z.strictObject({ kind: z.literal("participant"), audience: z.string(), capability: z.string() }),
+  z.strictObject({
+    kind: z.literal("participant"),
+    audience: unicodeStringSchema,
+    capability: unicodeStringSchema,
+  }),
   z.strictObject({
     kind: z.literal("clock"),
-    audience: z.string(),
-    notBefore: z.string(),
-    capability: z.string(),
+    audience: unicodeStringSchema,
+    notBefore: unicodeStringSchema,
+    capability: unicodeStringSchema,
   }),
   z.strictObject({
     kind: z.literal("child"),
     mode: z.enum(["invoke", "all", "race", "spawn", "join"]),
-    audience: z.string(),
-    capability: z.string(),
+    audience: unicodeStringSchema,
+    capability: unicodeStringSchema,
   }),
 ]);
 const attemptSchema = z.strictObject({
-  attemptId: z.string(),
+  attemptId: unicodeStringSchema,
   attemptIndex: nonNegativeIntegerSchema,
-  capability: z.string(),
+  capability: unicodeStringSchema,
   status: z.enum(["started", "detached", "completed", "revoked", "superseded"]),
 });
 const pullResolutionSchema = z.discriminatedUnion("status", [
@@ -623,29 +637,29 @@ const pullResolutionSchema = z.discriminatedUnion("status", [
     revoked: z.boolean(),
     settlement: z.strictObject({
       outcome: operationOutcomeSchema,
-      outcomeDigest: z.string(),
+      outcomeDigest: unicodeStringSchema,
       receipt: resolutionReceiptSchema,
     }),
   }),
 ]);
 const pullSchema = z.strictObject({
-  pullId: z.string(),
+  pullId: unicodeStringSchema,
   request: z.strictObject({
-    proposedDescriptorDigest: z.string(),
+    proposedDescriptorDigest: unicodeStringSchema,
     proposedDescriptor: durableOperationDescriptorSchema,
     acceptedDescriptor: durableOperationDescriptorSchema,
     resultDescriptor: portableSchemaDescriptorSchema,
-    resultSchemaDigest: z.string(),
+    resultSchemaDigest: unicodeStringSchema,
     maxOutcomeBytes: nonNegativeIntegerSchema,
-    publicMessageId: z.string().optional(),
+    publicMessageId: unicodeStringSchema.optional(),
   }),
   resolutionAuthority: resolutionAuthoritySchema,
   attempts: z.array(attemptSchema).max(MAX_ATTEMPTS_PER_PULL),
   acceptedFacts: z.strictObject({
     preparation: modelContextPreparedFactSchema.optional(),
-    preparationDigest: z.string().optional(),
+    preparationDigest: unicodeStringSchema.optional(),
     assistantPartial: assistantPartialAcceptedFactSchema.optional(),
-    assistantPartialDigest: z.string().optional(),
+    assistantPartialDigest: unicodeStringSchema.optional(),
   }),
   resolution: pullResolutionSchema,
 });
@@ -660,10 +674,10 @@ const actionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("emission"),
     actionIndex: nonNegativeIntegerSchema,
     emissionIndex: nonNegativeIntegerSchema,
-    descriptorDigest: z.string(),
+    descriptorDigest: unicodeStringSchema,
     receipt: z.strictObject({
-      offset: z.string(),
-      eventId: z.string(),
+      offset: unicodeStringSchema,
+      eventId: unicodeStringSchema,
       duplicate: z.boolean(),
     }),
   }),
@@ -682,27 +696,27 @@ const taskLifecycleSchema = z.discriminatedUnion("status", [
       partial: jsonValueSchema.optional(),
     }),
     receipt: taskCloseReceiptSchema,
-    commandId: z.string(),
+    commandId: unicodeStringSchema,
   }),
   z.strictObject({ status: z.literal("orphaned"), reason: orphanReasonSchema }),
 ]);
 const forkGroupMemberSchema = z.strictObject({
   ordinal: nonNegativeIntegerSchema,
-  taskId: z.string(),
+  taskId: unicodeStringSchema,
   durability: z.enum(["crank_native", "peer_hosted"]).optional(),
-  peer: z.string().optional(),
+  peer: unicodeStringSchema.optional(),
   sampling: z.enum(["delegated", "private"]).optional(),
-  delegationCorrelator: z.string().optional(),
+  delegationCorrelator: unicodeStringSchema.optional(),
   terminal: z
-    .strictObject({ outcome: operationOutcomeSchema, outcomeDigest: z.string() })
+    .strictObject({ outcome: operationOutcomeSchema, outcomeDigest: unicodeStringSchema })
     .optional(),
 });
 const forkGroupStateSchema = z.strictObject({
   revision: nonNegativeIntegerSchema.optional(),
-  groupId: z.string(),
-  parentTaskId: z.string(),
-  pullId: z.string(),
-  descriptorDigest: z.string(),
+  groupId: unicodeStringSchema,
+  parentTaskId: unicodeStringSchema,
+  pullId: unicodeStringSchema,
+  descriptorDigest: unicodeStringSchema,
   policy: forkPolicySchema,
   deadlineMs: z.number(),
   members: z.array(forkGroupMemberSchema).max(MAX_CHILDREN_PER_OPERATION),
@@ -710,35 +724,39 @@ const forkGroupStateSchema = z.strictObject({
   cancellingCause: z.enum(["failure", "race_winner", "expiry", "cancellation"]).optional(),
   breachedAtMs: z.number().optional(),
   winner: z
-    .strictObject({ ordinal: nonNegativeIntegerSchema, outcomeDigest: z.string() })
+    .strictObject({ ordinal: nonNegativeIntegerSchema, outcomeDigest: unicodeStringSchema })
     .optional(),
   resolution: forkGroupTerminalSchema.optional(),
 });
 const taskSchema = z.strictObject({
-  taskId: z.string(),
-  turnId: z.string(),
+  taskId: unicodeStringSchema,
+  turnId: unicodeStringSchema,
   origin: taskOriginSchema,
   deadlineMs: z.number().optional(),
   forkGroup: forkGroupStateSchema.optional(),
   program: z.strictObject({
-    artifact: z.strictObject({ id: z.string(), version: z.string(), digest: digestSchema }),
+    artifact: z.strictObject({
+      id: unicodeStringSchema,
+      version: unicodeStringSchema,
+      digest: digestSchema,
+    }),
     manifest: durableProgramManifestSchema,
     input: jsonValueSchema,
   }),
   execution: z.strictObject({
     epoch: nonNegativeIntegerSchema,
-    attachmentId: z.string(),
-    audience: z.string(),
-    elicitAudience: z.string().optional(),
-    route: z.union([z.string(), jsonRecordSchema]).optional(),
+    attachmentId: unicodeStringSchema,
+    audience: unicodeStringSchema,
+    elicitAudience: unicodeStringSchema.optional(),
+    route: z.union([unicodeStringSchema, jsonRecordSchema]).optional(),
     catalog: jsonValueSchema.optional(),
-    catalogDigest: z.string().optional(),
+    catalogDigest: unicodeStringSchema.optional(),
     liveLease: z
       .strictObject({
-        ownerId: z.string(),
+        ownerId: unicodeStringSchema,
         epoch: nonNegativeIntegerSchema,
         expiresAtMs: z.number(),
-        attachmentId: z.string(),
+        attachmentId: unicodeStringSchema,
         strandHeadDigest: digestSchema,
         forkGroupRevision: nonNegativeIntegerSchema,
         frontierDigest: digestSchema,
@@ -757,81 +775,143 @@ const taskSchema = z.strictObject({
 const sessionSchema = z.strictObject({
   execution: z.strictObject({ tasks: z.array(taskSchema).max(MAX_SNAPSHOT_TASKS) }),
   control: z.strictObject({
-    journalHeadId: z.string().uuid().nullable(),
+    journalHeadId: unicodeStringSchema.uuid().nullable(),
     runnable: z.boolean(),
     revision: nonNegativeIntegerSchema,
     nextRootOrdinal: nonNegativeIntegerSchema.optional(),
     activationLease: activationLeaseValueSchema.optional(),
     lastActivationEpoch: nonNegativeIntegerSchema,
-    restoreNonce: z.string().optional(),
-    restoreFrontierDigest: z.string().optional(),
+    restoreNonce: unicodeStringSchema.optional(),
+    restoreFrontierDigest: unicodeStringSchema.optional(),
     consecutiveRestoreStales: nonNegativeIntegerSchema,
     activationNotBeforeMs: nonNegativeIntegerSchema.optional(),
   }),
 });
 const durableAuthoritySnapshotStructureSchema = z.strictObject({
   version: z.literal(1),
-  sessions: z.array(z.tuple([z.string(), sessionSchema])).max(MAX_SNAPSHOT_COLLECTIONS),
+  sessions: z.array(z.tuple([unicodeStringSchema, sessionSchema])).max(MAX_SNAPSHOT_COLLECTIONS),
   nextNonce: nonNegativeIntegerSchema,
   records: z.array(recordCollectionSchema).max(MAX_SNAPSHOT_COLLECTIONS),
 });
-const boundedSnapshotValueSchema: StandardSchemaV1<unknown, unknown> = {
-  "~standard": {
-    version: 1,
-    vendor: "sweatpants",
-    validate(value) {
-      try {
-        const seen = new WeakSet();
-        const pending: Array<{ value: unknown; depth: number; exit?: boolean }> = [
-          { value, depth: 0 },
-        ];
-        let nodes = 0;
-        while (pending.length > 0) {
-          const current = pending.pop()!;
-          if (current.exit) {
-            seen.delete(current.value as object);
-            continue;
-          }
-          nodes += 1;
-          if (nodes > MAX_SNAPSHOT_NODES) {
-            return { issues: [{ message: "snapshot node count exceeds limit" }] };
-          }
-          if (current.depth > MAX_SNAPSHOT_DEPTH) {
-            return { issues: [{ message: "snapshot depth exceeds limit" }] };
-          }
-          if (typeof current.value === "string" && /[\uD800-\uDFFF]/u.test(current.value)) {
-            return { issues: [{ message: "snapshot contains invalid Unicode" }] };
-          }
-          if (current.value === null || typeof current.value !== "object") {
-            continue;
-          }
-          if (seen.has(current.value)) {
-            return { issues: [{ message: "snapshot contains a cycle" }] };
-          }
-          seen.add(current.value);
-          pending.push({ ...current, exit: true });
-          for (const [key, child] of Object.entries(current.value)) {
-            if (key === "__proto__" || /[\uD800-\uDFFF]/u.test(key)) {
-              return { issues: [{ message: "snapshot contains an invalid key" }] };
-            }
-            pending.push({ value: child, depth: current.depth + 1 });
-          }
-        }
-        return { value };
-      } catch {
-        return { issues: [{ message: "snapshot cannot be inspected safely" }] };
-      }
-    },
-  },
-};
-const durableAuthoritySnapshotShapeParser = parser(durableAuthoritySnapshotStructureSchema);
 
-/** Private bounded structural parser for the exact current Journal Authority snapshot. */
-export const durableAuthoritySnapshotBoundsParser: Parser<unknown> = parser(
-  boundedSnapshotValueSchema,
+/** Cold/import boundary: validate the entire current persisted representation.
+ * JSON payload depth is bounded at each JSON-valued leaf, independently of the
+ * statically bounded journal envelope. Encoded bytes and collection counts are
+ * the aggregate storage budget; there is no separate primitive-node budget.
+ */
+export const durableAuthoritySnapshotStructureParser: Parser<unknown> = parser(
+  durableAuthoritySnapshotStructureSchema,
 );
 
-export const durableAuthoritySnapshotStructureParser: Parser<unknown> =
-  durableAuthoritySnapshotBoundsParser.andThen((value) =>
-    durableAuthoritySnapshotShapeParser.parse(value),
-  );
+// New task input is the owned, depth-bounded result returned by the registered
+// input schema. The cold schema still captures external persisted JSON.
+const newTaskSchema = taskSchema.extend({
+  program: taskSchema.shape.program.extend({ input: z.unknown() }),
+});
+const taskEditSchema = taskSchema.omit({ actions: true, execution: true, forkGroup: true });
+const forkEditSchema = forkGroupStateSchema.omit({ members: true });
+const pullEditSchema = pullSchema.omit({ acceptedFacts: true });
+const snapshotHeaderSchema = durableAuthoritySnapshotStructureSchema.omit({
+  sessions: true,
+  records: true,
+});
+
+/** The draft retains immutable payloads by reference. Only changed fields cross
+ * admission; mutable counters and collection sizes remain inexpensive checks.
+ */
+export function validateSnapshotMutation(
+  previous: AuthorityState,
+  snapshot: DurableAuthoritySnapshot,
+): void {
+  snapshotHeaderSchema.parse({ version: snapshot.version, nextNonce: snapshot.nextNonce });
+  if (
+    snapshot.sessions.length > MAX_SNAPSHOT_COLLECTIONS ||
+    snapshot.records.length > MAX_SNAPSHOT_COLLECTIONS
+  ) {
+    throw new CrankError("invalid_journal", "Authority collection limit exceeded");
+  }
+  for (const [sessionId, session] of snapshot.sessions) {
+    unicodeStringSchema.parse(sessionId);
+    const accepted = previous.sessions.get(sessionId);
+    if (session.control !== accepted?.control) {
+      sessionSchema.shape.control.parse(session.control);
+    }
+    if (session.execution.tasks.length > MAX_SNAPSHOT_TASKS) {
+      throw new CrankError("invalid_journal", "Authority task limit exceeded");
+    }
+    for (const task of session.execution.tasks) {
+      const before = accepted?.execution.tasks.get(task.taskId);
+      if (task === before) {
+        continue;
+      }
+      if (!before) {
+        newTaskSchema.parse(task);
+        continue;
+      }
+      const { actions, execution, forkGroup, ...fields } = task;
+      const {
+        actions: _oldActions,
+        execution: _oldExecution,
+        forkGroup: _oldFork,
+        ...oldFields
+      } = before;
+      validateChangedFields(taskEditSchema, oldFields, fields);
+      validateChangedFields(taskSchema.shape.execution, before.execution, execution);
+      if (forkGroup !== before.forkGroup) {
+        if (!forkGroup || !before.forkGroup) {
+          taskSchema.shape.forkGroup.parse(forkGroup);
+        } else {
+          const { members, ...fork } = forkGroup;
+          const { members: oldMembers, ...oldFork } = before.forkGroup;
+          validateChangedFields(forkEditSchema, oldFork, fork);
+          if (members.length > MAX_CHILDREN_PER_OPERATION) {
+            throw new CrankError("invalid_journal", "Fork member limit exceeded");
+          }
+          for (const [index, member] of members.entries()) {
+            if (oldMembers[index]) {
+              validateChangedFields(forkGroupMemberSchema, oldMembers[index], member);
+            } else {
+              forkGroupMemberSchema.parse(member);
+            }
+          }
+        }
+      }
+      if (actions.length > MAX_ACTIONS_PER_TASK) {
+        throw new CrankError("invalid_journal", "Authority action limit exceeded");
+      }
+      for (const [index, action] of actions.entries()) {
+        const earlier = before.actions[index];
+        if (action === earlier) {
+          continue;
+        }
+        if (action.kind !== "pull" || earlier?.kind !== "pull") {
+          actionSchema.parse(action);
+          continue;
+        }
+        // Action identity and ordering are checked by the shared decision path.
+        const { acceptedFacts, ...pull } = action.pull;
+        const { acceptedFacts: _oldFacts, ...oldPull } = earlier.pull;
+        validateChangedFields(pullEditSchema, oldPull, pull);
+        validateChangedFields(
+          pullSchema.shape.acceptedFacts,
+          earlier.pull.acceptedFacts,
+          acceptedFacts,
+        );
+      }
+    }
+  }
+}
+
+function validateChangedFields(schema: z.ZodObject, previous: object, next: object): void {
+  for (const key of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+    const value = Reflect.get(next, key);
+    if (Reflect.get(previous, key) === value) {
+      continue;
+    }
+    const field = schema.shape[key];
+    if (!field) {
+      throw new CrankError("invalid_journal", "Unknown authority field");
+    }
+    field.parse(value);
+  }
+}

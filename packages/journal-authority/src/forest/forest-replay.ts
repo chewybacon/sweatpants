@@ -10,7 +10,7 @@ import {
   type ReplayOperationEntry,
   type StrandHead,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import { encodeCanonicalJson, sha256, type ReadonlyJson } from "@sweatpants/foundation";
 
 import type {
   AuthoritySessionState,
@@ -106,34 +106,36 @@ export function planForestReplay(
 
 /** Deterministic strand digest used by plan/bind CAS. */
 export function strandHead(task: TaskState): StrandHead {
-  const durablePrefix = task.actions.slice(0, task.nextActionIndex).map((action) =>
-    action.kind === "pull"
-      ? {
-          kind: "pull" as const,
-          actionIndex: action.actionIndex,
-          pullIndex: action.pullIndex,
-          descriptorDigest: action.pull.request.proposedDescriptorDigest,
-          resolution:
-            action.pull.resolution.status === "settled"
-              ? {
-                  status: "settled" as const,
-                  offset: action.pull.resolution.settlement.receipt.resolutionOffset,
-                  outcomeDigest: action.pull.resolution.settlement.outcomeDigest,
-                }
-              : { status: "open" as const },
-        }
-      : {
-          kind: "emission" as const,
-          actionIndex: action.actionIndex,
-          emissionIndex: action.emissionIndex,
-          descriptorDigest: action.descriptorDigest,
-          offset: action.receipt.offset,
-        },
-  );
+  const durablePrefix = task.actions.slice(0, task.nextActionIndex).map((action): ReadonlyJson => {
+    if (action.kind === "pull") {
+      let resolution: ReadonlyJson = { status: "open" };
+      if (action.pull.resolution.status === "settled") {
+        resolution = {
+          status: "settled",
+          offset: action.pull.resolution.settlement.receipt.resolutionOffset,
+          outcomeDigest: action.pull.resolution.settlement.outcomeDigest,
+        };
+      }
+      return {
+        kind: "pull",
+        actionIndex: action.actionIndex,
+        pullIndex: action.pullIndex,
+        descriptorDigest: action.pull.request.proposedDescriptorDigest,
+        resolution,
+      };
+    }
+    return {
+      kind: "emission",
+      actionIndex: action.actionIndex,
+      emissionIndex: action.emissionIndex,
+      descriptorDigest: action.descriptorDigest,
+      offset: action.receipt.offset,
+    };
+  });
   return {
     actionIndex: task.nextActionIndex - 1,
     digest: sha256(
-      canonicalJson({
+      encodeCanonicalJson({
         domain: "sweatpants.strand-head.v1",
         taskId: task.taskId,
         program: task.program.artifact,
@@ -294,7 +296,7 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
   // The seed binds immutable strand identity. Mutable plan fields stay in the
   // frontier proof so warm suffixes can compare their existing chain in O(1).
   const replayChainSeed = sha256(
-    canonicalJson({
+    encodeCanonicalJson({
       domain: REPLAY_DOMAIN,
       address: row.address,
       strand: row.strand,
@@ -333,7 +335,7 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
       throw new CrankError("invalid_journal", "Replay prefix contains an unresolved slot");
     }
     const entryDigest = sha256(
-      canonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
+      encodeCanonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
     );
     replay.push({ ...body, entryDigest } as ReplayEntry);
     previousEntryDigest = entryDigest;

@@ -1,6 +1,7 @@
+import { JOURNAL_PAYLOAD_MAX_DEPTH } from "./payload-limits.ts";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { assertJson, type Json, cloneJson } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   safeSchemaIssues,
   validateStandardSchema,
@@ -138,7 +139,10 @@ export function parseRegisteredSchema(
     return { status: "invalid", issues: safeSchemaIssues(result.issues) };
   }
   try {
-    return { status: "ok", value: cloneJson(result.value) as Json };
+    return {
+      status: "ok",
+      value: assertJson(result.value, "$", { maxDepth: JOURNAL_PAYLOAD_MAX_DEPTH }),
+    };
   } catch {
     return {
       status: "invalid",
@@ -157,13 +161,9 @@ function builtinEntries(): SchemaBinding[] {
     },
     {
       descriptor: ANY_JSON_SCHEMA_DESCRIPTOR,
-      schema: standardSchemaOf("sweatpants", (value) => {
-        try {
-          return { value: assertJson(value) };
-        } catch {
-          return { issues: [{ message: "value must be canonical JSON" }] };
-        }
-      }),
+      // The schema adds no shape constraint; the registry admits the result
+      // once, just as it does after every other schema's transformation.
+      schema: standardSchemaOf("sweatpants", (value) => ({ value })),
     },
   ];
 }

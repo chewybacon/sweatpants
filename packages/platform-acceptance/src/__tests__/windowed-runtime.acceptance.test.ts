@@ -79,8 +79,9 @@ describe("windowed native lifecycle", () => {
         if (!journalStore) {
           throw new Error("journal store was not captured");
         }
-        const opened = yield* journalStore.open(conversation.conversationId);
-        const records = yield* opened.readJournal(conversation.conversationId, "turn-0/root");
+        const records = yield* journalStore.withJournal(conversation.conversationId, (opened) =>
+          opened.readJournal(conversation.conversationId, "turn-0/root"),
+        );
         const task = records.find((record) => record.payload.type === "TaskOpened");
         expect(task?.payload.type).toBe("TaskOpened");
         if (!task || task.payload.type !== "TaskOpened") {

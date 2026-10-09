@@ -1,11 +1,10 @@
 import { type OperationOutcome } from "@sweatpants/durable-effects";
 import { scoped, type Operation } from "effection";
 import {
-  AuthorityJournalPort,
-  JournalAuthorityPort,
   createCapabilityKeyring,
   createJournal,
   installJournal,
+  useJournal,
   type Journal,
   type AcceptAssistantPartialRequest,
   type AcceptAssistantPartialResult,
@@ -18,7 +17,6 @@ import {
   type DurableSemanticRecord,
   type DurableTaskExecutionState,
   type DurableTaskRecoveryState,
-  type JournalAuthorityContract,
   type ModelContextPreparedFact,
   type OpenDurableTaskRequest,
   type PrivateSegmentTarget,
@@ -49,7 +47,6 @@ export function programDriverSchemaRegistry(
 
 /** Conversation-scoped composition and narrow host operations. */
 export interface ProgramDriverJournal {
-  install(): Operation<void>;
   advance: Journal["advance"];
   query: Journal["query"];
   openTask(request: OpenDurableTaskRequest): Operation<{ readonly programCapability: string }>;
@@ -95,8 +92,14 @@ export interface ProgramDriverJournal {
 }
 
 export interface ProgramDriverJournalStore {
-  /** Owns one authority view until the calling scope exits; children share it. */
-  open(conversationId: string): Operation<ProgramDriverJournal>;
+  /** Own one installed journal for the operation and its child tasks.
+   * Consume journal-dependent operations inside this lifetime; deferred work
+   * selects its own journal when it runs.
+   */
+  withJournal<T>(
+    conversationId: string,
+    operation: (journal: ProgramDriverJournal) => Operation<T>,
+  ): Operation<T>;
 }
 
 export interface ProgramDriverJournalStoreOptions {
@@ -129,113 +132,95 @@ export function createProgramDriverJournalStore(
   const executionStore = options.executionStore;
 
   return {
-    *open(conversationId): Operation<ProgramDriverJournal> {
-      const authorityOptions = {
-        journalId: `${options.journalPrefix ?? "program-driver"}:${conversationId}`,
-        journalIncarnation: "1",
-        keyring: options.keyring,
-        now: options.now,
-        privateSegmentTarget: options.privateSegmentTarget,
-        dataDirectory: options.dataDirectory || undefined,
-        schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
-      };
+    *withJournal<T>(
+      conversationId: string,
+      operation: (journal: ProgramDriverJournal) => Operation<T>,
+    ): Operation<T> {
+      return yield* scoped(function* () {
+        const authorityOptions = {
+          journalId: `${options.journalPrefix ?? "program-driver"}:${conversationId}`,
+          journalIncarnation: "1",
+          keyring: options.keyring,
+          now: options.now,
+          privateSegmentTarget: options.privateSegmentTarget,
+          dataDirectory: options.dataDirectory || undefined,
+          schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
+        };
 
-      const owned = yield* createJournal(ExecutionStorePort.api.operations, authorityOptions);
-      const install = function* (): Operation<void> {
         yield* installExecutionStore(executionStore);
+        const owned = yield* createJournal(ExecutionStorePort.api.operations, authorityOptions);
         yield* installJournal(owned);
-      };
-      // Selecting a journal installs its storage and port drivers in a child scope.
-      // This preserves caller middleware and permits independent journals in one caller.
-      const dispatch = function* <T>(
-        operation: (authority: JournalAuthorityContract) => Operation<T>,
-      ): Operation<T> {
-        return yield* scoped(function* () {
-          yield* install();
-          const authority = yield* JournalAuthorityPort.use();
-          return yield* operation(authority);
-        });
-      };
-
-      const journal: ProgramDriverJournal = {
-        install,
-        *advance(command) {
-          return yield* dispatch((authority) => authority.command(command));
-        },
-        *query(query) {
-          return yield* dispatch((authority) => authority.query(query));
-        },
-        *openTask(request) {
-          return yield* journal.advance({ type: "execution.open-task", request });
-        },
-        *executionState(sessionId, taskId) {
-          return yield* journal.query({ type: "task.execution-state", sessionId, taskId });
-        },
-        *recoveryState(sessionId, requestedTaskId) {
-          return yield* journal.query({
-            type: "task.recovery-state",
-            sessionId,
-            ...(requestedTaskId !== undefined ? { taskId: requestedTaskId } : {}),
-          });
-        },
-        *rootTaskCount(sessionId) {
-          return yield* journal.query({ type: "session.root-task-count", sessionId });
-        },
-        *operationState(sessionId, taskId, pullId) {
-          return yield* journal.query({ type: "pull.state", sessionId, taskId, pullId });
-        },
-        *readJournal(sessionId, rootTaskId) {
-          return yield* scoped(function* () {
-            yield* install();
-            const records = yield* AuthorityJournalPort.use();
-            // Journal reads already return detached records at their boundary.
+        const operations = yield* useJournal();
+        const journal: ProgramDriverJournal = {
+          advance: operations.advance,
+          query: operations.query,
+          *openTask(request) {
+            return yield* journal.advance({ type: "execution.open-task", request });
+          },
+          *executionState(sessionId, taskId) {
+            return yield* journal.query({ type: "task.execution-state", sessionId, taskId });
+          },
+          *recoveryState(sessionId, requestedTaskId) {
+            return yield* journal.query({
+              type: "task.recovery-state",
+              sessionId,
+              taskId: requestedTaskId,
+            });
+          },
+          *rootTaskCount(sessionId) {
+            return yield* journal.query({ type: "session.root-task-count", sessionId });
+          },
+          *operationState(sessionId, taskId, pullId) {
+            return yield* journal.query({ type: "pull.state", sessionId, taskId, pullId });
+          },
+          *readJournal(sessionId, rootTaskId) {
             return [
               ...(rootTaskId
-                ? yield* records.readTree(sessionId, rootTaskId)
-                : yield* records.readSession(sessionId)),
+                ? yield* operations.readTree(sessionId, rootTaskId)
+                : yield* operations.readSession(sessionId)),
             ];
-          });
-        },
-        *requestCancellation(sessionId, taskId, reason, commandId) {
-          yield* journal.advance({
-            type: "execution.request-cancellation",
-            request: {
-              sessionId,
-              taskId,
-              ...(reason !== undefined ? { reason } : {}),
-              ...(commandId !== undefined ? { commandId } : {}),
-            },
-          });
-        },
-        *resolvePending(request) {
-          const capability = yield* journal.query({
-            type: "pull.resolution-capability",
-            sessionId: request.sessionId,
-            taskId: request.taskId,
-            pullId: request.pullId,
-          });
-          return yield* journal.advance({
-            type: "execution.resolve-pull",
-            request: { capability, audience: request.audience, outcome: request.outcome },
-          });
-        },
-        *validateElicitResponse(request) {
-          return yield* journal.query({ type: "pull.validate-elicit-response", request });
-        },
-        *pullPreparation(sessionId, taskId, pullId) {
-          return yield* journal.query({ type: "pull.preparation", sessionId, taskId, pullId });
-        },
-        *acceptPullPreparation(request) {
-          return yield* journal.advance({ type: "execution.accept-preparation", request });
-        },
-        *authorizeModelDispatch(request) {
-          return yield* journal.query({ type: "pull.authorize-model-dispatch", request });
-        },
-        *acceptAssistantPartial(request) {
-          return yield* journal.advance({ type: "execution.accept-assistant-partial", request });
-        },
-      };
-      return journal;
+          },
+          *requestCancellation(sessionId, taskId, reason, commandId) {
+            yield* journal.advance({
+              type: "execution.request-cancellation",
+              request: {
+                sessionId,
+                taskId,
+                reason,
+                commandId,
+              },
+            });
+          },
+          *resolvePending(request) {
+            const capability = yield* journal.query({
+              type: "pull.resolution-capability",
+              sessionId: request.sessionId,
+              taskId: request.taskId,
+              pullId: request.pullId,
+            });
+            return yield* journal.advance({
+              type: "execution.resolve-pull",
+              request: { capability, audience: request.audience, outcome: request.outcome },
+            });
+          },
+          *validateElicitResponse(request) {
+            return yield* journal.query({ type: "pull.validate-elicit-response", request });
+          },
+          *pullPreparation(sessionId, taskId, pullId) {
+            return yield* journal.query({ type: "pull.preparation", sessionId, taskId, pullId });
+          },
+          *acceptPullPreparation(request) {
+            return yield* journal.advance({ type: "execution.accept-preparation", request });
+          },
+          *authorizeModelDispatch(request) {
+            return yield* journal.query({ type: "pull.authorize-model-dispatch", request });
+          },
+          *acceptAssistantPartial(request) {
+            return yield* journal.advance({ type: "execution.accept-assistant-partial", request });
+          },
+        };
+        return yield* operation(journal);
+      });
     },
   };
 }

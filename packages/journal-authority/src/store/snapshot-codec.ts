@@ -1,4 +1,4 @@
-import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
+import type { AuthorityState } from "../contract/authority-contract.ts";
 import { CrankError } from "@sweatpants/durable-execution";
 import {
   failure,
@@ -10,8 +10,8 @@ import {
 import {
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
   durableAuthoritySnapshotStructureParser,
-  durableAuthoritySnapshotBoundsParser,
   MAX_RECORDS_PER_SESSION,
+  validateSnapshotMutation,
 } from "./durable-authority-snapshot-schema.ts";
 import type { DurableAuthoritySnapshot } from "../state/authority-snapshot.ts";
 
@@ -75,12 +75,14 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
           ) {
             return snapshotFailure(path, "pull integrity relationship is invalid");
           }
-          if (
-            action.pull.resolution.status === "settled" &&
-            action.pull.resolution.settlement.outcomeDigest !==
-              canonicalDigest(action.pull.resolution.settlement.outcome)
-          ) {
-            return snapshotFailure(path, "pull settlement digest differs");
+          if (action.pull.resolution.status === "settled") {
+            const { outcome, outcomeDigest, receipt } = action.pull.resolution.settlement;
+            if (outcomeDigest !== canonicalDigest(outcome)) {
+              return snapshotFailure(path, "pull settlement digest differs");
+            }
+            if (receipt.sessionId !== sessionId || receipt.taskId !== task.taskId) {
+              return snapshotFailure(path, "pull receipt does not name its task");
+            }
           }
         } else if (action.emissionIndex !== emissionIndex++) {
           return snapshotFailure(path, "emission indexes have a gap");
@@ -143,33 +145,28 @@ export function decodeDurableAuthoritySnapshot(value: unknown): DurableAuthority
   }
 }
 
+/** Typed edits are admitted once; the cold decoder retains full validation. */
+export function validateAuthorityMutation(
+  previous: AuthorityState,
+  snapshot: DurableAuthoritySnapshot,
+): void {
+  try {
+    validateSnapshotMutation(previous, snapshot);
+  } catch {
+    throw invalidSnapshot();
+  }
+}
+
 function invalidSnapshot(): CrankError {
   return new CrankError("invalid_journal", "Invalid durable authority snapshot");
 }
 
-/** Check aggregate limits for privately owned records whose shapes are already validated. */
-export function validateJournalCollectionBounds(
-  sessionId: string,
-  records: readonly DurableSemanticRecord[],
-): void {
-  const snapshot = { version: 1, sessions: [], nextNonce: 0, records: [[sessionId, records]] };
+/** Collection owns its exact encoded length; appends account for new records only. */
+export function validateJournalCollectionSize(recordCount: number, encodedBytes: number): void {
   if (
-    records.length > MAX_RECORDS_PER_SESSION ||
-    !durableAuthoritySnapshotBoundsParser.parse(snapshot).ok
+    recordCount > MAX_RECORDS_PER_SESSION ||
+    encodedBytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES
   ) {
     throw invalidSnapshot();
-  }
-  const encoder = new TextEncoder();
-  const empty = { ...snapshot, records: [[sessionId, []]] };
-  let bytes = encoder.encode(JSON.stringify(empty)).byteLength + Math.max(0, records.length - 1);
-  if (bytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
-    throw invalidSnapshot();
-  }
-  for (const record of records) {
-    const size = encoder.encode(JSON.stringify(record)).byteLength;
-    bytes += size;
-    if (bytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
-      throw invalidSnapshot();
-    }
   }
 }

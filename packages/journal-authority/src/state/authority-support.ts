@@ -7,13 +7,7 @@ import {
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
 import type { EffectDefinition, OperationOutcome } from "@sweatpants/durable-effects";
-import {
-  stableTupleHash,
-  type Json,
-  canonicalDigest,
-  canonicalJson,
-  cloneJson,
-} from "@sweatpants/foundation";
+import { stableTupleHash, type Json, digestCanonicalJson, cloneJson } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
@@ -24,7 +18,7 @@ import type { RestoreTicketClaims } from "../contract/authority-types.ts";
 export const MAX_OPEN_ELICITATIONS = 64;
 
 export function effectContractDigest(definition: EffectDefinition<Json, Json, Json>): string {
-  return canonicalDigest({
+  return digestCanonicalJson({
     kind: "sweatpants.effect-contract",
     digestVersion: 1,
     name: definition.name,
@@ -43,10 +37,6 @@ export function isModelSampleDescriptor(descriptor: DurableOperationDescriptor):
 /** Stable attachment-epoch owner fence for preparation of one parked sample pull. */
 export function modelPullOwnerFence(pullId: string, executionEpoch: number): string {
   return stableTupleHash(["model-pull-owner", pullId, executionEpoch]);
-}
-
-export function canonicalByteLength(value: Json): number {
-  return new TextEncoder().encode(canonicalJson(value)).byteLength;
 }
 
 export function normalizeEmissionPolicy(
@@ -269,10 +259,6 @@ export function manifestSchemaDigests(manifest: DurableProgramManifest): string[
 
 export function sortedStrings(values: Iterable<string>): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
-}
-
-export function terminalOutcomeDigest(outcome: OperationOutcome): string {
-  return canonicalDigest(outcome);
 }
 
 export function identityConflict(

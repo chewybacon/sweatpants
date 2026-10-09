@@ -1,6 +1,7 @@
 import {
   CrankError,
   assertInlineSize,
+  encodeInlineJson,
   type DurableOperationDescriptor,
   type Mandate,
   type ResolutionReceipt,
@@ -11,9 +12,15 @@ import {
   type Json,
   canonicalDigest,
   canonicalSnapshot,
+  encodeCanonicalJson,
   sha256,
 } from "@sweatpants/foundation";
-import type { AuthorityState, ResolutionAuthority } from "../contract/authority-contract.ts";
+import type {
+  AuthorityState,
+  ResolutionAuthority,
+  TaskState,
+  PullState,
+} from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
 import {
@@ -33,7 +40,6 @@ import { pullKindPolicy } from "../pull-kinds/index.ts";
 import { verifyResolutionCapability } from "../contract/capabilities.ts";
 import { parseRegisteredSchema } from "../contract/schema-registry.ts";
 import {
-  canonicalByteLength,
   effectDigestForPull,
   identityConflict,
   installedOrRecordedDescriptor,
@@ -45,7 +51,6 @@ import {
   pendingReason,
   sanitizeCancellationReason,
   snapshotOutcome,
-  terminalOutcomeDigest,
 } from "../state/authority-support.ts";
 import type {
   AcceptAssistantPartialRequest,
@@ -70,7 +75,9 @@ import type {
 function resolutionConflictCode(
   attempt: DraftPull["attempts"][number] | undefined,
 ): "resolution_conflict" | "idempotency_conflict" {
-  if (attempt === undefined) return "resolution_conflict";
+  if (attempt === undefined) {
+    return "resolution_conflict";
+  }
   switch (attempt.status) {
     case "superseded":
       return "idempotency_conflict";
@@ -82,8 +89,8 @@ function resolutionConflictCode(
   }
 }
 
-function mandateTask(draft: DecisionDraft, mandate: Mandate): DraftTask {
-  const task = draft.task(mandate.address.sessionId, mandate.address.taskId);
+function mandateTask(draft: DecisionDraft, mandate: Mandate): TaskState {
+  const task = draft.readTask(mandate.address.sessionId, mandate.address.taskId);
   const lease = task.execution.liveLease;
   if (
     mandate.strand !== task.taskId ||
@@ -125,7 +132,12 @@ export function reserveUnderMandate(
     throw new CrankError("replay_diverged", "Recorded history crossed the live edge");
   }
   if (result.status === "pending") {
-    endLiveLease(draft, request.mandate.address.sessionId, task, "parked");
+    endLiveLease(
+      draft,
+      request.mandate.address.sessionId,
+      draft.task(request.mandate.address.sessionId, task.taskId),
+      "parked",
+    );
   }
   return result;
 }
@@ -158,7 +170,12 @@ export function completeUnderMandate(
     programCapability: request.mandate.programCapability,
   });
   if (result.status !== "rejected") {
-    endLiveLease(draft, request.mandate.address.sessionId, task, "terminal");
+    endLiveLease(
+      draft,
+      request.mandate.address.sessionId,
+      draft.task(request.mandate.address.sessionId, task.taskId),
+      "terminal",
+    );
   }
   return result;
 }
@@ -167,18 +184,19 @@ export function reservePull(
   draft: DecisionDraft,
   request: ReserveOperationRequest,
 ): ReserveOperationResult {
-  const task = draft.task(request.sessionId, request.taskId);
-  draft.assertProgram(request.programCapability, task, request.sessionId);
-  draft.assertActive(task);
-  if (request.turnId !== task.turnId)
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  draft.assertProgram(request.programCapability, observed, request.sessionId);
+  draft.assertActive(observed);
+  if (request.turnId !== observed.turnId) {
     throw new CrankError("invalid_descriptor", "Turn identity mismatch");
+  }
   const encoded = canonicalSnapshot(request.descriptor);
   const descriptor = encoded.value;
   const descriptorDigest = sha256(encoded.canonical);
-  const existingAction = task.actions.find(
+  const existingAction = observed.actions.find(
     (action) => action.kind === "pull" && action.actionIndex === request.actionIndex,
   );
-  const existing = existingAction?.kind === "pull" ? (existingAction.pull as DraftPull) : undefined;
+  const existing = existingAction?.kind === "pull" ? existingAction.pull : undefined;
   if (existing) {
     if (
       existing.request.proposedDescriptorDigest !== descriptorDigest ||
@@ -194,17 +212,13 @@ export function reservePull(
         receipt: { ...existing.resolution.settlement.receipt, status: "duplicate" },
       };
     }
-    if (descriptor.kind === "effect" || descriptor.kind === "record")
-      return authorizeExisting(draft, task, existing);
+    if (descriptor.kind === "effect" || descriptor.kind === "record") {
+      return authorizeExisting(draft, observed, existing);
+    }
     const capability =
       existing.resolutionAuthority.kind === "attempt"
-        ? draft.resolutionCapability(task, existing, undefined)
+        ? draft.resolutionCapability(observed, existing, undefined)
         : existing.resolutionAuthority.capability;
-    if (existing.resolutionAuthority.kind !== "attempt")
-      existing.resolutionAuthority = {
-        ...existing.resolutionAuthority,
-        capability,
-      } as ResolutionAuthority;
     return {
       status: "pending",
       pullId: existing.pullId,
@@ -212,16 +226,19 @@ export function reservePull(
       resolutionCapability: capability,
     };
   }
+  const task = draft.task(request.sessionId, request.taskId);
   if (
     task.lifecycle.status === "active" &&
     task.lifecycle.cancellation.type !== "none" &&
     task.lifecycle.cancellation.type !== "unwinding" &&
     request.actionIndex >= task.lifecycle.cancellation.frontier.actionIndex
-  )
+  ) {
     throw new CrankError("cancellation_blocked");
+  }
   // Ancestor freeze (REQ-021): no new work while a fork group is nonterminal.
-  if (task.forkGroup !== undefined && task.forkGroup.status !== "resolved")
+  if (task.forkGroup !== undefined && task.forkGroup.status !== "resolved") {
     throw new CrankError("fork_group_open", "Task is frozen by an open fork group");
+  }
   if (request.actionIndex !== task.nextActionIndex || request.pullIndex !== task.nextPullIndex) {
     throw new CrankError("nondeterminism_detected", "Task-local action or pull cursor mismatch");
   }
@@ -345,8 +362,8 @@ export function reservePull(
 }
 
 function matchesModelPreparationOwner(
-  task: DraftTask,
-  pull: DraftPull,
+  task: TaskState,
+  pull: PullState,
   expectedOwnerFence: string,
 ): boolean {
   const attempt = currentAttempt(pull);
@@ -366,24 +383,30 @@ export function acceptPreparation(
     request.fact.taskId !== request.taskId ||
     request.fact.pullId !== request.pullId ||
     request.fact.executionId !== request.executionId
-  )
+  ) {
     return { status: "identity_conflict" };
+  }
   const found = findTaskPullById(draft.state, request.taskId, request.pullId);
-  if (!found) return { status: "pull_not_pending" };
-  const [sessionId, task, pull] = found;
+  if (!found) {
+    return { status: "pull_not_pending" };
+  }
+  const [sessionId, task, observed] = found;
   if (
     task.lifecycle.status !== "active" ||
-    pull.resolution.status !== "open" ||
-    pull.resolution.revoked
-  )
+    observed.resolution.status !== "open" ||
+    observed.resolution.revoked
+  ) {
     return { status: "pull_not_pending" };
-  if (!isModelSampleDescriptor(pull.request.proposedDescriptor))
+  }
+  if (!isModelSampleDescriptor(observed.request.proposedDescriptor)) {
     return { status: "identity_conflict" };
-  if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
+  }
+  if (!matchesModelPreparationOwner(task, observed, request.expectedOwnerFence)) {
     return { status: "stale_owner" };
+  }
   const digest = canonicalDigest(request.fact);
-  if (pull.acceptedFacts.preparation)
-    return pull.acceptedFacts.preparationDigest === digest
+  if (observed.acceptedFacts.preparation) {
+    return observed.acceptedFacts.preparationDigest === digest
       ? { status: "duplicate" }
       : {
           status: "identity_conflict",
@@ -391,9 +414,11 @@ export function acceptPreparation(
             "model-context",
             `${request.executionId}/${request.taskId}/${request.pullId}`,
             digest,
-            pull.acceptedFacts.preparationDigest ?? null,
+            observed.acceptedFacts.preparationDigest ?? null,
           ),
         };
+  }
+  const pull = pullById(draft.task(sessionId, request.taskId), request.pullId);
   pull.acceptedFacts.preparation = structuredClone(request.fact) as NonNullable<
     DraftPull["acceptedFacts"]["preparation"]
   >;
@@ -414,30 +439,37 @@ export function acceptAssistantPartial(
   request: AcceptAssistantPartialRequest,
 ): AcceptAssistantPartialResult {
   const found = findTaskPullById(draft.state, request.taskId, request.pullId);
-  if (!found) return { status: "pull_not_pending" };
-  const [sessionId, task, pull] = found;
+  if (!found) {
+    return { status: "pull_not_pending" };
+  }
+  const [sessionId, task, observed] = found;
   if (
     task.lifecycle.status !== "active" ||
-    pull.resolution.status !== "open" ||
-    pull.resolution.revoked
-  )
+    observed.resolution.status !== "open" ||
+    observed.resolution.revoked
+  ) {
     return { status: "pull_not_pending" };
-  if (!isModelSampleDescriptor(pull.request.proposedDescriptor))
+  }
+  if (!isModelSampleDescriptor(observed.request.proposedDescriptor)) {
     return { status: "identity_conflict" };
-  if (!matchesModelPreparationOwner(task, pull, request.expectedOwnerFence))
+  }
+  if (!matchesModelPreparationOwner(task, observed, request.expectedOwnerFence)) {
     return { status: "stale_owner" };
-  if (pull.acceptedFacts.preparation?.executionId !== request.executionId)
+  }
+  if (observed.acceptedFacts.preparation?.executionId !== request.executionId) {
     return { status: "identity_conflict" };
+  }
   if (
-    !pull.acceptedFacts.preparation ||
-    pull.acceptedFacts.preparation.publicMessageId !== request.fact.messageId ||
+    !observed.acceptedFacts.preparation ||
+    observed.acceptedFacts.preparation.publicMessageId !== request.fact.messageId ||
     request.fact.text.length === 0 ||
     request.fact.text.length > 32_768
-  )
+  ) {
     return { status: "identity_conflict" };
+  }
   const digest = canonicalDigest(request.fact);
-  if (pull.acceptedFacts.assistantPartial)
-    return pull.acceptedFacts.assistantPartialDigest === digest
+  if (observed.acceptedFacts.assistantPartial) {
+    return observed.acceptedFacts.assistantPartialDigest === digest
       ? { status: "duplicate" }
       : {
           status: "identity_conflict",
@@ -445,9 +477,11 @@ export function acceptAssistantPartial(
             "assistant-partial",
             `${request.executionId}/${request.taskId}/${request.pullId}`,
             digest,
-            pull.acceptedFacts.assistantPartialDigest ?? null,
+            observed.acceptedFacts.assistantPartialDigest ?? null,
           ),
         };
+  }
+  const pull = pullById(draft.task(sessionId, request.taskId), request.pullId);
   pull.acceptedFacts.assistantPartial = structuredClone(request.fact);
   pull.acceptedFacts.assistantPartialDigest = digest;
   draft.append(sessionId, task.execution.epoch, {
@@ -484,43 +518,55 @@ export function resolvePull(
   if (
     claims.journalId !== draft.context.journalIdentity.id ||
     claims.journalIncarnation !== draft.context.journalIdentity.incarnation
-  )
+  ) {
     return { status: "rejected", code: "invalid_resolution_capability" };
-  const task = draft.state.sessions.get(claims.sessionId)?.execution.tasks.get(claims.taskId) as
-    | DraftTask
-    | undefined;
-  if (!task) return { status: "rejected", code: "pull_not_found" };
-  let pull: DraftPull;
+  }
+  if (!draft.state.sessions.get(claims.sessionId)?.execution.tasks.has(claims.taskId)) {
+    return { status: "rejected", code: "pull_not_found" };
+  }
+  const observedTask = draft.readTask(claims.sessionId, claims.taskId);
+  let observedPull: PullState;
   try {
-    pull = pullById(task, claims.pullId);
+    observedPull = pullById(observedTask, claims.pullId);
   } catch {
     return { status: "rejected", code: "pull_not_found" };
   }
-  const attempt =
+  const observedAttempt =
     claims.attemptId === "none"
       ? undefined
-      : pull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
+      : observedPull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
   const reject = (): Extract<ResolveOperationResult, { status: "rejected" }> | undefined => {
     if (
-      pull.request.proposedDescriptorDigest !== claims.descriptorDigest ||
-      pull.request.resultSchemaDigest !== claims.resultSchemaDigest
-    )
+      observedPull.request.proposedDescriptorDigest !== claims.descriptorDigest ||
+      observedPull.request.resultSchemaDigest !== claims.resultSchemaDigest
+    ) {
       return { status: "rejected", code: "invalid_resolution_capability" };
+    }
     if (
-      pull.resolution.revoked ||
-      (claims.attemptId !== "none" && (!attempt || attempt.status === "revoked"))
-    )
+      observedPull.resolution.revoked ||
+      (claims.attemptId !== "none" && (!observedAttempt || observedAttempt.status === "revoked"))
+    ) {
       return { status: "rejected", code: "capability_revoked" };
-    if (task.lifecycle.status !== "active") return { status: "rejected", code: "task_terminal" };
+    }
+    if (observedTask.lifecycle.status !== "active") {
+      return { status: "rejected", code: "task_terminal" };
+    }
     return undefined;
   };
   const early = reject();
-  if (early) return early;
+  if (early) {
+    return early;
+  }
+  let discardedPartial:
+    | "schema_validation_failed"
+    | "payload_too_large"
+    | "schema_version_unavailable"
+    | undefined;
   let outcome = snapshotOutcome(request.outcome);
   if (outcome.status === "cancelled" && outcome.partial !== undefined) {
     const definition =
-      pull.request.proposedDescriptor.kind === "effect"
-        ? task.program.manifest.effects[pull.request.proposedDescriptor.name]
+      observedPull.request.proposedDescriptor.kind === "effect"
+        ? observedTask.program.manifest.effects[observedPull.request.proposedDescriptor.name]
         : undefined;
     let partial: Json | undefined;
     let reason: "schema_validation_failed" | "payload_too_large" | "schema_version_unavailable" =
@@ -535,37 +581,40 @@ export function resolvePull(
         try {
           assertInlineSize(
             validated.value,
-            Math.min(claims.maxOutcomeBytes, pull.request.maxOutcomeBytes),
+            Math.min(claims.maxOutcomeBytes, observedPull.request.maxOutcomeBytes),
           );
           partial = validated.value;
         } catch {
           reason = "payload_too_large";
         }
-      } else if (validated.status === "unavailable") reason = "schema_version_unavailable";
+      } else if (validated.status === "unavailable") {
+        reason = "schema_version_unavailable";
+      }
     }
     if (partial === undefined) {
-      draft.append(claims.sessionId, undefined, {
-        type: "CancellationPartialDiscarded",
-        taskId: task.taskId,
-        pullId: pull.pullId,
-        reason,
-      });
+      discardedPartial = reason;
       outcome = { status: "cancelled" };
-    } else outcome = { status: "cancelled", partial };
+    } else {
+      outcome = { status: "cancelled", partial };
+    }
   } else if (outcome.status === "ok") {
-    if (pull.request.proposedDescriptor.kind === "elicit") {
+    if (observedPull.request.proposedDescriptor.kind === "elicit") {
       const envelope = parseProgramElicitResult(outcome.value);
-      if (!envelope) return { status: "rejected", code: "schema_validation_failed" };
+      if (!envelope) {
+        return { status: "rejected", code: "schema_validation_failed" };
+      }
       if (envelope.action === "accept") {
         const validated = parseRegisteredSchema(
           draft.context.schemas,
-          pull.request.resultSchemaDigest,
+          observedPull.request.resultSchemaDigest,
           envelope.content,
         );
-        if (validated.status === "unavailable")
+        if (validated.status === "unavailable") {
           return { status: "rejected", code: "schema_version_unavailable" };
-        if (validated.status !== "ok")
+        }
+        if (validated.status !== "ok") {
           return { status: "rejected", code: "schema_validation_failed" };
+        }
         outcome = { status: "ok", value: { action: "accept", content: validated.value } };
       } else {
         const reason = sanitizeCancellationReason(
@@ -579,41 +628,65 @@ export function resolvePull(
     } else {
       const validated = parseRegisteredSchema(
         draft.context.schemas,
-        pull.request.resultSchemaDigest,
+        observedPull.request.resultSchemaDigest,
         outcome.value,
       );
-      if (validated.status === "unavailable")
+      if (validated.status === "unavailable") {
         return { status: "rejected", code: "schema_version_unavailable" };
-      if (validated.status !== "ok")
+      }
+      if (validated.status !== "ok") {
         return { status: "rejected", code: "schema_validation_failed" };
+      }
       outcome = { status: "ok", value: validated.value };
     }
   }
+  let encodedOutcome: string;
   try {
-    assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.request.maxOutcomeBytes));
+    encodedOutcome = encodeInlineJson(
+      outcome,
+      Math.min(claims.maxOutcomeBytes, observedPull.request.maxOutcomeBytes),
+    );
   } catch {
     return { status: "rejected", code: "payload_too_large" };
   }
   if (
-    pull.request.acceptedDescriptor.kind === "wait" &&
+    observedPull.request.acceptedDescriptor.kind === "wait" &&
     outcome.status === "ok" &&
-    pull.request.acceptedDescriptor.notBefore &&
-    draft.context.nowMs < Date.parse(pull.request.acceptedDescriptor.notBefore)
-  )
+    observedPull.request.acceptedDescriptor.notBefore &&
+    draft.context.nowMs < Date.parse(observedPull.request.acceptedDescriptor.notBefore)
+  ) {
     return { status: "rejected", code: "wait_not_due" };
+  }
   const post = reject();
-  if (post) return post;
-  const digest = canonicalDigest(outcome);
-  if (pull.resolution.status === "settled") {
-    if (pull.resolution.settlement.outcomeDigest === digest)
+  if (post) {
+    return post;
+  }
+  const digest = sha256(encodedOutcome);
+  if (observedPull.resolution.status === "settled") {
+    if (observedPull.resolution.settlement.outcomeDigest === digest) {
       return {
         status: "duplicate",
-        receipt: { ...pull.resolution.settlement.receipt, status: "duplicate" },
+        receipt: { ...observedPull.resolution.settlement.receipt, status: "duplicate" },
       };
+    }
     return {
       status: "rejected",
-      code: resolutionConflictCode(attempt),
+      code: resolutionConflictCode(observedAttempt),
     };
+  }
+  const task = draft.task(claims.sessionId, claims.taskId);
+  const pull = pullById(task, claims.pullId);
+  const attempt =
+    claims.attemptId === "none"
+      ? undefined
+      : pull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
+  if (discardedPartial !== undefined) {
+    draft.append(claims.sessionId, undefined, {
+      type: "CancellationPartialDiscarded",
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      reason: discardedPartial,
+    });
   }
   const offset = draft.append(claims.sessionId, undefined, {
     type: "PullResolved",
@@ -630,8 +703,9 @@ export function resolvePull(
         competitor === attempt ||
         competitor.status === "revoked" ||
         competitor.status === "superseded"
-      )
+      ) {
         continue;
+      }
       competitor.status = "superseded";
       draft.append(claims.sessionId, undefined, {
         type: "AttemptSuperseded",
@@ -660,7 +734,7 @@ export function resolvePull(
     task.lifecycle.status === "active" &&
     task.lifecycle.cancellation.type === "settling_pull" &&
     task.lifecycle.cancellation.pullId === pull.pullId
-  )
+  ) {
     task.lifecycle.cancellation = {
       type: "requested",
       commandId: task.lifecycle.cancellation.commandId,
@@ -669,6 +743,7 @@ export function resolvePull(
         : { reason: task.lifecycle.cancellation.reason }),
       frontier: task.lifecycle.cancellation.frontier,
     };
+  }
   endLiveLease(draft, claims.sessionId, task, "settled");
   draft.session(claims.sessionId).control.runnable = true;
   return { status: "accepted", receipt };
@@ -678,33 +753,38 @@ export function appendEmission(
   draft: DecisionDraft,
   request: AppendEmissionRequest,
 ): EmissionReceipt {
-  const task = draft.task(request.sessionId, request.taskId);
-  draft.assertProgram(request.programCapability, task, request.sessionId);
-  draft.assertActive(task);
-  if (!task.program.manifest.capabilities.durableEmissions)
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  draft.assertProgram(request.programCapability, observed, request.sessionId);
+  draft.assertActive(observed);
+  if (!observed.program.manifest.capabilities.durableEmissions) {
     throw new CrankError("invalid_descriptor", "Program does not declare durable emissions");
+  }
   const encoded = canonicalSnapshot(request.descriptor);
   const descriptor = encoded.value;
   const digest = sha256(encoded.canonical);
-  const existing = emissionByAction(task, request.actionIndex);
+  const existing = emissionByAction(observed, request.actionIndex);
   if (existing) {
-    if (existing.descriptorDigest !== digest)
+    if (existing.descriptorDigest !== digest) {
       throw new CrankError("nondeterminism_detected", "Emission payload differs");
+    }
     return { ...existing.receipt, duplicate: true };
   }
-  if (request.actionIndex !== task.nextActionIndex)
+  if (request.actionIndex !== observed.nextActionIndex) {
     throw new CrankError("nondeterminism_detected", "Emission action cursor mismatch");
-  assertInlineSize(descriptor.payload, draft.maxOutcomeBytes);
-  const payloadBytes = canonicalByteLength(descriptor.payload);
-  const count = task.acceptedEmissionCount + 1;
-  const total = task.cumulativeEmissionBytes + payloadBytes;
+  }
+  const encodedPayload = encodeInlineJson(descriptor.payload, draft.maxOutcomeBytes);
+  const payloadBytes = new TextEncoder().encode(encodedPayload).byteLength;
+  const count = observed.acceptedEmissionCount + 1;
+  const total = observed.cumulativeEmissionBytes + payloadBytes;
   if (
-    (task.emissionPolicy?.maxEmissionsPerTask !== undefined &&
-      count > task.emissionPolicy.maxEmissionsPerTask) ||
-    (task.emissionPolicy?.maxCumulativeEmissionBytes !== undefined &&
-      total > task.emissionPolicy.maxCumulativeEmissionBytes)
-  )
+    (observed.emissionPolicy?.maxEmissionsPerTask !== undefined &&
+      count > observed.emissionPolicy.maxEmissionsPerTask) ||
+    (observed.emissionPolicy?.maxCumulativeEmissionBytes !== undefined &&
+      total > observed.emissionPolicy.maxCumulativeEmissionBytes)
+  ) {
     throw new CrankError("emission_quota_exceeded");
+  }
+  const task = draft.task(request.sessionId, request.taskId);
   if (request.restoredFrontier !== undefined) {
     consumeRestoredFrontier(
       draft,
@@ -748,11 +828,11 @@ export function completeTask(
   request: CompleteTaskRequest,
 ): CompleteTaskResult {
   const { draft } = kernel;
-  const task = draft.task(request.sessionId, request.taskId);
-  draft.assertProgram(request.programCapability, task, request.sessionId);
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  draft.assertProgram(request.programCapability, observed, request.sessionId);
   const proposed = snapshotOutcome(request.outcome);
   let outcome: OperationOutcome =
-    task.lifecycle.status === "active" && task.lifecycle.cancellation.type === "unwinding"
+    observed.lifecycle.status === "active" && observed.lifecycle.cancellation.type === "unwinding"
       ? { status: "cancelled" }
       : proposed;
   if (outcome.status === "ok") {
@@ -761,40 +841,50 @@ export function completeTask(
     let value: Json;
     try {
       value = draft.parseSchema(
-        task.program.manifest.outputSchema.digest,
+        observed.program.manifest.outputSchema.digest,
         outcome.value,
         "schema_validation_failed",
       );
     } catch (error) {
-      if (!(error instanceof CrankError) || error.code !== "schema_validation_failed") throw error;
+      if (!(error instanceof CrankError) || error.code !== "schema_validation_failed") {
+        throw error;
+      }
       return { status: "rejected", code: error.code, message: error.message };
     }
     outcome = { status: "ok", value };
-    try {
-      assertInlineSize(outcome, draft.maxOutcomeBytes);
-    } catch (error) {
-      if (!(error instanceof CrankError) || error.code !== "payload_too_large") throw error;
-      return { status: "rejected", code: error.code, message: error.message };
-    }
   }
-  assertInlineSize(outcome, draft.maxOutcomeBytes);
-  const digest = canonicalDigest(outcome);
-  if (task.lifecycle.status === "closed" || task.lifecycle.status === "cancelled") {
-    const receipt = task.lifecycle.receipt;
-    const oldDigest = terminalOutcomeDigest(task.lifecycle.outcome);
-    if (oldDigest !== digest)
+  let encodedOutcome: string;
+  try {
+    encodedOutcome = encodeInlineJson(outcome, draft.maxOutcomeBytes);
+  } catch (error) {
+    if (
+      outcome.status !== "ok" ||
+      !(error instanceof CrankError) ||
+      error.code !== "payload_too_large"
+    ) {
+      throw error;
+    }
+    return { status: "rejected", code: error.code, message: error.message };
+  }
+  if (observed.lifecycle.status === "closed" || observed.lifecycle.status === "cancelled") {
+    const receipt = observed.lifecycle.receipt;
+    if (encodeCanonicalJson(observed.lifecycle.outcome) !== encodedOutcome) {
       throw new CrankError("nondeterminism_detected", "Task completion differs");
-    kernel.settleParent(request.sessionId, task, outcome);
+    }
     return { status: "duplicate", receipt: { ...receipt, duplicate: true } };
   }
-  draft.assertActive(task);
-  if (request.actionIndex !== task.nextActionIndex) throw new CrankError("history_not_exhausted");
+  draft.assertActive(observed);
+  if (request.actionIndex !== observed.nextActionIndex) {
+    throw new CrankError("history_not_exhausted");
+  }
   if (
-    task.actions.some(
+    observed.actions.some(
       (action) => action.kind === "pull" && action.pull.resolution.status === "open",
     )
-  )
+  ) {
     throw new CrankError("history_not_exhausted", "Task has an unresolved pull");
+  }
+  const task = draft.task(request.sessionId, request.taskId);
   if (request.restoredFrontier !== undefined) {
     consumeRestoredFrontier(
       draft,
@@ -885,45 +975,53 @@ function startAttempt(
 
 function authorizeExisting(
   draft: DecisionDraft,
-  task: DraftTask,
-  pull: DraftPull,
+  task: TaskState,
+  pull: PullState,
 ): Extract<ReserveOperationResult, { status: "authorized" }> {
   const active = currentAttempt(pull);
-  return active
-    ? {
-        status: "authorized",
-        pullId: pull.pullId,
-        attemptId: active.attemptId,
-        descriptor: installedOrRecordedDescriptor(pull.request.acceptedDescriptor),
-        ...(pull.request.acceptedDescriptor.kind === "effect"
-          ? {
-              effectContractDigest: effectDigestForPull(
-                task.program.manifest,
-                pull.request.acceptedDescriptor,
-              ),
-              effectDefinition: structuredClone(
-                task.program.manifest.effects[pull.request.acceptedDescriptor.name]!,
-              ),
-            }
-          : {}),
-        resolutionCapability: active.capability,
-      }
-    : startAttempt(draft, task, pull);
+  if (active) {
+    return {
+      status: "authorized",
+      pullId: pull.pullId,
+      attemptId: active.attemptId,
+      descriptor: installedOrRecordedDescriptor(pull.request.acceptedDescriptor),
+      ...(pull.request.acceptedDescriptor.kind === "effect"
+        ? {
+            effectContractDigest: effectDigestForPull(
+              task.program.manifest,
+              pull.request.acceptedDescriptor,
+            ),
+            effectDefinition: structuredClone(
+              task.program.manifest.effects[pull.request.acceptedDescriptor.name]!,
+            ),
+          }
+        : {}),
+      resolutionCapability: active.capability,
+    };
+  }
+  const owned = draft.task(taskOriginSession(draft.state, task.taskId), task.taskId);
+  return startAttempt(draft, owned, pullById(owned, pull.pullId));
 }
 
 function openElicitCount(state: AuthorityState, sessionId: string): number {
   let count = 0;
   const session = state.sessions.get(sessionId);
-  if (!session) return 0;
-  for (const task of session.execution.tasks.values())
-    if (task.lifecycle.status === "active")
-      for (const action of task.actions)
+  if (!session) {
+    return 0;
+  }
+  for (const task of session.execution.tasks.values()) {
+    if (task.lifecycle.status === "active") {
+      for (const action of task.actions) {
         if (
           action.kind === "pull" &&
           action.pull.request.proposedDescriptor.kind === "elicit" &&
           action.pull.resolution.status === "open" &&
           !action.pull.resolution.revoked
-        )
+        ) {
           count++;
+        }
+      }
+    }
+  }
   return count;
 }

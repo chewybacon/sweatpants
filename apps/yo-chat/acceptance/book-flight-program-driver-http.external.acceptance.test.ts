@@ -371,8 +371,9 @@ function interrupt(events: PublicEvent[]): {
 
 async function readJournal(store: ProgramDriverJournalStore, conversationId: string) {
   return await run(function* () {
-    const journal = yield* store.open(conversationId);
-    return yield* journal.readJournal(conversationId);
+    return yield* store.withJournal(conversationId, (journal) =>
+      journal.readJournal(conversationId),
+    );
   });
 }
 

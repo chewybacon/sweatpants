@@ -1,4 +1,4 @@
-import { assertJson, uuidv7, type Json } from "@sweatpants/foundation";
+import { uuidv7, type Json } from "@sweatpants/foundation";
 import { CrankError, type DurableReference } from "@sweatpants/durable-execution";
 import { hasLiveDurablePull, signalLiveDurablePull } from "@sweatpants/durable-effects/runtime";
 import { call, resource, type Operation } from "effection";
@@ -24,7 +24,8 @@ import {
   decodeDurableAuthoritySnapshot,
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
   parseDurableAuthoritySnapshot,
-  validateJournalCollectionBounds,
+  validateJournalCollectionSize,
+  validateAuthorityMutation,
 } from "../store/snapshot-codec.ts";
 import type {
   DecisionStageDiagnostic,
@@ -38,7 +39,6 @@ import type {
   AuthorityState,
   CommandResult,
   KernelContext,
-  KernelTransition,
   QueryResult,
 } from "../contract/authority-contract.ts";
 import { authorityStateFromSnapshot, projectAuthoritySnapshot } from "../state/authority-state.ts";
@@ -74,11 +74,17 @@ interface AuthorityControl {
   readonly replayHead: PrivateSegmentPointer | null;
 }
 
+export interface JournalCollection {
+  readonly sessionId: string;
+  readonly records: DurableSemanticRecord[];
+  readonly encodedBytes: number;
+}
+
 interface LoadedAuthority {
   readonly control: ExecutionControl | null;
   readonly snapshot: DurableAuthoritySnapshot;
+  readonly collections: readonly JournalCollection[];
   readonly state: AuthorityState;
-  readonly body: string | null;
   readonly authorityControl: AuthorityControl | null;
 }
 
@@ -87,8 +93,8 @@ interface AcceptedView {
   readonly control: ExecutionControl;
   readonly authorityControl: AuthorityControl;
   readonly snapshot: DurableAuthoritySnapshot;
+  readonly collections: readonly JournalCollection[];
   readonly state: AuthorityState;
-  readonly body: string;
 }
 
 export interface Journal {
@@ -162,7 +168,7 @@ export function createJournal(
                 state: loadedState,
                 context,
                 command,
-              }) as KernelTransition<C>;
+              });
               const cancellationTargets =
                 command.type === "execution.request-cancellation"
                   ? [
@@ -183,6 +189,12 @@ export function createJournal(
                         : [];
                     })
                   : [];
+              if (transition.kind === "unchanged") {
+                return {
+                  status: "return",
+                  result: { value: transition.result, candidate: null, cancellationTargets },
+                };
+              }
               const advanced = advanceJournalHeadIdentities(
                 transition.state,
                 transition.entries,
@@ -192,21 +204,10 @@ export function createJournal(
               const snapshot = projectAuthoritySnapshot(acceptedState);
               // Admission remains before persistence. It verifies the wire format; the
               // already owned transition remains the working state after acknowledgment.
-              decodeDurableAuthoritySnapshot(snapshot);
+              validateAuthorityMutation(loadedState, snapshot);
               // Snapshot IDs are minted, and integrity covers these exact opaque bytes.
               // Schema admission owns validity; canonical key sorting serves no identity.
               const body = JSON.stringify(snapshot);
-              if (
-                transition.entries.length === 0 &&
-                body ===
-                  (loaded.body ??
-                    JSON.stringify(projectAuthoritySnapshot(compactAuthorityState(loaded.state))))
-              ) {
-                return {
-                  status: "return",
-                  result: { value: transition.result, candidate: null, cancellationTargets },
-                };
-              }
               const appended = [...transition.entries];
               const evicted = newlyEvictedRecords(
                 loadedState,
@@ -253,11 +254,15 @@ export function createJournal(
                   "Mutation exceeds authority snapshot byte limit",
                 );
               }
+              const collections = owner.appendValidatedJournalCollections(
+                loaded.collections,
+                journalSegments.flatMap((segment) => segment.entries),
+              );
               const acceptedSnapshot = {
                 ...snapshot,
-                records: owner.appendValidatedJournalCollections(
-                  loaded.snapshot.records,
-                  journalSegments.flatMap((segment) => segment.entries),
+                records: collections.map(
+                  ({ sessionId, records }) =>
+                    [sessionId, records] as [string, DurableSemanticRecord[]],
                 ),
               };
               const currentSnapshot = loaded.authorityControl?.snapshot;
@@ -289,8 +294,8 @@ export function createJournal(
               const candidate = {
                 authorityControl: owner.parseAuthorityControl(next.control),
                 snapshot: acceptedSnapshot,
+                collections,
                 state: acceptedState,
-                body,
               };
               owner.assertOpen();
               return {
@@ -452,7 +457,7 @@ class JournalState {
     entries: readonly Json[],
     journalHead: string,
     source: "storage" | "mutation" = "storage",
-  ): Array<[string, DurableSemanticRecord[]]> {
+  ): JournalCollection[] {
     const failure = (record: string, cause: unknown): CrankError => {
       return source === "storage"
         ? this.resetFailure("replaying stored journal records", record, cause)
@@ -478,12 +483,11 @@ class JournalState {
     }
     return [...grouped.entries()].map(([sessionId, sessionEntries]) => {
       let parsed: DurableAuthoritySnapshot;
+      let encodedBytes: number;
       try {
         const candidate = { ...this.empty, records: [[sessionId, sessionEntries]] };
-        if (
-          new TextEncoder().encode(JSON.stringify(candidate)).byteLength >
-          DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES
-        ) {
+        encodedBytes = new TextEncoder().encode(JSON.stringify(candidate)).byteLength;
+        if (encodedBytes > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
           throw new CrankError("invalid_journal", "Journal collection exceeds snapshot byte limit");
         }
         parsed = decodeDurableAuthoritySnapshot(candidate);
@@ -493,26 +497,26 @@ class JournalState {
           error,
         );
       }
-      const collection = parsed.records[0] ?? [sessionId, []];
-      return collection;
+      const records = parsed.records[0]?.[1] ?? [];
+      return { sessionId, records, encodedBytes };
     });
   }
 
   appendValidatedJournalCollections(
-    previous: DurableAuthoritySnapshot["records"],
+    previous: readonly JournalCollection[],
     entries: readonly Json[],
-  ): Array<[string, DurableSemanticRecord[]]> {
-    // Previous collections belong to the accepted view; only new records cross
-    // the schema boundary. Aggregate limits still apply to the complete history.
+  ): JournalCollection[] {
     const additions = this.parseJournalCollections(entries, "new append", "mutation");
-    const collections = new Map(previous.filter(([, records]) => records.length > 0));
-    for (const [sessionId, records] of additions) {
-      collections.set(sessionId, [...(collections.get(sessionId) ?? []), ...records]);
+    const collections = new Map(previous.map((collection) => [collection.sessionId, collection]));
+    for (const addition of additions) {
+      const prior = collections.get(addition.sessionId);
+      if (!prior) {
+        collections.set(addition.sessionId, addition);
+        continue;
+      }
+      collections.set(addition.sessionId, appendJournalCollection(prior, addition));
     }
-    for (const [sessionId, records] of collections) {
-      validateJournalCollectionBounds(sessionId, records);
-    }
-    return [...collections];
+    return [...collections.values()];
   }
 
   *load(supplied?: ExecutionControl | null): Operation<LoadedAuthority> {
@@ -526,8 +530,11 @@ class JournalState {
       return {
         control: null,
         snapshot,
+        collections: this.parseJournalCollections(
+          snapshot.records.flatMap(([, records]) => records) as unknown as Json[],
+          "initial",
+        ),
         state: authorityStateFromSnapshot(snapshot),
-        body: null,
         authorityControl: null,
       };
     }
@@ -593,17 +600,20 @@ class JournalState {
           return values;
         })
       : [];
+    const collections = this.parseJournalCollections(
+      entries,
+      authorityControl.journalHead?.segmentId ?? "none",
+    );
     const snapshot = {
       ...base,
-      records: this.parseJournalCollections(
-        entries,
-        authorityControl.journalHead?.segmentId ?? "none",
+      records: collections.map(
+        ({ sessionId, records }) => [sessionId, records] as [string, DurableSemanticRecord[]],
       ),
     };
     const state = authorityStateFromSnapshot(snapshot);
     this.assertOpen();
-    this.view = { control: current, authorityControl, snapshot, state, body: payload.body };
-    return { control: current, authorityControl, snapshot, state, body: payload.body };
+    this.view = { control: current, authorityControl, snapshot, collections, state };
+    return { control: current, authorityControl, snapshot, collections, state };
   }
 
   control(
@@ -618,12 +628,12 @@ class JournalState {
       rootTaskId: "authority",
       stopGeneration: "0",
       requestedDisposition: null,
-      control: assertJson({
+      control: {
         kind: "authority-control",
         snapshot,
         journalHead,
         replayHead,
-      }),
+      },
     };
   }
 
@@ -817,5 +827,33 @@ function compactAuthorityState(state: AuthorityState): AuthorityState {
         ];
       }),
     ),
+  };
+}
+
+/** Append-only collection budget travels with the collection owned by the view.
+ * Losing drafts hold their own totals; no accepted collection is mutated.
+ */
+export function appendJournalCollection(
+  prior: JournalCollection,
+  addition: JournalCollection,
+): JournalCollection {
+  const emptyBytes = new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      sessions: [],
+      nextNonce: 0,
+      records: [[addition.sessionId, []]],
+    }),
+  ).byteLength;
+  const encodedBytes =
+    prior.encodedBytes +
+    addition.encodedBytes -
+    emptyBytes +
+    (prior.records.length > 0 && addition.records.length > 0 ? 1 : 0);
+  validateJournalCollectionSize(prior.records.length + addition.records.length, encodedBytes);
+  return {
+    sessionId: addition.sessionId,
+    records: [...prior.records, ...addition.records],
+    encodedBytes,
   };
 }

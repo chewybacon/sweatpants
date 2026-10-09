@@ -46,70 +46,82 @@ export interface ChatActivationResult {
 export function* runProgramDriverChatActivation(
   context: ChatActivationContext,
 ): Operation<ChatActivationResult> {
-  const admission = yield* admitProgramDriverChatTurn(context.admission);
-  const { journal, active, taskId, before, input, attach, transition } = admission;
+  return yield* context.admission.journalStore.withJournal(
+    context.admission.conversationId,
+    function* (journal) {
+      const admission = yield* admitProgramDriverChatTurn(context.admission, journal);
+      const { active, taskId, before, input, attach, transition } = admission;
 
-  if (active && (context.pluginAbort || transition.kind === "supersede")) {
-    const reason = context.pluginAbort?.reason ?? "active turn superseded by a new message";
-    yield* journal.requestCancellation(
-      context.sessionId,
-      active.taskId,
-      reason,
-      context.pluginAbort?.commandId,
-    );
-    yield* cancelPendingElicits(journal, before, context.sessionId, context.participantId);
-    yield* disposeEphemeralChildSessions(before, context.sessionId);
-  }
-  const accepted =
-    context.pluginAbort || transition.kind === "supersede"
-      ? 0
-      : yield* resolveElicitResponses(context.settlement, journal, before);
-  if (accepted > 0 && context.onResumeAccepted) {
-    yield* context.onResumeAccepted();
-  }
-
-  const execution = yield* composeChatExecutionRuntime(context.execution, journal, input, attach);
-  let cancellationFenceLost = false;
-  let outcome: AdvancementResult;
-  if (!requiresFencedActivation(context.native)) {
-    outcome = yield* execution.driveTreeAtEpoch(attach.executionEpoch);
-  } else {
-    // Fenced native bindings: the SAME workflow turns, wrapped in the
-    // host-side activation lease (claim/renew/release). The kernel's
-    // epoch-gated bind + session lease state provide zombie protection.
-    try {
-      outcome = yield* runFencedActivation(
-        { command: journal.advance, query: journal.query },
-        context.sessionId,
-        attach.executionEpoch,
-        true,
-        function* (claimedEpoch, activationOwnerId) {
-          return yield* execution.driveTreeAtEpoch(claimedEpoch, activationOwnerId);
-        },
-      );
-    } catch (error) {
-      if (!(yield* isExpectedCancellationFenceLoss(journal, context.sessionId, taskId, error))) {
-        throw error;
+      if (active && (context.pluginAbort || transition.kind === "supersede")) {
+        const reason = context.pluginAbort?.reason ?? "active turn superseded by a new message";
+        yield* journal.requestCancellation(
+          context.sessionId,
+          active.taskId,
+          reason,
+          context.pluginAbort?.commandId,
+        );
+        yield* cancelPendingElicits(journal, before, context.sessionId, context.participantId);
+        yield* disposeEphemeralChildSessions(before, context.sessionId);
       }
-      // A concurrent explicit stop owns journal terminalization. This activation
-      // still owes its response consumer a valid terminal AG-UI outcome and must
-      // help publish the idempotent authority capsule before returning.
-      cancellationFenceLost = true;
-      outcome = { state: "cancelled" };
-    }
-  }
-  const after = yield* journal.readJournal(context.sessionId, taskId);
-  return {
-    report: {
-      before,
-      after,
-      outcome,
-      liveMessageIds: execution.liveMessageIds,
-      endedLiveMessageIds: execution.endedLiveMessageIds,
-      cancellationFenceLost,
+      const accepted =
+        context.pluginAbort || transition.kind === "supersede"
+          ? 0
+          : yield* resolveElicitResponses(context.settlement, journal, before);
+      if (accepted > 0 && context.onResumeAccepted) {
+        yield* context.onResumeAccepted();
+      }
+
+      const execution = yield* composeChatExecutionRuntime(
+        context.execution,
+        journal,
+        input,
+        attach,
+      );
+      let cancellationFenceLost = false;
+      let outcome: AdvancementResult;
+      if (!requiresFencedActivation(context.native)) {
+        outcome = yield* execution.driveTreeAtEpoch(attach.executionEpoch);
+      } else {
+        // Fenced native bindings: the SAME workflow turns, wrapped in the
+        // host-side activation lease (claim/renew/release). The kernel's
+        // epoch-gated bind + session lease state provide zombie protection.
+        try {
+          outcome = yield* runFencedActivation(
+            { command: journal.advance, query: journal.query },
+            context.sessionId,
+            attach.executionEpoch,
+            true,
+            function* (claimedEpoch, activationOwnerId) {
+              return yield* execution.driveTreeAtEpoch(claimedEpoch, activationOwnerId);
+            },
+          );
+        } catch (error) {
+          if (
+            !(yield* isExpectedCancellationFenceLoss(journal, context.sessionId, taskId, error))
+          ) {
+            throw error;
+          }
+          // A concurrent explicit stop owns journal terminalization. This activation
+          // still owes its response consumer a valid terminal AG-UI outcome and must
+          // help publish the idempotent authority capsule before returning.
+          cancellationFenceLost = true;
+          outcome = { state: "cancelled" };
+        }
+      }
+      const after = yield* journal.readJournal(context.sessionId, taskId);
+      return {
+        report: {
+          before,
+          after,
+          outcome,
+          liveMessageIds: execution.liveMessageIds,
+          endedLiveMessageIds: execution.endedLiveMessageIds,
+          cancellationFenceLost,
+        },
+        disposition: transition.kind === "supersede" ? { kind: "restart" } : { kind: "present" },
+      };
     },
-    disposition: transition.kind === "supersede" ? { kind: "restart" } : { kind: "present" },
-  };
+  );
 }
 
 let activationOwnerCounter = 0;

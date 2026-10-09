@@ -167,7 +167,6 @@ type AcceptedExecution = {
  * proposed (no preparation layer).
  */
 export interface WorkflowProgramActivationScope {
-  installAuthority: ProgramDriverJournal["install"];
   readonly attach: AttachProgramRequest;
   readonly driverKind: string;
   readonly effectRegistrations: readonly DurableEffectRegistration[];
@@ -197,7 +196,6 @@ export function* runWorkflowProgramActivation(
   drive: (authority: JournalAuthorityContract) => Operation<AdvancementResult>,
 ): Operation<AdvancementResult> {
   return yield* scoped(function* () {
-    yield* scope.installAuthority();
     const authority = yield* JournalAuthorityPort.use();
     yield* installEffectRegistrations(
       { sessionId: scope.attach.sessionId, taskId: scope.attach.taskId },
@@ -327,7 +325,6 @@ export function createProgramWorkflowHost(
       }
       return yield* runWorkflowProgramActivation(
         {
-          installAuthority: () => journal.install(),
           attach: request.attach,
           driverKind: "workflow",
           effectRegistrations: [...options.effects.values()],
@@ -399,8 +396,11 @@ export function createProgramWorkflowHost(
     });
   }
 
-  function* resumeTask(sessionId: string, requestedTaskId?: string): Operation<AdvancementResult> {
-    const journal = yield* options.journalStore.open(sessionId);
+  function* resumeTask(
+    journal: ProgramDriverJournal,
+    sessionId: string,
+    requestedTaskId?: string,
+  ): Operation<AdvancementResult> {
     const recovery = yield* journal.recoveryState(sessionId, requestedTaskId);
     if (recovery.status === "terminal") {
       return outcomeToRunResult(recovery.outcome);
@@ -434,92 +434,101 @@ export function createProgramWorkflowHost(
     *open(request): Operation<ProgramWorkflowRun> {
       verifyLocalProgramRequest(request);
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
-      const journal = yield* options.journalStore.open(sessionId);
-      const identity = rootTurnIdentity(yield* journal.rootTaskCount(sessionId), {
-        ...(request.turnId === undefined ? {} : { turnId: request.turnId }),
-        ...(request.taskId === undefined ? {} : { taskId: request.taskId }),
+      return yield* options.journalStore.withJournal(sessionId, function* (journal) {
+        const identity = rootTurnIdentity(yield* journal.rootTaskCount(sessionId), {
+          ...(request.turnId === undefined ? {} : { turnId: request.turnId }),
+          ...(request.taskId === undefined ? {} : { taskId: request.taskId }),
+        });
+        const { turnId, taskId } = identity;
+        const route = request.route ?? { driverKind: "program" };
+        const execution: AcceptedExecution = {
+          route,
+          executionEpoch: 1,
+          catalog: request.catalog,
+        };
+        const attach = {
+          sessionId,
+          taskId,
+          program: request.program,
+          input: request.input,
+          route,
+          executionEpoch: execution.executionEpoch,
+        };
+        yield* journal.openTask({
+          sessionId,
+          turnId,
+          taskId,
+          manifest: request.manifest,
+          input: request.input,
+          executionEpoch: execution.executionEpoch,
+          attachmentId: stableProgramAttachmentId(attach),
+          audience: "workflow-host",
+          catalog: cloneJson(assertJson(request.catalog)),
+          catalogDigest: request.catalog.digest,
+          route,
+        });
+        return {
+          sessionId,
+          turnId,
+          taskId,
+          result: options.journalStore.withJournal(sessionId, (activeJournal) =>
+            runTask(activeJournal, sessionId, taskId, request.program, request.input, execution),
+          ),
+        };
       });
-      const { turnId, taskId } = identity;
-      const route = request.route ?? { driverKind: "program" };
-      const execution: AcceptedExecution = {
-        route,
-        executionEpoch: 1,
-        catalog: request.catalog,
-      };
-      const attach = {
-        sessionId,
-        taskId,
-        program: request.program,
-        input: request.input,
-        route,
-        executionEpoch: execution.executionEpoch,
-      };
-      yield* journal.openTask({
-        sessionId,
-        turnId,
-        taskId,
-        manifest: request.manifest,
-        input: request.input,
-        executionEpoch: execution.executionEpoch,
-        attachmentId: stableProgramAttachmentId(attach),
-        audience: "workflow-host",
-        catalog: cloneJson(assertJson(request.catalog)),
-        catalogDigest: request.catalog.digest,
-        route,
-      });
-      return {
-        sessionId,
-        turnId,
-        taskId,
-        result: runTask(journal, sessionId, taskId, request.program, request.input, execution),
-      };
     },
 
     *resume(sessionId): Operation<AdvancementResult> {
-      return yield* resumeTask(sessionId);
+      return yield* options.journalStore.withJournal(sessionId, (journal) =>
+        resumeTask(journal, sessionId),
+      );
     },
 
     *respond(request): Operation<AdvancementResult> {
-      const journal = yield* options.journalStore.open(request.sessionId);
-      const operation = yield* journal.operationState(
-        request.sessionId,
-        request.taskId,
-        request.pullId,
-      );
-      if (operation.status !== "found" || operation.descriptor.kind !== "elicit") {
-        throw new CrankError("unknown_target", "No matching pending elicitation");
-      }
-      const outcome: OperationOutcome =
-        request.response.action === "cancel"
-          ? { status: "cancelled" }
-          : { status: "ok", value: cloneJson(request.response) };
-      if (operation.outcome !== undefined) {
-        if (canonicalJson(operation.outcome) !== canonicalJson(outcome)) {
-          throw new CrankError("resolution_conflict", "Elicitation response conflicts");
+      return yield* options.journalStore.withJournal(request.sessionId, function* (journal) {
+        const operation = yield* journal.operationState(
+          request.sessionId,
+          request.taskId,
+          request.pullId,
+        );
+        if (operation.status !== "found" || operation.descriptor.kind !== "elicit") {
+          throw new CrankError("unknown_target", "No matching pending elicitation");
         }
-        return yield* resumeTask(request.sessionId);
-      }
-      const resolution = yield* journal.resolvePending({
-        sessionId: request.sessionId,
-        taskId: request.taskId,
-        pullId: request.pullId,
-        audience: operation.audience,
-        outcome,
+        const outcome: OperationOutcome =
+          request.response.action === "cancel"
+            ? { status: "cancelled" }
+            : { status: "ok", value: cloneJson(request.response) };
+        if (operation.outcome !== undefined) {
+          if (canonicalJson(operation.outcome) !== canonicalJson(outcome)) {
+            throw new CrankError("resolution_conflict", "Elicitation response conflicts");
+          }
+          return yield* resumeTask(journal, request.sessionId);
+        }
+        const resolution = yield* journal.resolvePending({
+          sessionId: request.sessionId,
+          taskId: request.taskId,
+          pullId: request.pullId,
+          audience: operation.audience,
+          outcome,
+        });
+        if (resolution.status === "rejected") {
+          throw new CrankError(resolution.code, "Elicitation response was rejected");
+        }
+        return yield* resumeTask(journal, request.sessionId);
       });
-      if (resolution.status === "rejected") {
-        throw new CrankError(resolution.code, "Elicitation response was rejected");
-      }
-      return yield* resumeTask(request.sessionId);
     },
 
     *cancel(sessionId, taskId, reason): Operation<void> {
-      const journal = yield* options.journalStore.open(sessionId);
-      yield* journal.requestCancellation(sessionId, taskId, reason);
+      yield* options.journalStore.withJournal(sessionId, (journal) =>
+        journal.requestCancellation(sessionId, taskId, reason),
+      );
     },
 
     *trace(sessionId): Operation<NormalizedProgramTrace> {
-      const journal = yield* options.journalStore.open(sessionId);
-      return normalizeProgramTrace(yield* journal.readJournal(sessionId));
+      return yield* options.journalStore.withJournal(sessionId, function* (journal) {
+        const records = yield* journal.readJournal(sessionId);
+        return normalizeProgramTrace(records);
+      });
     },
   };
 }

@@ -145,12 +145,13 @@ export function createLiveCancellationEngine(params: {
       *next(): Operation<IteratorResult<StreamEvent, void>> {
         if (events === null) {
           const taskId = yield* params.activation.taskReady.operation;
-          const journal = yield* params.journalStore.open(params.conversationId);
-          yield* journal.requestCancellation(
-            params.conversationId,
-            taskId,
-            params.reason,
-            params.commandId,
+          yield* params.journalStore.withJournal(params.conversationId, (journal) =>
+            journal.requestCancellation(
+              params.conversationId,
+              taskId,
+              params.reason,
+              params.commandId,
+            ),
           );
           // The original Host-owned activation performs unwind and terminal
           // publication. Publish its resulting authority before this control

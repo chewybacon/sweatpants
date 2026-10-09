@@ -31,14 +31,14 @@ export interface ProgramRestoreContext {
 }
 
 /** Stable receipt proving acceptance or idempotent replay of one resolution. */
-export interface ResolutionReceipt {
+export type ResolutionReceipt = {
   sessionId: string;
   taskId: string;
   pullId: string;
   resolutionOffset: string;
   outcomeDigest: string;
   status: "accepted" | "duplicate";
-}
+};
 
 /** Driver-owned canonical routing data persisted with attachment requests. */
 export type ProgramRoute = Json;

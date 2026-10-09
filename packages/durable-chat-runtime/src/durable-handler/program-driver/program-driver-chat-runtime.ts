@@ -309,7 +309,6 @@ export function* composeChatExecutionRuntime(
     }
     return yield* runWorkflowProgramActivation(
       {
-        installAuthority: () => journal.install(),
         attach: request.attach,
         driverKind: "workflow",
         effectRegistrations: hostEffectRegistrations,

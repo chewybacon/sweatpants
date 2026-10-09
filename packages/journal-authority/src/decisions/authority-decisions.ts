@@ -57,6 +57,7 @@ export function decideAuthorityCommand<C extends AuthorityCommand>(
   const draft = new DecisionDraft(frame, options);
   const result = dispatchCommand(draft, frame.command);
   return {
+    kind: draft.state === frame.state ? "unchanged" : "changed",
     state: draft.state,
     entries: draft.entries,
     result: result as CommandResult<C>,

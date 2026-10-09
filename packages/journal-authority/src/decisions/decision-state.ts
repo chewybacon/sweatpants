@@ -1,5 +1,6 @@
 import { CrankError } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
+import type { DraftForkGroup } from "../forest/fork-group.ts";
 import type { DurableCancellationState } from "../contract/authority-types.ts";
 import type {
   ActionState,
@@ -16,46 +17,72 @@ export type DeepMutable<T> = T extends readonly (infer U)[]
     : T extends object
       ? { -readonly [P in keyof T]: DeepMutable<T[P]> }
       : T;
-export type DraftTask = DeepMutable<TaskState>;
-export type DraftSession = DeepMutable<AuthoritySessionState>;
-export type DraftState = DeepMutable<AuthorityState>;
-export type DraftPull = DeepMutable<PullState>;
+export type DraftPull = Omit<DeepMutable<PullState>, "request" | "resolution" | "acceptedFacts"> & {
+  readonly request: PullState["request"];
+  resolution: PullState["resolution"];
+  acceptedFacts: {
+    -readonly [K in keyof PullState["acceptedFacts"]]: PullState["acceptedFacts"][K];
+  };
+};
+type DraftAction =
+  | Extract<ActionState, { kind: "emission" }>
+  | (Omit<Extract<ActionState, { kind: "pull" }>, "pull"> & { readonly pull: DraftPull });
+export type DraftTask = Omit<
+  DeepMutable<TaskState>,
+  "program" | "actions" | "execution" | "lifecycle" | "forkGroup"
+> & {
+  execution: Omit<DeepMutable<TaskState["execution"]>, "catalog" | "route"> & {
+    readonly catalog?: TaskState["execution"]["catalog"];
+    readonly route?: TaskState["execution"]["route"];
+  };
+  lifecycle:
+    | DeepMutable<Extract<TaskState["lifecycle"], { status: "active" }>>
+    | Exclude<TaskState["lifecycle"], { status: "active" }>;
+  forkGroup?: DraftForkGroup;
+  readonly program: TaskState["program"];
+  actions: DraftAction[];
+};
+export interface DraftSession {
+  control: DeepMutable<AuthoritySessionState["control"]>;
+  execution: { tasks: Map<string, TaskState> };
+}
+export interface DraftState {
+  nextNonce: number;
+  sessions: Map<string, AuthoritySessionState>;
+}
 
 /** Accepted program identity/input and pull requests never change after admission.
  * Drafts copy mutable fields, sharing immutable owned data without registration.
  */
-function cloneTaskState(task: TaskState): TaskState {
-  const { program, actions, ...mutable } = task;
+export function cloneTaskState(task: TaskState): DraftTask {
+  const { program, actions, execution, lifecycle, forkGroup, ...mutable } = task;
   return {
     ...structuredClone(mutable),
+    forkGroup: forkGroup && {
+      ...forkGroup,
+      policy: { ...forkGroup.policy },
+      winner: forkGroup.winner && { ...forkGroup.winner },
+      members: forkGroup.members.map((member) => ({ ...member })),
+    },
+    execution: { ...execution, liveLease: execution.liveLease && { ...execution.liveLease } },
+    lifecycle: lifecycle.status === "active" ? structuredClone(lifecycle) : lifecycle,
     program,
     actions: actions.map((action) => {
       if (action.kind === "emission") {
         return action;
       }
-      const { request, ...pull } = action.pull;
-      return { ...action, pull: { ...structuredClone(pull), request } };
-    }),
-  };
-}
-
-export function cloneAuthorityState(state: AuthorityState): DraftState {
-  return {
-    nextNonce: state.nextNonce,
-    sessions: new Map(
-      [...state.sessions].map(([id, session]) => [
-        id,
-        {
-          control: structuredClone(session.control),
-          execution: {
-            tasks: new Map(
-              [...session.execution.tasks].map(([taskId, task]) => [taskId, cloneTaskState(task)]),
-            ),
-          },
+      const pull = action.pull;
+      return {
+        ...action,
+        pull: {
+          ...pull,
+          resolutionAuthority: { ...pull.resolutionAuthority },
+          attempts: pull.attempts.map((attempt) => ({ ...attempt })),
+          acceptedFacts: { ...pull.acceptedFacts },
         },
-      ]),
-    ),
-  } as DraftState;
+      };
+    }),
+  } as DraftTask;
 }
 
 export function taskOriginSession(state: AuthorityState, taskId: string): string {
@@ -75,21 +102,25 @@ export function taskFor(state: AuthorityState, sessionId: string, taskId: string
   return task;
 }
 
-export function pullByAction(task: TaskState, actionIndex: number): DraftPull | undefined {
+export function pullByAction(task: DraftTask, actionIndex: number): DraftPull | undefined;
+export function pullByAction(task: TaskState, actionIndex: number): PullState | undefined;
+export function pullByAction(task: TaskState, actionIndex: number): PullState | undefined {
   const action = task.actions.find(
     (candidate) => candidate.kind === "pull" && candidate.actionIndex === actionIndex,
   );
-  return action?.kind === "pull" ? (action.pull as DraftPull) : undefined;
+  return action?.kind === "pull" ? action.pull : undefined;
 }
 
-export function pullById(task: TaskState, pullId: string): DraftPull {
+export function pullById(task: DraftTask, pullId: string): DraftPull;
+export function pullById(task: TaskState, pullId: string): PullState;
+export function pullById(task: TaskState, pullId: string): PullState {
   const action = task.actions.find(
     (candidate) => candidate.kind === "pull" && candidate.pull.pullId === pullId,
   );
   if (action?.kind !== "pull") {
     throw new CrankError("pull_not_found");
   }
-  return action.pull as DraftPull;
+  return action.pull;
 }
 
 export function pullActionIndex(task: TaskState, pull: PullState): number {
@@ -124,7 +155,7 @@ export function findTaskPullById(
   state: AuthorityState,
   taskId: string,
   pullId: string,
-): [string, DraftTask, DraftPull] | undefined {
+): [string, TaskState, PullState] | undefined {
   for (const [sessionId, session] of state.sessions) {
     const task = session.execution.tasks.get(taskId);
     if (task === undefined) {
@@ -134,7 +165,7 @@ export function findTaskPullById(
       (candidate) => candidate.kind === "pull" && candidate.pull.pullId === pullId,
     );
     if (action?.kind === "pull") {
-      return [sessionId, task as DraftTask, action.pull as DraftPull];
+      return [sessionId, task, action.pull];
     }
   }
   return undefined;
@@ -159,12 +190,12 @@ export function terminalCancellation(task: TaskState): DurableCancellationState 
 export function findPullById(
   state: AuthorityState,
   pullId: string,
-): [string, DraftTask, DraftPull] | undefined {
+): [string, TaskState, PullState] | undefined {
   for (const [sessionId, session] of state.sessions) {
     for (const task of session.execution.tasks.values()) {
       for (const action of task.actions) {
         if (action.kind === "pull" && action.pull.pullId === pullId) {
-          return [sessionId, task as DraftTask, action.pull as DraftPull];
+          return [sessionId, task, action.pull];
         }
       }
     }
