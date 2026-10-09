@@ -32,7 +32,7 @@ export function TicTacToeBoard({
   response,
 }: TicTacToeBoardProps) {
   const renderCell = (position: number) => {
-    const cell = board[position];
+    const cell = board[position] ?? (response?.position === position ? "O" : null);
     const isWinningCell = winningLine?.includes(position);
     const isLastMove = lastMove?.position === position;
     const isUserMove = response?.position === position;
@@ -55,7 +55,7 @@ export function TicTacToeBoard({
     }
 
     // Interactive or static
-    if (disabled || gameOver || cell !== null) {
+    if (disabled || response || gameOver || cell !== null) {
       return (
         <div key={position} className={cellStyle + "flex items-center justify-center"}>
           {cell || ""}

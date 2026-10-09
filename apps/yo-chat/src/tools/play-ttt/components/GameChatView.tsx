@@ -78,7 +78,7 @@ function CurrentBoard({
   userSymbol: Player;
 }) {
   const renderCell = (position: number) => {
-    const cell = board[position];
+    const cell = board[position] ?? (response?.position === position ? userSymbol : null);
     const isWinningCell = winningLine?.includes(position);
     const isLastMove = position === lastPosition;
     const isUserMove = response?.position === position;
@@ -101,7 +101,7 @@ function CurrentBoard({
     }
 
     // Interactive or static
-    if (disabled || gameOver || cell !== null) {
+    if (disabled || response || gameOver || cell !== null) {
       return (
         <div key={position} className={cellStyle + "flex items-center justify-center"}>
           {cell || ""}
@@ -187,7 +187,9 @@ export function GameChatView({
         <div className="game-current">
           <div className="game-current-header">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-primary">Your Turn</span>
+              <span className="font-medium text-primary">
+                {response ? "Your move" : "Your Turn"}
+              </span>
               <span className="text-xs text-slate-500">Playing as {userSymbol}</span>
             </div>
           </div>

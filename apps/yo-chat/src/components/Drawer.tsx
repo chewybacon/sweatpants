@@ -7,11 +7,13 @@ export function Drawer({
   onClose,
   title,
   children,
+  side = "left",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  side?: "left" | "right";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -25,6 +27,7 @@ export function Drawer({
     <dialog
       ref={ref}
       className="app-drawer"
+      data-side={side}
       aria-label={title}
       onClose={onClose}
       onClick={(event) => {

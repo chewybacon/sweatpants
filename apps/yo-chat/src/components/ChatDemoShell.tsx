@@ -8,7 +8,6 @@ import {
   ArrowDown,
   Square,
   MessageSquare,
-  ChevronRight,
 } from "lucide-react";
 import {
   useChat,
@@ -418,7 +417,11 @@ function DemoThreadPanel({
         }}
       >
         <div className={cn("conversation-content", messages.length === 0 && "empty-content")}>
-          {messages.length === 0 ? (
+          {messages.length === 0 && (authority === null || !renderReady) ? (
+            <div className="loading-thread" role="status" aria-busy={!error}>
+              {error ? "Unable to load conversation." : "Loading conversation…"}
+            </div>
+          ) : messages.length === 0 ? (
             <div className="empty-state">
               <div className="empty-mark">
                 <MessageSquare size={26} strokeWidth={1.5} />
@@ -441,7 +444,6 @@ function DemoThreadPanel({
                     disabled={!canCompose}
                   >
                     {suggestion.label}
-                    <ChevronRight size={16} />
                   </button>
                 ))}
               </div>
@@ -788,10 +790,6 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
           </Button>
         )}
       </div>
-      <div className="sidebar-footer">
-        <span className="status-dot" />
-        Made to pick up later.
-      </div>
     </>
   );
   return (
@@ -827,7 +825,12 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
           </div>
         )}
       </main>
-      <Drawer open={inspectorOpen} onClose={() => setInspectorOpen(false)} title="Stream inspector">
+      <Drawer
+        open={inspectorOpen}
+        onClose={() => setInspectorOpen(false)}
+        title="Stream inspector"
+        side="right"
+      >
         {inspectorOpen && selectedThreadId && (
           <StreamInspector
             threadId={selectedThreadId}
