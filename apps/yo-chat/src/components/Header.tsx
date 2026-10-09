@@ -27,7 +27,6 @@ export default function Header() {
           {current?.label ?? "Explore"}
           <ChevronDown size={14} />
         </button>
-        <span className="header-caption">A Sweatpants playground</span>
       </header>
       <Drawer open={open} onClose={() => setOpen(false)} title="Explore">
         <nav className="demo-nav" aria-label="Demos">

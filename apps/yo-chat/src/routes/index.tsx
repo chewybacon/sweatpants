@@ -17,14 +17,15 @@ function App() {
         like.
       </p>
       <div className="demo-grid">
-        {demos.map(({ to, label, description, icon: Icon }, index) => (
+        {demos.map(({ to, label, description, icon: Icon }) => (
           <Link key={to} to={to} className="demo-card">
-            <div>
-              <Icon size={24} />
-              <span className="demo-number">0{index + 1}</span>
+            <span className="demo-icon">
+              <Icon size={22} aria-hidden="true" />
+            </span>
+            <div className="demo-copy">
+              <h2>{label}</h2>
+              <p>{description}</p>
             </div>
-            <h2>{label}</h2>
-            <p>{description}</p>
             <ArrowUpRight className="demo-arrow" size={19} />
           </Link>
         ))}
