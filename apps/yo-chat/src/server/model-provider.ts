@@ -1,3 +1,4 @@
+import { FileCredentialStore } from "@sweatpants/model-provider-pi-ai";
 import type { Operation } from "effection";
 import type { ChatHandlerSetupContext } from "@sweatpants/durable-chat-runtime/durable-handler";
 import {
@@ -9,7 +10,10 @@ import {
 } from "@sweatpants/model-provider-pi-ai";
 import { defaultYoChatModel } from "./default-model.ts";
 import { env } from "@/env";
-const piProvider = createPiAiModelProvider();
+import { createYoChatModels } from "./model-catalog";
+const piProvider = createPiAiModelProvider({
+  models: createYoChatModels(new FileCredentialStore()),
+});
 
 type ChatRequestModelBody = {
   model?: unknown;

@@ -28,8 +28,9 @@ export function createCloudflareChatApplication(
   bindings: CloudflareChatBindings,
   model: ChatModel,
 ) {
-  if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET)
+  if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET) {
     throw new Error("PROGRAM_DRIVER_CAPABILITY_SECRET is required");
+  }
   return createChatApp({
     name: "yo-chat",
     secret: bindings.PROGRAM_DRIVER_CAPABILITY_SECRET,

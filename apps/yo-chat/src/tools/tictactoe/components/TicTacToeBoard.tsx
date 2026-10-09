@@ -38,7 +38,7 @@ export function TicTacToeBoard({
     const isUserMove = response?.position === position;
 
     // Determine cell styling
-    let cellStyle = "w-16 h-16 text-2xl font-bold border border-slate-600 ";
+    let cellStyle = "game-cell ";
 
     if (isWinningCell) {
       cellStyle += "bg-emerald-900/50 text-emerald-400 ";
@@ -94,10 +94,8 @@ export function TicTacToeBoard({
       <div className="my-3 p-4 bg-slate-800/50 rounded-lg">
         <div className="text-2xl font-bold text-center mb-2">{message}</div>
         <p className="text-sm text-slate-400 text-center mb-3">{subtext}</p>
-        <div className="flex justify-center">
-          <div className="grid grid-cols-3 gap-1">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}
-          </div>
+        <div className="w-full">
+          <div className="game-board">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>
         </div>
       </div>
     );
@@ -105,8 +103,8 @@ export function TicTacToeBoard({
 
   // Active game state
   return (
-    <div className="my-3 p-4 bg-slate-800/50 rounded-lg inline-block">
-      <div className="grid grid-cols-3 gap-1">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>
+    <div className="game-current">
+      <div className="game-board">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>
       {!disabled && <p className="text-xs text-slate-500 mt-2">Click a cell to make your move</p>}
       {disabled && response && (
         <p className="text-xs text-slate-500 mt-2">You played position {response.position}</p>

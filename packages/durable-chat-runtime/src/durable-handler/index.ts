@@ -10,6 +10,7 @@
  */
 
 // Route-independent endpoint factories
+export { readBoundedChatRequest } from "./chat-request.ts";
 export { createDurableChatEndpoints, createDurableChatHandler } from "./handler.ts";
 export type {
   DurableChatEndpoints,

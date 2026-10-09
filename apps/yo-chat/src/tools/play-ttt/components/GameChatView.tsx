@@ -84,7 +84,7 @@ function CurrentBoard({
     const isUserMove = response?.position === position;
 
     // Determine cell styling
-    let cellStyle = "w-14 h-14 text-xl font-bold border border-slate-600 ";
+    let cellStyle = "game-cell ";
 
     if (isWinningCell) {
       cellStyle += "bg-emerald-900/50 text-emerald-400 ";
@@ -95,9 +95,9 @@ function CurrentBoard({
     }
 
     if (cell === "X") {
-      cellStyle += "text-cyan-400 ";
+      cellStyle += "text-lime-200 ";
     } else if (cell === "O") {
-      cellStyle += "text-purple-400 ";
+      cellStyle += "text-amber-200 ";
     }
 
     // Interactive or static
@@ -123,9 +123,7 @@ function CurrentBoard({
     );
   };
 
-  return (
-    <div className="grid grid-cols-3 gap-1">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>
-  );
+  return <div className="game-board">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(renderCell)}</div>;
 }
 
 // =============================================================================
@@ -165,36 +163,36 @@ export function GameChatView({
   };
 
   return (
-    <div className="space-y-2 my-3">
+    <div className="game-panel">
       {/* Move History */}
-      {moveHistory.map((move, index) => (
-        <GameMoveCard
-          key={`move-${move.moveNumber}`}
-          board={move.boardAfter}
-          position={move.position}
-          player={move.player}
-          isModel={move.isModel}
-          strategy={move.strategy}
-          reasoning={move.reasoning}
-          moveNumber={move.moveNumber}
-          winningLine={index === moveHistory.length - 1 ? winningLine : undefined}
-          gameResult={getGameResult(move)}
-        />
-      ))}
-
+      <details className="game-history">
+        <summary>{moveHistory.length} moves · View history</summary>
+        {moveHistory.map((move, index) => (
+          <GameMoveCard
+            key={`move-${move.moveNumber}`}
+            board={move.boardAfter}
+            position={move.position}
+            player={move.player}
+            isModel={move.isModel}
+            strategy={move.strategy}
+            reasoning={move.reasoning}
+            moveNumber={move.moveNumber}
+            winningLine={index === moveHistory.length - 1 ? winningLine : undefined}
+            gameResult={getGameResult(move)}
+          />
+        ))}
+      </details>
       {/* Current State / Input */}
       {!gameOver ? (
-        <div className="rounded-lg border border-purple-900/50 bg-purple-950/20 p-3">
-          <div className="flex items-center justify-between mb-2">
+        <div className="game-current">
+          <div className="game-current-header">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
-                Your Turn
-              </span>
+              <span className="font-medium text-primary">Your Turn</span>
               <span className="text-xs text-slate-500">Playing as {userSymbol}</span>
             </div>
           </div>
 
-          <div className="flex items-start gap-4">
+          <div className="min-w-0">
             <CurrentBoard
               board={board}
               lastPosition={lastMove?.position}
@@ -206,17 +204,15 @@ export function GameChatView({
 
             <div className="flex-1 min-w-0">
               {!disabled && !response && (
-                <p className="text-sm text-slate-400">Click a cell to make your move</p>
+                <p className="game-hint">Click a cell to make your move</p>
               )}
-              {response && (
-                <p className="text-sm text-slate-400">You selected cell {response.position}</p>
-              )}
+              {response && <p className="game-hint">You selected cell {response.position}</p>}
             </div>
           </div>
         </div>
       ) : (
         /* Game Over State */
-        <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-4 flex flex-col items-center">
+        <div className="game-current text-center">
           <div className="text-xl font-bold text-emerald-400 mb-2">
             {resultMessage || "Game Over"}
           </div>

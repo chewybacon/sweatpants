@@ -53,7 +53,7 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
       onClick={onSelect}
       disabled={disabled}
       className={`
-        w-full p-4 rounded-lg border-2 transition-all text-left
+        w-full p-3 sm:p-4 rounded-lg border transition-all text-left
         ${
           selected
             ? "border-primary bg-primary/10"
@@ -62,21 +62,21 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
         ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
       `}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap gap-2 items-center justify-between mb-2">
+        <div className="flex flex-wrap items-center gap-2">
           <AirplaneIcon className="w-5 h-5 text-primary" />
           <span className="font-semibold">{flight.airline}</span>
         </div>
         <span className="text-sm text-muted-foreground">{flight.flightNumber}</span>
       </div>
 
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
         <div className="text-center">
           <div className="text-lg font-bold">{flight.departure}</div>
           <div className="text-xs text-muted-foreground">Depart</div>
         </div>
 
-        <div className="flex-1 mx-4 flex items-center">
+        <div className="flex-1 mx-2 sm:mx-4 flex items-center">
           <div className="flex-1 border-t border-dashed border-muted-foreground/40" />
           <div className="px-2 text-xs text-muted-foreground">{flight.duration}</div>
           <div className="flex-1 border-t border-dashed border-muted-foreground/40" />
@@ -88,7 +88,7 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <span className="text-2xl font-bold text-primary">${flight.price}</span>
         {selected && <span className="text-sm text-primary font-medium">Selected</span>}
       </div>
@@ -107,8 +107,8 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
   if (disabled && response) {
     const selectedFlight = flights.find((f) => f.id === response.flightId);
     return (
-      <div className="my-3 p-4 bg-muted rounded-lg">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="my-3 p-2 sm:p-4 bg-muted rounded-lg">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <AirplaneIcon className="w-5 h-5 text-primary" />
           <p className="text-sm font-medium">{cleanMessage}</p>
         </div>
@@ -125,8 +125,8 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
                 }
               `}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap gap-2 items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{flight.airline}</span>
                   <span className="text-sm text-muted-foreground">{flight.flightNumber}</span>
                 </div>
@@ -149,8 +149,8 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
 
   // Interactive state
   return (
-    <div className="my-3 p-4 bg-muted rounded-lg">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="my-3 p-2 sm:p-4 bg-muted rounded-lg">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <AirplaneIcon className="w-5 h-5 text-primary" />
         <p className="text-sm font-medium">{cleanMessage}</p>
       </div>

@@ -10,8 +10,12 @@ import { join } from "node:path";
 import type { D1Database } from "@cloudflare/workers-types";
 import { initializeD1Storage } from "@sweatpants/storage-d1";
 import type { TestModelInstallation } from "@sweatpants/test-rig";
+import type { ChatHostPlacement } from "../../src/server/cloudflare-chat-placement";
 
-export async function startCloudflareChatHost(model: TestModelInstallation) {
+export async function startCloudflareChatHost(
+  model: TestModelInstallation,
+  placement: ChatHostPlacement = "worker",
+) {
   const directory = await mkdtemp(join(tmpdir(), "yo-chat-worker-"));
   const bundle = async (path: string) =>
     (
@@ -74,11 +78,24 @@ export async function startCloudflareChatHost(model: TestModelInstallation) {
             modules: { "index.js": workerModule },
           },
           exports: {
+            ...(placement === "durable-object"
+              ? { Conversations: { type: "durable-object" as const, storage: "sqlite" as const } }
+              : {}),
             ToolExecutors: { type: "durable-object", storage: "sqlite" },
             ResponseStream: { type: "durable-object", storage: "sqlite" },
             ToolSessions: { type: "durable-object", storage: "sqlite" },
           },
           env: {
+            CHAT_HOST_PLACEMENT: { type: "text", value: placement },
+            ...(placement === "durable-object"
+              ? {
+                  CONVERSATIONS: {
+                    type: "durable-object" as const,
+                    worker: "yo-chat-host",
+                    exportName: "Conversations",
+                  },
+                }
+              : {}),
             JOURNAL: { type: "d1", id: "journal" },
             THREAD_METADATA: { type: "d1", id: "metadata" },
             RESPONSE_STREAMS: {
