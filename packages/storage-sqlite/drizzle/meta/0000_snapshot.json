@@ -1,7 +1,7 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "d26747ae-cad4-41a6-a06d-5e34acc00e61",
+    "id": "7ebcf727-805f-45d3-b68b-28074d7c0b6d",
     "prevId": "00000000-0000-0000-0000-000000000000",
     "tables": {
         "sp_conversation_checkpoints": {
@@ -32,7 +32,7 @@
                     "name": "cause_json",
                     "type": "text",
                     "primaryKey": false,
-                    "notNull": true,
+                    "notNull": false,
                     "autoincrement": false
                 },
                 "content_hash": {
@@ -74,7 +74,7 @@
                     "name": "payload_json",
                     "type": "text",
                     "primaryKey": false,
-                    "notNull": true,
+                    "notNull": false,
                     "autoincrement": false
                 },
                 "encoded_bytes": {
@@ -324,7 +324,13 @@
                     "autoincrement": false
                 }
             },
-            "indexes": {},
+            "indexes": {
+                "sp_heads_live_updated": {
+                    "name": "sp_heads_live_updated",
+                    "columns": ["deleted_at", "updated_at", "conversation_id"],
+                    "isUnique": false
+                }
+            },
             "foreignKeys": {},
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},
@@ -391,13 +397,6 @@
                 },
                 "archive_ordinal": {
                     "name": "archive_ordinal",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
                     "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
@@ -503,13 +502,6 @@
                 "roots_json": {
                     "name": "roots_json",
                     "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
@@ -627,13 +619,6 @@
                     "notNull": true,
                     "autoincrement": false
                 },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
                 "content_hash": {
                     "name": "content_hash",
                     "type": "text",
@@ -731,7 +716,7 @@
                     "name": "control_json",
                     "type": "text",
                     "primaryKey": false,
-                    "notNull": true,
+                    "notNull": false,
                     "autoincrement": false
                 },
                 "updated_at": {
@@ -817,13 +802,6 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
@@ -932,13 +910,6 @@
                     "notNull": false,
                     "autoincrement": false
                 },
-                "blob_body": {
-                    "name": "blob_body",
-                    "type": "blob",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
                 "created_at": {
                     "name": "created_at",
                     "type": "integer",
@@ -970,10 +941,6 @@
                 "sp_execution_object_bytes": {
                     "name": "sp_execution_object_bytes",
                     "value": "\"sp_execution_objects\".\"byte_length\" >= 0"
-                },
-                "sp_execution_object_one_body": {
-                    "name": "sp_execution_object_one_body",
-                    "value": "(\"sp_execution_objects\".\"json_body\" IS NULL) <> (\"sp_execution_objects\".\"blob_body\" IS NULL)"
                 }
             }
         },
@@ -1025,13 +992,6 @@
                 "entries_json": {
                     "name": "entries_json",
                     "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "stored_bytes": {
-                    "name": "stored_bytes",
-                    "type": "integer",
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false

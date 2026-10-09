@@ -323,7 +323,7 @@ function* readStoredRecord(
 ): Operation<ExecutionTreeSnapshot | TerminalCapsule> {
   const parsed = parseTurnControl(control.control);
   const object = yield* ExecutionStoreApi.operations.getObject({ objectId: parsed.recordObjectId });
-  if (!object || object.body instanceof Uint8Array) {
+  if (!object) {
     throw new TurnAuthorityBoundaryError(`Execution ${control.executionId} record is unavailable`);
   }
   if (object.lifetimeScope === "execution" && object.scopeOwnerId !== control.executionId) {

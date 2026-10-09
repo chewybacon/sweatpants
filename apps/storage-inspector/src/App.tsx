@@ -15,7 +15,6 @@ type StorageReport = {
   hydrationReadBytes: number;
   archivePageReads: number;
   publicHistoryIndexRows: number;
-  publicHistoryIndexBytes: number;
   publicHistorySegmentReads: number;
   publicHistorySegmentReadBytes: number;
   peakPublicHistoryPageBytes: number;

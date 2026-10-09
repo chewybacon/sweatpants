@@ -34,6 +34,7 @@ describe("SQLite spine schema", () => {
         "sp_checkpoint_conversation_created",
         "sp_execution_object_created",
         "sp_execution_object_scope_index",
+        "sp_heads_live_updated",
         "sp_journal_task_range",
         "sp_journal_task_sequence",
         "sp_public_root_archive_ordinal",
@@ -62,7 +63,7 @@ describe("SQLite spine schema", () => {
       expect(domainSql.find((table) => table.name === "sp_execution_objects")?.sql).toContain(
         "json_body",
       );
-      expect(domainSql.find((table) => table.name === "sp_execution_objects")?.sql).toContain(
+      expect(domainSql.find((table) => table.name === "sp_execution_objects")?.sql).not.toContain(
         "blob_body",
       );
       expect(domainSql.find((table) => table.name === "sp_conversation_heads")?.sql).toContain(

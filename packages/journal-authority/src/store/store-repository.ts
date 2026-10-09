@@ -23,9 +23,9 @@ import {
 } from "./store.ts";
 import {
   decodeAuthorityControl,
-  decodeExecutionObject,
-  decodePrivateSegment,
-  encodeExecutionObject,
+  readExecutionObject,
+  readPrivateSegment,
+  prepareExecutionObject,
   executionKeys,
 } from "./store-persistence.ts";
 import { planExecutionCommit, privateSegmentEnsure } from "./store-planners.ts";
@@ -93,7 +93,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         `Segment staging omitted ${ensure.name}`,
       );
     }
-    const stored = yield* call(() => decodePrivateSegment(record.value));
+    const stored = yield* call(() => readPrivateSegment(record.value));
     return { segmentId: stored.segmentId, lastSequence: stored.lastSequence };
   }
 
@@ -129,10 +129,10 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         after,
         through: task.head.lastSequence,
         maxRecords: DURABLE_SCAN_MAX_RECORDS,
-        maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
+        maxPayloadBytes: DURABLE_SCAN_MAX_BYTES,
       });
       for (const record of page.records) {
-        const segment = yield* call(() => decodePrivateSegment(record.value));
+        const segment = yield* call(() => readPrivateSegment(record.value));
         if (segment.executionId !== task.executionId || segment.taskId !== task.taskId) {
           throw new ExecutionStoreError(
             "persisted_data_invalid",
@@ -152,7 +152,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         expected = counter(segment.lastSequence, "last sequence") + 1n;
         previousSegmentId = segment.segmentId;
         finalSegment = segment;
-        // Decoding created these entries; this read owns them until the iterable yields.
+        // The storage read owns these entries until the iterable yields.
         chunks.push(segment.entries);
         readBytes += segment.encodedBytes;
       }
@@ -227,7 +227,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
             collection: DurableCollections.executionObjects,
             key: executionKeys.object(object.objectId),
             fingerprint: object.contentHash,
-            value: encodeExecutionObject(object),
+            value: prepareExecutionObject(object),
           },
         ],
       });
@@ -256,7 +256,7 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         executionKeys.object(pointer.objectId),
       );
       if (record === null) return null;
-      const object = yield* call(() => decodeExecutionObject(record.value));
+      const object = yield* call(() => readExecutionObject(record.value));
       if (!objectReads.has(object.objectId) && object.byteLength <= retainedReadBytes) {
         while (objectReads.size >= 4 || objectReadBytes + object.byteLength > retainedReadBytes) {
           const oldest = objectReads.keys().next().value!;

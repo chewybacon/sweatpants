@@ -42,12 +42,12 @@ import {
 import { HistoryStoreReadObservationContext } from "./observation.ts";
 import {
   conversationKeys,
-  decodeArchivedPublicRootIndex,
+  readArchivedPublicRootIndex,
   decodeAuthorityHead,
-  decodeCheckpoint,
-  decodeCommandReceipt,
-  decodePublicSegment,
-  decodeTerminalSegment,
+  readCheckpoint,
+  readCommandReceipt,
+  readPublicSegment,
+  readTerminalSegment,
 } from "./persistence.ts";
 
 function immutableConflict(
@@ -97,7 +97,7 @@ function validatePageLimit(limit: number): void {
 function ensureOutcome<T>(
   outcome: DurableMutationOutcome,
   name: string,
-  decode: (value: Uint8Array) => T,
+  decode: (value: unknown) => T,
 ): T {
   if (outcome.status === "immutable_conflict") {
     return immutableConflict(outcome);
@@ -217,7 +217,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           `Terminal history chain points to missing segment ${pointer.segmentId}`,
         );
       }
-      const segment = decodeTerminalSegment(record.value);
+      const segment = readTerminalSegment(record.value);
       if (
         segment.conversationId !== conversationId ||
         segment.lastPosition !== pointer.lastPosition
@@ -334,7 +334,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         // never replace the checkpoint already accepted for that cause. The
         // kernel rejects the first mutation atomically, before changing its
         // head or inserting any archive records.
-        const checkpoint = decodeCheckpoint(outcome.existing.value);
+        const checkpoint = readCheckpoint(outcome.existing.value);
         if (
           checkpoint.conversationId !== request.conversationId ||
           checkpoint.causeKey !== request.checkpoint.causeKey
@@ -384,7 +384,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         conversationKeys.receipt(request.conversationId, request.commandId),
       );
       if (observedReceipt !== null) {
-        const receipt = decodeCommandReceipt(observedReceipt.value);
+        const receipt = readCommandReceipt(observedReceipt.value);
         if (receipt.commandDigest !== request.commandDigest) {
           return {
             status: "command_identity_conflict",
@@ -429,12 +429,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         observedHead = { conversationId: request.conversationId, record: outcome.authority };
         return {
           status: "admitted",
-          receipt: decodeCommandReceipt(decision.mutation.claim!.value),
+          receipt: readCommandReceipt(decision.mutation.claim!.value),
           head,
         };
       }
       if (outcome.status === "claim_exists") {
-        const receipt = decodeCommandReceipt(outcome.existing.value);
+        const receipt = readCommandReceipt(outcome.existing.value);
         if (receipt.commandDigest !== request.commandDigest) {
           return {
             status: "command_identity_conflict",
@@ -470,7 +470,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         DurableCollections.conversationCommandReceipts,
         conversationKeys.receipt(conversationId, commandId),
       );
-      return record === null ? null : decodeCommandReceipt(record.value);
+      return record === null ? null : readCommandReceipt(record.value);
     },
     *putCheckpoint(checkpoint): Operation<CheckpointPointer> {
       const sameId = yield* kernel.readImmutable(
@@ -489,11 +489,11 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
             `Checkpoint ${checkpoint.conversationId}/${checkpoint.causeKey} has another content hash`,
           );
         }
-        return { checkpointId: decodeCheckpoint(existing.value).checkpointId };
+        return { checkpointId: readCheckpoint(existing.value).checkpointId };
       }
       const ensure = checkpointEnsure(checkpoint);
       const outcome = yield* kernel.apply({ ensures: [ensure] });
-      const stored = ensureOutcome(outcome, ensure.name, decodeCheckpoint);
+      const stored = ensureOutcome(outcome, ensure.name, readCheckpoint);
       return { checkpointId: stored.checkpointId };
     },
     *getCheckpoint(pointer): Operation<StoredCheckpoint | null> {
@@ -504,7 +504,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         conversationKeys.checkpoint(pointer.checkpointId),
       );
       if (record === null) return null;
-      lastCheckpoint = decodeCheckpoint(record.value);
+      lastCheckpoint = readCheckpoint(record.value);
       return structuredClone(lastCheckpoint);
     },
     *putPublicArchiveSegment(segment): Operation<PublicArchivePointer> {
@@ -519,12 +519,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
             `Public archive segment ${segment.segmentId} has another content hash`,
           );
         }
-        const stored = decodePublicSegment(existing.value);
+        const stored = readPublicSegment(existing.value);
         return { segmentId: stored.segmentId };
       }
       const ensure = publicSegmentEnsure(segment);
       const outcome = yield* kernel.apply({ ensures: [ensure] });
-      const stored = ensureOutcome(outcome, ensure.name, decodePublicSegment);
+      const stored = ensureOutcome(outcome, ensure.name, readPublicSegment);
       return { segmentId: stored.segmentId };
     },
     *readPublicHistoryBefore(
@@ -593,15 +593,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
         after: request.beforePosition,
         through: lower.toString(10),
         maxRecords: Math.min(DURABLE_SCAN_MAX_RECORDS, request.maxRoots + hot.size + 1),
-        maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
+        maxPayloadBytes: DURABLE_SCAN_MAX_BYTES,
       });
-      observation?.publicHistoryIndexPage(
-        scan.records.length,
-        scan.records.reduce((total, record) => total + record.storedBytes, 0),
-      );
+      observation?.publicHistoryIndexPage(scan.records.length);
       const indexed: ArchivedPublicRootIndex[] = [];
       for (const record of scan.records) {
-        const entry = decodeArchivedPublicRootIndex(record.value);
+        const entry = readArchivedPublicRootIndex(record.value);
         if (entry.conversationId !== request.conversationId || entry.position !== record.position) {
           throw new ConversationStoreError(
             "persisted_data_invalid",
@@ -648,7 +645,7 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
               `Public root index points to missing segment ${entry.segmentId}`,
             );
           }
-          segment = decodePublicSegment(record.value);
+          segment = readPublicSegment(record.value);
           observation?.publicHistorySegment(segment.encodedBytes);
           segmentCache.set(entry.segmentId, segment);
         }
@@ -707,12 +704,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
             `Terminal segment ${segment.segmentId} has another content hash`,
           );
         }
-        const stored = decodeTerminalSegment(existing.value);
+        const stored = readTerminalSegment(existing.value);
         return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
       }
       const ensure = terminalSegmentEnsure(segment);
       const outcome = yield* kernel.apply({ ensures: [ensure] });
-      const stored = ensureOutcome(outcome, ensure.name, decodeTerminalSegment);
+      const stored = ensureOutcome(outcome, ensure.name, readTerminalSegment);
       return { segmentId: stored.segmentId, lastPosition: stored.lastPosition };
     },
     *readTerminalHistoryPage(conversationId, cursor, limit = 50): Operation<TerminalHistoryPage> {
@@ -730,12 +727,12 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
             direction: "forward",
             after,
             maxRecords: DURABLE_SCAN_MAX_RECORDS,
-            maxStoredBytes: DURABLE_SCAN_MAX_BYTES,
+            maxPayloadBytes: DURABLE_SCAN_MAX_BYTES,
           });
           result.push(...scan.records);
           after = scan.nextCursor;
         } while (after !== null);
-        segments = result.map((record) => decodeTerminalSegment(record.value));
+        segments = result.map((record) => readTerminalSegment(record.value));
         const last = segments.at(-1);
         historyHead = last ? { segmentId: last.segmentId, lastPosition: last.lastPosition } : null;
       } else {

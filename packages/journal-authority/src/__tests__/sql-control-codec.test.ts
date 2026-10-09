@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
-import { canonicalJson, parseJsonText } from "@sweatpants/foundation";
+import { canonicalJson } from "@sweatpants/foundation";
 import { controlFromRow } from "../sql-codec.ts";
-import { decodeExecutionControl, encodeExecutionControl } from "../store/store-persistence.ts";
+import { readExecutionControl } from "../store/store-persistence.ts";
 import type { ExecutionControl } from "../store/store.ts";
 
 const row = {
@@ -12,26 +12,23 @@ const row = {
   rootTaskId: "root",
   stopGeneration: "0",
   requestedDisposition: null,
-  controlJson: '{"nested":{"text":"hello 🌍","zero":-0},"array":[true,null]}',
+  controlJson: { nested: { text: "hello 🌍", zero: 0 }, array: [true, null] },
   updatedAt: 1,
 };
 
 function roundTrip(input: typeof row): ExecutionControl {
   const { controlJson, ...fields } = input;
-  return decodeExecutionControl(
-    encodeExecutionControl({
-      ...fields,
-      control: parseJsonText(controlJson),
-    } as ExecutionControl),
-  );
+  return readExecutionControl({
+    ...fields,
+    control: controlJson,
+  } as ExecutionControl);
 }
 
-it("decodes SQL controls with the same values as the byte boundary", () => {
+it("decodes SQL controls with the same values as structured persistence records", () => {
   const decoded = controlFromRow(row);
   expect(decoded).toEqual(roundTrip(row));
   expect(canonicalJson(decoded)).toBe(canonicalJson(roundTrip(row)));
-  (decoded.control as { nested: { text: string } }).nested.text = "changed";
-  expect(controlFromRow(row)).toEqual(roundTrip(row));
+  expect(decoded.control).toBe(row.controlJson);
   expect(controlFromRow({ ...row, updatedAt: 2n })).toEqual({ ...roundTrip(row), updatedAt: 2 });
 });
 
@@ -44,11 +41,6 @@ it.each([
   { rootTaskId: 42 },
   { executionId: "\ud800" },
   { updatedAt: Infinity },
-  { controlJson: '{"__proto__":{"polluted":true}}' },
-  { controlJson: '{"nested":{"__proto__":{"polluted":true}}}' },
-  { controlJson: '{"number":1e400}' },
-  { controlJson: '{"text":"\\ud800"}' },
-  { controlJson: "{" },
   { executionId: undefined },
   { executionId: Object.create({ inherited: "bad" }) },
 ])("preserves SQL rejection at the validation boundary: %j", (override) => {

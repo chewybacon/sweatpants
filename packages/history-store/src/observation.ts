@@ -2,7 +2,7 @@ import { createContext } from "effection";
 
 /** Numeric-only storage observations used to certify bounded history reads. */
 export interface HistoryStoreReadObserver {
-  publicHistoryIndexPage(rows: number, storedBytes: number): void;
+  publicHistoryIndexPage(rows: number): void;
   publicHistorySegment(encodedBytes: number): void;
   publicHistoryPageMaterialized(payloadBytes: number): void;
 }

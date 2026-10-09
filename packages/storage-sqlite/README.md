@@ -52,11 +52,15 @@ boundary.
 ## Bounded kernel scans
 
 SQLite and Postgres share domain row codecs and the kernel's page-selection
-rules. An indexed seek reads identities, positions, and `stored_bytes` with one
+rules. An indexed seek reads identities, positions, and payload sizes with one
 lookahead row. The kernel selects a contiguous page within both the record and
-byte limits, then loads its payloads in one batch. D1 uses the same page-selection
-rules over its own record metadata. `stored_bytes` counts the complete encoded
-kernel record; `encoded_bytes` remains the domain payload size.
+payload-byte limits, then loads its payloads in one batch. Existing domain
+`encoded_bytes` values bound segment payloads; terminal JSON sizes come from the
+database byte-length function. Root-index rows contain only metadata and use the
+record limit. D1 uses the same SQLite domain schema and page-selection rules.
+The kernel carries structured records, and Drizzle serializes JSON columns only
+at the database boundary. Execution objects contain JSON; external binary
+artifacts belong in object storage.
 
 The initializer applies the checked-in SQL generated from the Drizzle schema.
 Run `pnpm db:generate` in this package after changing `src/schema.ts`. During

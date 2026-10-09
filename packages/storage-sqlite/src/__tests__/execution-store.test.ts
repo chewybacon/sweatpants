@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
-import { canonicalSnapshot, sha256, sha256Bytes, type Json } from "@sweatpants/foundation";
+import { canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "../better-sqlite3.ts";
 import { openBetterSqliteStorageForTest } from "../testing.ts";
@@ -217,7 +217,7 @@ describe("SQLite ExecutionStore", () => {
     });
   });
 
-  it("round-trips JSON and exact binary execution objects with immutable retry", async () => {
+  it("round-trips JSON execution objects with immutable retry", async () => {
     const path = await temporaryDatabase();
     const handle = await run(() => openBetterSqliteStorage(path, { initialize: true, wal: false }));
 
@@ -233,23 +233,8 @@ describe("SQLite ExecutionStore", () => {
         body: jsonBody.value,
         createdAt: 100,
       };
-      const bytes = new Uint8Array([0, 255, 1, 128]);
-      const blobObject: StoredExecutionObject = {
-        objectId: "object-blob",
-        lifetimeScope: "execution",
-        scopeOwnerId: "execution-1",
-        objectKind: "artifact",
-        contentHash: sha256Bytes(bytes),
-        byteLength: bytes.byteLength,
-        body: bytes,
-        createdAt: 101,
-      };
-
       expect(await run(() => handle.storage.executionStore.putObject(jsonObject))).toEqual({
         objectId: "object-json",
-      });
-      expect(await run(() => handle.storage.executionStore.putObject(blobObject))).toEqual({
-        objectId: "object-blob",
       });
       expect(
         await run(() => handle.storage.executionStore.putObject({ ...jsonObject, createdAt: 999 })),
@@ -257,15 +242,6 @@ describe("SQLite ExecutionStore", () => {
       expect(
         await run(() => handle.storage.executionStore.getObject({ objectId: "object-json" })),
       ).toEqual(jsonObject);
-      const loadedBlob = await run(() =>
-        handle.storage.executionStore.getObject({ objectId: "object-blob" }),
-      );
-      expect(loadedBlob).toMatchObject({
-        objectId: "object-blob",
-        contentHash: sha256Bytes(bytes),
-        byteLength: 4,
-      });
-      expect(loadedBlob?.body).toEqual(bytes);
     } finally {
       await run(() => handle.close());
     }

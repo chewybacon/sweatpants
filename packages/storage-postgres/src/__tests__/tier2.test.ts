@@ -9,7 +9,7 @@ import { run } from "effection";
 import { randomUUID } from "node:crypto";
 import type { QueryConfig } from "pg";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
-import { encodePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
+import { preparePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
 import { describe, expect, it } from "vitest";
 import {
   DurableCollections,
@@ -17,10 +17,6 @@ import {
   type DurableKernel,
   type DurableMutationOutcome,
 } from "@sweatpants/durable-storage-kernel";
-import {
-  encodeCommandReceipt,
-  encodeConversationHead,
-} from "@sweatpants/history-store/persistence";
 import type { CommandReceipt, ConversationHead } from "@sweatpants/history-store/contract";
 import { openPostgresStorageForTest } from "../pg-binding.ts";
 
@@ -31,7 +27,7 @@ const connectionString =
 const WORKERS = 8;
 const COMMITS_PER_WORKER = 25;
 
-function headValue(conversationId: string, revision: number): Uint8Array {
+function headValue(conversationId: string, revision: number) {
   const head: ConversationHead = {
     conversationId,
     revision: String(revision),
@@ -48,13 +44,10 @@ function headValue(conversationId: string, revision: number): Uint8Array {
     deletedAt: null,
     updatedAt: 1,
   };
-  return encodeConversationHead(head);
+  return head;
 }
 
-function receiptValue(
-  conversationId: string,
-  commandId: string,
-): { digest: string; value: Uint8Array } {
+function receiptValue(conversationId: string, commandId: string) {
   const receipt: CommandReceipt = {
     conversationId,
     commandId,
@@ -65,7 +58,10 @@ function receiptValue(
     admittedRevision: "0",
     resultingRevision: "1",
   };
-  return { digest: receipt.commandDigest, value: encodeCommandReceipt(receipt) };
+  return {
+    digest: receipt.commandDigest,
+    value: receipt,
+  };
 }
 
 describe("postgres tier-2 concurrency", () => {
@@ -83,7 +79,11 @@ describe("postgres tier-2 concurrency", () => {
             collection: DurableCollections.conversationHeads,
             key: headKey,
             expected: { revision: null, fence: null },
-            next: { revision: "0", fence: "0", value: headValue(conversationId, 0) },
+            next: {
+              revision: "0",
+              fence: "0",
+              value: headValue(conversationId, 0),
+            },
           },
           ensures: [],
         }),
@@ -100,7 +100,9 @@ describe("postgres tier-2 concurrency", () => {
             const current = await run(() =>
               kernel.readAuthority(DurableCollections.conversationHeads, headKey),
             );
-            if (!current) throw new Error("head vanished");
+            if (!current) {
+              throw new Error("head vanished");
+            }
             const next = BigInt(current.revision) + 1n;
             const outcome: DurableMutationOutcome = await run(() =>
               kernel.apply({
@@ -200,7 +202,9 @@ it.each(["conflicting", "identical"] as const)(
       connectionString,
       initialize: true,
       faultInjection: (point) => {
-        if (point === "ensure-insert-race-retry") retries++;
+        if (point === "ensure-insert-race-retry") {
+          retries++;
+        }
       },
     });
     const executionId = `tier2-ensure-${randomUUID()}`;
@@ -225,7 +229,9 @@ it.each(["conflicting", "identical"] as const)(
             (value: unknown) => typeof value === "string" && sharedIds.has(value),
           )
         ) {
-          if (++readers === 2) release();
+          if (++readers === 2) {
+            release();
+          }
           await bothRead;
         }
         return result;
@@ -247,7 +253,7 @@ it.each(["conflicting", "identical"] as const)(
         key: durableKey(id),
         alternateKeys: [durableKey(executionId, "task", sequence, sequence)],
         fingerprint: snapshotDigest,
-        value: encodePrivateSegment({
+        value: preparePrivateSegment({
           segmentId: id,
           executionId,
           taskId: "task",
@@ -294,8 +300,9 @@ it.each(["conflicting", "identical"] as const)(
         expect(stored.rows).toHaveLength(2);
       } else {
         expect(outcomes.map((outcome) => outcome.status)).toEqual(["committed", "committed"]);
-        if (outcomes[0].status !== "committed" || outcomes[1].status !== "committed")
+        if (outcomes[0].status !== "committed" || outcomes[1].status !== "committed") {
           throw new Error("Expected committed replays");
+        }
         expect(outcomes[0].ensured.shared.key).toBe(outcomes[1].ensured.shared.key);
         expect(stored.rows).toHaveLength(3);
       }

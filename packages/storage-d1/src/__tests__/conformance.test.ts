@@ -6,6 +6,14 @@ import { describeExecutionStoreConformance } from "@sweatpants/journal-authority
 import { durableKey } from "@sweatpants/durable-storage-kernel";
 import { createD1DurableKernel, createD1Storage, initializeD1Storage } from "../index.ts";
 import type { D1Database } from "@cloudflare/workers-types";
+import {
+  controlValue,
+  headValue,
+  objectEnsure,
+  checkpointEnsure,
+  receiptClaim,
+  publicEnsure,
+} from "./fixtures/domain-records.ts";
 let mf: Miniflare;
 let db: D1Database;
 beforeAll(async () => {
@@ -36,11 +44,12 @@ afterAll(async () => {
   await mf?.dispose();
 });
 async function fresh() {
-  await db.batch(
-    ["sp_d1_positions", "sp_d1_aliases", "sp_d1_chunks", "sp_d1_records"].map((table) =>
-      db.prepare(`DELETE FROM ${table}`),
-    ),
-  );
+  const tables = await db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sp_%' AND name <> 'sp_d1_meta'",
+    )
+    .all<{ name: string }>();
+  await db.batch(tables.results.map(({ name }) => db.prepare(`DELETE FROM "${name}"`)));
   return createD1Storage(db);
 }
 describeConversationStoreConformance([
@@ -64,12 +73,7 @@ describe("D1 atomic kernel", () => {
     await fresh();
     const kernel = createD1DurableKernel(db);
     const key = durableKey("inline-transition");
-    const values = [
-      new Uint8Array(1024 * 1024 + 1).fill(7),
-      new Uint8Array(),
-      new Uint8Array([0, 255, 128]),
-      new Uint8Array(1024 * 1024 + 3).fill(9),
-    ];
+    const values = ["x".repeat(1024 * 1024 + 1), null, [0, 255, 128], "y".repeat(1024 * 1024 + 3)];
     for (let index = 0; index < values.length; index++) {
       const value = values[index]!;
       expect(
@@ -82,40 +86,56 @@ describe("D1 atomic kernel", () => {
                 collection: "execution-controls",
                 key,
                 expected: { revision: index === 0 ? null : String(index - 1) },
-                next: { revision: String(index), value },
+                next: {
+                  revision: String(index),
+                  ...controlValue("inline-transition", String(index), "0", value),
+                },
               },
             }),
           )
         ).status,
       ).toBe("committed");
       expect((await run(() => kernel.readAuthority("execution-controls", key)))?.value).toEqual(
-        value,
+        controlValue("inline-transition", String(index), "0", value).value,
       );
       const chunks = await db
-        .prepare("SELECT COUNT(*) AS count FROM sp_d1_chunks WHERE collection=? AND key=?")
+        .prepare("SELECT COUNT(*) AS count FROM sp_d1_payload_chunks WHERE collection=? AND key=?")
         .bind("execution-controls", key)
         .first("count");
-      expect(chunks).toBe(value.length > 1024 * 1024 ? 2 : 0);
+      if (typeof value === "string" && value.length > 1024 * 1024) {
+        const parts = await db
+          .prepare("SELECT parts FROM sp_d1_payloads WHERE collection=? AND key=?")
+          .bind("execution-controls", key)
+          .first("parts");
+        expect(chunks).toBe(parts);
+        expect(Number(chunks)).toBeGreaterThan(1);
+      } else {
+        expect(chunks).toBe(0);
+        expect(
+          await db
+            .prepare("SELECT parts FROM sp_d1_payloads WHERE collection=? AND key=?")
+            .bind("execution-controls", key)
+            .first("parts"),
+        ).toBeNull();
+      }
     }
   });
 
   it("splits wide writes under D1's bound parameter limit without losing aliases", async () => {
     await fresh();
     const kernel = createD1DurableKernel(db);
-    const ensures = Array.from({ length: 40 }, (_, i) => ({
-      name: `entry-${i}`,
-      collection: "execution-objects" as const,
-      key: durableKey(`entry-${i}`),
-      alternateKeys: [durableKey(`alias-${i}`)],
-      fingerprint: String(i),
-      value: new Uint8Array([i]),
-    }));
+    const ensures = Array.from({ length: 40 }, (_, i) =>
+      checkpointEnsure(`entry-${i}`, "wide", `alias-${i}`, i, `entry-${i}`),
+    );
     expect((await run(() => kernel.apply({ ensures }))).status).toBe("committed");
     for (let i = 0; i < ensures.length; i++) {
       expect(
-        (await run(() => kernel.readImmutable("execution-objects", durableKey(`alias-${i}`))))
-          ?.value,
-      ).toEqual(new Uint8Array([i]));
+        (
+          await run(() =>
+            kernel.readImmutable("conversation-checkpoints", durableKey("wide", `alias-${i}`)),
+          )
+        )?.value,
+      ).toEqual(ensures[i]!.value);
     }
   });
 
@@ -127,21 +147,8 @@ describe("D1 atomic kernel", () => {
         run(() =>
           kernel.apply({
             ensures: [
-              {
-                name: "shared",
-                collection: "execution-objects",
-                key: durableKey(`candidate-${i}`),
-                alternateKeys: [durableKey("shared-alias")],
-                fingerprint: String(i),
-                value: new Uint8Array([i]),
-              },
-              {
-                name: "side",
-                collection: "execution-objects",
-                key: durableKey(`side-${i}`),
-                fingerprint: String(i),
-                value: new Uint8Array([i]),
-              },
+              checkpointEnsure(`candidate-${i}`, "race", "shared-alias", i, "shared"),
+              objectEnsure(`side-${i}`, i, "side"),
             ],
           }),
         ),
@@ -150,9 +157,11 @@ describe("D1 atomic kernel", () => {
     expect(outcomes.filter((value) => value.status === "committed")).toHaveLength(1);
     expect(outcomes.filter((value) => value.status === "immutable_conflict")).toHaveLength(3);
     expect(
-      (await db.prepare("SELECT key FROM sp_d1_records WHERE collection='execution-objects'").all())
-        .results,
-    ).toHaveLength(2);
+      (await db.prepare("SELECT object_id FROM sp_execution_objects").all()).results,
+    ).toHaveLength(1);
+    expect(
+      await db.prepare("SELECT COUNT(*) AS count FROM sp_conversation_checkpoints").first("count"),
+    ).toBe(1);
   });
 
   it("publishes one fenced optimistic batch and restores conflict details without leaking objects", async () => {
@@ -167,7 +176,7 @@ describe("D1 atomic kernel", () => {
           collection: "execution-controls",
           key,
           expected: { revision: null, fence: "0" },
-          next: { revision: "0", fence: "7", value: new Uint8Array([0]) },
+          next: { revision: "0", fence: "7", ...controlValue("optimistic", "0", "7", 0) },
         },
       }),
     );
@@ -175,21 +184,13 @@ describe("D1 atomic kernel", () => {
       Array.from({ length: 4 }, (_, i) =>
         run(() =>
           kernel.apply({
-            ensures: [
-              {
-                name: "object",
-                collection: "execution-objects",
-                key: durableKey(`optimistic-${i}`),
-                fingerprint: String(i),
-                value: new Uint8Array([i]),
-              },
-            ],
+            ensures: [objectEnsure(`optimistic-${i}`, i)],
             authority: {
               name: "control",
               collection: "execution-controls",
               key,
               expected: { revision: "0", fence: "7" },
-              next: { revision: "1", fence: "7", value: new Uint8Array([i]) },
+              next: { revision: "1", fence: "7", ...controlValue("optimistic", "1", "7", i) },
             },
           }),
         ),
@@ -199,11 +200,11 @@ describe("D1 atomic kernel", () => {
     expect(results.filter((result) => result.status === "authority_conflict")).toHaveLength(3);
     const winner = await run(() => kernel.readAuthority("execution-controls", key));
     for (const result of results) {
-      if (result.status === "authority_conflict") expect(result.current).toEqual(winner);
+      if (result.status === "authority_conflict") {
+        expect(result.current).toEqual(winner);
+      }
     }
-    const rows = await db
-      .prepare("SELECT key FROM sp_d1_records WHERE collection='execution-objects'")
-      .all();
+    const rows = await db.prepare("SELECT object_id FROM sp_execution_objects").all();
     expect(rows.results).toHaveLength(1);
     const stale = await run(() =>
       kernel.apply({
@@ -213,7 +214,7 @@ describe("D1 atomic kernel", () => {
           collection: "execution-controls",
           key,
           expected: { revision: "1", fence: "6" },
-          next: { revision: "2", fence: "7", value: new Uint8Array([9]) },
+          next: { revision: "2", fence: "7", ...controlValue("optimistic", "2", "7", 9) },
         },
       }),
     );
@@ -230,31 +231,15 @@ describe("D1 atomic kernel", () => {
       Array.from({ length: 8 }, (_, i) =>
         run(() =>
           kernel.apply({
-            claim: {
-              name: "claim",
-              collection: "conversation-command-receipts",
-              key: durableKey("claim"),
-              fingerprint: "same",
-              value: new Uint8Array([i]),
-            },
-            ensures: [
-              {
-                name: "object",
-                collection: "execution-objects",
-                key: durableKey(String(i)),
-                fingerprint: String(i),
-                value: new Uint8Array([i]),
-              },
-            ],
+            claim: receiptClaim("claim", "command"),
+            ensures: [objectEnsure(String(i), i)],
           }),
         ),
       ),
     );
     expect(results.filter((r) => r.status === "committed")).toHaveLength(1);
     expect(results.filter((r) => r.status === "claim_exists")).toHaveLength(7);
-    const rows = await db
-      .prepare("SELECT key FROM sp_d1_records WHERE collection='execution-objects'")
-      .all();
+    const rows = await db.prepare("SELECT object_id FROM sp_execution_objects").all();
     expect(rows.results).toHaveLength(1);
   });
   it.each(["inline", "chunked"])(
@@ -264,7 +249,7 @@ describe("D1 atomic kernel", () => {
       const kernel = createD1DurableKernel(db);
       await db
         .prepare(
-          `CREATE TRIGGER fail_chunk BEFORE INSERT ON ${mode === "inline" ? "sp_d1_aliases" : "sp_d1_chunks"} BEGIN SELECT RAISE(ABORT, 'injected failure'); END`,
+          `CREATE TRIGGER fail_chunk BEFORE INSERT ON ${mode === "inline" ? "sp_conversation_heads" : "sp_d1_payload_chunks"} BEGIN SELECT RAISE(ABORT, 'injected failure'); END`,
         )
         .run();
       const token = await db.prepare("SELECT token FROM sp_d1_meta").first("token");
@@ -272,13 +257,7 @@ describe("D1 atomic kernel", () => {
         await expect(
           run(() =>
             kernel.apply({
-              claim: {
-                name: "receipt",
-                collection: "conversation-command-receipts",
-                key: durableKey("rollback"),
-                fingerprint: "one",
-                value: new Uint8Array([1]),
-              },
+              claim: receiptClaim("rollback", "command", "receipt"),
               ensures: [],
               authority: {
                 name: "head",
@@ -287,18 +266,23 @@ describe("D1 atomic kernel", () => {
                 expected: { revision: null },
                 next: {
                   revision: "0",
-                  value:
-                    mode === "inline"
-                      ? new Uint8Array([2])
-                      : new Uint8Array(1024 * 1024 + 1).fill(2),
+                  ...headValue(
+                    "rollback",
+                    "0",
+                    mode === "inline" ? null : "x".repeat(1024 * 1024 + 1),
+                  ),
                 },
               },
             }),
           ),
         ).rejects.toThrow("injected failure");
-        expect(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_records").first("count")).toBe(
-          0,
-        );
+        expect(
+          await db
+            .prepare(
+              "SELECT (SELECT COUNT(*) FROM sp_conversation_heads) + (SELECT COUNT(*) FROM sp_conversation_command_receipts) AS count",
+            )
+            .first("count"),
+        ).toBe(0);
         expect(await db.prepare("SELECT token FROM sp_d1_meta").first("token")).toBe(token);
       } finally {
         await db.prepare("DROP TRIGGER fail_chunk").run();
@@ -312,21 +296,17 @@ describe("D1 atomic kernel", () => {
       Array.from({ length: 8 }, (_, i) =>
         run(() =>
           kernel.apply({
-            ensures: [
-              {
-                name: "object",
-                collection: "execution-objects",
-                key: durableKey(String(i)),
-                fingerprint: String(i),
-                value: new Uint8Array([i]),
-              },
-            ],
+            ensures: [objectEnsure(String(i), i)],
             authority: {
               name: "control",
               collection: "execution-controls",
               key: durableKey("race"),
               expected: { revision: null },
-              next: { revision: "0", fence: "9007199254740993", value: new Uint8Array([i]) },
+              next: {
+                revision: "0",
+                fence: "9007199254740993",
+                ...controlValue("race", "0", "9007199254740993", i),
+              },
             },
           }),
         ),
@@ -335,9 +315,7 @@ describe("D1 atomic kernel", () => {
     expect(results.filter((r) => r.status === "committed")).toHaveLength(1);
     expect(results.filter((r) => r.status === "authority_conflict")).toHaveLength(7);
     expect(
-      await db
-        .prepare("SELECT COUNT(*) AS count FROM sp_d1_records WHERE collection='execution-objects'")
-        .first("count"),
+      await db.prepare("SELECT COUNT(*) AS count FROM sp_execution_objects").first("count"),
     ).toBe(1);
     expect(
       (await run(() => kernel.readAuthority("execution-controls", durableKey("race"))))?.fence,
@@ -347,21 +325,13 @@ describe("D1 atomic kernel", () => {
     await fresh();
     const kernel = createD1DurableKernel(db);
     const positions = ["9007199254740993", "9007199254740994", "10000000000000000"];
-    for (const position of positions)
+    for (const position of positions) {
       await run(() =>
         kernel.apply({
-          ensures: [
-            {
-              name: "segment",
-              collection: "conversation-public-segments",
-              key: durableKey(position),
-              alternateKeys: [durableKey("scan", position, position)],
-              fingerprint: position,
-              value: new Uint8Array([1, 2]),
-            },
-          ],
+          ensures: [publicEnsure("scan", position)],
         }),
       );
+    }
     const query = {
       collection: "conversation-public-segments" as const,
       index: "conversation-position" as const,
@@ -369,7 +339,9 @@ describe("D1 atomic kernel", () => {
       direction: "forward" as const,
       after: null,
       maxRecords: 10,
-      maxStoredBytes: 4,
+      maxPayloadBytes:
+        publicEnsure("scan", positions[0]!).value.encodedBytes +
+        publicEnsure("scan", positions[1]!).value.encodedBytes,
     };
     const page = await run(() => kernel.scan(query));
     expect(page.records.map((r) => r.position)).toEqual(positions.slice(0, 2));
@@ -387,43 +359,72 @@ describe("D1 atomic kernel", () => {
       ["first", "second"].map((key) =>
         run(() =>
           kernel.apply({
-            ensures: [
-              {
-                name: "object",
-                collection: "execution-objects",
-                key: durableKey(key),
-                alternateKeys: [durableKey("alias")],
-                fingerprint: "same",
-                value: new Uint8Array([1]),
-              },
-            ],
+            ensures: [checkpointEnsure(key, "replay", "alias", 1, "object")],
           }),
         ),
       ),
     );
     expect(results.every((r) => r.status === "committed")).toBe(true);
     expect(results[0]).toEqual(results[1]);
-    expect(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_records").first("count")).toBe(1);
+    expect(
+      await db.prepare("SELECT COUNT(*) AS count FROM sp_conversation_checkpoints").first("count"),
+    ).toBe(1);
   });
   it("roundtrips a record larger than D1's row limit", async () => {
     await fresh();
     const kernel = createD1DurableKernel(db);
-    const value = new Uint8Array(2_100_000).fill(42);
-    await run(() =>
-      kernel.apply({
-        ensures: [
-          {
-            name: "large",
-            collection: "execution-objects",
-            key: durableKey("large"),
-            fingerprint: "large",
-            value,
-          },
-        ],
-      }),
-    );
-    const result = await run(() => kernel.readImmutable("execution-objects", durableKey("large")));
-    expect(result?.value.byteLength).toBe(value.byteLength);
-    expect(result?.value.every((byte) => byte === 42)).toBe(true);
+    const ensure = objectEnsure("large", "*".repeat(2_100_000), "large");
+    await run(() => kernel.apply({ ensures: [ensure] }));
+    const result = await run(() => kernel.readImmutable("execution-objects", ensure.key));
+    expect(result?.value).toEqual(ensure.value);
   });
+});
+
+it("commits the maximum admitted ensure count with primary and alternate identities", async () => {
+  await fresh();
+  const kernel = createD1DurableKernel(db);
+  const ensures = Array.from({ length: 256 }, (_, index) =>
+    checkpointEnsure(`maximum-${index}`, "maximum", `cause-${index}`, index, `record-${index}`),
+  );
+  const outcome = await run(() => kernel.apply({ ensures }));
+  expect(outcome.status).toBe("committed");
+  if (outcome.status !== "committed") {
+    throw new Error("Maximum bounded mutation was not committed");
+  }
+  expect(Object.keys(outcome.ensured)).toHaveLength(256);
+  expect(
+    await db.prepare("SELECT COUNT(*) AS count FROM sp_conversation_checkpoints").first("count"),
+  ).toBe(256);
+  for (const index of [0, 127, 255]) {
+    const record = await run(() =>
+      kernel.readImmutable("conversation-checkpoints", durableKey("maximum", `cause-${index}`)),
+    );
+    expect(record?.value).toEqual(ensures[index]!.value);
+  }
+});
+
+it("rejects counters outside signed 64-bit storage instead of silently clamping them", async () => {
+  await fresh();
+  const kernel = createD1DurableKernel(db);
+  await expect(
+    run(() =>
+      kernel.apply({
+        ensures: [],
+        authority: {
+          name: "control",
+          collection: "execution-controls",
+          key: durableKey("overflow"),
+          expected: { revision: null, fence: "0" },
+          next: {
+            revision: "0",
+            fence: "9223372036854775808",
+            ...controlValue("overflow", "0", "9223372036854775808"),
+          },
+        },
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "durable_kernel_integer_out_of_range" });
+  expect(
+    await run(() => kernel.readAuthority("execution-controls", durableKey("overflow"))),
+  ).toBeNull();
 });

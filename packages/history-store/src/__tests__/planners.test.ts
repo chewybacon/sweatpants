@@ -2,7 +2,6 @@ import { canonicalDigest } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import type { ConversationHeadProposal } from "../contract.ts";
 import { nextConversationHead, planConversationCommit } from "../planners.ts";
-import { encodeConversationHead } from "../persistence.ts";
 import { DurableCollections, durableKey } from "@sweatpants/durable-storage-kernel";
 
 const idle: ConversationHeadProposal = {
@@ -26,7 +25,7 @@ describe("conversation planners", () => {
       key: durableKey("conversation"),
       revision: current.revision,
       fence: current.ownerEpoch,
-      value: encodeConversationHead(current),
+      value: current,
     } as const;
     const entries = [{ event: "done" }];
     const segment = {

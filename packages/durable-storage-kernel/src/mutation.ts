@@ -97,7 +97,7 @@ export function evaluateMutation(
         collection: ensure.collection,
         key: ensure.key,
         fingerprint: ensure.fingerprint,
-        value: new Uint8Array(ensure.value),
+        value: ensure.value,
       },
     );
     if (!existing) {
@@ -110,7 +110,7 @@ export function evaluateMutation(
         key: mutation.authority.key,
         revision: mutation.authority.next.revision,
         fence: mutation.authority.next.fence ?? snapshot.authority?.fence ?? null,
-        value: new Uint8Array(mutation.authority.next.value),
+        value: mutation.authority.next.value,
       }
     : null;
   return {

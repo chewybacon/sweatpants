@@ -1,4 +1,5 @@
 import { run } from "effection";
+import { objectEnsure } from "./domain-records.ts";
 import { durableKey } from "@sweatpants/durable-storage-kernel";
 import { createD1DurableKernel, initializeD1Storage } from "../../index.ts";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -9,21 +10,13 @@ export default {
     if (request.method === "POST") {
       await run(() =>
         kernel.apply({
-          ensures: [
-            {
-              name: "object",
-              collection: "execution-objects",
-              key: durableKey("restart"),
-              fingerprint: "restart",
-              value: new Uint8Array([4, 2]),
-            },
-          ],
+          ensures: [objectEnsure("restart", [4, 2])],
         }),
       );
     }
     const record = await run(() =>
       kernel.readImmutable("execution-objects", durableKey("restart")),
     );
-    return Response.json(record ? Array.from(record.value) : null);
+    return Response.json(record ? (record.value as { body: unknown }).body : null);
   },
 };

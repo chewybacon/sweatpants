@@ -1972,18 +1972,24 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20261005.1
         version: 5.20261005.1
-      '@noble/hashes':
-        specifier: ^2.2.0
-        version: 2.2.0
       '@sweatpants/durable-storage-kernel':
         specifier: workspace:*
         version: link:../durable-storage-kernel
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
       '@sweatpants/history-store':
         specifier: workspace:*
         version: link:../history-store
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../journal-authority
+      '@sweatpants/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@cloudflare/workers-types@5.20261005.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@9.6.0)(@types/pg@8.23.1)(better-sqlite3@13.0.3)(pg@8.23.0)
       effection:
         specifier: 4.2.0
         version: 4.2.0

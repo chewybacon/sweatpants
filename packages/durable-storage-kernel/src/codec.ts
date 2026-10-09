@@ -1,33 +1,4 @@
-import { canonicalJson, parseJsonText, type Json } from "@sweatpants/foundation";
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
-
-export interface DurableValueCodec<T> {
-  encode(value: T): Uint8Array;
-  decode(value: Uint8Array): T;
-}
-
-export function defineJsonCodec<T extends Json>(
-  validate: (value: Json) => T,
-): DurableValueCodec<T> {
-  return Object.freeze({
-    encode(value: T): Uint8Array {
-      return encoder.encode(canonicalJson(value));
-    },
-    decode(value: Uint8Array): T {
-      return validate(parseJsonText(decoder.decode(value), "durable value"));
-    },
-  });
-}
-
-export function encodeJsonValue(value: Json): Uint8Array {
-  return encoder.encode(canonicalJson(value));
-}
-
-export function decodeJsonValue(value: Uint8Array, label = "durable value"): Json {
-  return parseJsonText(decoder.decode(value), label);
-}
+import { canonicalJson, parseJsonText } from "@sweatpants/foundation";
 
 export function durableKey(...parts: readonly string[]): string {
   return canonicalJson(parts);

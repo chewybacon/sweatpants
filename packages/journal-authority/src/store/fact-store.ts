@@ -86,7 +86,7 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
       }
       const store = yield* useExecutionStore();
       const stored = yield* store.getObject({ objectId: frontier.facts.id });
-      if (!stored || stored.body instanceof Uint8Array || !Array.isArray(stored.body)) {
+      if (!stored || !Array.isArray(stored.body)) {
         throw new AcceptedProjectionFactsError("Accepted Projection Facts payload is unavailable");
       }
       if (stored.lifetimeScope === "execution" && stored.scopeOwnerId !== request.executionId) {

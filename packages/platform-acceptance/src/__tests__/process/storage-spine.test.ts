@@ -66,7 +66,6 @@ describe("database-backed durability spine producer/verifier", () => {
         hydrationReadBytes: number;
         archivePageReads: number;
         publicHistoryIndexRows: number;
-        publicHistoryIndexBytes: number;
         publicHistorySegmentReads: number;
         publicHistorySegmentReadBytes: number;
         peakPublicHistoryPageBytes: number;
@@ -83,7 +82,6 @@ describe("database-backed durability spine producer/verifier", () => {
     expect(expected.report.hydrationReadBytes).toBeGreaterThan(0);
     expect(expected.report.archivePageReads).toBeGreaterThan(0);
     expect(expected.report.publicHistoryIndexRows).toBeGreaterThan(0);
-    expect(expected.report.publicHistoryIndexBytes).toBeGreaterThan(0);
     expect(expected.report.publicHistorySegmentReads).toBeGreaterThan(0);
     expect(expected.report.publicHistorySegmentReadBytes).toBeGreaterThan(0);
     expect(expected.report.peakPublicHistoryPageBytes).toBeLessThanOrEqual(1024 * 1024);

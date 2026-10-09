@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { sha256, sha256Bytes, type Json, canonicalJson } from "@sweatpants/foundation";
+import { sha256, type Json, canonicalJson } from "@sweatpants/foundation";
 import { persistConversationCheckpoint } from "@sweatpants/durable-chat-runtime";
 import type {
   ConversationHead,
@@ -501,22 +501,22 @@ describe("database-backed durability-spine regression probes", () => {
     });
   }, 30_000);
 
-  it("rejects an execution BLOB whose hash does not match its exact bytes", async () => {
+  it("rejects an execution JSON object whose hash does not match its content", async () => {
     await withPersistentScenario(function* (scenario, handle) {
-      const conversation = scenario.conversation({ conversationId: "defect-blob-integrity" });
+      const conversation = scenario.conversation({ conversationId: "defect-object-integrity" });
       yield* completeImmediateTurn(scenario, conversation, 0);
 
-      const body = new Uint8Array([0, 255, 1, 128]);
-      const wrongBody = new Uint8Array([0, 255, 1, 129]);
+      const body = { result: [0, 255, 1, 128] };
+      const wrongBody = { result: [0, 255, 1, 129] };
       let error: unknown;
       try {
         yield* handle.storage.executionStore.putObject({
-          objectId: "tampered-blob",
+          objectId: "tampered-object",
           lifetimeScope: "execution",
-          scopeOwnerId: "defect-blob-integrity",
+          scopeOwnerId: "defect-object-integrity",
           objectKind: "fixture-artifact",
-          contentHash: sha256Bytes(wrongBody),
-          byteLength: body.byteLength,
+          contentHash: sha256(canonicalJson(wrongBody)),
+          byteLength: new TextEncoder().encode(canonicalJson(body)).byteLength,
           body,
           createdAt: Date.now(),
         });

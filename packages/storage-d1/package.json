@@ -23,14 +23,17 @@
     "scripts": {
         "build": "tsup && tsc -b --force",
         "check": "tsc -b",
-        "test": "vitest run"
+        "test": "vitest run",
+        "db:generate": "node scripts/generate-schema.mjs && oxfmt src/schema-sql.ts"
     },
     "dependencies": {
         "@cloudflare/workers-types": "5.20261005.1",
-        "@noble/hashes": "^2.2.0",
         "@sweatpants/durable-storage-kernel": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/storage-sqlite": "workspace:*",
+        "drizzle-orm": "catalog:",
         "effection": "catalog:"
     },
     "devDependencies": {

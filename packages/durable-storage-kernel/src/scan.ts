@@ -3,7 +3,7 @@ import { DurableKernelError, type BoundedScan } from "./contract.ts";
 export interface ScanMetadata {
   readonly key: string;
   readonly position: string;
-  readonly storedBytes: number;
+  readonly payloadBytes: number;
 }
 
 /** Input is an indexed, ordered seek with at most maxRecords + 1 rows.
@@ -20,17 +20,26 @@ export function planScanPage<T extends ScanMetadata>(
   const selected: T[] = [];
   let bytes = 0;
   for (const row of rows) {
-    if (!Number.isSafeInteger(row.storedBytes) || row.storedBytes < 0) {
+    if (!Number.isSafeInteger(row.payloadBytes) || row.payloadBytes < 0) {
       throw new DurableKernelError(
         "durable_kernel_persisted_data_invalid",
         "Invalid indexed record byte count",
       );
     }
-    if (selected.length >= request.maxRecords || bytes + row.storedBytes > request.maxStoredBytes) {
+    if (selected.length === 0 && row.payloadBytes > request.maxPayloadBytes) {
+      throw new DurableKernelError(
+        "durable_kernel_scan_limit_exceeded",
+        `Record at ${row.position} requires ${row.payloadBytes} payload bytes; scan allows ${request.maxPayloadBytes}`,
+      );
+    }
+    if (
+      selected.length >= request.maxRecords ||
+      bytes + row.payloadBytes > request.maxPayloadBytes
+    ) {
       return { selected, nextCursor: selected.at(-1)?.position ?? null };
     }
     selected.push(row);
-    bytes += row.storedBytes;
+    bytes += row.payloadBytes;
   }
   return { selected, nextCursor: null };
 }

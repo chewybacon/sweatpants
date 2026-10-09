@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import { openBetterSqliteStorageForTest } from "../testing.ts";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
-import { canonicalJson, sha256 } from "@sweatpants/foundation";
+import { canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
 import { durableKey, type BoundedScan } from "@sweatpants/durable-storage-kernel";
-import { encodePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
+import { preparePrivateSegment } from "@sweatpants/journal-authority/store-persistence";
 
 const request: BoundedScan = {
   collection: "execution-journal-segments",
@@ -13,13 +13,13 @@ const request: BoundedScan = {
   direction: "forward",
   after: "0",
   maxRecords: 3,
-  maxStoredBytes: 1024 * 1024,
+  maxPayloadBytes: 1024 * 1024,
 };
 function segment(position: string, body: string, executionId = "scan-budget") {
   const entries = [body];
   const encoded = canonicalJson(entries);
   const encodedDigest = sha256(encoded);
-  const value = encodePrivateSegment({
+  const value = preparePrivateSegment({
     segmentId: `${executionId}-${position}`,
     executionId,
     taskId: "task",
@@ -61,14 +61,14 @@ describe("SQLite bounded scans", () => {
       }
       queries.length = 0;
       const page = await run(() =>
-        handle.kernel.scan({ ...request, maxStoredBytes: first.value.byteLength }),
+        handle.kernel.scan({ ...request, maxPayloadBytes: first.value.encodedBytes }),
       );
       expect(page.records.map((record) => record.position)).toEqual(["1"]);
       expect(page.records[0]!.value).toEqual(first.value);
-      expect(page.records[0]!.storedBytes).toBe(first.value.byteLength);
+      expect(page.records[0]!.payloadBytes).toBe(first.value.encodedBytes);
       expect(page.nextCursor).toBe("1");
       expect(queries).toHaveLength(2);
-      expect(queries[0]!).toContain('"stored_bytes"');
+      expect(queries[0]!).toContain('"encoded_bytes"');
       expect(queries[0]!).not.toContain('"entries_json"');
       expect(queries[0]!.toLowerCase()).toContain("limit");
       expect(queries[1]!).toContain('"entries_json"');
@@ -81,10 +81,11 @@ describe("SQLite bounded scans", () => {
         ),
       ).toBe(true);
       queries.length = 0;
-      const tooSmall = await run(() =>
-        handle.kernel.scan({ ...request, maxStoredBytes: first.value.byteLength - 1 }),
-      );
-      expect(tooSmall.records).toEqual([]);
+      await expect(
+        run(() =>
+          handle.kernel.scan({ ...request, maxPayloadBytes: first.value.encodedBytes - 1 }),
+        ),
+      ).rejects.toMatchObject({ code: "durable_kernel_scan_limit_exceeded" });
       expect(queries).toHaveLength(1);
       expect(queries[0]!).not.toContain('"entries_json"');
       const next = await run(() =>
@@ -124,6 +125,91 @@ it("accepts a bulk journal ensure without optional alternate keys", async () => 
         (await run(() => handle.kernel.readImmutable(entry.collection, entry.key)))?.value,
       ).toEqual(entry.value);
     }
+  } finally {
+    await run(() => handle.close());
+  }
+});
+
+it("bounds terminal JSON payloads by database byte length and root-index metadata by rows", async () => {
+  const handle = await run(() => openBetterSqliteStorageForTest(":memory:", { initialize: true }));
+  try {
+    const entries = ["選択 🃏", { answer: true }];
+    const value = {
+      segmentId: "terminal-byte-budget",
+      conversationId: "terminal-byte-budget",
+      logicalTurnId: "turn",
+      executionId: "execution",
+      publicationKey: "publication",
+      previous: null,
+      firstPosition: "1",
+      lastPosition: "1",
+      entries,
+      contentHash: canonicalDigest(entries),
+      createdAt: 1,
+    };
+    await run(() =>
+      handle.kernel.apply({
+        ensures: [
+          {
+            name: "terminal",
+            collection: "conversation-terminal-segments",
+            key: durableKey(value.segmentId),
+            fingerprint: value.contentHash,
+            value,
+          },
+        ],
+      }),
+    );
+    const scan: BoundedScan = {
+      collection: "conversation-terminal-segments",
+      index: "conversation-position",
+      scope: durableKey(value.conversationId),
+      direction: "forward",
+      after: null,
+      maxRecords: 1,
+      maxPayloadBytes: new TextEncoder().encode(JSON.stringify(entries)).byteLength,
+    };
+    const page = await run(() => handle.kernel.scan(scan));
+    expect(page.records).toHaveLength(1);
+    expect(page.records[0]!.payloadBytes).toBe(scan.maxPayloadBytes);
+    await expect(
+      run(() => handle.kernel.scan({ ...scan, maxPayloadBytes: scan.maxPayloadBytes - 1 })),
+    ).rejects.toMatchObject({ code: "durable_kernel_scan_limit_exceeded" });
+    for (const position of ["1", "2"]) {
+      const root = {
+        conversationId: value.conversationId,
+        position,
+        rootId: `root-${position}`,
+        segmentId: "referenced-segment",
+        segmentRootIndex: Number(position),
+        archiveOrdinal: position,
+        contentHash: canonicalDigest(position),
+        encodedBytes: 1_000_000,
+      };
+      await run(() =>
+        handle.kernel.apply({
+          ensures: [
+            {
+              name: "root",
+              collection: "conversation-public-root-index",
+              key: durableKey(root.conversationId, position),
+              fingerprint: canonicalDigest(root),
+              value: root,
+            },
+          ],
+        }),
+      );
+    }
+    const indexPage = await run(() =>
+      handle.kernel.scan({
+        ...scan,
+        collection: "conversation-public-root-index",
+        maxPayloadBytes: 1,
+      }),
+    );
+    expect(indexPage.records.map((record) => record.position)).toEqual(["1"]);
+    expect(indexPage.records[0]!.payloadBytes).toBe(0);
+    expect(indexPage.nextCursor).toBe("1");
   } finally {
     await run(() => handle.close());
   }

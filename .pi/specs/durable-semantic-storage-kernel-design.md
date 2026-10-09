@@ -2,9 +2,13 @@
 
 ## Status
 
-Implemented experimental slice.
+Structured-record storage contract (2026-10-09).
 
-The memory and SQLite paths now use the architecture in this memo. PostgreSQL and the explicitly deferred workflow features remain future work. This status records implementation evidence; it does not turn the earlier `durable-conversation-storage-design.md` into a normative contract.
+Memory, SQLite, PostgreSQL, and D1 share bounded structured mutations. SQLite and
+PostgreSQL define the domain schema; D1 uses the SQLite-family representation with
+its own atomic batch execution. This revision removes mandatory byte payloads from
+the kernel contract. It does not change mutation atomicity, fencing, or revision
+semantics.
 
 This memo records a design direction that emerged from reviewing the first durable SQLite storage slice. It is not a compliance restatement of `durable-conversation-storage-design.md`. The larger design remains prior research and a source of hypotheses. The SQLite slice exists to test those hypotheses and can justify pivots.
 
@@ -274,7 +278,7 @@ A mutation has:
 - at most one claim;
 - a bounded list of ensures;
 - at most one authority replacement;
-- a bounded total encoded size;
+- domain-admitted values with collection-specific bounds;
 - unique stable component names;
 - only statically declared collection identities.
 
@@ -286,7 +290,7 @@ interface ImmutableClaim {
   readonly collection: ImmutableCollectionId;
   readonly key: DurableKey;
   readonly fingerprint: string;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 ```
 
@@ -307,7 +311,7 @@ interface ImmutableEnsure {
   readonly key: DurableKey;
   readonly alternateKeys?: readonly DurableKey[];
   readonly fingerprint: string;
-  readonly value: Uint8Array;
+  readonly value: unknown;
 }
 ```
 
@@ -338,7 +342,7 @@ interface AuthorityReplacement {
   readonly next: {
     readonly revision: string;
     readonly fence?: string;
-    readonly value: Uint8Array;
+    readonly value: unknown;
   };
 }
 ```
@@ -426,12 +430,32 @@ Examples:
 - duplicate component name;
 - unknown collection;
 - too many ensures;
-- mutation above byte limits;
 - conflicting duplicate identity inside one mutation;
 - claim against an authority collection;
 - conversation and execution authority in one mutation.
 
 Invalid mutation is not a concurrency result.
+
+## Structured persistence boundary
+
+A kernel payload is an admitted structured value, represented as `unknown` at the
+mechanics-only boundary. Collection-specific repositories own its domain shape.
+Payloads are read-only for the duration of a mutation. The pure evaluator retains
+those values rather than cloning, freezing, or serializing them. A memory adapter
+copies at its storage ownership boundary; SQL adapters map values to driver columns.
+
+There is no universal stored-size field and no synthetic serialized-mutation
+budget. The kernel limits a mutation to 256 ensures and validates its identities
+and transitions. Domain admission owns meaningful payload limits; adapters own
+actual database and transport limits. This deliberately replaces the former
+16 MiB whole-envelope limit, rather than moving its serialization into another
+helper. Transport or database adapters encode only where storage requires it.
+Incoming/persisted values are checked at their admission boundary; byte encoding
+is not a validation mechanism.
+
+The core execution-object body is JSON. Files and arbitrary binary objects belong
+to a separate object-storage capability, with publication and cleanup rules made
+explicit if that capability is introduced. No S3/R2 implementation is implied here.
 
 ## Logical collections
 
@@ -627,11 +651,33 @@ interface BoundedScan {
   readonly after: DurableCursor | null;
   readonly through?: DurablePosition;
   readonly maxRecords: number;
-  readonly maxStoredBytes: number;
+  readonly maxPayloadBytes: number;
 }
 ```
 
 Collections declare permitted indexes. The scan request is not a generic predicate language.
+
+Scans select at most `maxRecords` and `maxPayloadBytes` before body hydration.
+Public and private segments reuse their admitted domain `encodedBytes`. Terminal
+segments use the database's byte length of the entries JSON column. PostgreSQL's
+JSONB text representation may have different whitespace and numeric formatting
+from SQLite's JSON text, so page boundaries need not be identical across adapters.
+PostgreSQL checks terminal entries against the scan ceiling in the database before
+committing, preventing representation expansion from creating an unreadable segment. Neither uses compressed
+physical storage size as a payload budget. Root-index rows contain metadata only:
+they consume the row budget and report zero payload bytes. Their referenced root
+size still guides subsequent domain materialization.
+
+D1 overflow manifests retain payload size only when the original JSON column has
+been moved into transport chunks; that size is computed during actual encoding.
+Normal domain rows have no additional stored-size column.
+
+Terminal and private segment admission rejects logical payloads above the scan
+ceiling using the serialization already needed for their content hash. If the
+first record exceeds a requested page budget, the scan throws
+`durable_kernel_scan_limit_exceeded`; an empty page must never disguise unread
+history as end-of-stream. Objects and authority are point reads and do not inherit
+a synthetic whole-envelope scan limit.
 
 ### Semantic read flow
 
@@ -670,7 +716,7 @@ A later page continues against the same immutable anchor even if the current hea
 Kernel bounds protect physical work:
 
 - rows;
-- stored bytes;
+- payload bytes;
 - query duration where supported;
 - metadata and body hydration.
 
@@ -681,7 +727,7 @@ Semantic bounds protect domain materialization:
 - legal singleton behavior;
 - cursor and envelope size.
 
-Stored byte counts can guide selection, but complete codecs recompute and verify them.
+Index observations count rows; segment and materialization observations count actual domain payload bytes. No synthetic index-envelope byte metric is retained.
 
 ## Segment read strategies
 
@@ -829,7 +875,7 @@ The SQLite kernel owns:
 
 - application-owned connection integration;
 - schema binding and migrations;
-- canonical text and BLOB representation;
+- structured JSON column mapping and precision-safe integer binding;
 - serialized writer queue;
 - `BEGIN IMMEDIATE` transactions;
 - rollback and close lifecycle;
@@ -851,7 +897,7 @@ SELECT ... FROM jsonb_to_record($1::jsonb);
 
 or use one fixed adapter-owned data-modifying CTE statement.
 
-Large binary bodies can travel as separate `bytea` parameters or arrays referenced from the JSONB metadata. Durable 64-bit counters remain decimal strings in JSON.
+Structured payload columns use JSONB in PostgreSQL. Durable 64-bit counters remain decimal strings in JSON and bind to BIGINT without conversion through an unsafe JavaScript number. Binary artifacts are outside the core journal object contract; an object-storage port can publish references when an actual consumer requires it.
 
 Database functions are not required. A stored function is justified only if:
 

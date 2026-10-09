@@ -1,11 +1,10 @@
 import {
-  decodeJsonValue,
   durableKey,
-  encodeJsonValue,
+  DURABLE_SCAN_MAX_BYTES,
   type StoredAuthorityRecord,
   type StoredImmutableRecord,
 } from "@sweatpants/durable-storage-kernel";
-import { type Json, canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
+import { assertJson, type Json, canonicalJson, sha256 } from "@sweatpants/foundation";
 import { assertCheckpointBounds, CHECKPOINT_BOUNDS } from "./checkpoint-bounds.ts";
 import { assertCheckpointPayload, checkpointHotRoots } from "./checkpoint-payload.ts";
 import { rootPayloadBytes } from "./segmentation.ts";
@@ -23,15 +22,18 @@ function invalid(message: string): never {
   throw new ConversationStoreError("persisted_data_invalid", message);
 }
 
-function record(value: Json, label: string): Readonly<Record<string, Json>> {
+function record(value: unknown, label: string): Readonly<Record<string, Json>> {
   if (value === null || Array.isArray(value) || typeof value !== "object") {
     return invalid(`${label} must be an object`);
   }
-  return value;
+  return value as Readonly<Record<string, Json>>;
 }
 
 function text(value: Json | undefined, field: string): string {
-  return typeof value === "string" ? value : invalid(`${field} must be a string`);
+  if (typeof value !== "string") {
+    return invalid(`${field} must be a string`);
+  }
+  return assertJson(value) as string;
 }
 
 function nullableText(value: Json | undefined, field: string): string | null {
@@ -94,16 +96,8 @@ function historyPointer(
   };
 }
 
-function jsonEncode<T>(value: T): Uint8Array {
-  return encodeJsonValue(value as unknown as Json);
-}
-
-export function encodeConversationHead(value: ConversationHead): Uint8Array {
-  return jsonEncode(value);
-}
-
-export function decodeConversationHead(value: Uint8Array): ConversationHead {
-  const object = record(decodeJsonValue(value, "conversation head"), "conversation head");
+export function readConversationHead(value: unknown): ConversationHead {
+  const object = record(value, "conversation head");
   const state = text(object["state"], "head.state");
   if (!(["idle", "running", "parked", "recovering", "deleted"] as const).includes(state as never)) {
     return invalid(`Unknown conversation state ${state}`);
@@ -135,7 +129,7 @@ export function decodeConversationHead(value: Uint8Array): ConversationHead {
 }
 
 export function decodeAuthorityHead(recordValue: StoredAuthorityRecord): ConversationHead {
-  const head = decodeConversationHead(recordValue.value);
+  const head = readConversationHead(recordValue.value);
   if (head.revision !== recordValue.revision || head.ownerEpoch !== recordValue.fence) {
     return invalid(
       `Conversation head ${head.conversationId} disagrees with its authority envelope`,
@@ -144,12 +138,8 @@ export function decodeAuthorityHead(recordValue: StoredAuthorityRecord): Convers
   return head;
 }
 
-export function encodeCommandReceipt(value: CommandReceipt): Uint8Array {
-  return jsonEncode(value);
-}
-
-export function decodeCommandReceipt(value: Uint8Array): CommandReceipt {
-  const object = record(decodeJsonValue(value, "command receipt"), "command receipt");
+export function readCommandReceipt(value: unknown): CommandReceipt {
+  const object = record(value, "command receipt");
   const logicalTurnId = object["logicalTurnId"];
   const executionId = object["executionId"];
   return {
@@ -201,7 +191,7 @@ function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
   });
 }
 
-export function encodeCheckpoint(value: StoredCheckpoint): Uint8Array {
+export function prepareCheckpoint(value: StoredCheckpoint): StoredCheckpoint {
   assertCheckpointPayload(value.payload);
   const payload = canonicalJson(value.payload);
   const payloadDigest = sha256(payload);
@@ -213,11 +203,11 @@ export function encodeCheckpoint(value: StoredCheckpoint): Uint8Array {
   }
   validateCheckpointBounds(value.payload, value.encodedBytes);
   // The payload owns the content identity; the storage envelope is ordinary JSON.
-  return new TextEncoder().encode(JSON.stringify(value));
+  return value;
 }
 
-export function decodeCheckpoint(value: Uint8Array): StoredCheckpoint {
-  const object = record(decodeJsonValue(value, "checkpoint"), "checkpoint");
+export function readCheckpoint(value: unknown): StoredCheckpoint {
+  const object = record(value, "checkpoint");
   const payload = nullableJson(object["payload"], "checkpoint.payload");
   assertCheckpointPayload(payload);
   const result: StoredCheckpoint = {
@@ -290,7 +280,9 @@ function validatePublicSegmentBounds(segment: StoredPublicArchiveSegment): void 
   }
 }
 
-export function encodePublicSegment(value: StoredPublicArchiveSegment): Uint8Array {
+export function preparePublicSegment(
+  value: StoredPublicArchiveSegment,
+): StoredPublicArchiveSegment {
   validatePublicSegmentBounds(value);
   const encoded = canonicalJson(value.roots);
   const encodedDigest = sha256(encoded);
@@ -300,11 +292,11 @@ export function encodePublicSegment(value: StoredPublicArchiveSegment): Uint8Arr
   if (new TextEncoder().encode(encoded).byteLength !== value.encodedBytes) {
     return invalid(`Public archive segment ${value.segmentId} encoded byte count is invalid`);
   }
-  return jsonEncode(value);
+  return value;
 }
 
-export function decodePublicSegment(value: Uint8Array): StoredPublicArchiveSegment {
-  const object = record(decodeJsonValue(value, "public archive segment"), "public archive segment");
+export function readPublicSegment(value: unknown): StoredPublicArchiveSegment {
+  const object = record(value, "public archive segment");
   const result: StoredPublicArchiveSegment = {
     segmentId: text(object["segmentId"], "publicSegment.segmentId"),
     conversationId: text(object["conversationId"], "publicSegment.conversationId"),
@@ -336,7 +328,9 @@ function validateTerminalRange(value: StoredTerminalSegment): void {
   }
 }
 
-export function encodeArchivedPublicRootIndex(value: ArchivedPublicRootIndex): Uint8Array {
+export function prepareArchivedPublicRootIndex(
+  value: ArchivedPublicRootIndex,
+): ArchivedPublicRootIndex {
   counter(value.position, "publicRootIndex.position");
   counter(value.archiveOrdinal, "publicRootIndex.archiveOrdinal");
   if (!Number.isSafeInteger(value.segmentRootIndex) || value.segmentRootIndex < 0) {
@@ -345,11 +339,11 @@ export function encodeArchivedPublicRootIndex(value: ArchivedPublicRootIndex): U
   if (!Number.isSafeInteger(value.encodedBytes) || value.encodedBytes < 0) {
     return invalid("publicRootIndex.encodedBytes must be a non-negative safe integer");
   }
-  return jsonEncode(value);
+  return value;
 }
 
-export function decodeArchivedPublicRootIndex(value: Uint8Array): ArchivedPublicRootIndex {
-  const object = record(decodeJsonValue(value, "public root index"), "public root index");
+export function readArchivedPublicRootIndex(value: unknown): ArchivedPublicRootIndex {
+  const object = record(value, "public root index");
   const expected = new Set([
     "conversationId",
     "position",
@@ -378,16 +372,23 @@ export function decodeArchivedPublicRootIndex(value: Uint8Array): ArchivedPublic
   };
 }
 
-export function encodeTerminalSegment(value: StoredTerminalSegment): Uint8Array {
+export function prepareTerminalSegment(value: StoredTerminalSegment): StoredTerminalSegment {
   validateTerminalRange(value);
-  if (canonicalDigest(value.entries) !== value.contentHash) {
+  const encoded = canonicalJson(value.entries);
+  if (new TextEncoder().encode(encoded).byteLength > DURABLE_SCAN_MAX_BYTES) {
+    throw new ConversationStoreError(
+      "segment_entry_too_large",
+      `Terminal segment ${value.segmentId} exceeds the maximum readable segment payload`,
+    );
+  }
+  if (sha256(encoded) !== value.contentHash) {
     return invalid(`Terminal segment ${value.segmentId} content hash is invalid`);
   }
-  return jsonEncode(value);
+  return value;
 }
 
-export function decodeTerminalSegment(value: Uint8Array): StoredTerminalSegment {
-  const object = record(decodeJsonValue(value, "terminal segment"), "terminal segment");
+export function readTerminalSegment(value: unknown): StoredTerminalSegment {
+  const object = record(value, "terminal segment");
   const result: StoredTerminalSegment = {
     segmentId: text(object["segmentId"], "terminalSegment.segmentId"),
     conversationId: text(object["conversationId"], "terminalSegment.conversationId"),
@@ -401,11 +402,7 @@ export function decodeTerminalSegment(value: Uint8Array): StoredTerminalSegment 
     contentHash: text(object["contentHash"], "terminalSegment.contentHash"),
     createdAt: natural(object["createdAt"], "terminalSegment.createdAt"),
   };
-  if (canonicalDigest(result.entries) !== result.contentHash) {
-    return invalid(`Terminal segment ${result.segmentId} content hash is invalid`);
-  }
-  validateTerminalRange(result);
-  return result;
+  return prepareTerminalSegment(result);
 }
 
 export const conversationKeys = Object.freeze({
@@ -428,6 +425,6 @@ export const conversationKeys = Object.freeze({
     durableKey(conversationId, firstPosition, segmentId),
 });
 
-export function immutableValue(recordValue: StoredImmutableRecord | null): Uint8Array | null {
+export function immutableValue(recordValue: StoredImmutableRecord | null): unknown {
   return recordValue?.value ?? null;
 }

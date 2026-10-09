@@ -4,14 +4,14 @@ import {
   createTextExecutionObject,
   createPrivateSegment,
   createContentAddressedExecutionObject,
-  decodeExecutionObject,
-  encodeExecutionObject,
-  decodePrivateSegment,
-  encodePrivateSegment,
+  readExecutionObject,
+  prepareExecutionObject,
+  readPrivateSegment,
+  preparePrivateSegment,
 } from "../store/store-persistence.ts";
 
 describe("owned persistence values", () => {
-  it("owns text metadata before hashing and never exposes retained envelope bytes", async () => {
+  it("owns text metadata before hashing and retains its structured value", async () => {
     const fields = {
       objectId: "one",
       lifetimeScope: "execution" as const,
@@ -25,9 +25,11 @@ describe("owned persistence values", () => {
     expect(Object.isFrozen(object)).toBe(true);
     expect(object.objectId).toBe("one");
     expect(object.contentHash).toBe(canonicalDigest(object.body));
-    encodeExecutionObject(object).fill(0);
-    expect(await decodeExecutionObject(encodeExecutionObject(object))).toEqual(object);
-    expect(() => encodeExecutionObject({ ...object, body: "changed" })).toThrow(/content metadata/);
+    expect(prepareExecutionObject(object)).toBe(object);
+    expect(await readExecutionObject(prepareExecutionObject(object))).toEqual(object);
+    expect(() => prepareExecutionObject({ ...object, body: "changed" })).toThrow(
+      /content metadata/,
+    );
   });
 
   it("owns content-addressed inputs before suspension and preserves content identity", async () => {
@@ -50,9 +52,9 @@ describe("owned persistence values", () => {
     expect(object.contentHash).toBe(hash);
     expect(object.objectId).toBe(stableTupleHash(["ex", "context", hash]));
     expect(Object.isFrozen((object.body as typeof body).nested)).toBe(true);
-    encodeExecutionObject(object).fill(0);
-    expect(await decodeExecutionObject(encodeExecutionObject(object))).toEqual(object);
-    expect(() => encodeExecutionObject({ ...object, body })).toThrow(/content metadata/);
+    expect(prepareExecutionObject(object)).toBe(object);
+    expect(await readExecutionObject(prepareExecutionObject(object))).toEqual(object);
+    expect(() => prepareExecutionObject({ ...object, body })).toThrow(/content metadata/);
   });
 
   it("owns segment entries and verifies copied values through the ordinary boundary", async () => {
@@ -72,8 +74,8 @@ describe("owned persistence values", () => {
     expect(segment.entries).toEqual([{ nested: { answer: 42 } }]);
     expect(segment.taskId).toBe("task");
     expect(Object.isFrozen(segment.entries[0])).toBe(true);
-    encodePrivateSegment(segment).fill(0);
-    expect(await decodePrivateSegment(encodePrivateSegment(segment))).toEqual(segment);
-    expect(() => encodePrivateSegment({ ...segment, entries: [null] })).toThrow(/hash/);
+    expect(preparePrivateSegment(segment)).toBe(segment);
+    expect(await readPrivateSegment(preparePrivateSegment(segment))).toEqual(segment);
+    expect(() => preparePrivateSegment({ ...segment, entries: [null] })).toThrow(/hash/);
   });
 });

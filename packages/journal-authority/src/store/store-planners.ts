@@ -12,9 +12,8 @@ import type {
 } from "./store.ts";
 import {
   decodeAuthorityControl,
-  encodeExecutionControl,
-  encodePrivateSegment,
-  encodeExecutionObject,
+  preparePrivateSegment,
+  prepareExecutionObject,
   executionKeys,
 } from "./store-persistence.ts";
 
@@ -54,7 +53,7 @@ export function privateSegmentEnsure(
       ),
     ],
     fingerprint: segment.contentHash,
-    value: encodePrivateSegment(segment),
+    value: preparePrivateSegment(segment),
   };
 }
 
@@ -104,7 +103,7 @@ export function planExecutionCommit(input: {
         collection: DurableCollections.executionObjects,
         key: executionKeys.object(object.objectId),
         fingerprint: object.contentHash,
-        value: encodeExecutionObject(object),
+        value: prepareExecutionObject(object),
       };
     }),
     ...(request.journalSegments ?? []).map((segment, index) =>
@@ -129,7 +128,7 @@ export function planExecutionCommit(input: {
         next: {
           revision: control.controlRevision,
           fence: control.ownerFence,
-          value: encodeExecutionControl(control),
+          value: control,
         },
       },
     },
