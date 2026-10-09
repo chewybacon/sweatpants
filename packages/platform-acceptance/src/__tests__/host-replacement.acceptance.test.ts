@@ -109,8 +109,11 @@ async function runScenario(binding: Binding): Promise<void> {
         expect((yield* turn.settled()).text).toBe("HOST_REPLACEMENT_TERMINAL_V1");
         expect(s.model.requests()).toHaveLength(3);
 
-        const opened = yield* factory.journalStore().open(conversation.conversationId);
-        const journal = yield* opened.readJournal(conversation.conversationId);
+        const journal = yield* factory
+          .journalStore()
+          .withJournal(conversation.conversationId, (opened) =>
+            opened.readJournal(conversation.conversationId),
+          );
         expect(
           journal.filter(
             (entry) =>

@@ -51,8 +51,10 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
       if (!inspection) {
         throw new Error("acceptance application inspection was not installed");
       }
-      const opened = yield* inspection.journalStore.open(conversation.conversationId);
-      const journal = yield* opened.readJournal(conversation.conversationId);
+      const journal = yield* inspection.journalStore.withJournal(
+        conversation.conversationId,
+        (opened) => opened.readJournal(conversation.conversationId),
+      );
       expect(JSON.stringify(journal)).not.toContain('"eventType":"model_token"');
       expect(
         journal.filter(

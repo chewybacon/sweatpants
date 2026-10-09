@@ -1,17 +1,19 @@
 import {
   CrankError,
   assertInlineSize,
+  encodeInlineJson,
   type DurableProgramManifest,
   type Mandate,
 } from "@sweatpants/durable-execution";
 import {
   stableTupleHash,
   type Json,
-  canonicalDigest,
+  sha256,
+  encodeCanonicalJson,
   canonicalJson,
   cloneJson,
 } from "@sweatpants/foundation";
-import type { AuthorityState } from "../contract/authority-contract.ts";
+import type { AuthorityState, TaskState } from "../contract/authority-contract.ts";
 import { parseDurableProgramManifest } from "../store/durable-authority-snapshot-schema.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
@@ -50,7 +52,7 @@ export function openTask(
     request.input,
     "invalid_descriptor",
   );
-  assertInlineSize(input, draft.maxOutcomeBytes);
+  const encodedInput = encodeInlineJson(input, draft.maxOutcomeBytes);
   assertEffectContractsCompatible(draft.state, request.manifest);
   if ((request.catalog === undefined) !== (request.catalogDigest === undefined)) {
     throw new CrankError(
@@ -84,10 +86,10 @@ export function openTask(
     const ancestor =
       request.parentTaskId === undefined
         ? undefined
-        : draft.task(request.sessionId, request.parentTaskId).deadlineMs;
+        : draft.readTask(request.sessionId, request.parentTaskId).deadlineMs;
     deadlineMs = resolveForkDeadline(request.expiryPolicy, ancestor, draft.context.nowMs);
   } else if (request.parentTaskId !== undefined) {
-    deadlineMs = draft.task(request.sessionId, request.parentTaskId).deadlineMs;
+    deadlineMs = draft.readTask(request.sessionId, request.parentTaskId).deadlineMs;
   }
   const task: DraftTask = {
     taskId: request.taskId,
@@ -133,7 +135,7 @@ export function openTask(
     programVersion: request.manifest.version,
     programDigest: request.manifest.digest,
     input,
-    inputDigest: canonicalDigest(input),
+    inputDigest: sha256(encodedInput),
     ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
     ...(request.parentTaskId === undefined ? {} : { parentTaskId: request.parentTaskId }),
     ...(request.parentPullId === undefined ? {} : { parentPullId: request.parentPullId }),
@@ -171,19 +173,19 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
   ) {
     throw new CrankError("invalid_command", "Invalid task lease request");
   }
-  const session = draft.session(request.address.sessionId);
-  const task = draft.task(request.address.sessionId, request.address.taskId);
-  draft.assertActive(task);
+  const acceptedSession = draft.readSession(request.address.sessionId);
+  const acceptedTask = draft.readTask(request.address.sessionId, request.address.taskId);
+  draft.assertActive(acceptedTask);
   if (
-    request.strand !== task.taskId ||
-    request.address.turnId !== task.turnId ||
-    request.program.id !== task.program.artifact.id ||
-    request.program.version !== task.program.artifact.version ||
-    request.program.digest !== task.program.artifact.digest
+    request.strand !== acceptedTask.taskId ||
+    request.address.turnId !== acceptedTask.turnId ||
+    request.program.id !== acceptedTask.program.artifact.id ||
+    request.program.version !== acceptedTask.program.artifact.version ||
+    request.program.digest !== acceptedTask.program.artifact.digest
   ) {
     throw new CrankError("nondeterminism_detected", "Prepared target identity differs");
   }
-  const head = strandHead(task);
+  const head = strandHead(acceptedTask);
   if (
     head.digest !== request.expected.strandHeadDigest ||
     request.frontierProof.strandHeadDigest !== request.expected.strandHeadDigest ||
@@ -192,13 +194,13 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
     return { status: "stale", mismatch: "strand_head" };
   }
   if (
-    task.execution.epoch !== request.expected.leaseEpoch ||
-    (task.execution.liveLease !== undefined &&
-      draft.context.nowMs < task.execution.liveLease.expiresAtMs)
+    acceptedTask.execution.epoch !== request.expected.leaseEpoch ||
+    (acceptedTask.execution.liveLease !== undefined &&
+      draft.context.nowMs < acceptedTask.execution.liveLease.expiresAtMs)
   ) {
     return { status: "stale", mismatch: "lease_epoch" };
   }
-  const groupRevision = currentForkGroupRevision(session, task.taskId);
+  const groupRevision = currentForkGroupRevision(acceptedSession, acceptedTask.taskId);
   if (groupRevision !== request.expected.forkGroupRevision) {
     return { status: "stale", mismatch: "fork_group_revision" };
   }
@@ -208,11 +210,13 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
     draft.context.journalHeadId,
     draft.context.nowMs,
   );
-  const row = planned.rows.find((candidate) => candidate.address.taskId === task.taskId);
-  if (row?.classification !== "replayable" || parkedHead(task) !== undefined) {
+  const row = planned.rows.find((candidate) => candidate.address.taskId === acceptedTask.taskId);
+  if (row?.classification !== "replayable" || parkedHead(acceptedTask) !== undefined) {
     return { status: "stale", mismatch: "strand_head" };
   }
 
+  const task = draft.task(request.address.sessionId, request.address.taskId);
+  const session = draft.session(request.address.sessionId);
   // The conditional state transition is the complete guard: no separate
   // validate/claim phase exists. Advancing the epoch fences every older bind.
   task.execution.epoch += 1;
@@ -273,8 +277,8 @@ export function releaseMandate(
   request: ReleaseMandateRequest,
 ): ReleaseMandateResult {
   const mandate = request.mandate;
-  const task = draft.task(mandate.address.sessionId, mandate.address.taskId);
-  const lease = task.execution.liveLease;
+  const current = draft.readTask(mandate.address.sessionId, mandate.address.taskId);
+  const lease = current.execution.liveLease;
   if (
     lease === undefined ||
     lease.ownerId !== mandate.lease.ownerId ||
@@ -283,7 +287,8 @@ export function releaseMandate(
   ) {
     return { status: "stale" };
   }
-  draft.assertProgram(mandate.programCapability, task, mandate.address.sessionId);
+  draft.assertProgram(mandate.programCapability, current, mandate.address.sessionId);
+  const task = draft.task(mandate.address.sessionId, mandate.address.taskId);
   delete task.execution.liveLease;
   draft.append(mandate.address.sessionId, mandate.lease.epoch, {
     type: "AdvancementReleased",
@@ -329,7 +334,7 @@ export function ensureChild(
   draft: DecisionDraft,
   request: EnsureChildTaskRequest,
 ): EnsureChildTaskResult {
-  const parent = draft.task(request.sessionId, request.parentTaskId);
+  const parent = draft.readTask(request.sessionId, request.parentTaskId);
   draft.assertActive(parent);
   const parentPull = pullById(parent, request.parentPullId);
   if (parentPull.request.acceptedDescriptor.kind !== "invoke") {
@@ -340,11 +345,11 @@ export function ensureChild(
     expected.id !== request.child.id ||
     expected.version !== request.child.version ||
     expected.digest !== request.child.digest ||
-    canonicalJson(expected.input) !== canonicalJson(request.child.input)
+    encodeCanonicalJson(expected.input) !== canonicalJson(request.child.input)
   ) {
     throw new CrankError("nondeterminism_detected", "Child descriptor differs from parent pull");
   }
-  const existing = [...draft.session(request.sessionId).execution.tasks.values()].find(
+  const existing = [...draft.readSession(request.sessionId).execution.tasks.values()].find(
     (task) =>
       task.origin.kind === "child" &&
       task.origin.invokedBy.taskId === request.parentTaskId &&
@@ -363,7 +368,7 @@ export function ensureChild(
       ? { taskId: existing.taskId }
       : { taskId: existing.taskId, outcome };
   }
-  const ordinal = [...draft.session(request.sessionId).execution.tasks.values()].filter(
+  const ordinal = [...draft.readSession(request.sessionId).execution.tasks.values()].filter(
     (task) => task.origin.kind === "child" && task.origin.invokedBy.taskId === request.parentTaskId,
   ).length;
   const taskId = `${request.parentTaskId}.${ordinal}`;
@@ -398,7 +403,7 @@ function taskExecution(
 }
 
 function inheritedChildExecutionOptions(
-  parent: DraftTask,
+  parent: TaskState,
   route: OpenDurableTaskRequest["route"],
 ): Pick<OpenDurableTaskRequest, "elicitAudience" | "catalog" | "catalogDigest" | "route"> {
   return {

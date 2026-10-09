@@ -177,13 +177,17 @@ export function* executeChatTurn(
         message: "Elicitation response does not identify the selected interrupt",
       });
     }
-    const journal = yield* programDriverJournalStore.open(requestedConversationId);
-    const validation = yield* journal.validateElicitResponse({
-      sessionId: requestedConversationId,
-      pullId: body.command.interruptId,
-      participantId,
-      completion: assertJson(response.completion),
-    });
+    const pullId = body.command.interruptId;
+    const validation = yield* programDriverJournalStore.withJournal(
+      requestedConversationId,
+      (journal) =>
+        journal.validateElicitResponse({
+          sessionId: requestedConversationId,
+          pullId,
+          participantId,
+          completion: assertJson(response.completion),
+        }),
+    );
     if (validation.status !== "valid") {
       const code =
         validation.status === "audience_invalid"

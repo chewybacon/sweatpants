@@ -60,8 +60,8 @@ export interface ChatTurnAdmission {
 
 export function* admitProgramDriverChatTurn(
   request: ChatAdmissionRequest,
+  journal: ProgramDriverJournal,
 ): Operation<ChatTurnAdmission> {
-  const journal = yield* request.journalStore.open(request.conversationId);
   const recovery = yield* journal.recoveryState(request.conversationId);
   const active =
     recovery.status === "active"

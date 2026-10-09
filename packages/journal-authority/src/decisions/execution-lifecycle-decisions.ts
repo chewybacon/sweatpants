@@ -1,6 +1,6 @@
-import { CrankError, assertInlineSize, type ProgramStep } from "@sweatpants/durable-execution";
+import { CrankError, encodeInlineJson, type ProgramStep } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { stableTupleHash, canonicalDigest } from "@sweatpants/foundation";
+import { stableTupleHash, digestCanonicalJson, sha256 } from "@sweatpants/foundation";
 import type { PullState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import {
@@ -15,7 +15,7 @@ import {
 import {
   forkGroupOutcome,
   reduceForkMemberTerminal,
-  type ForkGroupState,
+  type DraftForkGroup,
 } from "../forest/fork-group.ts";
 import { endLiveLease } from "../store/live-lease.ts";
 import { sanitizeCancellationReason } from "../state/authority-support.ts";
@@ -32,10 +32,12 @@ export function requestCancellation(
   reason?: string,
   commandId = stableTupleHash(["cancel-command", sessionId, taskId]),
 ): CancellationAcknowledgement {
-  const task = draft.task(sessionId, taskId);
-  if (task.lifecycle.status !== "active") throw new CrankError("task_terminal");
-  const current = task.lifecycle.cancellation;
-  if (current.type !== "none")
+  const observed = draft.readTask(sessionId, taskId);
+  if (observed.lifecycle.status !== "active") {
+    throw new CrankError("task_terminal");
+  }
+  const current = observed.lifecycle.cancellation;
+  if (current.type !== "none") {
     return {
       accepted: true,
       duplicate: true,
@@ -43,17 +45,22 @@ export function requestCancellation(
       ...(current.reason === undefined ? {} : { reason: current.reason }),
       frontier: structuredClone(current.frontier),
     };
+  }
+  const task = draft.task(sessionId, taskId);
   const frontierPull = pullByAction(task, task.nextActionIndex);
   const frontier = {
     actionIndex: task.nextActionIndex,
     ...(frontierPull === undefined ? {} : { pullId: frontierPull.pullId }),
   };
   const safeReason = sanitizeCancellationReason(reason);
-  task.lifecycle.cancellation = {
-    type: "requested",
-    commandId,
-    ...(safeReason === undefined ? {} : { reason: safeReason }),
-    frontier,
+  task.lifecycle = {
+    status: "active",
+    cancellation: {
+      type: "requested",
+      commandId,
+      ...(safeReason === undefined ? {} : { reason: safeReason }),
+      frontier,
+    },
   };
   draft.append(sessionId, undefined, {
     type: "CancellationRequested",
@@ -124,26 +131,36 @@ export function beginCancellationUnwind(
     restoredFrontier?: { proof: RestoredFrontierProof; step: ProgramStep };
   },
 ): DurableCancellationState {
-  const task = draft.task(request.sessionId, request.taskId);
-  if (task.lifecycle.status !== "active") return terminalCancellation(task);
-  const current = task.lifecycle.cancellation;
-  if (current.type === "unwinding") return structuredClone(current);
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  if (observed.lifecycle.status !== "active") {
+    return terminalCancellation(observed);
+  }
+  const current = observed.lifecycle.cancellation;
+  if (current.type === "unwinding") {
+    return structuredClone(current);
+  }
   if (
     current.type !== "requested" &&
     current.type !== "settling_pull" &&
     current.type !== "cancelling_children"
-  )
+  ) {
     throw new CrankError("invalid_command", "Task has no cancellation to unwind");
+  }
   const frontierPull = current.frontier.pullId
-    ? pullById(task, current.frontier.pullId)
+    ? pullById(observed, current.frontier.pullId)
     : undefined;
-  if (frontierPull && frontierPull.resolution.status === "open")
+  if (frontierPull && frontierPull.resolution.status === "open") {
     throw new CrankError("cancellation_blocked");
-  task.lifecycle.cancellation = {
-    type: "unwinding",
-    commandId: current.commandId,
-    ...(current.reason === undefined ? {} : { reason: current.reason }),
-    frontier: current.frontier,
+  }
+  const task = draft.task(request.sessionId, request.taskId);
+  task.lifecycle = {
+    status: "active",
+    cancellation: {
+      type: "unwinding",
+      commandId: current.commandId,
+      ...(current.reason === undefined ? {} : { reason: current.reason }),
+      frontier: current.frontier,
+    },
   };
   return structuredClone(task.lifecycle.cancellation);
 }
@@ -152,6 +169,12 @@ export function detachAttempt(
   draft: DecisionDraft,
   request: { sessionId: string; taskId: string; pullId: string; reason?: string },
 ): void {
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  if (
+    !pullById(observed, request.pullId).attempts.some((attempt) => attempt.status === "started")
+  ) {
+    return;
+  }
   const task = draft.task(request.sessionId, request.taskId);
   const pull = pullById(task, request.pullId);
   detachPullAttempts(draft, request.sessionId, task, pull, request.reason ?? "transport_lost");
@@ -167,14 +190,20 @@ export function abandonAttempt(
     reason?: string;
   },
 ): void {
-  const task = draft.task(request.sessionId, request.taskId);
+  const task = draft.readTask(request.sessionId, request.taskId);
   const pull = pullById(task, request.pullId);
   const attempt = pull.attempts.find((candidate) => candidate.attemptId === request.attemptId);
-  if (!attempt) throw new CrankError("pull_not_found");
-  if (attempt.status === "revoked") return;
-  if (attempt.status === "completed" || attempt.status === "superseded")
+  if (!attempt) {
+    throw new CrankError("pull_not_found");
+  }
+  if (attempt.status === "revoked") {
+    return;
+  }
+  if (attempt.status === "completed" || attempt.status === "superseded") {
     throw new CrankError("task_terminal");
-  attempt.status = "revoked";
+  }
+  const owned = pullById(draft.task(request.sessionId, request.taskId), request.pullId);
+  owned.attempts.find((candidate) => candidate.attemptId === request.attemptId)!.status = "revoked";
   draft.append(request.sessionId, undefined, {
     type: "AttemptAbandoned",
     taskId: request.taskId,
@@ -197,11 +226,16 @@ export function forceOrphan(
       | "replay_diverged";
   },
 ): void {
+  const observed = draft.readTask(request.sessionId, request.taskId);
+  if (observed.lifecycle.status === "orphaned") {
+    return;
+  }
   const task = draft.task(request.sessionId, request.taskId);
-  if (task.lifecycle.status === "orphaned") return;
   draft.assertActive(task);
   for (const action of task.actions) {
-    if (action.kind !== "pull" || action.pull.resolution.status === "settled") continue;
+    if (action.kind !== "pull" || action.pull.resolution.status === "settled") {
+      continue;
+    }
     action.pull.resolution = {
       ...action.pull.resolution,
       revoked: true,
@@ -238,11 +272,14 @@ export function settleParentFromChild(
   task: DraftTask,
   outcome: OperationOutcome,
 ): void {
-  if (task.origin.kind !== "child") return;
+  if (task.origin.kind !== "child") {
+    return;
+  }
   const parent = draft.task(sessionId, task.origin.invokedBy.taskId);
   const pull = pullById(parent, task.origin.invokedBy.pullId);
-  if (!["invoke", "all", "race", "spawn", "join"].includes(pull.request.acceptedDescriptor.kind))
+  if (!["invoke", "all", "race", "spawn", "join"].includes(pull.request.acceptedDescriptor.kind)) {
     throw new CrankError("invalid_journal");
+  }
   const group = parent.forkGroup;
   if (group !== undefined && group.pullId === pull.pullId) {
     settleForkGroupMember(draft, sessionId, parent, pull, group, task, outcome);
@@ -259,10 +296,11 @@ export function settlePullWithOutcome(
   ownerEpoch: number,
   outcome: OperationOutcome,
 ): void {
-  const digest = canonicalDigest(outcome);
+  const digest = digestCanonicalJson(outcome);
   if (pull.resolution.status === "settled") {
-    if (pull.resolution.settlement.outcomeDigest !== digest)
+    if (pull.resolution.settlement.outcomeDigest !== digest) {
       throw new CrankError("nondeterminism_detected");
+    }
     return;
   }
   const offset = draft.append(sessionId, ownerEpoch, {
@@ -305,7 +343,7 @@ function settleForkGroupMember(
   sessionId: string,
   parent: DraftTask,
   pull: DraftPull,
-  group: DeepMutable<ForkGroupState>,
+  group: DraftForkGroup,
   member: DraftTask,
   outcome: OperationOutcome,
 ): void {
@@ -336,7 +374,7 @@ function settleForkGroupMember(
       pullId: pull.pullId,
       groupId: group.groupId,
       terminal,
-      terminalDigest: canonicalDigest(terminal),
+      terminalDigest: digestCanonicalJson(terminal),
     });
     settlePullWithOutcome(
       draft,
@@ -358,12 +396,14 @@ function cancelNonSettleablePull(
   pull.resolution = { status: "open", revoked: true };
   let uncertain: string | undefined;
   for (const attempt of pull.attempts) {
-    if (attempt.status === "started" || attempt.status === "detached")
+    if (attempt.status === "started" || attempt.status === "detached") {
       uncertain ??= attempt.attemptId;
-    if (attempt.status !== "completed" && attempt.status !== "superseded")
+    }
+    if (attempt.status !== "completed" && attempt.status !== "superseded") {
       attempt.status = "revoked";
+    }
   }
-  if (uncertain)
+  if (uncertain) {
     draft.append(sessionId, undefined, {
       type: "AttemptOutcomeUnknown",
       taskId: task.taskId,
@@ -371,7 +411,9 @@ function cancelNonSettleablePull(
       attemptId: uncertain,
       reason: "no_settlement_path",
     });
-  settlePull(draft, sessionId, task, pull, { status: "cancelled" });
+  }
+  const outcome = { status: "cancelled" } as const;
+  settlePull(draft, sessionId, task, pull, outcome, digestCanonicalJson(outcome));
 }
 function settlePull(
   draft: DecisionDraft,
@@ -379,8 +421,8 @@ function settlePull(
   task: DraftTask,
   pull: DraftPull,
   outcome: OperationOutcome,
+  digest: string,
 ): void {
-  const digest = canonicalDigest(outcome);
   const offset = draft.append(sessionId, undefined, {
     type: "PullResolved",
     taskId: task.taskId,
@@ -414,9 +456,11 @@ export function detachTaskAttempts(
   task: DraftTask,
   reason: string,
 ): void {
-  for (const action of task.actions)
-    if (action.kind === "pull")
+  for (const action of task.actions) {
+    if (action.kind === "pull") {
       detachPullAttempts(draft, sessionId, task, action.pull as DraftPull, reason);
+    }
+  }
 }
 function detachPullAttempts(
   draft: DecisionDraft,
@@ -425,7 +469,7 @@ function detachPullAttempts(
   pull: DraftPull,
   reason: string,
 ): void {
-  for (const attempt of pull.attempts)
+  for (const attempt of pull.attempts) {
     if (attempt.status === "started") {
       attempt.status = "detached";
       draft.append(sessionId, undefined, {
@@ -455,6 +499,7 @@ function detachPullAttempts(
         failIndeterminate(draft, sessionId, task, pull, attempt, reason);
       }
     }
+  }
 }
 function failIndeterminate(
   draft: DecisionDraft,
@@ -484,13 +529,13 @@ function failIndeterminate(
       },
     },
   };
-  assertInlineSize(outcome, pull.request.maxOutcomeBytes);
-  settlePull(draft, sessionId, task, pull, outcome);
+  const encodedOutcome = encodeInlineJson(outcome, pull.request.maxOutcomeBytes);
+  settlePull(draft, sessionId, task, pull, outcome, sha256(encodedOutcome));
   if (
     task.lifecycle.status === "active" &&
     task.lifecycle.cancellation.type === "settling_pull" &&
     task.lifecycle.cancellation.pullId === pull.pullId
-  )
+  ) {
     task.lifecycle.cancellation = {
       type: "requested",
       commandId: task.lifecycle.cancellation.commandId,
@@ -499,5 +544,6 @@ function failIndeterminate(
         : { reason: task.lifecycle.cancellation.reason }),
       frontier: task.lifecycle.cancellation.frontier,
     };
+  }
   draft.session(sessionId).control.runnable = true;
 }

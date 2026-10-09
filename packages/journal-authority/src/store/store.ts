@@ -4,10 +4,10 @@ import type { Operation } from "effection";
 export type DurableCounter = string;
 export type Milliseconds = number;
 
-export interface PrivateSegmentPointer {
+export type PrivateSegmentPointer = {
   readonly segmentId: string;
   readonly lastSequence: DurableCounter;
-}
+};
 
 export interface ExecutionObjectPointer {
   readonly objectId: string;

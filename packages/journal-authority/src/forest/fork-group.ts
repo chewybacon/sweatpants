@@ -1,6 +1,6 @@
 import type { OperationOutcome, SerializedEffectError } from "@sweatpants/durable-effects";
 import { CrankError, type DurableForkExpiry } from "@sweatpants/durable-execution";
-import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, digestCanonicalJson } from "@sweatpants/foundation";
 
 /**
  * Fork-group core: closed policy union, expiry resolution, terminal algebra,
@@ -96,11 +96,11 @@ export function resolveForkDeadline(
 }
 
 /** A member's whole biography crossing the strand boundary as data. */
-export interface ForkMemberBiography {
+export type ForkMemberBiography = {
   readonly ordinal: number;
   readonly taskId: string;
   readonly outcome: OperationOutcome;
-}
+};
 
 /** The closed five-ending algebra a fork slot resolves to (REQ-026).
  *  Ancestors exhaustively handle these five endings forever; a member's
@@ -138,7 +138,9 @@ export function completedForkGroupTerminal(value: unknown): CompletedForkGroupTe
 
 function isCompletedForkGroupTerminal(value: unknown): value is CompletedForkGroupTerminal {
   const record = jsonRecord(value);
-  if (!record || record["status"] !== "completed") return false;
+  if (!record || record["status"] !== "completed") {
+    return false;
+  }
   const winnerOrdinal = record["winnerOrdinal"];
   if (
     winnerOrdinal !== undefined &&
@@ -152,7 +154,9 @@ function isCompletedForkGroupTerminal(value: unknown): value is CompletedForkGro
 
 function isForkMemberBiography(value: unknown): value is ForkMemberBiography {
   const record = jsonRecord(value);
-  if (!record) return false;
+  if (!record) {
+    return false;
+  }
   const ordinal = record["ordinal"];
   const taskId = record["taskId"];
   return (
@@ -166,7 +170,9 @@ function isForkMemberBiography(value: unknown): value is ForkMemberBiography {
 
 function isOperationOutcome(value: unknown): value is OperationOutcome {
   const record = jsonRecord(value);
-  if (!record || typeof record["status"] !== "string") return false;
+  if (!record || typeof record["status"] !== "string") {
+    return false;
+  }
   switch (record["status"]) {
     case "ok":
       return Object.prototype.hasOwnProperty.call(record, "value");
@@ -197,7 +203,7 @@ export interface ForkGroupMember {
   readonly sampling?: "delegated" | "private";
   /** Stable delivery correlator, set when the delegation record commits
    *  (REQ-038: journal-first, stable across retries). */
-  delegationCorrelator?: string;
+  readonly delegationCorrelator?: string;
   readonly terminal?: {
     readonly outcome: OperationOutcome;
     readonly outcomeDigest: string;
@@ -224,9 +230,8 @@ export function peerLossOutcome(reason: string): OperationOutcome {
 export type ForkGroupStatus = "open" | "cancelling" | "resolved";
 
 export interface ForkGroupState {
-  /** Monotonic materialized-index revision used by bind CAS. Optional only
-   * while dual-reading snapshots written before the spine cutover. */
-  revision?: number;
+  /** Monotonic materialized-index revision used by bind CAS. */
+  readonly revision?: number;
   readonly groupId: string;
   readonly parentTaskId: string;
   readonly pullId: string;
@@ -234,13 +239,13 @@ export interface ForkGroupState {
   readonly policy: ForkPolicy;
   readonly deadlineMs: number;
   readonly members: readonly ForkGroupMember[];
-  status: ForkGroupStatus;
+  readonly status: ForkGroupStatus;
   /** Why cancellation began; decides the ending when members drain. */
-  cancellingCause?: "failure" | "race_winner" | "expiry" | "cancellation";
+  readonly cancellingCause?: "failure" | "race_winner" | "expiry" | "cancellation";
   /** Set once the breach record commits; breach retries are idempotent. */
-  breachedAtMs?: number;
-  winner?: { readonly ordinal: number; readonly outcomeDigest: string };
-  resolution?: ForkGroupTerminal;
+  readonly breachedAtMs?: number;
+  readonly winner?: { readonly ordinal: number; readonly outcomeDigest: string };
+  readonly resolution?: ForkGroupTerminal;
 }
 
 /** Idempotency identity for one group opening (REQ-023). */
@@ -266,7 +271,11 @@ export interface ForkReduction {
 }
 
 /** Draft-friendly mutable view used by decision handlers. */
-export type DraftForkGroup = { -readonly [K in keyof ForkGroupState]: ForkGroupState[K] };
+export type DraftForkGroupMember = { -readonly [K in keyof ForkGroupMember]: ForkGroupMember[K] };
+export type DraftForkGroup = Omit<
+  { -readonly [K in keyof ForkGroupState]: ForkGroupState[K] },
+  "members"
+> & { members: DraftForkGroupMember[] };
 
 function biographies(members: readonly ForkGroupMember[]): readonly ForkMemberBiography[] {
   return members
@@ -310,7 +319,9 @@ function resolveDrained(group: ForkGroupState): ForkGroupTerminal {
   const failure =
     outcomes.find((entry) => entry.outcome.status === "error") ??
     outcomes.find((entry) => entry.outcome.status !== "ok");
-  if (failure === undefined) return { status: "completed", outcomes };
+  if (failure === undefined) {
+    return { status: "completed", outcomes };
+  }
   return {
     status: "failed",
     error:
@@ -332,7 +343,7 @@ function resolveDrained(group: ForkGroupState): ForkGroupTerminal {
  * the member biography; the accepted resolution never changes.
  */
 export function reduceForkMemberTerminal(
-  group: ForkGroupState,
+  group: DraftForkGroup,
   taskId: string,
   outcome: OperationOutcome,
 ): ForkReduction {
@@ -340,14 +351,14 @@ export function reduceForkMemberTerminal(
   if (member === undefined) {
     throw new CrankError("invalid_journal", `Task ${taskId} is not a fork group member`);
   }
-  const outcomeDigest = canonicalDigest(outcome);
+  const outcomeDigest = digestCanonicalJson(outcome);
   if (member.terminal !== undefined) {
     if (member.terminal.outcomeDigest !== outcomeDigest) {
       throw new CrankError("nondeterminism_detected", "Fork member terminal differs");
     }
     return { cancelMembers: [] };
   }
-  (member as { terminal?: ForkGroupMember["terminal"] }).terminal = {
+  member.terminal = {
     outcome: structuredClone(outcome),
     outcomeDigest,
   };
@@ -396,9 +407,13 @@ function nonterminalMembers(group: ForkGroupState): string[] {
  * only after cleanup completes). Returns the resolution, or undefined while
  * members remain nonterminal.
  */
-export function drainForkGroup(group: ForkGroupState): ForkGroupTerminal | undefined {
-  if (group.status === "resolved") return group.resolution;
-  if (!group.members.every((member) => member.terminal !== undefined)) return undefined;
+export function drainForkGroup(group: DraftForkGroup): ForkGroupTerminal | undefined {
+  if (group.status === "resolved") {
+    return group.resolution;
+  }
+  if (!group.members.every((member) => member.terminal !== undefined)) {
+    return undefined;
+  }
   group.status = "resolved";
   group.resolution = resolveDrained(group);
   group.revision = (group.revision ?? 0) + 1;
@@ -412,7 +427,7 @@ export function drainForkGroup(group: ForkGroupState): ForkGroupTerminal | undef
  * plus completed cleanup).
  */
 export function beginForkGroupCancellation(
-  group: ForkGroupState,
+  group: DraftForkGroup,
   cause: "expiry" | "cancellation",
 ): readonly string[] {
   if (group.status === "resolved") {
@@ -432,7 +447,7 @@ export function beginForkGroupCancellation(
  * terminal are confined to their own biographies.
  */
 export function forceOrphanForkGroupResolution(
-  group: ForkGroupState,
+  group: DraftForkGroup,
   reason: string,
 ): ForkGroupTerminal {
   if (group.status === "resolved") {

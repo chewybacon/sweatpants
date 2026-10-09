@@ -28,17 +28,18 @@ describe("ProgramDriver journal inspector", () => {
       executionStore: createMemoryExecutionStore(),
     });
     await run(function* () {
-      const journal = yield* store.open("conversation-inspect");
-      yield* journal.openTask({
-        sessionId: "conversation-inspect",
-        turnId: "turn-0",
-        taskId: "turn-0/root",
-        manifest,
-        input: { secret: "must-not-leak", visible: "okay" },
-        executionEpoch: 1,
-        attachmentId: "inspector-attachment",
-        audience: "workflow-host",
-      });
+      yield* store.withJournal("conversation-inspect", (journal) =>
+        journal.openTask({
+          sessionId: "conversation-inspect",
+          turnId: "turn-0",
+          taskId: "turn-0/root",
+          manifest,
+          input: { secret: "must-not-leak", visible: "okay" },
+          executionEpoch: 1,
+          attachmentId: "inspector-attachment",
+          audience: "workflow-host",
+        }),
+      );
     });
 
     const inspected = await inspectProgramDriverJournal("conversation-inspect", store);

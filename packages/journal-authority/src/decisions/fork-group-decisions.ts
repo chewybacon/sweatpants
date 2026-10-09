@@ -6,10 +6,16 @@ import {
   type DurableRaceDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import { stableTupleHash, canonicalDigest, canonicalJson } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  digestCanonicalJson,
+  canonicalJson,
+  encodeCanonicalJson,
+} from "@sweatpants/foundation";
+import type { TaskState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
-import type { DeepMutable, DraftTask } from "./decision-state.ts";
+import type { DeepMutable } from "./decision-state.ts";
 import { pullById } from "./decision-state.ts";
 import {
   assertForkPolicyPairing,
@@ -22,6 +28,8 @@ import {
   peerLossOutcome,
   resolveForkDeadline,
   type ForkGroupState,
+  type DraftForkGroup,
+  type DraftForkGroupMember,
   type ForkPolicy,
 } from "../forest/fork-group.ts";
 import { signCapability, verifyDeliveryMandate } from "../contract/capabilities.ts";
@@ -59,7 +67,7 @@ export function openForkGroup(
   request: OpenForkGroupRequest,
 ): OpenForkGroupResult {
   const { draft } = kernel;
-  const parent = draft.task(request.sessionId, request.parentTaskId);
+  const parent = draft.readTask(request.sessionId, request.parentTaskId);
   draft.assertActive(parent);
   const pull = pullById(parent, request.parentPullId);
   const kind = pull.request.acceptedDescriptor.kind;
@@ -94,7 +102,7 @@ export function openForkGroup(
       expected.id !== member.child.id ||
       expected.version !== member.child.version ||
       expected.digest !== member.child.digest ||
-      canonicalJson(expected.input) !== canonicalJson(member.child.input)
+      encodeCanonicalJson(expected.input) !== canonicalJson(member.child.input)
     ) {
       throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
     }
@@ -103,7 +111,9 @@ export function openForkGroup(
   // admission fails closed on unknown classes and missing declarations.
   for (const child of descriptor.children) {
     const durability = child.durability;
-    if (durability === undefined || durability.kind === "crank_native") continue;
+    if (durability === undefined || durability.kind === "crank_native") {
+      continue;
+    }
     if (durability.kind === "peer_hosted") {
       if (
         typeof durability.peer !== "string" ||
@@ -121,7 +131,7 @@ export function openForkGroup(
   }
   const deadlineMs = resolveForkDeadline(descriptor.expiry, parent.deadlineMs, draft.context.nowMs);
   const groupId = forkGroupIdFor(parent.taskId, pull.pullId);
-  const baseOrdinal = [...draft.session(request.sessionId).execution.tasks.values()].filter(
+  const baseOrdinal = [...draft.readSession(request.sessionId).execution.tasks.values()].filter(
     (task) => task.origin.kind === "child" && task.origin.invokedBy.taskId === parent.taskId,
   ).length;
   const memberTaskIds = request.members.map(
@@ -174,7 +184,7 @@ export function openForkGroup(
       expiryPolicy: { kind: "at", atMs: deadlineMs },
     });
   }
-  parent.forkGroup = group;
+  draft.task(request.sessionId, request.parentTaskId).forkGroup = group;
   draft.append(request.sessionId, parent.execution.epoch, {
     type: "ForkGroupOpened",
     taskId: parent.taskId,
@@ -201,17 +211,26 @@ export function breachForkGroup(
   request: BreachForkGroupRequest,
 ): BreachForkGroupResult {
   const { draft } = kernel;
-  const parent = draft.task(request.sessionId, request.taskId);
-  const group = parent.forkGroup;
-  if (group === undefined || group.groupId !== request.groupId) {
+  const currentParent = draft.readTask(request.sessionId, request.taskId);
+  const currentGroup = currentParent.forkGroup;
+  if (currentGroup === undefined || currentGroup.groupId !== request.groupId) {
     throw new CrankError("invalid_journal", "Unknown fork group");
   }
-  if (group.status === "resolved") {
+  if (currentGroup.status === "resolved") {
     throw new CrankError("fork_group_terminal", "Fork group already resolved");
   }
-  if (draft.context.nowMs < group.deadlineMs) {
+  if (draft.context.nowMs < currentGroup.deadlineMs) {
     throw new CrankError("fork_group_unexpired", "Fork group deadline has not elapsed");
   }
+  if (
+    currentGroup.breachedAtMs !== undefined &&
+    currentGroup.members.some((member) => member.terminal === undefined)
+  ) {
+    return { groupId: currentGroup.groupId, cancelMembers: [] };
+  }
+  const ownedParent = draft.task(request.sessionId, request.taskId);
+  const parent = ownedParent;
+  const group = ownedParent.forkGroup!;
   let cancelMembers: readonly string[] = [];
   if (group.breachedAtMs === undefined) {
     group.breachedAtMs = draft.context.nowMs;
@@ -236,12 +255,12 @@ export function breachForkGroup(
       pullId: group.pullId,
       groupId: group.groupId,
       terminal: resolution,
-      terminalDigest: canonicalDigest(resolution),
+      terminalDigest: digestCanonicalJson(resolution),
     });
     kernel.settlePull(
       request.sessionId,
-      parent,
-      pullById(parent, group.pullId),
+      ownedParent,
+      pullById(ownedParent, group.pullId),
       parent.execution.epoch,
       forkGroupOutcome(resolution),
     );
@@ -276,9 +295,13 @@ export function forceOrphanForkGroup(
   }
   const resolution = forceOrphanForkGroupResolution(group, request.reason);
   for (const member of group.members) {
-    if (member.terminal !== undefined) continue;
+    if (member.terminal !== undefined) {
+      continue;
+    }
     const memberTask = draft.task(request.sessionId, member.taskId);
-    if (memberTask.lifecycle.status !== "active") continue;
+    if (memberTask.lifecycle.status !== "active") {
+      continue;
+    }
     memberTask.lifecycle = { status: "orphaned", reason: "cleanup_stuck" };
     draft.append(request.sessionId, memberTask.execution.epoch, {
       type: "TaskOrphaned",
@@ -299,7 +322,7 @@ export function forceOrphanForkGroup(
     pullId: group.pullId,
     groupId: group.groupId,
     terminal: resolution,
-    terminalDigest: canonicalDigest(resolution),
+    terminalDigest: digestCanonicalJson(resolution),
   });
   kernel.settlePull(
     request.sessionId,
@@ -311,10 +334,15 @@ export function forceOrphanForkGroup(
   return { resolution };
 }
 
+function peerMemberOf(group: DraftForkGroup, memberTaskId: string): DraftForkGroupMember;
 function peerMemberOf(
-  group: DeepMutable<ForkGroupState>,
+  group: ForkGroupState,
   memberTaskId: string,
-): DeepMutable<ForkGroupState>["members"][number] {
+): ForkGroupState["members"][number];
+function peerMemberOf(
+  group: ForkGroupState,
+  memberTaskId: string,
+): ForkGroupState["members"][number] {
   const member = group.members.find((entry) => entry.taskId === memberTaskId);
   if (member === undefined) {
     throw new CrankError("invalid_journal", `Task ${memberTaskId} is not a fork group member`);
@@ -330,8 +358,8 @@ function groupForRequest(
   sessionId: string,
   taskId: string,
   groupId: string,
-): { parent: DraftTask; group: DeepMutable<ForkGroupState> } {
-  const parent = draft.task(sessionId, taskId);
+): { parent: TaskState; group: ForkGroupState } {
+  const parent = draft.readTask(sessionId, taskId);
   const group = parent.forkGroup;
   if (group === undefined || group.groupId !== groupId) {
     throw new CrankError("invalid_journal", "Unknown fork group");
@@ -353,15 +381,15 @@ export function bindDeliveryMandate(
     throw new CrankError("invalid_command", "Invalid peer delivery lease request");
   }
   const ready = request.ready;
-  const session = draft.session(ready.address.sessionId);
-  const task = draft.task(ready.address.sessionId, ready.address.taskId);
+  let session = draft.readSession(ready.address.sessionId);
+  let task = draft.readTask(ready.address.sessionId, ready.address.taskId);
   draft.assertActive(task);
   const parentTaskId = ready.groupContext.parentTaskId;
   const groupId = ready.groupContext.groupId;
   if (parentTaskId === undefined || groupId === undefined) {
     throw new CrankError("invalid_descriptor", "Peer target lacks fork-group context");
   }
-  const parent = draft.task(ready.address.sessionId, parentTaskId);
+  const parent = draft.readTask(ready.address.sessionId, parentTaskId);
   const group = parent.forkGroup;
   if (group === undefined || group.groupId !== groupId || group.status === "resolved") {
     return { status: "stale", mismatch: "fork_group_revision" };
@@ -399,12 +427,15 @@ export function bindDeliveryMandate(
     return { status: "stale", mismatch: "strand_head" };
   }
 
-  task.execution.epoch += 1;
-  task.execution.attachmentId = request.attachmentId;
+  const owned = draft.task(ready.address.sessionId, ready.address.taskId);
+  session = draft.session(ready.address.sessionId);
+  task = owned;
+  owned.execution.epoch += 1;
+  owned.execution.attachmentId = request.attachmentId;
   const expiresAtMs = draft.context.nowMs + request.leaseDurationMs;
   const correlator =
     ready.deliveryCursor.correlator ?? peerDeliveryCorrelator(group.groupId, member.taskId);
-  task.execution.liveLease = {
+  owned.execution.liveLease = {
     ownerId: request.ownerId,
     epoch: task.execution.epoch,
     expiresAtMs,
@@ -450,15 +481,15 @@ export function bindDeliveryMandate(
     deliveryCursor: { correlator },
     deliveryCapability,
   };
-  session.control.runnable = false;
+  draft.session(ready.address.sessionId).control.runnable = false;
   return { status: "bound", mandate };
 }
 
 function mintDeliveryCapability(
   draft: DecisionDraft,
   sessionId: string,
-  parent: DraftTask,
-  group: DeepMutable<ForkGroupState>,
+  parent: TaskState,
+  group: ForkGroupState,
   memberTaskId: string,
   correlator: string,
   peer: string,
@@ -502,8 +533,9 @@ export function commitPeerDelegation(
     }
     return { status: "duplicate", correlator };
   }
-  member.delegationCorrelator = correlator;
-  group.revision = (group.revision ?? 0) + 1;
+  const ownedGroup = draft.task(sessionId, parent.taskId).forkGroup!;
+  peerMemberOf(ownedGroup, member.taskId).delegationCorrelator = correlator;
+  ownedGroup.revision = (ownedGroup.revision ?? 0) + 1;
   draft.append(sessionId, parent.execution.epoch, {
     type: "PeerDelegationCommitted",
     taskId: parent.taskId,
@@ -563,9 +595,9 @@ function deliveryContext(
   expectedCorrelator?: string,
 ): {
   sessionId: string;
-  parent: DraftTask;
-  group: DeepMutable<ForkGroupState>;
-  member: DeepMutable<ForkGroupState>["members"][number];
+  parent: TaskState;
+  group: ForkGroupState;
+  member: ForkGroupState["members"][number];
   correlator: string;
 } {
   const sessionId = mandate.address.sessionId;
@@ -588,7 +620,7 @@ function deliveryContext(
     memberTaskId: member.taskId,
     correlator,
   });
-  const memberTask = draft.task(sessionId, member.taskId);
+  const memberTask = draft.readTask(sessionId, member.taskId);
   if (memberTask.lifecycle.status !== "active") {
     throw new CrankError("fork_member_terminal", "Peer member is already terminal");
   }
@@ -620,7 +652,7 @@ export function reserveDelegatedPeerSample(
   if (member.delegationCorrelator !== correlator) {
     throw new CrankError("invalid_delivery_mandate", "Peer delegation is not committed");
   }
-  const task = draft.task(sessionId, member.taskId);
+  const task = draft.readTask(sessionId, member.taskId);
   const result = kernel.reservePull({
     sessionId,
     turnId: task.turnId,

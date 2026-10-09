@@ -1,6 +1,6 @@
 import { action, race, sleep, type Operation } from "effection";
 import type { ConversationHead, ConversationStore } from "@sweatpants/history-store/contract";
-import type { ProgramDriverJournalStore, ProgramDriverJournal } from "./program-driver-journal.ts";
+import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import { useLogger } from "../logger/index.ts";
 import type { SessionRegistry } from "../response-streams/index.ts";
@@ -71,24 +71,27 @@ export function* waitForForeignActivation(
 function* selectForeignActivation(
   request: ForeignActivationRequest,
 ): Operation<ConversationHead | null> {
-  let head = request.head;
-  let journal: ProgramDriverJournal | undefined;
-  while (
+  const isForeign = (head: ConversationHead | null) =>
     head?.activeExecutionId &&
     (head.state === "running" || head.state === "recovering") &&
-    request.liveActivations.get(request.conversationId)?.executionId !== head.activeExecutionId
-  ) {
-    journal ??= yield* request.journalStore.open(request.conversationId);
-    const lease = yield* journal.query({
-      type: "control.activation-status",
-      sessionId: request.conversationId,
-    });
-    if (lease.remainingMs <= 0) {
-      head = yield* request.conversationStore.loadHead(request.conversationId);
-      break;
-    }
-    yield* sleep(Math.min(lease.remainingMs, 1_000));
-    head = yield* request.conversationStore.loadHead(request.conversationId);
+    request.liveActivations.get(request.conversationId)?.executionId !== head.activeExecutionId;
+  if (!isForeign(request.head)) {
+    return request.head;
   }
-  return head;
+  return yield* request.journalStore.withJournal(request.conversationId, function* (journal) {
+    let head = request.head;
+    while (isForeign(head)) {
+      const lease = yield* journal.query({
+        type: "control.activation-status",
+        sessionId: request.conversationId,
+      });
+      if (lease.remainingMs <= 0) {
+        head = yield* request.conversationStore.loadHead(request.conversationId);
+        break;
+      }
+      yield* sleep(Math.min(lease.remainingMs, 1_000));
+      head = yield* request.conversationStore.loadHead(request.conversationId);
+    }
+    return head;
+  });
 }

@@ -11,7 +11,7 @@ import {
   forkGroupOutcome,
   reduceForkMemberTerminal,
   resolveForkDeadline,
-  type ForkGroupState,
+  type DraftForkGroup,
   type ForkPolicy,
 } from "../forest/fork-group.ts";
 
@@ -25,7 +25,7 @@ const cancelled = (): OperationOutcome => ({ status: "cancelled" });
 const ALL: ForkPolicy = { mode: "all", supervision: "one_for_all" };
 const RACE: ForkPolicy = { mode: "race", supervision: "first_success" };
 
-function makeGroup(policy: ForkPolicy, memberCount = 2): ForkGroupState {
+function makeGroup(policy: ForkPolicy, memberCount = 2): DraftForkGroup {
   return {
     groupId: "g1",
     parentTaskId: "p",

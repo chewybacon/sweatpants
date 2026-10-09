@@ -156,7 +156,7 @@ it("rejects unrestorable mutations before staging or committing any data", async
     } catch (caught) {
       error = caught;
     }
-    expect(error).toMatchObject({ code: "invalid_journal" });
+    expect(error).toMatchObject({ code: "invalid_descriptor" });
     expect(writes).toBe(0);
     expect(yield* store.loadControl("authority:committed-view")).toBeNull();
     const restoredJournal2 = yield* createJournal(store, options);

@@ -5,6 +5,8 @@ export {
   parseJsonObject,
   requireJsonObject,
   canonicalJson,
+  encodeCanonicalJson,
+  digestCanonicalJson,
   canonicalSnapshot,
   canonicalDigest,
   cloneJson,
@@ -16,6 +18,7 @@ export {
   hasControlCharacter,
   replaceControlCharacters,
   type Json,
+  type ReadonlyJson,
   type JsonObject,
 } from "./json.ts";
 export * from "./fold.ts";

@@ -8,11 +8,11 @@ import type {
 import type { PinnedProgram, SandboxAffinity } from "./program-contract.ts";
 
 /** Identity is admitted once; task ids remain opaque below this boundary. */
-export interface TurnAddress {
+export type TurnAddress = {
   readonly sessionId: string;
   readonly turnId: string;
   readonly taskId: string;
-}
+};
 
 /** Canonical root identity issued from the authority's root ordinal. */
 export function rootTurnIdentity(

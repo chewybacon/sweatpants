@@ -1,12 +1,18 @@
 import { CrankError, DEFAULT_MAX_INLINE_BYTES } from "@sweatpants/durable-execution";
 import { stableTupleHash, type Json } from "@sweatpants/foundation";
 
-import type { AuthorityCommand, AuthorityDecisionFrame } from "../contract/authority-contract.ts";
+import type {
+  AuthorityCommand,
+  AuthorityDecisionFrame,
+  AuthorityState,
+  AuthoritySessionState,
+  TaskState,
+  PullState,
+} from "../contract/authority-contract.ts";
 import { signCapability, verifyProgramCapability } from "../contract/capabilities.ts";
 import {
-  cloneAuthorityState,
+  cloneTaskState,
   taskOriginSession,
-  type DraftPull,
   type DraftSession,
   type DraftState,
   type DraftTask,
@@ -22,9 +28,12 @@ export interface AuthorityDecisionOptions {
   readonly emissionPolicy?: SemanticEmissionPolicy;
 }
 
-/** Mutable transaction draft shared by focused decision modules. */
+/** Reads retain accepted state. Mutable access owns a copy of only that branch.
+ * Acquiring a mutable branch declares a change; perform no-op guards before it.
+ */
 export class DecisionDraft {
-  readonly state: DraftState;
+  private current: AuthorityState;
+  private readonly accepted: AuthorityState;
   readonly entries: DurableSemanticRecord[] = [];
   readonly context: AuthorityDecisionFrame<AuthorityCommand>["context"];
   readonly maxOutcomeBytes: number;
@@ -32,7 +41,8 @@ export class DecisionDraft {
   readonly offsets = new Map<string, number>();
 
   constructor(frame: AuthorityDecisionFrame<AuthorityCommand>, options: AuthorityDecisionOptions) {
-    this.state = cloneAuthorityState(frame.state);
+    this.accepted = frame.state;
+    this.current = frame.state;
     this.context = frame.context;
     this.maxOutcomeBytes = options.maxOutcomeBytes ?? DEFAULT_MAX_INLINE_BYTES;
     this.emissionPolicy = options.emissionPolicy
@@ -41,10 +51,23 @@ export class DecisionDraft {
     this.offsets.set(frame.context.appendCursor.sessionId, frame.context.appendCursor.nextOffset);
   }
 
-  session(sessionId: string): DraftSession {
-    let session = this.state.sessions.get(sessionId);
-    if (session === undefined) {
-      session = {
+  get state(): AuthorityState {
+    return this.current;
+  }
+
+  private editState(): DraftState {
+    if (this.current === this.accepted) {
+      this.current = {
+        nextNonce: this.accepted.nextNonce,
+        sessions: new Map(this.accepted.sessions),
+      };
+    }
+    return this.current as DraftState;
+  }
+
+  readSession(sessionId: string): AuthoritySessionState {
+    return (
+      this.current.sessions.get(sessionId) ?? {
         execution: { tasks: new Map() },
         control: {
           journalHeadId: null,
@@ -54,16 +77,43 @@ export class DecisionDraft {
           lastActivationEpoch: 0,
           consecutiveRestoreStales: 0,
         },
-      };
-      this.state.sessions.set(sessionId, session);
+      }
+    );
+  }
+
+  readTask(sessionId: string, taskId: string): TaskState {
+    const task = this.current.sessions.get(sessionId)?.execution.tasks.get(taskId);
+    if (task === undefined) {
+      throw new CrankError("unknown_target", `Unknown task ${taskId}`);
     }
-    return session;
+    return task;
+  }
+
+  session(sessionId: string): DraftSession {
+    const state = this.editState();
+    let session = state.sessions.get(sessionId);
+    if (session === undefined || session === this.accepted.sessions.get(sessionId)) {
+      const source = this.readSession(sessionId);
+      session = {
+        control: structuredClone(source.control),
+        execution: { tasks: new Map(source.execution.tasks) },
+      };
+      state.sessions.set(sessionId, session);
+    }
+    return session as DraftSession;
   }
 
   task(sessionId: string, taskId: string): DraftTask {
-    const task = this.state.sessions.get(sessionId)?.execution.tasks.get(taskId);
-    if (task === undefined) throw new CrankError("unknown_target", `Unknown task ${taskId}`);
-    return task;
+    const session = this.session(sessionId);
+    let task = session.execution.tasks.get(taskId);
+    if (task === undefined) {
+      throw new CrankError("unknown_target", `Unknown task ${taskId}`);
+    }
+    if (task === this.accepted.sessions.get(sessionId)?.execution.tasks.get(taskId)) {
+      task = cloneTaskState(task);
+      session.execution.tasks.set(taskId, task);
+    }
+    return task as DraftTask;
   }
 
   append(
@@ -79,18 +129,18 @@ export class DecisionDraft {
       eventId: `journal:${sessionId}:${offset}`,
       sessionId,
       ...(ownerEpoch === undefined ? {} : { ownerEpoch }),
-      payload: structuredClone(payload),
+      payload,
     });
     this.session(sessionId).control.revision += 1;
     return offset;
   }
 
   nonce(): string {
-    this.state.nextNonce += 1;
+    this.editState().nextNonce += 1;
     return stableTupleHash(["nonce", this.context.journalIdentity.id, this.state.nextNonce]);
   }
 
-  programCapability(task: DraftTask, deterministicNonce?: string): string {
+  programCapability(task: TaskState, deterministicNonce?: string): string {
     return signCapability(
       {
         journalId: this.context.journalIdentity.id,
@@ -110,7 +160,7 @@ export class DecisionDraft {
     );
   }
 
-  resolutionCapability(task: DraftTask, pull: DraftPull, attemptId: string | undefined): string {
+  resolutionCapability(task: TaskState, pull: PullState, attemptId: string | undefined): string {
     return signResolutionCapability({
       context: this.context,
       state: this.state,
@@ -121,11 +171,13 @@ export class DecisionDraft {
     });
   }
 
-  assertActive(task: DraftTask): void {
-    if (task.lifecycle.status !== "active") throw new CrankError("task_terminal");
+  assertActive(task: TaskState): void {
+    if (task.lifecycle.status !== "active") {
+      throw new CrankError("task_terminal");
+    }
   }
 
-  assertProgram(token: string, task: DraftTask, sessionId: string): void {
+  assertProgram(token: string, task: TaskState, sessionId: string): void {
     const claims = verifyProgramCapability(token, this.context.keyring, {
       audience: task.execution.audience,
       journalId: this.context.journalIdentity.id,
@@ -146,7 +198,9 @@ export class DecisionDraft {
 
   parseSchema(digest: string, value: unknown, errorCode: string): Json {
     const validated = parseRegisteredSchema(this.context.schemas, digest, value);
-    if (validated.status === "unavailable") throw new CrankError("schema_version_unavailable");
+    if (validated.status === "unavailable") {
+      throw new CrankError("schema_version_unavailable");
+    }
     if (validated.status === "invalid" || validated.status === "schema-error") {
       throw new CrankError(errorCode);
     }

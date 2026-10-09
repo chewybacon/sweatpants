@@ -124,19 +124,47 @@ describe("ProgramWorkflowHost", () => {
     });
   });
 
+  it("acquires the journal when a deferred run is consumed after its opening scope has exited", async () => {
+    const host = fixture();
+    const opened = await run(() =>
+      host.open({
+        program: pin,
+        manifest: approvalProgram.manifest,
+        input: { prompt: "Run later?" },
+        catalog,
+      }),
+    );
+    const parked = await run(() => opened.result);
+    expect(parked).toMatchObject({ state: "parked", reason: "elicit" });
+    const trace = await run(() => host.trace(opened.sessionId));
+    const pull = trace.tasks[0]?.operations[0];
+    expect(pull).toBeDefined();
+    expect(
+      await run(() =>
+        host.respond({
+          sessionId: opened.sessionId,
+          taskId: opened.taskId,
+          pullId: pull!.pullId,
+          response: { action: "accept", content: { approved: true } },
+        }),
+      ),
+    ).toEqual({ state: "completed", value: "approved" });
+  });
+
   it("resumes through the authority recovery query without downloading the journal", async () => {
     const backing = sharedApprovalStore();
     let journalReads = 0;
     const observed: ProgramDriverJournalStore = {
-      *open(conversationId) {
-        const journal = yield* backing.open(conversationId);
-        return {
-          ...journal,
-          *readJournal(sessionId) {
-            journalReads += 1;
-            return yield* journal.readJournal(sessionId);
-          },
-        };
+      *withJournal(conversationId, operation) {
+        return yield* backing.withJournal(conversationId, (journal) =>
+          operation({
+            ...journal,
+            *readJournal(sessionId) {
+              journalReads += 1;
+              return yield* journal.readJournal(sessionId);
+            },
+          }),
+        );
       },
     };
     const firstHost = fixture(observed);
@@ -188,30 +216,30 @@ describe("ProgramWorkflowHost", () => {
         route: { driverKind: "program", acceptedPlacement: "zone-a" },
       });
       expect(yield* opened.result).toMatchObject({ state: "parked" });
-      const journal = yield* store.open(opened.sessionId);
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        2,
-      );
-      expect(yield* firstHost.resume(opened.sessionId)).toMatchObject({ state: "parked" });
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        2,
-      );
-
-      const trace = yield* replacementHost.trace(opened.sessionId);
-      expect(trace.tasks[0]?.catalogDigest).toBe(catalog.digest);
-      const pull = trace.tasks[0]?.operations[0];
-      expect(pull).toBeDefined();
-      expect(
-        yield* replacementHost.respond({
-          sessionId: opened.sessionId,
-          taskId: opened.taskId,
-          pullId: pull!.pullId,
-          response: { action: "accept", content: { approved: true } },
-        }),
-      ).toEqual({ state: "completed", value: "approved" });
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
-        3,
-      );
+      yield* store.withJournal(opened.sessionId, function* (journal) {
+        expect(
+          (yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch,
+        ).toBe(2);
+        expect(yield* firstHost.resume(opened.sessionId)).toMatchObject({ state: "parked" });
+        expect(
+          (yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch,
+        ).toBe(2);
+        const trace = yield* replacementHost.trace(opened.sessionId);
+        expect(trace.tasks[0]?.catalogDigest).toBe(catalog.digest);
+        const pull = trace.tasks[0]?.operations[0];
+        expect(pull).toBeDefined();
+        expect(
+          yield* replacementHost.respond({
+            sessionId: opened.sessionId,
+            taskId: opened.taskId,
+            pullId: pull!.pullId,
+            response: { action: "accept", content: { approved: true } },
+          }),
+        ).toEqual({ state: "completed", value: "approved" });
+        expect(
+          (yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch,
+        ).toBe(3);
+      });
     });
   });
 

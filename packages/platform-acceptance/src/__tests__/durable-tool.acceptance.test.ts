@@ -154,8 +154,10 @@ async function runDurableToolScenario(
       for (const event of childActivity)
         expect(event).toMatchObject({ subagentRunId: interrupt.subagentRunId });
 
-      const opened = yield* inspection.journalStore.open(conversation.conversationId);
-      const journal = yield* opened.readJournal(conversation.conversationId);
+      const journal = yield* inspection.journalStore.withJournal(
+        conversation.conversationId,
+        (opened) => opened.readJournal(conversation.conversationId),
+      );
       expect(
         journal.some(
           (entry) =>

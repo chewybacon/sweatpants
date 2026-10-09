@@ -5,6 +5,15 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 /** Portable, canonical JSON accepted at persistence and transport boundaries. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
+/** Read-only view of admitted JSON for encoders and content identities. */
+export type ReadonlyJson =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly ReadonlyJson[]
+  | { readonly [key: string]: ReadonlyJson };
+
 /** A JSON value known to be keyed, such as a JSON Schema document. */
 export type JsonObject = { [key: string]: Json };
 
@@ -21,23 +30,33 @@ export class CanonicalJsonError extends TypeError {
 
 /** Validate a JSON boundary value and encode deterministic content-identity bytes. */
 export function canonicalJson(value: unknown): string {
-  return serializeCanonical(assertJson(value))!;
+  return encodeCanonicalJson(assertJson(value));
+}
+
+/** Encode admitted JSON without validating or copying it again. */
+export function encodeCanonicalJson(value: ReadonlyJson): string {
+  return serializeCanonical(value)!;
+}
+
+/** Hash admitted JSON when its content needs a stable identity. */
+export function digestCanonicalJson(value: ReadonlyJson): string {
+  return sha256(encodeCanonicalJson(value));
 }
 
 /** Capture a caller's value and the deterministic bytes used for its content identity. */
 export function canonicalSnapshot<T>(value: T): { value: T; canonical: string } {
-  const canonical = canonicalJson(value);
-  return { value: JSON.parse(canonical) as T, canonical };
+  const captured = assertJson(value);
+  return { value: captured as T, canonical: encodeCanonicalJson(captured) };
 }
 
 /** Hash deterministic JSON bytes. Ordinary storage envelopes do not need this. */
 export function canonicalDigest(value: unknown): string {
-  return sha256(canonicalJson(value));
+  return digestCanonicalJson(assertJson(value));
 }
 
-/** Validate and detach a JSON boundary value using a canonical JSON round trip. */
+/** Validate and detach a JSON boundary value without encoding it. */
 export function cloneJson<T>(value: T): T {
-  return canonicalSnapshot(value).value;
+  return assertJson(value) as T;
 }
 
 /** Returns lowercase SHA-256 hex for a UTF-8 string. */
@@ -120,45 +139,81 @@ export function requireJsonObject(value: Json, path = "$"): JsonObject {
 /**
  * Capture unknown JSON at an ownership boundary. Reject values that JSON would
  * silently discard or transform. Already accepted internal state needs no copy.
+ * An optional depth bound starts at this value, independently of any envelope.
  */
-export function assertJson(value: unknown, path = "$", ancestors = new Set<object>()): Json {
-  if (value === null || typeof value === "boolean") return value;
+export function assertJson(
+  value: unknown,
+  path = "$",
+  options?: { readonly maxDepth: number },
+): Json {
+  return captureJson(value, path, new Set<object>(), options?.maxDepth);
+}
+
+function captureJson(
+  value: unknown,
+  path: string,
+  ancestors: Set<object>,
+  maxDepth: number | undefined,
+): Json {
+  if (maxDepth !== undefined && ancestors.size > maxDepth) {
+    throw invalid(path, "maximum depth exceeded");
+  }
+  if (value === null || typeof value === "boolean") {
+    return value;
+  }
   if (typeof value === "string") {
     assertValidUnicode(value, path);
     return value;
   }
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw invalid(path, "non-finite number");
+    if (!Number.isFinite(value)) {
+      throw invalid(path, "non-finite number");
+    }
     return Object.is(value, -0) ? 0 : value;
   }
-  if (typeof value !== "object") throw invalid(path, typeof value);
-  if (ancestors.has(value)) throw invalid(path, "cycle");
+  if (typeof value !== "object") {
+    throw invalid(path, typeof value);
+  }
+  if (ancestors.has(value)) {
+    throw invalid(path, "cycle");
+  }
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
       const output: Json[] = [];
       for (let index = 0; index < value.length; index++) {
         const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-        if (!descriptor) throw invalid(`${path}[${index}]`, "sparse array slot");
-        if (!("value" in descriptor)) throw invalid(`${path}[${index}]`, "accessor property");
-        output.push(assertJson(descriptor.value, `${path}[${index}]`, ancestors));
+        if (!descriptor) {
+          throw invalid(`${path}[${index}]`, "sparse array slot");
+        }
+        if (!("value" in descriptor)) {
+          throw invalid(`${path}[${index}]`, "accessor property");
+        }
+        output.push(captureJson(descriptor.value, `${path}[${index}]`, ancestors, maxDepth));
       }
-      if (Reflect.ownKeys(value).length !== value.length + 1)
+      if (Reflect.ownKeys(value).length !== value.length + 1) {
         throw invalid(path, "non-index array property");
+      }
       return output;
     }
     const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null)
+    if (prototype !== Object.prototype && prototype !== null) {
       throw invalid(path, "non-plain object");
+    }
     const output: Record<string, Json> = {};
     for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== "string") throw invalid(path, "symbol-keyed property");
-      if (key === "__proto__") throw invalid(`${path}.${key}`, "prototype key");
+      if (typeof key !== "string") {
+        throw invalid(path, "symbol-keyed property");
+      }
+      if (key === "__proto__") {
+        throw invalid(`${path}.${key}`, "prototype key");
+      }
       assertValidUnicode(key, `${path}.<key>`);
       const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-      if (!descriptor.enumerable || !("value" in descriptor))
+      if (!descriptor.enumerable || !("value" in descriptor)) {
         throw invalid(`${path}.${key}`, "non-enumerable or accessor property");
-      output[key] = assertJson(descriptor.value, `${path}.${key}`, ancestors);
+      }
+      output[key] = captureJson(descriptor.value, `${path}.${key}`, ancestors, maxDepth);
     }
     return output;
   } finally {
@@ -169,11 +224,12 @@ export function assertJson(value: unknown, path = "$", ancestors = new Set<objec
 function assertValidUnicode(value: string, path: string): void {
   // Unicode mode matches lone surrogates, never a valid surrogate pair.
   const surrogate = /[\uD800-\uDFFF]/u.exec(value)?.[0];
-  if (surrogate)
+  if (surrogate) {
     throw invalid(
       path,
       surrogate.charCodeAt(0) <= 0xdbff ? "lone high surrogate" : "lone low surrogate",
     );
+  }
 }
 
 function invalid(path: string, kind: string): CanonicalJsonError {

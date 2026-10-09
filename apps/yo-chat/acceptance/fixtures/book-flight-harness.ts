@@ -505,8 +505,9 @@ export async function readJournal(
   conversationId: string,
 ): Promise<DurableSemanticRecord[]> {
   return await run(function* () {
-    const journal = yield* store.open(conversationId);
-    return yield* journal.readJournal(conversationId);
+    return yield* store.withJournal(conversationId, (journal) =>
+      journal.readJournal(conversationId),
+    );
   });
 }
 

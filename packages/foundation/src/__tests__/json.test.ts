@@ -6,6 +6,8 @@ import {
   canonicalJson,
   canonicalSnapshot,
   cloneJson,
+  encodeCanonicalJson,
+  digestCanonicalJson,
   hasControlCharacter,
   parseJsonText,
   parseJsonObject,
@@ -62,6 +64,15 @@ describe("foundation canonical JSON", () => {
     expect(replaceControlCharacters(`bad${String.fromCharCode(0)}value`)).toBe("bad value");
   });
 
+  it("encodes admitted JSON with the same content identity as boundary encoding", () => {
+    const accepted = assertJson({ z: [true, -0, "𝄞"], a: { "10": 2, "2": 3 } });
+    const before = structuredClone(accepted);
+    expect(encodeCanonicalJson(accepted)).toBe(canonicalJson(accepted));
+    expect(digestCanonicalJson(accepted)).toBe(canonicalDigest(accepted));
+    expect(digestCanonicalJson(accepted)).toBe(sha256(encodeCanonicalJson(accepted)));
+    expect(accepted).toEqual(before);
+  });
+
   it("preserves canonical digests without requiring a snapshot", () => {
     expect(canonicalDigest({ b: 2, a: 1 })).toBe(
       "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777",
@@ -71,7 +82,7 @@ describe("foundation canonical JSON", () => {
     );
   });
 
-  it("clones with the same normalization and key order as a canonical JSON round trip", () => {
+  it("clones with the same JSON values and normalization without requiring sorted object keys", () => {
     const shared = { z: -0, a: ["value"] };
     const input = {
       z: shared,
@@ -84,8 +95,8 @@ describe("foundation canonical JSON", () => {
     const roundTrip = JSON.parse(canonicalJson(input));
     const snapshot = canonicalSnapshot(input);
 
-    expect(JSON.stringify(copied)).toBe(JSON.stringify(roundTrip));
-    expect(JSON.stringify(snapshot.value)).toBe(JSON.stringify(roundTrip));
+    expect(copied).toEqual(roundTrip);
+    expect(snapshot.value).toEqual(roundTrip);
     expect(snapshot.canonical).toBe(canonicalJson(input));
     expect(Object.getPrototypeOf(copied.objects[0])).toBe(Object.prototype);
     expect(Object.is(copied.z.z, 0)).toBe(true);
@@ -104,7 +115,7 @@ describe("foundation canonical JSON", () => {
 
     expect(source.z.a).toBe(1);
     expect(snapshot.canonical).toBe('{"z":{"a":1,"b":2}}');
-    expect(Object.keys(snapshot.value.z)).toEqual(["a", "b"]);
+    expect(snapshot.value.z).toEqual({ b: 2, a: 3 });
   });
 
   it("applies the same rejection policy to cloning, snapshots, encoding, and digests", () => {
@@ -157,6 +168,17 @@ describe("foundation canonical JSON", () => {
 
     expect(() => assertJson({ value: Number.NaN })).toThrow(CanonicalJsonError);
     expect(() => canonicalJson(sparse)).toThrow(/sparse array slot/);
+  });
+
+  it("applies optional payload depth during admission without limiting enclosing documents", () => {
+    const payload = { child: { child: "leaf" } };
+    expect(assertJson(payload, "$", { maxDepth: 2 })).toEqual(payload);
+    expect(() => assertJson(payload, "$", { maxDepth: 1 })).toThrow(/maximum depth exceeded/);
+    expect(() => assertJson({ envelope: payload })).not.toThrow();
+    expect(assertJson({ left: payload, right: payload }, "$", { maxDepth: 3 })).toEqual({
+      left: payload,
+      right: payload,
+    });
   });
 
   it("parses text into canonical Json instead of asserting JSON.parse output", () => {

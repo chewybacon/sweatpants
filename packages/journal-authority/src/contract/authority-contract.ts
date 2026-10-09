@@ -581,6 +581,7 @@ export interface AuthorityDecisionFrame<C extends AuthorityCommand> {
 }
 
 export interface KernelTransition<C extends AuthorityCommand> {
+  readonly kind: "changed" | "unchanged";
   readonly state: AuthorityState;
   readonly entries: readonly DurableSemanticRecord[];
   readonly result: CommandResult<C>;

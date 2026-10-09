@@ -27,19 +27,20 @@ type ObjectRow = SqlNumbers<Omit<StoredExecutionObject, "lifetimeScope" | "body"
   blobBody: Uint8Array | null;
 };
 export function controlFromRow(row: ControlRow): ExecutionControl {
-  return decodeExecutionControlJson(
-    cloneJson({
-      executionId: row.executionId,
-      controlRevision: row.controlRevision,
-      ownerFence: row.ownerFence,
-      status: row.status as ExecutionControl["status"],
-      rootTaskId: row.rootTaskId,
-      stopGeneration: row.stopGeneration,
-      requestedDisposition: row.requestedDisposition as ExecutionControl["requestedDisposition"],
-      control: parseJsonText(row.controlJson, "control_json"),
-      updatedAt: numberValue(row.updatedAt, "updated_at"),
-    }),
-  );
+  const metadata = cloneJson({
+    executionId: row.executionId,
+    controlRevision: row.controlRevision,
+    ownerFence: row.ownerFence,
+    status: row.status,
+    rootTaskId: row.rootTaskId,
+    stopGeneration: row.stopGeneration,
+    requestedDisposition: row.requestedDisposition,
+    updatedAt: numberValue(row.updatedAt, "updated_at"),
+  });
+  return decodeExecutionControlJson({
+    ...metadata,
+    control: parseJsonText(row.controlJson, "control_json"),
+  });
 }
 export function privateEnvelopeFromRow(row: PrivateRow): Uint8Array {
   return encodePrivateSegmentEnvelopeFromCanonical(

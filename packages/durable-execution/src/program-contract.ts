@@ -96,11 +96,11 @@ export interface WaitDescriptor {
   notBefore?: string;
   durationMs?: number;
 }
-export interface PinnedProgram {
+export type PinnedProgram = {
   id: string;
   version: string;
   digest: string;
-}
+};
 export type SandboxAffinity = { kind: "invocation" | "conversation" | "workspace"; key: string };
 /** Closed durability classification for one fork member (REQ-035).
  *  `crank_native` members execute under the local crank; `peer_hosted`

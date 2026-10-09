@@ -67,7 +67,13 @@ describe("resolveDurableChatComposition", () => {
     });
     expect(composition.projectionTokens.activeKey.byteLength).toBeGreaterThanOrEqual(32);
     const journalStore = composition.createJournalStore(createMemoryExecutionStore());
-    await expect(run(() => journalStore.open("conversation-1"))).resolves.toBeDefined();
+    await expect(
+      run(() =>
+        journalStore.withJournal("conversation-1", function* (journal) {
+          return yield* journal.rootTaskCount("conversation-1");
+        }),
+      ),
+    ).resolves.toBeDefined();
     await expect(
       run(() => composition.authorizeHistoryRead(new Request("http://localhost/"), "c-1")),
     ).resolves.toBe("authorized");

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { parseJsonText } from "@sweatpants/foundation";
+import { canonicalJson, parseJsonText } from "@sweatpants/foundation";
 import { controlFromRow } from "../sql-codec.ts";
 import { decodeExecutionControl, encodeExecutionControl } from "../store/store-persistence.ts";
 import type { ExecutionControl } from "../store/store.ts";
@@ -29,7 +29,7 @@ function roundTrip(input: typeof row): ExecutionControl {
 it("decodes SQL controls with the same values as the byte boundary", () => {
   const decoded = controlFromRow(row);
   expect(decoded).toEqual(roundTrip(row));
-  expect(JSON.stringify(decoded)).toBe(JSON.stringify(roundTrip(row)));
+  expect(canonicalJson(decoded)).toBe(canonicalJson(roundTrip(row)));
   (decoded.control as { nested: { text: string } }).nested.text = "changed";
   expect(controlFromRow(row)).toEqual(roundTrip(row));
   expect(controlFromRow({ ...row, updatedAt: 2n })).toEqual({ ...roundTrip(row), updatedAt: 2 });
