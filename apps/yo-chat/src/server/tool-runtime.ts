@@ -1,3 +1,5 @@
+import { FileCredentialStore } from "@sweatpants/model-provider-pi-ai";
+import { createYoChatModels } from "./model-catalog";
 import { durableEffectKey } from "@sweatpants/durable-effects";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/tool-runtime-agentcore";
 import { call, type Operation } from "effection";
@@ -268,7 +270,11 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* installChatTools({
     ...yoChatToolConfig(),
     samplingProvider: createModelSamplingProvider(
-      pi({ provider: selection.provider, model: selection.id }),
+      pi({
+        provider: selection.provider,
+        model: selection.id,
+        models: createYoChatModels(new FileCredentialStore()),
+      }),
     ),
   });
 }

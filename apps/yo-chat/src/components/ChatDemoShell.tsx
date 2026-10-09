@@ -1,5 +1,15 @@
 import { useThreadMetadata } from "@/lib/use-thread-metadata";
-import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from "lucide-react";
+import {
+  Plus,
+  PanelLeftOpen,
+  RefreshCcw,
+  Terminal,
+  ArrowUp,
+  ArrowDown,
+  Square,
+  MessageSquare,
+  ChevronRight,
+} from "lucide-react";
 import {
   useChat,
   type ReactChatUIMessage,
@@ -16,7 +26,8 @@ import {
 } from "@/lib/stream-inspector";
 import type { ThreadSummary } from "@/lib/threaded-chat-types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Drawer } from "./Drawer";
+import { demos } from "./demo-navigation";
 import { cn } from "@/lib/utils";
 
 type DemoChatOptions = Extract<UseChatOptions, { readonly threadId: string }>;
@@ -94,14 +105,8 @@ function ToolCallBlock({
   const resultText = toolCall.state === "output-available" ? formatToolResult(toolCall.output) : "";
 
   return (
-    <div
-      className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3"
-      data-testid="tool-call-block"
-      data-call-id={toolCall.callId}
-    >
-      <div className="mb-2 text-[11px] uppercase tracking-[0.25em] text-sky-300/70">
-        Tool · {toolCall.name}
-      </div>
+    <div className="tool-panel" data-testid="tool-call-block" data-call-id={toolCall.callId}>
+      <div className="tool-label">{toolCall.name.replaceAll("_", " ")}</div>
       {toolCall.parts.map((part) => renderPart(part))}
       {!hasRenderedChildren &&
         (toolCall.state === "input-streaming" || toolCall.state === "input-available") && (
@@ -186,11 +191,11 @@ function MessageBubble({ message }: { message: ReactChatUIMessage }) {
 
   return (
     <div
-      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+      className={cn("message-row", isUser && "from-user")}
       data-testid={`message-${message.role}`}
     >
-      <div className="max-w-3xl rounded-[24px] border border-slate-800 bg-slate-900/90 px-5 py-4 text-slate-100 shadow-black/20">
-        <div className="mb-2 text-[11px] uppercase tracking-[0.28em] text-sky-300/70">
+      <div className={cn("message-body", isUser && "user-message")}>
+        <div className="message-author">
           {isUser ? "You" : isSystem ? "System" : "Assistant"}
           {busy ? " - streaming" : ""}
         </div>
@@ -207,7 +212,9 @@ interface ThreadPage {
 }
 async function listThreads(namespace: string, before?: string): Promise<ThreadPage> {
   const params = new URLSearchParams({ namespace });
-  if (before) params.set("before", before);
+  if (before) {
+    params.set("before", before);
+  }
   const response = await fetch(`/api/threaded-chat/threads?${params}`);
   if (!response.ok) {
     throw new Error(`Failed to list ${namespace} threads (${response.status})`);
@@ -256,6 +263,7 @@ function DemoThreadPanel({
   onMetadata,
   draft,
   onDraftChange,
+  onHistoryOpen,
 }: {
   readonly definition: ChatDemoDefinition;
   readonly threadId: string;
@@ -268,8 +276,27 @@ function DemoThreadPanel({
   ) => void;
   readonly draft: string;
   readonly onDraftChange: (value: string) => void;
+  readonly onHistoryOpen: () => void;
 }) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followingRef = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const scrollToLatest = useCallback(() => {
+    const element = scrollRef.current;
+    if (element) {
+      element.scrollTop = element.scrollHeight;
+    }
+    followingRef.current = true;
+    setShowLatest(false);
+  }, []);
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
+    }
+  }, [draft]);
   const inspectorTransport = useMemo(
     () => ({
       http: {},
@@ -309,8 +336,25 @@ function DemoThreadPanel({
               : "Thread running";
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (followingRef.current) {
+      scrollToLatest();
+    }
+  }, [messages, scrollToLatest]);
+
+  useEffect(() => {
+    const content = scrollRef.current?.firstElementChild;
+    if (!content) {
+      return;
+    }
+    // Renderers and tool panels can resize after a message arrives.
+    const observer = new ResizeObserver(() => {
+      if (followingRef.current) {
+        scrollToLatest();
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [scrollToLatest]);
 
   useThreadMetadata({
     threadId,
@@ -327,6 +371,7 @@ function DemoThreadPanel({
       if (!content || !canCompose) {
         return;
       }
+      followingRef.current = true;
       sendMessage(content, canInterruptParkedTurn ? { whenBusy: "interrupt" } : undefined);
       onDraftChange("");
     },
@@ -335,93 +380,135 @@ function DemoThreadPanel({
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-slate-800/80 px-5 py-4">
-        <div>
-          <div className="text-xs uppercase tracking-[0.3em] text-sky-300/70">Durable Threads</div>
-          <div className="font-serif text-xl text-slate-100">{lifecycleLabel}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onInspectorToggle}
-            className={cn("rounded-lg", inspectorOpen && "bg-sky-500/15 text-sky-300")}
-            title="Toggle stream inspector"
-          >
-            <Terminal className="size-4" />
-          </Button>
-          <div className="rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-200">
-            {threadId}
+      <header className="conversation-header">
+        <button
+          className="icon-button mobile-history"
+          onClick={onHistoryOpen}
+          aria-label="Open threads"
+        >
+          <PanelLeftOpen size={19} />
+        </button>
+        <div className="conversation-heading">
+          <h1>{definition.label}</h1>
+          <div className="conversation-status" role="status">
+            <span className={cn("status-dot", busy && "working")} />
+            {lifecycleLabel}
           </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onInspectorToggle}
+          aria-label="Toggle stream inspector"
+          aria-pressed={inspectorOpen}
+          className="inspector-toggle"
+          title={`Thread ${shortThreadId(threadId)}`}
+        >
+          <Terminal size={17} />
+        </Button>
+      </header>
+      <div
+        className="conversation-scroll"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          const following = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+          followingRef.current = following;
+          setShowLatest(!following);
+        }}
+      >
+        <div className={cn("conversation-content", messages.length === 0 && "empty-content")}>
+          {messages.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-mark">
+                <MessageSquare size={26} strokeWidth={1.5} />
+              </div>
+              <p className="eyebrow">{definition.label}</p>
+              <h2>
+                {demos.find((demo) => demo.to === `/chat/${definition.namespace}`)?.description ??
+                  "What’s on your mind?"}
+              </h2>
+              <p>Start something new. You can always pick it up later.</p>
+              <div className="suggestions">
+                {definition.suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.label}
+                    type="button"
+                    onClick={() => {
+                      onDraftChange(suggestion.message);
+                      composerRef.current?.focus();
+                    }}
+                    disabled={!canCompose}
+                  >
+                    {suggestion.label}
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            messages.map((message) => <MessageBubble key={message.id} message={message} />)
+          )}
         </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-slate-400">
-            <div className="rounded-full border border-amber-200/10 bg-amber-200/5 px-4 py-1 text-xs uppercase tracking-[0.35em] text-amber-200/70">
-              Empty Thread
-            </div>
-            <h2 className="font-serif text-3xl text-slate-100">Start a durable conversation</h2>
-            <p className="max-w-md text-sm leading-6">
-              Choose a prompt below or write your own message to begin.
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {definition.suggestions.map((suggestion) => (
-                <button
-                  key={suggestion.label}
-                  type="button"
-                  onClick={() => onDraftChange(suggestion.message)}
-                  disabled={!canCompose}
-                  className="rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400 hover:text-sky-200 disabled:opacity-50"
-                >
-                  {suggestion.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+      <div className="composer-area">
+        {showLatest && (
+          <button className="jump-latest" onClick={scrollToLatest}>
+            <ArrowDown size={14} />
+            Latest messages
+          </button>
         )}
-      </div>
-
-      <div className="border-t border-slate-800/80 bg-slate-950/90 px-4 py-4 md:px-6">
         {error && (
-          <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="chat-error" role="alert">
             {error.message}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3 md:flex-row">
-          <Input
+        <form onSubmit={handleSubmit} className="composer">
+          <textarea
+            ref={composerRef}
+            rows={1}
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
             placeholder="Type a message..."
+            aria-label="Type a message..."
             disabled={!canCompose}
-            className="h-14 rounded-2xl border-slate-700 bg-slate-900/90 px-5 text-base"
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                window.matchMedia("(pointer: fine)").matches
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
           {turnActive && !canInterruptParkedTurn ? (
-            <Button
+            <button
               type="button"
               onClick={stop}
-              className="h-14 rounded-2xl bg-red-500 px-6 text-white hover:bg-red-400"
+              className="send-button stop-button"
+              aria-label={busy ? "Stop" : "Cancel turn"}
             >
-              {busy ? "Stop" : "Cancel turn"}
-            </Button>
+              <Square size={16} fill="currentColor" />
+            </button>
           ) : (
-            <Button
+            <button
               type="submit"
               disabled={!draft.trim() || !canCompose}
-              className="h-14 rounded-2xl bg-sky-500 px-6 text-white hover:bg-sky-400"
+              className="send-button"
+              aria-label="Send"
             >
-              Send
-            </Button>
+              <ArrowUp size={20} />
+            </button>
           )}
         </form>
+        <p className="composer-note">
+          {canInterruptParkedTurn
+            ? "Make a choice above, or send a message to change direction."
+            : "Your conversation is saved as you go."}
+        </p>
       </div>
     </>
   );
@@ -434,7 +521,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [sessionMountKey, setSessionMountKey] = useState(0);
@@ -489,9 +576,12 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
             );
             if (response.ok) {
               const { thread } = (await response.json()) as { thread: ThreadSummary };
-              if (thread.namespace === definition.namespace) nextThreads = [thread, ...nextThreads];
-            } else if (response.status !== 404)
+              if (thread.namespace === definition.namespace) {
+                nextThreads = [thread, ...nextThreads];
+              }
+            } else if (response.status !== 404) {
               throw new Error(`Failed to restore thread (${response.status})`);
+            }
           }
           if (nextThreads.length === 0 || (isolateTestBrowserSession && !nextSelected)) {
             const created = await createThread(definition.namespace);
@@ -536,12 +626,16 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
   }, [hydrate]);
 
   const handleLoadMore = async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMore) {
+      return;
+    }
     const generation = selectionGenerationRef.current;
     setLoadingMore(true);
     try {
       const page = await listThreads(definition.namespace, nextCursor);
-      if (selectionGenerationRef.current !== generation) return;
+      if (selectionGenerationRef.current !== generation) {
+        return;
+      }
       setThreads((current) => [
         ...current,
         ...page.threads.filter((thread) => !current.some((existing) => existing.id === thread.id)),
@@ -571,6 +665,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
       setSelectedThreadId(created.id);
       persistSelection(created.id);
       setSessionMountKey((current) => current + 1);
+      setSidebarOpen(false);
     } catch (cause) {
       if (selectionGenerationRef.current === generation) {
         setSelectedThreadId(previousThreadId);
@@ -586,6 +681,7 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
 
   const handleSelectThread = useCallback(
     (threadId: string) => {
+      setSidebarOpen(false);
       selectionGenerationRef.current += 1;
       inspectorStore.clear();
       setSelectedThreadId(threadId);
@@ -642,126 +738,104 @@ export function ChatDemoShell({ definition }: { readonly definition: ChatDemoDef
     setInspectorOpen((open) => !open);
   }, []);
 
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(180deg,_#0f172a_0%,_#111827_52%,_#0b1220_100%)] text-slate-100">
-      <div className="mx-auto flex h-[calc(100vh-64px)] min-h-0 flex-col gap-4 p-4 md:flex-row md:p-6">
-        <aside
-          className={cn(
-            "w-full shrink-0 flex-col rounded-[28px] border border-amber-200/10 bg-slate-950/70 p-4 shadow-2xl shadow-black/30 backdrop-blur md:flex md:w-80",
-            sidebarOpen ? "flex" : "hidden",
-          )}
+  const threadList = (
+    <>
+      <div className="thread-actions">
+        <button
+          className="new-thread-button"
+          onClick={() => void handleNewThread()}
+          disabled={loading}
+          data-testid="thread-create"
         >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.35em] text-amber-300/70">Chat Demo</div>
-              <h1 className="font-serif text-2xl text-amber-50">{definition.label}</h1>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden"
-            >
-              <PanelLeftOpen className="size-4" />
-            </Button>
+          <Plus size={17} />
+          New thread
+        </button>
+        <button
+          className="icon-button"
+          onClick={() => void hydrate(true)}
+          disabled={loading}
+          aria-label="Refresh threads"
+        >
+          <RefreshCcw size={16} />
+        </button>
+      </div>
+      <p className="thread-list-label">RECENT CONVERSATIONS</p>
+      <div className="thread-list">
+        {threads.map((thread) => (
+          <button
+            key={thread.id}
+            type="button"
+            data-testid="thread-item"
+            data-thread-id={thread.id}
+            aria-pressed={selectedThreadId === thread.id}
+            onClick={() => handleSelectThread(thread.id)}
+            className={cn("thread-item", selectedThreadId === thread.id && "selected")}
+          >
+            <span className="thread-title">{thread.title}</span>
+            <span className="thread-preview">{thread.lastMessagePreview}</span>
+            <span className="thread-meta">
+              {thread.messageCount} messages{selectedThreadId === thread.id && <span>Current</span>}
+            </span>
+          </button>
+        ))}
+        {nextCursor && (
+          <Button
+            disabled={loadingMore || loading}
+            onClick={() => void handleLoadMore()}
+            className="w-full"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        )}
+      </div>
+      <div className="sidebar-footer">
+        <span className="status-dot" />
+        Made to pick up later.
+      </div>
+    </>
+  );
+  return (
+    <div className="chat-workspace">
+      <aside className="thread-sidebar" aria-label="Threads">
+        {threadList}
+      </aside>
+      <Drawer open={sidebarOpen} onClose={() => setSidebarOpen(false)} title="Threads">
+        {sidebarOpen && threadList}
+      </Drawer>
+      <main className="conversation">
+        {!hydrated || loading || !selectedThreadId ? (
+          <div className="loading-thread" role="status">
+            Loading threads…
           </div>
-
-          <div className="mb-4 flex gap-2">
-            <Button
-              onClick={() => void handleNewThread()}
-              disabled={loading}
-              className="flex-1 bg-amber-400 text-slate-950 hover:bg-amber-300"
-            >
-              <span data-testid="thread-create" className="contents">
-                <MessageCirclePlus className="size-4" />
-                New thread
-              </span>
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => void hydrate(true)}>
-              <RefreshCcw className="size-4" />
-            </Button>
+        ) : (
+          <DemoThreadPanel
+            key={`${selectedThreadId}-${sessionMountKey}`}
+            definition={definition}
+            threadId={selectedThreadId}
+            inspectorOpen={inspectorOpen}
+            inspectorStore={inspectorStore}
+            onInspectorToggle={handleInspectorToggle}
+            onHistoryOpen={() => setSidebarOpen(true)}
+            onMetadata={handleMetadata}
+            draft={drafts[selectedThreadId] ?? ""}
+            onDraftChange={(value) => handleDraftChange(selectedThreadId, value)}
+          />
+        )}
+        {error && (
+          <div className="chat-error" role="alert">
+            {error}
           </div>
-
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {threads.map((thread) => (
-              <button
-                key={thread.id}
-                type="button"
-                data-testid="thread-item"
-                data-thread-id={thread.id}
-                aria-pressed={selectedThreadId === thread.id}
-                onClick={() => handleSelectThread(thread.id)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${selectedThreadId === thread.id ? "border-amber-300 bg-amber-100/15 ring-2 ring-amber-300/40 shadow-lg shadow-amber-500/20" : "border-slate-800 bg-slate-900/70 hover:border-slate-700 hover:bg-slate-900"}`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="truncate font-medium text-slate-100">{thread.title}</div>
-                  <div
-                    className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] ${selectedThreadId === thread.id ? "bg-amber-300 text-slate-950" : "border border-slate-700 text-slate-500"}`}
-                  >
-                    {selectedThreadId === thread.id ? "Active" : shortThreadId(thread.id)}
-                  </div>
-                </div>
-                <div className="line-clamp-2 text-xs text-slate-400">
-                  {thread.lastMessagePreview}
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[11px] uppercase tracking-[0.25em] text-slate-500">
-                  <span>{thread.messageCount} messages</span>
-                  <span>{shortThreadId(thread.id)}</span>
-                </div>
-              </button>
-            ))}
-            {nextCursor && (
-              <Button
-                disabled={loadingMore || loading}
-                onClick={() => void handleLoadMore()}
-                className="w-full"
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            )}
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950/75 shadow-2xl shadow-black/30 backdrop-blur">
-          <div className="flex items-center justify-between border-b border-slate-800/80 px-5 py-4 md:hidden">
-            <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen((open) => !open)}>
-              <PanelLeftOpen className="size-4" />
-            </Button>
-          </div>
-
-          {!hydrated || loading || !selectedThreadId ? (
-            <div className="flex h-full items-center justify-center text-slate-400">
-              Loading threads...
-            </div>
-          ) : (
-            <DemoThreadPanel
-              key={`${selectedThreadId}-${sessionMountKey}`}
-              definition={definition}
-              threadId={selectedThreadId}
-              inspectorOpen={inspectorOpen}
-              inspectorStore={inspectorStore}
-              onInspectorToggle={handleInspectorToggle}
-              onMetadata={handleMetadata}
-              draft={drafts[selectedThreadId] ?? ""}
-              onDraftChange={(value) => handleDraftChange(selectedThreadId, value)}
-            />
-          )}
-
-          {error && (
-            <div className="border-t border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200 md:px-6">
-              {error}
-            </div>
-          )}
-        </main>
-
+        )}
+      </main>
+      <Drawer open={inspectorOpen} onClose={() => setInspectorOpen(false)} title="Stream inspector">
         {inspectorOpen && selectedThreadId && (
           <StreamInspector
             threadId={selectedThreadId}
             store={inspectorStore}
-            onClose={handleInspectorToggle}
+            onClose={() => setInspectorOpen(false)}
           />
         )}
-      </div>
+      </Drawer>
     </div>
   );
 }

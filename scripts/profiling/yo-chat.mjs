@@ -20,7 +20,8 @@ const frozenSchema = process.env.YO_CHAT_CPU_PROFILE_SCHEMA
     ? resolve(process.env.YO_CHAT_CPU_PROFILE_SCHEMA)
     : undefined;
 const metadata = {
-    scenario: "replays a parked card after the entire Worker host is replaced",
+    scenario:
+        "^worker conversation host.*replays a parked card after the entire Worker host is replaced$",
     runs,
     frozenBundle: frozenBundle ?? null,
     frozenSchema: frozenSchema ?? null,

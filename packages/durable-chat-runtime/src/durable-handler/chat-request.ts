@@ -4,7 +4,7 @@ import { parseChatRequestBody } from "./request-normalization.ts";
 import type { ChatRequestBody } from "./types.ts";
 
 const MAX_CHAT_REQUEST_BYTES = 2 * 1024 * 1024;
-function* readBoundedChatRequest(request: Request): Operation<unknown> {
+export function* readBoundedChatRequest(request: Request): Operation<unknown> {
   if (!request.body) {
     return {};
   }

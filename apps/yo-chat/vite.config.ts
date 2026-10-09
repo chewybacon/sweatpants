@@ -67,6 +67,10 @@ const config = defineConfig(({ mode }) => {
 
     // SSR: Don't externalize workspace packages so they get processed
     ssr: {
+      // Honor SDK web-runtime mappings instead of bundling Node-only helpers into workerd.
+      resolve: isCloudflare
+        ? { mainFields: ["browser", "module", "jsnext:main", "jsnext"] }
+        : undefined,
       noExternal: isCloudflare ? true : isProd ? [] : workspacePackages,
       external: isCloudflare ? [] : [...externalPackages, ...nodeBuiltins],
     },
@@ -90,13 +94,18 @@ const config = defineConfig(({ mode }) => {
       ...(process.env["VITEST"] || isCloudflare ? [] : [nodeWorkerPlugin()]),
       // The devtools event bus binds a fixed auxiliary port; omit it from the
       // isolated Playwright server so it can run beside a developer instance.
-      ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" || isCloudflare ? [] : [devtools()]),
+      ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" || process.env["VITEST"] || isCloudflare
+        ? []
+        : [devtools()]),
       viteTsConfigPaths({
         projects: ["./tsconfig.json"],
       }),
       tailwindcss(),
       imagetools(),
-      tanstackStart(isCloudflare ? { server: { entry: "server.cloudflare" } } : {}),
+      // Start’s environment transforms split React from the jsdom renderer; unit tests need plain React.
+      ...(process.env["VITEST"]
+        ? []
+        : [tanstackStart(isCloudflare ? { server: { entry: "server.cloudflare" } } : {})]),
       viteReact(),
     ],
 

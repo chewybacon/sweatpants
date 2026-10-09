@@ -1,4 +1,6 @@
+import { FileCredentialStore } from "@sweatpants/model-provider-pi-ai";
 import { pi } from "@sweatpants/model-provider-pi-ai";
+import { createYoChatModels } from "./model-catalog";
 import { defaultYoChatModel } from "./default-model";
 import { getThreadMetadataStore } from "@/lib/thread-metadata-store";
 import { createChatApp, type ChatApp } from "@sweatpants/agent-host/server";
@@ -20,7 +22,11 @@ export function createYoChatApplication(): YoChatApplication {
   const app = createChatApp({
     ...config,
     ...yoChatToolConfig(),
-    model: pi({ provider: selection.provider, model: selection.id }),
+    model: pi({
+      provider: selection.provider,
+      model: selection.id,
+      models: createYoChatModels(new FileCredentialStore()),
+    }),
     setup: {
       chat,
       application: function* setupApplication() {

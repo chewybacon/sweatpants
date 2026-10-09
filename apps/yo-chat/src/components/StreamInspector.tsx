@@ -165,7 +165,7 @@ export function StreamInspector({ threadId, store, onClose }: StreamInspectorPro
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-none flex-col overflow-hidden rounded-[28px] border border-slate-800/80 bg-slate-950/70 shadow-2xl shadow-black/30 backdrop-blur md:w-96"
+      className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-slate-800 bg-background"
       data-testid="stream-inspector"
       data-thread-id={threadId}
     >
@@ -173,7 +173,7 @@ export function StreamInspector({ threadId, store, onClose }: StreamInspectorPro
         <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-[0.3em] text-sky-300/70">Inspector</div>
           <div className="flex items-center gap-2">
-            <span className="font-serif text-lg text-slate-100">Stream Events</span>
+            <span className="text-base text-slate-100">Stream Events</span>
             <span
               className={cn(
                 "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",

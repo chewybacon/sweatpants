@@ -46,13 +46,13 @@ function MiniBoard({
   winningLine?: number[] | undefined;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-0.5 w-24 h-24">
+    <div className="grid grid-cols-3 gap-0.5 w-24 shrink-0 aspect-square">
       {board.map((cell, i) => {
         const isLastMove = i === lastPosition;
         const isWinning = winningLine?.includes(i);
 
         let cellClass =
-          "w-8 h-8 flex items-center justify-center text-sm font-bold border border-slate-700 ";
+          "aspect-square min-w-0 flex items-center justify-center text-sm font-bold border border-slate-700 ";
 
         if (isWinning) {
           cellClass += "bg-emerald-900/60 ";

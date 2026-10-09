@@ -30,7 +30,7 @@ before Vite or the server imports them:
 | ----------------------------- | ------------------------------------------------------------ |
 | `pnpm dev:yo-chat`            | Node host, selected real model, configured storage and tools |
 | `pnpm dev:yo-chat:local`      | Node host, local tool workers                                |
-| `pnpm dev:yo-chat:cloudflare` | Worker host, D1, DOs, Dynamic Workers                        |
+| `pnpm dev:yo-chat:cloudflare` | Conversation DO host, D1, DO tool executors                  |
 | `pnpm dev:yo-chat:d1`         | Node host with local Cloudflare storage                      |
 | `pnpm dev:yo-chat:agentcore`  | Node host with configured AgentCore runtime                  |
 | `pnpm dev:yo-mcp`             | MCP server                                                   |
@@ -80,7 +80,8 @@ That executor-only test keeps ingress on Node. The main `cloudflare` mode uses
 `ToolExecutors = createToolExecutorObject({ tools })` and
 `cloudflare({ executors: env.TOOL_EXECUTORS, sessions: env.TOOL_SESSIONS })`,
 without a Worker Loader or dynamically bundled tool code. It
-runs yo-chat SSR, HTTP ingress, and the chat host inside workerd. It combines:
+runs yo-chat SSR and HTTP ingress in a Worker, with the chat host in a named
+Durable Object per conversation by default. It combines:
 
 - D1 conversation/execution journals and separate thread metadata.
 - Durable Objects for response buffers, writer fences, and registry entries.
@@ -88,7 +89,10 @@ runs yo-chat SSR, HTTP ingress, and the chat host inside workerd. It combines:
 - Durable Objects for ordinary tool sessions (`book_flight`, `tictactoe`, etc.).
 
 ```sh
+# Conversation DO (default)
 pnpm dev:yo-chat --mode cloudflare
+# Run conversation orchestration in the ingress Worker instead
+CHAT_HOST_PLACEMENT=worker pnpm dev:yo-chat --mode cloudflare
 pnpm -C apps/yo-chat exec vite build --mode cloudflare
 pnpm -C apps/yo-chat exec vitest run acceptance/cloudflare-host.acceptance.test.ts
 ```
@@ -102,6 +106,20 @@ launcher to refresh credentials. A deployed credential owner remains future work
 Pi's bundled OAuth entry is required because filesystem dynamic imports cannot
 resolve inside a bundled Worker.
 
+`CHAT_HOST_PLACEMENT` accepts `worker` or `durable-object`; configure the
+Wrangler variable for deployments or override it in the launcher environment
+locally. Invalid values fail explicitly. This chooses conversation orchestration
+only: tool placement remains the independent `cloudflare({ executors, sessions })`
+or `cloudflare({ worker, sessions })` adapter. Dynamic Worker tool execution is
+still available through that adapter; the demo defaults to DO executors.
+
+The ingress forwards commands, reconnects, and history requests to the same
+conversation DO and passes the response stream through unchanged. This demo is
+single-tenant; an authenticated deployment must include its trusted tenant
+identity in the DO routing key. DO placement does not provide background wakeups
+or unlimited CPU. D1 remains the journal authority, and concurrent requests still
+use its existing fencing rather than relying on DO request serialization.
+
 Each HTTP request creates its own application and RPC targets. The runtime's
 `createChatFetchHandler(() => createApp())` keeps that application alive until
 response EOF, cancellation, or failure, without reading ahead. A later request
@@ -109,7 +127,7 @@ replays durable tools from D1; ordinary tools reconnect to their live DO session
 No Node executor fallback is used. Native SQLite/Postgres setup loads only when that backend is selected;
 `openChatStorageDatabase` is available from `@sweatpants/agent-host/node`. The combined acceptance suite replaces the
 entire workerd process while a card is parked and verifies replay and history,
-then exercises the flight and tic-tac-toe flows through the Worker host.
+then exercises the flight and tic-tac-toe flows through both Worker and conversation DO hosts.
 
 This is local Worker validation, not a deployed Cloudflare certification. Live
 Codex access from local workerd currently receives an upstream rejection; the

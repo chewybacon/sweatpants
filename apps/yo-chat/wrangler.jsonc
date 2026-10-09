@@ -4,8 +4,10 @@
     "main": "src/server.cloudflare.ts",
     "compatibility_date": "2026-10-05",
     "compatibility_flags": ["nodejs_compat"],
+    "vars": { "CHAT_HOST_PLACEMENT": "durable-object" },
     "durable_objects": {
         "bindings": [
+            { "name": "CONVERSATIONS", "class_name": "Conversations" },
             { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
             {
                 "name": "RESPONSE_STREAMS",
@@ -23,6 +25,7 @@
             "new_sqlite_classes": ["ResponseStream", "ToolSessions"],
         },
         { "tag": "v2", "new_sqlite_classes": ["ToolExecutors"] },
+        { "tag": "v3", "new_sqlite_classes": ["Conversations"] },
     ],
     "d1_databases": [
         {

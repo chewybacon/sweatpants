@@ -7,59 +7,27 @@ export interface CardPickerProps extends ReactRenderableProps<{ picked: Card }> 
 }
 
 export function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPickerProps) {
-  if (disabled && response) {
-    return (
-      <div className="my-2 p-3 bg-muted rounded-lg">
-        <p className="text-sm text-muted-foreground mb-2">{prompt}</p>
-        <div className="flex gap-2 flex-wrap">
-          {cards.map((card) => (
-            <button
-              type="button"
-              key={`${card.rank}-${card.suit}`}
-              disabled
-              className={`
-                px-3 py-2 rounded border text-lg font-mono
-                ${
-                  card.display === response.picked.display
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-muted-foreground/20 text-muted-foreground/50"
-                }
-              `}
-            >
-              {card.display}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">You picked: {response.picked.display}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="my-2 p-3 bg-muted rounded-lg">
-      <p className="text-sm text-muted-foreground mb-2">{prompt}</p>
-      <div className="flex gap-2 flex-wrap">
+    <div className="card-picker">
+      <p className="text-sm text-muted-foreground">{prompt}</p>
+      <div className="card-hand">
         {cards.map((card) => (
           <button
             type="button"
-            key={`${card.rank}-${card.suit}`}
-            onClick={() => onRespond({ picked: card })}
+            key={card.display}
+            aria-label={card.display}
             disabled={disabled}
-            className={`
-              px-3 py-2 rounded border text-lg font-mono
-              transition-colors
-              ${
-                disabled
-                  ? "cursor-not-allowed opacity-50"
-                  : "hover:border-primary hover:bg-primary/10 cursor-pointer"
-              }
-              border-muted-foreground/40
-            `}
+            onClick={() => onRespond({ picked: card })}
+            className={`playing-card ${/[♥♦]/.test(card.display) ? "red-suit" : ""} ${response?.picked.display === card.display ? "picked" : ""}`}
           >
-            {card.display}
+            <span>{card.rank}</span>
+            <span className="card-suit" aria-hidden="true">
+              {card.display.slice(-1)}
+            </span>
           </button>
         ))}
       </div>
+      {response && <p className="text-sm text-primary">You picked: {response.picked.display}</p>}
     </div>
   );
 }

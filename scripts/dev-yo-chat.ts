@@ -31,6 +31,11 @@ async function launch(): Promise<void> {
   }
 
   if (mode === "cloudflare") {
+    const placement = process.env.CHAT_HOST_PLACEMENT ?? "durable-object";
+    if (placement !== "worker" && placement !== "durable-object") {
+      throw new Error(`Invalid CHAT_HOST_PLACEMENT: ${placement}`);
+    }
+    childEnv.CHAT_HOST_PLACEMENT = placement;
     const credential = await new FileCredentialStore().read(provider);
     if (!credential) {
       throw new Error(`No stored credential for ${provider}`);
@@ -47,6 +52,9 @@ async function launch(): Promise<void> {
   console.error(
     `Starting yo-chat: mode=${mode}, model=${provider}/${model}, tools=${mode === "cloudflare" ? "cloudflare" : (process.env["MCP_TOOL_RUNTIME"] ?? "local")}`,
   );
+  if (mode === "cloudflare") {
+    console.error(`Conversation host: ${childEnv.CHAT_HOST_PLACEMENT}`);
+  }
   await runCommand(
     ["exec", "vite", "dev", "--port", "8000", ...args, "--strictPort", "--force"],
     resolve(repoRoot, "apps/yo-chat"),

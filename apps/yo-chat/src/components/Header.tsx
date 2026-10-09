@@ -1,180 +1,57 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
-import { Home, Menu, X, MessageSquare, ChevronDown, ChevronRight, Shield } from "lucide-react";
-import tanstackLogo from "@/assets/tanstack-word-logo-white.svg";
+import { ChevronDown, ArrowUpRight, Command } from "lucide-react";
+import { Drawer } from "./Drawer";
+import { demos } from "./demo-navigation";
 
 export default function Header() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [groupedExpanded, setGroupedExpanded] = useState<Record<string, boolean>>({});
-
-  const toggleGroup = (group: string) => {
-    setGroupedExpanded((prev) => ({
-      ...prev,
-      [group]: !prev[group],
-    }));
-  };
-
+  const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const current = demos.find((demo) => pathname.replace(/\/$/, "") === demo.to);
   return (
     <>
-      <header className="p-4 flex items-center bg-gray-800 text-white shadow-lg">
+      <header className="app-header">
+        <Link to="/" className="app-brand" aria-label="Yo Chat home">
+          <span className="brand-mark">
+            <Command size={17} />
+          </span>
+          yo<span className="brand-dot">.</span>chat
+        </Link>
+        <span className="header-divider" />
         <button
-          onClick={() => setIsOpen(true)}
-          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          aria-label="Open menu"
+          className="demo-switcher"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
         >
-          <Menu size={24} />
+          {current?.label ?? "Explore"}
+          <ChevronDown size={14} />
         </button>
-        <h1 className="ml-4 text-xl font-semibold">
-          <Link to="/">
-            <img src={tanstackLogo} alt="TanStack Logo" className="h-10" />
-          </Link>
-        </h1>
+        <span className="header-caption">A Sweatpants playground</span>
       </header>
-
-      <aside
-        className={`fixed top-0 left-0 h-full w-80 bg-gray-900 text-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-xl font-bold">Navigation</h2>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            aria-label="Close menu"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <Link
-            to="/"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
-            activeProps={{
-              className:
-                "flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2",
-            }}
-          >
-            <Home size={20} />
-            <span className="font-medium">Home</span>
-          </Link>
-
-          <Link
-            to="/lab/durability"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
-            activeProps={{
-              className:
-                "flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2",
-            }}
-          >
-            <Shield size={20} />
-            <span className="font-medium">Durability Lab</span>
-          </Link>
-
-          {/* Chat Demos Group */}
-          <div className="mt-4">
-            <button
-              onClick={() => toggleGroup("chat")}
-              className="flex items-center justify-between w-full p-3 rounded-lg hover:bg-gray-800 transition-colors"
+      <Drawer open={open} onClose={() => setOpen(false)} title="Explore">
+        <nav className="demo-nav" aria-label="Demos">
+          {demos.map(({ to, label, description, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              onClick={() => setOpen(false)}
+              className="demo-nav-item"
+              activeProps={{ className: "demo-nav-item selected" }}
             >
-              <div className="flex items-center gap-3">
-                <MessageSquare size={20} />
-                <span className="font-medium">Chat Demos</span>
-              </div>
-              {groupedExpanded["chat"] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-            {groupedExpanded["chat"] && (
-              <div className="ml-6 mt-1 space-y-1">
-                <Link
-                  to="/chat/basic"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Basic Chat</span>
-                </Link>
-                <Link
-                  to="/chat/threaded"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Threaded Chat</span>
-                </Link>
-                <Link
-                  to="/chat/cards"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Card Picker</span>
-                </Link>
-                <Link
-                  to="/chat/flight"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Flight Booking</span>
-                </Link>
-                <Link
-                  to="/chat/math"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Math Assistant</span>
-                </Link>
-                <Link
-                  to="/chat/tictactoe"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Tic-Tac-Toe (Multi-Call)</span>
-                </Link>
-                <Link
-                  to="/chat/play-ttt"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      "flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm",
-                  }}
-                >
-                  <span>Tic-Tac-Toe (Agentic)</span>
-                </Link>
-              </div>
-            )}
-          </div>
+              <Icon size={20} />
+              <span>
+                <strong>{label}</strong>
+                <small>{description}</small>
+              </span>
+              <ArrowUpRight size={15} />
+            </Link>
+          ))}
+          <Link to="/lab/durability" onClick={() => setOpen(false)} className="lab-link">
+            Durability lab <ArrowUpRight size={14} />
+          </Link>
         </nav>
-      </aside>
-
-      {/* Overlay */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setIsOpen(false)} />
-      )}
+      </Drawer>
     </>
   );
 }

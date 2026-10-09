@@ -1,4 +1,5 @@
 export { createChatFetchHandler } from "./request-handler.ts";
+export { createChatRouter } from "./chat-router.ts";
 import { createHostScopeOwner, installHostScopeOwner } from "@sweatpants/durable-chat-runtime/host";
 import { installDurableStreamsOwner } from "@sweatpants/durable-chat-runtime/response-streams";
 import type { FetchHandler, ScopedEndpoint } from "@sweatpants/durable-chat-runtime/streaming";
