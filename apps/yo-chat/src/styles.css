@@ -905,46 +905,6 @@ button:disabled {
     color: #97a38e;
     font-size: 11px;
 }
-.card-picker {
-    margin: 8px 0;
-}
-.card-hand {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-    gap: 8px;
-    margin: 18px 0;
-    max-width: 480px;
-}
-.playing-card {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-start;
-    min-height: 112px;
-    padding: 12px;
-    background: #ecebe2;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    color: #263528;
-    text-align: left;
-    font-family: Georgia, serif;
-    box-shadow: 0 3px 0 #0003;
-}
-.playing-card .card-suit {
-    align-self: flex-end;
-    font-size: 25px;
-}
-.playing-card.red-suit {
-    color: #a34c42;
-}
-.playing-card:hover:not(:disabled),
-.playing-card.picked {
-    border-color: #afd48e;
-    transform: translateY(-3px);
-}
-.playing-card:disabled:not(.picked) {
-    opacity: 0.45;
-}
 .game-panel {
     margin: 12px 0;
 }
@@ -1154,9 +1114,4 @@ button:disabled {
 .seat-confirmation strong {
     color: var(--primary);
     font-size: 24px;
-}
-@media (max-width: 479px) {
-    .card-hand {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
 }
