@@ -29,6 +29,18 @@ require a Worker Loader or runtime bundling. It runs statically deployed trusted
 code with the DO's configured bindings and network access; it does not provide the
 Dynamic Worker's `globalOutbound: null` sandbox.
 
+## Execution services
+
+Both executor factories accept an optional `setup: () => Operation<void>`. The
+executor runs it inside each program's owned Effection scope, before the program
+starts. Install ports and acquire scope-owned resources there. Ingress setup does
+not cross the RPC boundary. Setup runs again on replay; scope exit releases its
+resources on parking, completion, cancellation, or failure. Setup failures fail
+the program rather than falling back to another placement.
+
+For example, yo-tisyn installs its bounded evaluation driver in the tool-executor
+DO this way. No journal or effect-dispatch ownership moves into that driver.
+
 ## Dynamic Worker placement
 
 The dynamically loaded module exports an executor for its pinned tool inventory:

@@ -1,5 +1,6 @@
 import { resource, type Operation } from "effection";
 import { definePort } from "@sweatpants/foundation/port";
+import { CrankError } from "@sweatpants/durable-execution";
 import type { TisynExpr } from "@tisyn/ir";
 import type { Json } from "@sweatpants/foundation";
 
@@ -20,7 +21,7 @@ export interface TisynEvaluationDriver {
 }
 
 function unavailable(): never {
-  throw new Error("No Tisyn evaluation driver is installed");
+  throw new CrankError("tisyn_evaluation_unavailable", "No Tisyn evaluation driver is installed");
 }
 
 export const TisynEvaluationPort = definePort<TisynEvaluationDriver>("tisyn-evaluation", {

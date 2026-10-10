@@ -1,4 +1,5 @@
 /// <reference types="@cloudflare/workers-types" preserve="true" />
+/* eslint-disable typescript/no-this-alias -- Generator operations retain their RPC target through self. */
 import { WorkerEntrypoint, DurableObject, RpcTarget } from "cloudflare:workers";
 import { run, type Operation } from "effection";
 import {
@@ -18,11 +19,31 @@ export type ToolExecutorClass = new (
   env: unknown,
 ) => WorkerEntrypoint<unknown> & { createExecutor(): ExecutorTarget };
 
+export interface ToolExecutorOptions {
+  tools: readonly DurableTool[];
+  /** Installs execution services inside each program's owned scope, not HTTP ingress. */
+  setup?: () => Operation<void>;
+}
+
+function createExecutorRegistry({ tools, setup }: ToolExecutorOptions) {
+  return createDurableToolRegistry(
+    tools.map((tool) =>
+      setup
+        ? {
+            ...tool,
+            *program(input, context) {
+              yield* setup();
+              return yield* tool.program(input, context);
+            },
+          }
+        : tool,
+    ),
+  );
+}
+
 /** Loaded evaluator code. Every attachment gets its own request-scoped RPC target. */
-export function createToolExecutor(options: {
-  tools: readonly DurableTool<any, any>[];
-}): ToolExecutorClass {
-  const registry = createDurableToolRegistry([...options.tools]);
+export function createToolExecutor(options: ToolExecutorOptions): ToolExecutorClass {
+  const registry = createExecutorRegistry(options);
   return class ToolExecutor extends WorkerEntrypoint<unknown> {
     createExecutor() {
       return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
@@ -36,10 +57,8 @@ export type ToolExecutorObjectClass = new (
 ) => DurableObject<unknown> & { createExecutor(): ExecutorTarget };
 
 /** Disposable replay compute in a DO; durable truth stays in the host journal. */
-export function createToolExecutorObject(options: {
-  tools: readonly DurableTool<any, any>[];
-}): ToolExecutorObjectClass {
-  const registry = createDurableToolRegistry([...options.tools]);
+export function createToolExecutorObject(options: ToolExecutorOptions): ToolExecutorObjectClass {
+  const registry = createExecutorRegistry(options);
   return class ToolExecutorObject extends DurableObject<unknown> {
     createExecutor() {
       return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
@@ -61,11 +80,12 @@ class ExecutorTarget extends RpcTarget implements ToolExecutorRpc {
   private used = false;
 
   private async execute<T>(operation: () => Operation<T>): Promise<string> {
-    if (this.busy)
+    if (this.busy) {
       return JSON.stringify({
         ok: false,
         error: { code: "program_protocol_error", message: "Concurrent executor command" },
       });
+    }
     this.busy = true;
     try {
       return JSON.stringify({ ok: true, value: await run(operation) });
@@ -85,7 +105,9 @@ class ExecutorTarget extends RpcTarget implements ToolExecutorRpc {
   async attach(wire: string): Promise<string> {
     const self = this;
     return this.execute(function* () {
-      if (self.used) throw new CrankError("program_protocol_error", "Executor already used");
+      if (self.used) {
+        throw new CrankError("program_protocol_error", "Executor already used");
+      }
       self.used = true;
       const request = JSON.parse(wire) as AttachProgramRequest;
       self.attachment = yield* self.driver.attach(request);
@@ -98,11 +120,12 @@ class ExecutorTarget extends RpcTarget implements ToolExecutorRpc {
     const self = this;
     return this.execute(function* () {
       const attachment = self.attachment;
-      if (!attachment || attachment.attachmentId !== attachmentId)
+      if (!attachment || attachment.attachmentId !== attachmentId) {
         throw new CrankError(
           "stale_program_capability",
           "Executor attachment is unavailable; restore from the journal",
         );
+      }
       const command = JSON.parse(wire) as ProgramCommand;
       return yield* self.driver.step(attachment, command);
     });
@@ -112,9 +135,12 @@ class ExecutorTarget extends RpcTarget implements ToolExecutorRpc {
     const self = this;
     return this.execute(function* () {
       const attachment = self.attachment;
-      if (!attachment) return;
-      if (attachment.attachmentId !== attachmentId)
+      if (!attachment) {
+        return;
+      }
+      if (attachment.attachmentId !== attachmentId) {
         throw new CrankError("stale_program_capability", "Executor attachment does not match");
+      }
       yield* self.driver.shutdown(attachment, reason as ProgramShutdownReason);
       self.attachment = undefined;
     });

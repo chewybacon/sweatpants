@@ -2,6 +2,8 @@
 
 Demand-driven streaming document rendering, independent of chat, transport, and UI frameworks. Uses Effection operations for asynchronous rendering.
 
+Server projections that only construct frame data can import `emptyFrame` from `@sweatpants/frame-renderer/frame`. This entry does not load the Markdown, math, syntax-highlighting, or diagram processors.
+
 ```ts
 import { run } from "effection";
 import { createPipeline, markdown, math, shiki, mermaid } from "@sweatpants/frame-renderer";

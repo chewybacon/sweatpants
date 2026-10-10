@@ -9,7 +9,11 @@ import { createCloudflareProgramDriver } from "../../index.ts";
 import type { ToolExecutorRpc } from "../../index.ts";
 import type { ToolExecutorClass } from "../../executor.ts";
 import { createToolExecutorObject } from "../../executor.ts";
-export const Executor = createToolExecutorObject({ tools: DURABLE_DRIVER_FIXTURE_TOOLS });
+import { toolsWithExecutionServices, installExecutionServices } from "./execution-setup.ts";
+export const Executor = createToolExecutorObject({
+  tools: toolsWithExecutionServices,
+  setup: installExecutionServices,
+});
 export default class Host extends WorkerEntrypoint<{
   LOADER: WorkerLoader;
   CODE: string;

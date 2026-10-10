@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { call } from "effection";
 import { withTestScenario, normalizeResponsesHistory } from "@sweatpants/test-rig";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import type { ChatUIPart, ChatUIMessage } from "@sweatpants/chat-core";
@@ -6,6 +7,7 @@ import { createTisynApp } from "../application.ts";
 import { inProcess } from "@sweatpants/agent-host/server";
 import { TisynEvaluationPort } from "../evaluation.ts";
 import { createNodeEvaluationDriver } from "../evaluation-node.ts";
+import { startCloudflareHost } from "./fixtures/cloudflare-host.ts";
 
 // Based on the model-authored loop probe; now exercise the actual application.
 const source = `Let("loop",Fn(["acc"],
@@ -30,100 +32,114 @@ function parts(messages: readonly ChatUIMessage[]): ChatUIPart[] {
   return messages.flatMap((message) => message.parts.flatMap(visit));
 }
 
-describe.each(["in-process", "http"] as const)("one durable loop over %s", (binding) => {
-  it.each(["decline", "cancel"] as const)(
-    "stays inside one model tool call until %s",
-    async (action) => {
-      await withTestScenario(
-        {
-          binding,
-          modelId: "tisyn-loop",
-          scenarioTimeoutMs: 30_000,
-          createApplication(context) {
-            const app = createTisynApp({
-              execution: inProcess({
-                *setup() {
-                  yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
+describe.each(["in-process", "http", "cloudflare"] as const)(
+  "one durable loop over %s",
+  (binding) => {
+    it.each(["decline", "cancel"] as const)(
+      "stays inside one model tool call until %s",
+      async (action) => {
+        let cloudflareHost: Awaited<ReturnType<typeof startCloudflareHost>> | undefined;
+        await withTestScenario(
+          {
+            binding: binding === "cloudflare" ? "http" : binding,
+            modelId: "tisyn-loop",
+            scenarioTimeoutMs: 30_000,
+            async createApplication(context) {
+              if (binding === "cloudflare") {
+                cloudflareHost = await startCloudflareHost(context.model);
+                return cloudflareHost;
+              }
+              const app = createTisynApp({
+                execution: inProcess({
+                  *setup() {
+                    yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
+                  },
+                }),
+                storage: { kind: "memory" },
+                model: {
+                  model: context.model.model,
+                  driver: createPiAiModelProvider().driver,
+                  streamOptions: context.model.streamOptions,
                 },
-              }),
-              storage: { kind: "memory" },
-              model: {
-                model: context.model.model,
-                driver: createPiAiModelProvider().driver,
-                streamOptions: context.model.streamOptions,
-              },
-            });
-            return { handle: app.handler, close: () => app.close() };
+              });
+              return { handle: app.handler, close: () => app.close() };
+            },
           },
-        },
-        function* (s) {
-          let conversation = s.conversation();
-          let turn = yield* conversation.send(
-            "ask me for input in a loop until I decline, echo the accumulated response as it goes",
-          );
-          const initial = yield* s.model.request();
-          expect(initial.body.tools).toMatchObject([{ name: "tisyn" }]);
-          expect(initial.body.tools).toHaveLength(1);
-          yield* initial.respond.toolCalls([
-            { id: "one-loop", name: "tisyn", arguments: { program: source } },
-          ]);
-          const words = ["one", "two", "three", "four", "five", "six"];
-          for (const [index, word] of words.entries()) {
-            let pending = yield* turn.elicit("reply");
-            if (index === 3) {
-              conversation = yield* conversation.reopen();
-              turn = conversation.resumePendingElicit("reply");
-              const recovered = yield* turn.elicit("reply");
-              expect(recovered.elicitId).toBe(pending.elicitId);
-              expect(recovered.callId).toBe(pending.callId);
-              pending = recovered;
-            }
-            expect(s.model.requests()).toHaveLength(1);
-            const snapshot = yield* turn.snapshot();
-            const calls = parts(snapshot.messages).filter((part) => part.type === "tool-call");
-            expect(calls.filter((part) => part.name === "tisyn")).toHaveLength(1);
-            expect(calls.find((part) => part.name === "tisyn")?.state).toBe("input-available");
-            expect(calls.filter((part) => part.name === "echo").map((part) => part.output)).toEqual(
-              words.slice(0, index).map((_, i) => ({ message: words.slice(0, i + 1).join(" ") })),
+          function* (s) {
+            let conversation = s.conversation();
+            let turn = yield* conversation.send(
+              "ask me for input in a loop until I decline, echo the accumulated response as it goes",
             );
-            yield* pending.accept({ reply: word });
-          }
-          const pending = yield* turn.elicit("reply");
-          expect(s.model.requests()).toHaveLength(1);
-          if (action === "decline") {
-            yield* pending.decline();
-          } else {
-            yield* pending.cancel();
-          }
-          const final = yield* s.model.request();
-          expect(normalizeResponsesHistory(final.body.input)).toMatchObject([
-            { type: "user_text" },
-            { type: "assistant_tool_call", name: "tisyn" },
-            { type: "tool_result", output: words.join(" ") },
-          ]);
-          yield* final.respond.text("Loop stopped.");
-          expect((yield* turn.settled()).text).toBe("Loop stopped.");
-          expect(s.model.requests()).toHaveLength(2);
-          const restored = yield* conversation.reopen();
-          const calls = parts(restored.snapshot().messages).filter(
-            (part) => part.type === "tool-call",
-          );
-          expect(calls.filter((part) => part.name === "tisyn")).toHaveLength(1);
-          expect(calls.filter((part) => part.name === "ask")).toHaveLength(7);
-          expect(calls.filter((part) => part.name === "echo")).toHaveLength(6);
-          expect(calls.every((part) => part.state === "output-available")).toBe(true);
-          expect(new Set(calls.map((part) => part.callId)).size).toBe(14);
-          const followUp = yield* restored.send("What was the final accumulated text?");
-          const request = yield* s.model.request();
-          expect(
-            normalizeResponsesHistory(request.body.input).filter(
-              (item) => item.type === "assistant_tool_call",
-            ),
-          ).toMatchObject([{ name: "tisyn" }]);
-          yield* request.respond.text(words.join(" "));
-          expect((yield* followUp.settled()).text).toBe(words.join(" "));
-        },
-      );
-    },
-  );
-});
+            const initial = yield* s.model.request();
+            expect(initial.body.tools).toMatchObject([{ name: "tisyn" }]);
+            expect(initial.body.tools).toHaveLength(1);
+            yield* initial.respond.toolCalls([
+              { id: "one-loop", name: "tisyn", arguments: { program: source } },
+            ]);
+            const words = ["one", "two", "three", "four", "five", "six"];
+            for (const [index, word] of words.entries()) {
+              let pending = yield* turn.elicit("reply");
+              if (index === 3) {
+                const host = cloudflareHost;
+                if (host) {
+                  yield* call(() => host.replace());
+                }
+                conversation = yield* conversation.reopen();
+                turn = conversation.resumePendingElicit("reply");
+                const recovered = yield* turn.elicit("reply");
+                expect(recovered.elicitId).toBe(pending.elicitId);
+                expect(recovered.callId).toBe(pending.callId);
+                pending = recovered;
+              }
+              expect(s.model.requests()).toHaveLength(1);
+              const snapshot = yield* turn.snapshot();
+              const calls = parts(snapshot.messages).filter((part) => part.type === "tool-call");
+              expect(calls.filter((part) => part.name === "tisyn")).toHaveLength(1);
+              expect(calls.find((part) => part.name === "tisyn")?.state).toBe("input-available");
+              expect(
+                calls.filter((part) => part.name === "echo").map((part) => part.output),
+              ).toEqual(
+                words.slice(0, index).map((_, i) => ({ message: words.slice(0, i + 1).join(" ") })),
+              );
+              yield* pending.accept({ reply: word });
+            }
+            const pending = yield* turn.elicit("reply");
+            expect(s.model.requests()).toHaveLength(1);
+            if (action === "decline") {
+              yield* pending.decline();
+            } else {
+              yield* pending.cancel();
+            }
+            const final = yield* s.model.request();
+            expect(normalizeResponsesHistory(final.body.input)).toMatchObject([
+              { type: "user_text" },
+              { type: "assistant_tool_call", name: "tisyn" },
+              { type: "tool_result", output: words.join(" ") },
+            ]);
+            yield* final.respond.text("Loop stopped.");
+            expect((yield* turn.settled()).text).toBe("Loop stopped.");
+            expect(s.model.requests()).toHaveLength(2);
+            const restored = yield* conversation.reopen();
+            const calls = parts(restored.snapshot().messages).filter(
+              (part) => part.type === "tool-call",
+            );
+            expect(calls.filter((part) => part.name === "tisyn")).toHaveLength(1);
+            expect(calls.filter((part) => part.name === "ask")).toHaveLength(7);
+            expect(calls.filter((part) => part.name === "echo")).toHaveLength(6);
+            expect(calls.every((part) => part.state === "output-available")).toBe(true);
+            expect(new Set(calls.map((part) => part.callId)).size).toBe(14);
+            const followUp = yield* restored.send("What was the final accumulated text?");
+            const request = yield* s.model.request();
+            expect(
+              normalizeResponsesHistory(request.body.input).filter(
+                (item) => item.type === "assistant_tool_call",
+              ),
+            ).toMatchObject([{ name: "tisyn" }]);
+            yield* request.respond.text(words.join(" "));
+            expect((yield* followUp.settled()).text).toBe(words.join(" "));
+          },
+        );
+      },
+    );
+  },
+);
