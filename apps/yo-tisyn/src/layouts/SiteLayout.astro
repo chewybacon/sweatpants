@@ -1,0 +1,43 @@
+---
+import "../style.css";
+const { title = "yo-tisyn", description = "Durable workflows authored as Tisyn programs." } = Astro.props;
+const pathname = Astro.url.pathname;
+const nav = [
+  { href: "/", label: "Playground" },
+  { href: "/threads", label: "Threads" },
+  { href: "/explain/quickjs", label: "Explain QuickJS" },
+  { href: "/explain/durability", label: "Explain durability" },
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <link rel="icon" href="data:," />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="yo-tisyn home">
+        <span class="brand-mark" aria-hidden="true">y</span>
+        <span>yo-tisyn</span>
+      </a>
+      <nav aria-label="Main navigation">
+        {nav.map((item) => (
+          <a class:list={{ active: pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) }} href={item.href}>
+            {item.label}
+          </a>
+        ))}
+      </nav>
+    </header>
+    <main class="site-main">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <span>Durable workflows. Disposable computation.</span>
+      <span>OpenCode · Claude Haiku 5.5</span>
+    </footer>
+  </body>
+</html>

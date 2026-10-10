@@ -1,0 +1,11 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+import { App } from "../App.tsx";
+---
+<SiteLayout title="Playground · yo-tisyn">
+  <section class="page-intro compact">
+    <span class="eyebrow">New thread</span>
+    <h2>Start a durable workflow</h2>
+  </section>
+  <App client:only="react" />
+</SiteLayout>

@@ -53,7 +53,7 @@ pnpm --dir apps/yo-tisyn deploy:prepare
 pnpm --dir apps/yo-tisyn run deploy
 ```
 
-`deploy:prepare` writes mode-0600 secret files under ignored `.wrangler/`, preserves the production signing secret, and initializes only the production D1 binding. `run deploy` selects the production Vite environment and uses Wrangler's secret-file upload. Keep the signing secret stable across deployments.
+`deploy:prepare` writes mode-0600 secret files under ignored `.wrangler/`, preserves the production signing secret, and initializes only the production D1 binding. `deploy` builds the Astro Cloudflare output with the production environment and deploys its generated Wrangler config with the secret file. Keep the signing secret stable across deployments.
 
 The Worker environment is named `ssr`, matching yo-chat and the SDK browser-resolution settings. The default named Worker environment failed model calls after deployment even though local workerd passed. Matching `ssr` fixed deployed calls; minification and the OpenCode-only catalog also pass with that configuration.
 

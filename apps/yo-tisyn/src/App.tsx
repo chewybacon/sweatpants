@@ -1,15 +1,40 @@
 import { useRef, useState } from "react";
+import { Badge, Button, Card, Heading, HStack, TextArea, Theme, VStack } from "@astryxdesign/core";
+import { neutralTheme } from "@astryxdesign/theme-neutral";
 import { useChat } from "@sweatpants/react-chat";
 import { Part } from "./tool-view.tsx";
 import { askPlugin } from "./ask-plugin.tsx";
 import { PromptExamples } from "./prompt-examples.tsx";
-export function App() {
-  const [threadId] = useState(() => {
-    const existing = localStorage.getItem("yo-tisyn.thread");
-    const id = existing ?? crypto.randomUUID();
-    localStorage.setItem("yo-tisyn.thread", id);
-    return id;
-  });
+import "./style.css";
+
+export interface AppProps {
+  initialThreadId?: string;
+}
+
+function rememberThread(id: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const recent = JSON.parse(localStorage.getItem("yo-tisyn.threads") ?? "[]") as string[];
+  localStorage.setItem(
+    "yo-tisyn.threads",
+    JSON.stringify([id, ...recent.filter((threadId) => threadId !== id)].slice(0, 12)),
+  );
+}
+
+function resolveThreadId(initialThreadId?: string) {
+  if (typeof window === "undefined") {
+    return initialThreadId ?? "server-thread";
+  }
+  const existing = initialThreadId ?? localStorage.getItem("yo-tisyn.thread");
+  const id = existing ?? crypto.randomUUID();
+  localStorage.setItem("yo-tisyn.thread", id);
+  rememberThread(id);
+  return id;
+}
+
+export function App({ initialThreadId }: AppProps) {
+  const [threadId] = useState(() => resolveThreadId(initialThreadId));
   const [prompt, setPrompt] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -20,87 +45,137 @@ export function App() {
     pipeline: "markdown",
   });
   const busy = status === "submitted" || status === "streaming";
+
   return (
-    <main>
-      <header>
-        <small>EXPERIMENTAL DURABLE DSL DEMO</small>
-        <h1>yo-tisyn</h1>
-        <p>One model tool. Parsed Tisyn. Existing Sweatpants durable children and elicitation.</p>
-        <p>
-          Bound tools: <code>echo</code> and <code>ask</code> · {status} · renderer {renderStatus}
-        </p>
-        <button
-          onClick={() => {
-            localStorage.removeItem("yo-tisyn.thread");
-            location.reload();
-          }}
-        >
-          New conversation
-        </button>
-      </header>
-      {(error || commandError) && (
-        <p className="error" role="alert">
-          {error?.message ?? commandError}
-        </p>
-      )}
-      <section aria-label="Conversation">
-        {messages.length === 0 && !busy && (
-          <PromptExamples
-            onSelect={(example) => {
-              setPrompt(example);
-              textarea.current?.focus();
+    <Theme theme={neutralTheme}>
+      <div className="chat-app">
+        <Card className="hero-card" variant="teal" padding={6}>
+          <HStack hAlign="between" vAlign="center" gap={4} wrap="wrap">
+            <VStack gap={2}>
+              <HStack gap={2} vAlign="center">
+                <Badge label="EXPERIMENTAL" variant="teal" />
+                <span className="eyebrow">Durable DSL playground</span>
+              </HStack>
+              <Heading level={1} type="display-1">
+                yo-tisyn
+              </Heading>
+              <p className="hero-copy">
+                Ask a model to author one typed Tisyn program. Sweatpants runs it durably, parks for
+                replies, and recovers it when compute disappears.
+              </p>
+            </VStack>
+            <VStack gap={2} className="hero-actions">
+              <a className="astryx-link" href="/explain/quickjs">
+                How QuickJS fits →
+              </a>
+              <a className="astryx-link" href="/threads">
+                Browse threads →
+              </a>
+            </VStack>
+          </HStack>
+        </Card>
+
+        {(error || commandError) && (
+          <Card className="error-card" variant="red" padding={3}>
+            <p role="alert">{error?.message ?? commandError}</p>
+          </Card>
+        )}
+
+        <section className="conversation" aria-label="Conversation">
+          {messages.length === 0 && !busy && (
+            <PromptExamples
+              onSelect={(example) => {
+                setPrompt(example);
+                textarea.current?.focus();
+              }}
+            />
+          )}
+          {messages.map((message) => (
+            <Card
+              key={message.id}
+              className="message-card"
+              variant={message.role === "user" ? "blue" : "default"}
+              padding={4}
+            >
+              <HStack gap={2} vAlign="center">
+                <Badge
+                  label={message.role === "user" ? "YOU" : "ASSISTANT"}
+                  variant={message.role === "user" ? "blue" : "neutral"}
+                />
+                <span className="message-status">
+                  {message.role === "assistant" ? status : "sent"}
+                </span>
+              </HStack>
+              <div className="message-parts">
+                {message.parts.map((part) => (
+                  <Part key={part.id} part={part} />
+                ))}
+              </div>
+            </Card>
+          ))}
+        </section>
+
+        <Card className="composer-card" padding={4}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (prompt.trim() && canSendMessage) {
+                setCommandError(null);
+                rememberThread(threadId);
+                void sendMessage(prompt).catch((failure: unknown) =>
+                  setCommandError(String(failure)),
+                );
+                setPrompt("");
+              }
+            }}
+          >
+            <TextArea
+              ref={textarea}
+              label="Task"
+              rows={4}
+              value={prompt}
+              placeholder="Choose an example, or describe your own workflow…"
+              onChange={setPrompt}
+              isDisabled={!canSendMessage}
+            />
+            <HStack gap={2} vAlign="center" wrap="wrap">
+              <Button
+                label="Send task"
+                type="submit"
+                variant="primary"
+                isDisabled={!prompt.trim() || !canSendMessage || renderStatus !== "ready"}
+              />
+              <Button
+                label="Stop"
+                type="button"
+                variant="secondary"
+                isDisabled={!busy}
+                onClick={() =>
+                  void stop().catch((failure: unknown) => setCommandError(String(failure)))
+                }
+              />
+              <span className="composer-status">
+                {status} · renderer {renderStatus}
+              </span>
+            </HStack>
+          </form>
+        </Card>
+
+        <HStack className="thread-meta" hAlign="between" gap={3} wrap="wrap">
+          <span>
+            Thread <code>{threadId}</code>
+          </span>
+          <Button
+            label="Start new conversation"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              localStorage.removeItem("yo-tisyn.thread");
+              location.href = "/playground";
             }}
           />
-        )}
-        {messages.map((message) => (
-          <article key={message.id}>
-            <h2>{message.role}</h2>
-            {message.parts.map((part) => (
-              <Part key={part.id} part={part} />
-            ))}
-          </article>
-        ))}
-      </section>
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (prompt.trim() && canSendMessage) {
-            setCommandError(null);
-            void sendMessage(prompt).catch((failure: unknown) => setCommandError(String(failure)));
-            setPrompt("");
-          }
-        }}
-      >
-        <label>
-          Task
-          <textarea
-            ref={textarea}
-            rows={4}
-            value={prompt}
-            placeholder="Choose an example above, or describe your own workflow…"
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-        </label>
-        <button disabled={!prompt.trim() || !canSendMessage || renderStatus !== "ready"}>
-          Send
-        </button>
-        <button
-          type="button"
-          disabled={!busy}
-          onClick={() => {
-            void stop().catch((failure: unknown) => setCommandError(String(failure)));
-          }}
-        >
-          Stop
-        </button>
-      </form>
-      <footer>
-        Conversation: {threadId}
-        <br />
-        Reply resume and completed tool cards survive reload. Experimental app without user login.
-        See README.md for validation results and remaining limits.
-      </footer>
-    </main>
+        </HStack>
+      </div>
+    </Theme>
   );
 }
