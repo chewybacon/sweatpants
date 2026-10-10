@@ -22,12 +22,54 @@ The server uses the existing Sweatpants credential store, normally `.sweatpants/
 
 SQLite state lives in `apps/yo-tisyn/.data/chat.sqlite`. Stream buffers are in memory. Server restart recovery through HTTP is **not certified** by this spike.
 
+## Local Cloudflare
+
+```sh
+pnpm --dir apps/yo-tisyn dev:cloudflare
+# Build the Worker and SPA without deploying:
+pnpm --dir apps/yo-tisyn build:cloudflare
+```
+
+The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5`. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts the official Cloudflare Vite plugin. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
+
+**The loop example works locally in Cloudflare.** Executor `setup` installs the evaluation driver inside each program's owned scope. QuickJS/WASM runs a bundle of the unchanged published Tisyn kernel. Sweatpants still owns all tool calls, journal records, parking, and replay. Playwright verifies six accumulated replies, reload while waiting, decline, and completed-state reload with the real provider. Test Rig also replaces workerd while the loop is parked and resumes the same pending interaction.
+
+Start a **New conversation** after this update. Work accepted under the earlier missing-driver profile is not migrated or silently restarted.
+
+Local state and the generated signing secret live in `.wrangler/`; credentials are passed as secret bindings, not written into the bundle. The base Wrangler configuration keeps the local D1 placeholder. The production environment uses a separate provisioned database. Existing local databases are not replaced. Restart the launcher to reload refreshed credentials.
+
+## Cloudflare deployment
+
+Live: https://yo-tisyn.rauh-ryan.workers.dev
+
+This deployment is **public and unauthenticated**, as requested. Anyone with the URL can spend the configured OpenCode quota. Conversation IDs are not access controls. Do not put sensitive data into this demo. Compute limits are not a security audit.
+
+Production uses **OpenCode / Haiku 5.5** (`opencode/claude-haiku-5-5`). Deployment preparation copies only the stored OpenCode API key. It never includes Copilot credentials or substitutes another model. Model usage can cost money even when hosting fits free-tier quotas. No paid Cloudflare plan upgrade was made.
+
+From `sweatpants/`, after dependency builds:
+
+```sh
+pnpm --dir apps/yo-tisyn deploy:prepare
+pnpm --dir apps/yo-tisyn run deploy
+```
+
+`deploy:prepare` writes mode-0600 secret files under ignored `.wrangler/`, preserves the production signing secret, and initializes only the production D1 binding. `run deploy` selects the production Vite environment and uses Wrangler's secret-file upload. Keep the signing secret stable across deployments.
+
+The Worker environment is named `ssr`, matching yo-chat and the SDK browser-resolution settings. The default named Worker environment failed model calls after deployment even though local workerd passed. Matching `ssr` fixed deployed calls; minification and the OpenCode-only catalog also pass with that configuration.
+
+All three tools are durable and use the ToolExecutors DO. Agent Host and model sampling run in the Conversations DO. There are no ordinary tools requiring a ToolSessions DO. The ingress Worker routes requests.
+
+Deployed Playwright checks cover six accumulated replies, one authored recursive program, mid-loop reload, Decline and Cancel, and completed-state reload. Remote D1 confirms exactly two model preparations per conversation: authoring and final summary. Haiku chose newline-separated accumulation for one program and direct concatenation for the other; the prompt does not specify a separator. Evidence: `../.pi/evidence/yo-tisyn-spike/deployment/`.
+
 ## Shape
 
 - `src/agent.ts`: one declared tool list, plus a model exposure policy.
 - `src/tisyn.ts`: real DSL parser → real IR validator → restricted profile → real kernel evaluator.
 - `src/evaluation.ts`: portable evaluation port, scope-owned sessions, and shared tool-call budget.
 - `src/evaluation-node.ts`: published kernel plus the Node VM compute guard.
+- `src/evaluation-quickjs.ts`: interruptible, memory-limited compute for the DO executor.
+- `src/evaluation-kernel.ts`: trusted VM bridge over the published kernel. `pnpm kernel:build` generates its bundle; tests, types, and Cloudflare builds verify it with `kernel:check`.
+- `src/cloudflare/`: Agent Host composition, conversation routing, and executor-side setup.
 - `src/application.ts`: shared application setup for the local server and protocol test rig.
 - Each external descriptor becomes a pinned Sweatpants `invoke` child with validated tool arguments.
 - `echo` records its work. `ask` uses its original typed `reply` elicitation and interaction binding.
@@ -40,7 +82,7 @@ SQLite state lives in `apps/yo-tisyn/.data/chat.sqlite`. Stream buffers are in m
 
 The app imports only published package entry points: `@tisyn/dsl@0.4.8`, `@tisyn/ir@0.16.0`, `@tisyn/kernel@0.16.0`, and `@tisyn/validate@0.16.0`. Exact versions live in `package.json`; the workspace lockfile pins their tarball integrity and transitive dependencies. There are no sibling-source imports or Tisyn resolution aliases.
 
-The interpreter digest includes the declared Tisyn versions and the manually versioned adapter profile. The loop-capable profile is `profile-5-guarded-loops`. It changes that identity; start a new conversation rather than resuming work accepted under an older profile. Production recovery still needs retained adapter artifacts and the matching lockfile.
+The interpreter digest includes the declared Tisyn versions and adapter profile. Node retains `profile-5-guarded-loops`. Cloudflare uses `profile-6-quickjs`, with the QuickJS package versions, kernel-bundle hash, and compute limits in its identity. Start a new conversation rather than resuming work accepted under a different profile. Production recovery still needs retained adapter artifacts and the matching lockfile.
 
 ## Profile
 
@@ -52,7 +94,7 @@ Choose **Loop until I decline** on the empty conversation screen: **ask me for i
 
 Rejected: `Try`, concurrency, resource/scope operations, computed structural IR, and undeclared effects. Admission checks the IR, including unselected branches and generic `Eval` IDs. This deliberately rejects some otherwise valid Tisyn data.
 
-The profile limits source length, source nesting, array length, and visited IR values. It rejects selected prototype-related fields. Evaluation allows at most 256 tool calls per program. Each synchronous kernel advance has a 250 ms wall-clock timeout; waiting for a human does not consume that timeout. Limits fail explicitly, never as successful completion. Recursive programs also remain subject to the JavaScript stack limit.
+The profile limits source length, source nesting, array length, and visited IR values. It rejects selected prototype-related fields. Evaluation allows at most 256 tool calls per program. Node gives each synchronous kernel advance a 250 ms wall-clock timeout. Cloudflare gives each advance 256 QuickJS interrupt checks, with a 32 MiB VM allocation limit and 64 KiB VM stack limit. Human wait time consumes neither budget. The Cloudflare budget is not a wall-clock deadline or an exact Tisyn instruction count. Limits fail explicitly, never as successful completion.
 
 The Node evaluation driver runs the fixed expression `kernel.next(input)` through Node's VM timeout. It does not compile authored source to JavaScript or add a Tisyn runtime. The VM is **not a security or memory sandbox**. This is a wall-clock guard, not a deterministic instruction budget; heavy machine load can cause rejection. Intermediate value growth still occurs in the server process, and the final result-size check runs after evaluation. Tool string limits still apply. Use trusted local inputs only.
 
@@ -64,7 +106,7 @@ The Node server installs `createNodeEvaluationDriver()` in the `inProcess({ setu
 
 `createEvaluation()` owns the session as an Effection resource. Scope exit closes it on return, failure, cancellation, or durable parking. Its tool-call cap applies before it exposes another descriptor. The driver must enforce the compute bound, since Effection cancellation cannot interrupt non-yielding synchronous work.
 
-The current extraction preserves the Node guard and interpreter profile. A future driver with different evaluation semantics or limits needs a new profile/digest. A workerd probe confirms that the portable port loads and fails closed without installation. A bounded Cloudflare driver and deployment are still pending.
+Cloudflare installs the QuickJS driver through the executor's `setup` generator. Its engine counter interrupts pure loops even when the Workers clock does not advance during synchronous work. The stack limit keeps recursive failure inside the VM, before the host WASM stack overflows. Each temporary VM is disposed when its evaluation closes. The JSON bridge rejects non-finite numbers instead of silently converting them to null. These compute limits are not a security audit or a whole-DO memory quota. A negative configuration test still verifies fail-closed behavior when executor setup is omitted. No kernel source or Tisyn runtime changes are required.
 
 ## Presentation
 
@@ -78,7 +120,7 @@ The diagram supports enlargement and a text outline. Formatted source stays avai
 
 ## Evidence
 
-`pnpm --dir apps/yo-tisyn test`: **62 passing tests**: 24 profile/durable binding tests, 4 app protocol scenarios, 13 evaluator/guard tests, 10 program-plan tests, and 11 presentation/example tests.
+`pnpm --dir apps/yo-tisyn test`: **80 passing tests**: 24 profile/durable binding tests, 6 loop protocol scenarios, 7 Cloudflare placement/guard scenarios, 21 evaluator/guard tests, 10 program-plan tests, 11 presentation/example tests, and one OpenCode model-catalog test. Cloudflare covers real DO execution, parked-loop recovery after workerd replacement, decline/cancel, compute and memory limits, non-JSON rejection, and a healthy evaluation after each failure.
 
 The durable binding tests use the real parser, validator, kernel, durable tools, journal authority, and program driver. They verify:
 
@@ -96,11 +138,13 @@ These are scope/snapshot recovery tests, **not an OS-process-kill or SQLite reco
 
 ### Integrated loop
 
-The app's Test Rig scenarios run six accepted replies inside one `tisyn` call, reopen midway, then decline or cancel. Both in-process and HTTP bindings pass. The real application client and provider SDK stay in the request path. There is one model request before the loop and one after it stops. Follow-up history contains only the outer call/result; the UI retains all child calls. Separate authority tests destroy the Effection scope and restore a JSON snapshot after six replies without repeating echo work.
+The app's Test Rig scenarios run six accepted replies inside one `tisyn` call, reopen midway, then decline or cancel. In-process, HTTP, and Cloudflare DO execution pass. The Cloudflare cases destroy and recreate workerd while parked before reopening. The real application client and provider SDK stay in the request path. There is one model request before the loop and one after it stops. Follow-up history contains only the outer call/result; the UI retains all child calls. Separate authority tests destroy the Effection scope and restore a JSON snapshot after six replies without repeating echo work.
 
 The real Copilot browser check also passes with the default prompt: six accumulated echoes, reload before the fourth reply, then decline. There is one workflow card and one Mermaid diagram. The journal contains exactly two model preparations: initial authoring and final summary. Completed cards survive a further reload. Evidence: `../.pi/evidence/yo-tisyn-spike/loop-integration/browser.json` and `completed.png`.
 
-Guard tests cover effectful infinite loops, non-yielding `While`, and pure recursion. Non-yielding tests run behind a separate process watchdog so a broken guard cannot hang the test runner.
+Guard tests cover effectful infinite loops, non-yielding `While` (including an empty body), pure recursion, VM memory exhaustion, and non-JSON values. The Node VM guard also runs behind a separate process watchdog. Actual workerd scenarios verify the Cloudflare guard and subsequent healthy execution.
+
+The Cloudflare browser evidence lives in `../.pi/evidence/yo-tisyn-spike/cloudflare-loop/`. It starts from the **Loop until I decline** button, uses the real Copilot provider, reloads during the loop, and checks the D1 journal for exactly two model preparations.
 
 ### Snapshot ownership and browser status
 
@@ -133,8 +177,9 @@ All four Tisyn imports resolved to registry packages inside that copy. An app im
 
 ## Gates
 
-- App tests: 62 passed. Earlier shared-package checks: chat core 127 passed; durable chat runtime 147 passed.
-- Evaluation-port iteration: app tests, types, production build, and focused type-aware lint pass. No full landing rerun, as requested. Evidence: `../.pi/evidence/yo-tisyn-spike/evaluation-port/`.
+- App tests: 80 passed. Earlier shared-package checks: chat core 127 passed; durable chat runtime 147 passed.
+- Evaluation-port iteration: app tests, types, production build, and focused type-aware lint pass. Evidence: `../.pi/evidence/yo-tisyn-spike/evaluation-port/`.
+- Cloudflare loop iteration: app tests/types and all 16 Cloudflare runtime tests pass. Existing executor conformance fixtures now require setup-installed services during replay and cancellation. Evidence: `../.pi/evidence/yo-tisyn-spike/cloudflare-loop/`. The earlier placement-only checkpoint remains documented under `cloudflare-local/`; it did not make the example work. No full landing rerun, as requested.
 - Platform acceptance: 99 tests passed. The SQLite lane passed all 42 tests on a separate run after an initial timeout; no timeout was increased.
 - Package and test type checks, focused type-aware lint, and repository formatting passed. The app's focused lint has no warnings or errors.
 - The loop-integration and empty-state landing run used a temporary real Redis server. Stages 1–17 passed, including the package coverage gate that Redis skips had blocked. The skip baseline was not changed. The temporary server was removed after the run.

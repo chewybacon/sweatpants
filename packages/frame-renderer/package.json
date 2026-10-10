@@ -9,6 +9,20 @@
     ],
     "type": "module",
     "exports": {
+        "./frame": {
+            "development": {
+                "import": "./src/frame.ts",
+                "types": "./src/frame.ts"
+            },
+            "import": {
+                "types": "./dist/frame.d.ts",
+                "default": "./dist/frame.js"
+            },
+            "require": {
+                "types": "./dist/frame.d.ts",
+                "default": "./dist/frame.cjs"
+            }
+        },
         ".": {
             "development": {
                 "import": "./src/index.ts",

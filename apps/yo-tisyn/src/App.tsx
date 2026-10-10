@@ -23,7 +23,7 @@ export function App() {
   return (
     <main>
       <header>
-        <small>30-MINUTE SPIKE · LOCAL / TRUSTED USE ONLY</small>
+        <small>EXPERIMENTAL DURABLE DSL DEMO</small>
         <h1>yo-tisyn</h1>
         <p>One model tool. Parsed Tisyn. Existing Sweatpants durable children and elicitation.</p>
         <p>
@@ -98,8 +98,8 @@ export function App() {
       <footer>
         Conversation: {threadId}
         <br />
-        Reply resume and completed tool cards survive reload. Trusted local spike only. See
-        README.md for validation results and remaining limits.
+        Reply resume and completed tool cards survive reload. Experimental app without user login.
+        See README.md for validation results and remaining limits.
       </footer>
     </main>
   );

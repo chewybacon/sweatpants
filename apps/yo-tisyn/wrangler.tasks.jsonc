@@ -1,0 +1,24 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "yo-tisyn-tasks",
+    "compatibility_date": "2026-10-05",
+    "env": {
+        "production": {
+            "d1_databases": [
+                {
+                    "binding": "JOURNAL",
+                    "database_name": "yo-tisyn-journal",
+                    "database_id": "350e5720-2f2f-4d7b-8c1d-3fe732ba10c6",
+                    "remote": true,
+                },
+            ],
+        },
+    },
+    "d1_databases": [
+        {
+            "binding": "JOURNAL",
+            "database_name": "yo-tisyn-local-journal",
+            "database_id": "00000000-0000-0000-0000-000000000001",
+        },
+    ],
+}

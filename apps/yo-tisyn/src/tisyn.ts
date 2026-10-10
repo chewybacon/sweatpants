@@ -174,7 +174,20 @@ export function* executeProgram(
   return result;
 }
 
-export function createTisynTool(tools: readonly BoundTool[]) {
+export interface EvaluationProfile {
+  id: string;
+  limits: Json;
+  description: string;
+}
+
+export function createTisynTool(
+  tools: readonly BoundTool[],
+  profile: EvaluationProfile = {
+    id: "yo-tisyn@0.0.1/profile-5-guarded-loops",
+    limits: EVALUATION_LIMITS,
+    description: `Limits: ${EVALUATION_LIMITS.toolCalls} tool calls per program; ${EVALUATION_LIMITS.stepMilliseconds} ms of synchronous evaluation between tool calls (human wait time is excluded). Limits fail explicitly; they are not successful completion. Recursion also has a JavaScript stack limit.`,
+  },
+) {
   const names = new Set<string>();
   for (const tool of tools) {
     if (names.has(tool.name) || structural.has(tool.name) || reserved.has(tool.name)) {
@@ -212,7 +225,7 @@ export function createTisynTool(tools: readonly BoundTool[]) {
     'Recursion example: Let("countdown", Fn(["n"], If(Eq(Ref("n"),0),0,Call(Ref("countdown"),Sub(Ref("n"),1)))), Call(Ref("countdown"),3))',
     "For repetition, write ONE program with Fn/Call recursion or While. Keep all rounds inside that invocation until its stop condition. Do not unroll rounds or return to the model between rounds.",
     "For ask-driven repetition, branch on action. Accept continues; decline and cancel stop. Echo accumulated text after each accepted reply, not after stopping.",
-    `Limits: ${EVALUATION_LIMITS.toolCalls} tool calls per program; ${EVALUATION_LIMITS.stepMilliseconds} ms of synchronous evaluation between tool calls (human wait time is excluded). Limits fail explicitly; they are not successful completion. Recursion also has a JavaScript stack limit.`,
+    profile.description,
     "No Try, concurrency, computed IR, arbitrary JS, imports, or undeclared operations.",
     "Use a single program to carry values across tool calls. Human replies are returned by ask, not invented by you.",
     'Example: Let("x", Eval("echo", {"message":"hello"}), Eval("ask", {"message":Get(Ref("x"),"message")}))',
@@ -225,8 +238,8 @@ export function createTisynTool(tools: readonly BoundTool[]) {
       version: "0.0.1",
       digest: sha256(
         canonicalJson({
-          interpreter: "yo-tisyn@0.0.1/profile-5-guarded-loops",
-          evaluationLimits: EVALUATION_LIMITS,
+          interpreter: profile.id,
+          evaluationLimits: profile.limits,
           tisyn: Object.fromEntries(
             Object.entries(packageJson.dependencies).filter(([name]) => name.startsWith("@tisyn/")),
           ),
