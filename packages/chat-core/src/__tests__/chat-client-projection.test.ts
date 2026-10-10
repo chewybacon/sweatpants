@@ -141,6 +141,96 @@ describe("headless nested projection", () => {
     );
   });
 
+  it.each([
+    {
+      content: { status: "ok", output: { answer: 42 } },
+      expected: { state: "output-available", output: { answer: 42 } },
+    },
+    {
+      content: { status: "error", errorText: "lookup failed" },
+      expected: { state: "output-error", errorText: "lookup failed" },
+    },
+  ])(
+    "keeps $expected.state through repeated placement snapshots and deltas",
+    ({ content, expected }) => {
+      let state = foldAGUIEvent(createChatProjection(), {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: "call-1",
+        toolCallName: "lookup",
+        parentMessageId: "assistant",
+      });
+      const placement = activity({
+        messageId: "execution:call-1",
+        nodeId: "execution:call-1",
+        parentNodeId: "message:assistant",
+        sequence: 0,
+        kind: "tool-call",
+        state: "input-available",
+        publicData: {
+          kind: "tool-call",
+          callId: "call-1",
+          name: "lookup",
+          input: {},
+          rawInput: "{}",
+        },
+      });
+      state = foldAGUIEvent(state, placement);
+      state = foldAGUIEvent(state, {
+        type: EventType.TOOL_CALL_RESULT,
+        toolCallId: "call-1",
+        messageId: "tool-result",
+        role: "tool",
+        content: JSON.stringify(content),
+      });
+      expect(materializeChatMessages(state)[0]?.parts[0]).toMatchObject(expected);
+      state = foldAGUIEvent(state, placement);
+      expect(materializeChatMessages(state)[0]?.parts[0]).toMatchObject(expected);
+      state = foldAGUIEvent(
+        state,
+        decodeAGUIEvent({
+          type: EventType.ACTIVITY_DELTA,
+          messageId: "execution:call-1",
+          activityType: "sweatpants:public-execution",
+          patch: [
+            { op: "replace", path: "/node/state", value: "input-available" },
+            {
+              op: "remove",
+              path:
+                content.status === "ok" ? "/node/publicData/output" : "/node/publicData/errorText",
+            },
+          ],
+        }),
+      );
+      expect(materializeChatMessages(state)[0]?.parts[0]).toMatchObject(expected);
+    },
+  );
+
+  it("attaches a generic activity without changing its parent message role", () => {
+    let state = foldAGUIEvent(createChatProjection(), {
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [{ id: "user", role: "user", content: "hello" }],
+    });
+    state = foldAGUIEvent(
+      state,
+      decodeAGUIEvent({
+        type: EventType.ACTIVITY_SNAPSHOT,
+        messageId: "progress",
+        activityType: "progress",
+        content: { done: 1 },
+      }),
+    );
+    expect(materializeChatMessages(state)).toMatchObject([
+      {
+        id: "user",
+        role: "user",
+        parts: [
+          { type: "text", text: "hello" },
+          { type: "activity", activityType: "progress", data: { done: 1 } },
+        ],
+      },
+    ]);
+  });
+
   it("returns client-local actions beside the pure projection", () => {
     const started = foldAGUIEvent(createChatProjection(), {
       type: EventType.TEXT_MESSAGE_START,

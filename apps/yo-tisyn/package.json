@@ -1,0 +1,51 @@
+{
+    "name": "yo-tisyn",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host 127.0.0.1 --port 8101 --strictPort",
+        "dev:server": "NODE_OPTIONS=--conditions=development tsx src/server.ts",
+        "check": "tsc --noEmit",
+        "test": "vitest run",
+        "build": "vite build"
+    },
+    "dependencies": {
+        "@sweatpants/agent-host": "workspace:*",
+        "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-core": "workspace:*",
+        "@sweatpants/durable-chat-runtime": "workspace:*",
+        "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/durable-execution": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/frame-renderer": "workspace:*",
+        "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-provider-pi-ai": "workspace:*",
+        "@sweatpants/react-chat": "workspace:*",
+        "@sweatpants/stream-bridge": "workspace:*",
+        "@sweatpants/tool-runtime": "workspace:*",
+        "@sweatpants/vite-plugin": "workspace:*",
+        "@tisyn/dsl": "0.4.8",
+        "@tisyn/ir": "0.16.0",
+        "@tisyn/kernel": "0.16.0",
+        "@tisyn/validate": "0.16.0",
+        "effection": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "zod": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/test-rig": "workspace:*",
+        "@sweatpants/ts-config": "workspace:*",
+        "@testing-library/react": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "catalog:",
+        "jsdom": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:"
+    }
+}

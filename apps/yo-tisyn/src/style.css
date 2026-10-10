@@ -1,0 +1,261 @@
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+    background: #f4f5ef;
+    color: #203537;
+    font:
+        16px/1.6 system-ui,
+        sans-serif;
+}
+main {
+    max-width: 1040px;
+    margin: auto;
+    padding: 35px 22px;
+}
+header {
+    border-bottom: 1px solid #c9d7cf;
+    padding-bottom: 20px;
+}
+.composer {
+    margin-top: 24px;
+}
+.empty-state {
+    margin-top: 24px;
+    padding: 22px;
+    border: 1px solid #cedbd3;
+    border-radius: 9px;
+    background: #fff;
+}
+.empty-state h2 {
+    margin: 0;
+    font-size: 20px;
+    text-transform: none;
+    color: #203537;
+}
+.empty-state > p {
+    margin: 6px 0 18px;
+    font-size: 14px;
+    color: #56726a;
+}
+.prompt-examples {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 12px;
+}
+.prompt-example {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 16px;
+    text-align: left;
+    background: #f7faf7;
+}
+.prompt-example strong {
+    font-size: 15px;
+}
+.prompt-example span {
+    font-size: 13px;
+    color: #486258;
+}
+.prompt-example:hover {
+    background: #e9f2eb;
+}
+button:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid #51746d;
+    outline-offset: 3px;
+}
+small {
+    color: #51746d;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+}
+h1 {
+    font-size: 48px;
+    letter-spacing: -0.05em;
+    margin: 8px 0;
+}
+h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    color: #56726a;
+}
+article,
+.tool,
+.reply {
+    padding: 18px;
+    border: 1px solid #cedbd3;
+    border-radius: 9px;
+    margin: 16px 0;
+    background: white;
+}
+.tool {
+    background: #f7faf7;
+    min-width: 0;
+}
+.tool-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.tool-heading > strong {
+    font-size: 17px;
+}
+.tool-status {
+    font-size: 12px;
+    padding: 2px 9px;
+    border-radius: 20px;
+    background: #e8eee9;
+    color: #4c6258;
+}
+.tool-status.output-available {
+    background: #d9eee1;
+    color: #25573c;
+}
+.tool-status.output-error {
+    background: #fae2e2;
+    color: #972b33;
+}
+.tool-children {
+    margin-top: 18px;
+    border-left: 2px solid #b7cbbf;
+    padding-left: 14px;
+}
+.tool-children .tool {
+    background: white;
+}
+.field-label {
+    display: block;
+    margin-top: 12px;
+    color: #56726a;
+    font-size: 12px;
+    font-weight: 650;
+}
+blockquote {
+    margin: 4px 0 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 18px;
+}
+details {
+    min-width: 0;
+}
+summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+.tool-data,
+.source,
+.plan-outline {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #486258;
+}
+.program-preview {
+    margin-top: 16px;
+}
+.hint {
+    font-size: 12px;
+    color: #61766b;
+}
+.program-diagram {
+    padding: 18px 8px;
+    background: #0f172a;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+.program-diagram svg {
+    display: block;
+    width: 100%;
+    min-width: 430px;
+    height: auto;
+    max-height: 480px;
+    margin: auto;
+}
+.program-diagram.expanded {
+    max-height: 800px;
+    overflow: auto;
+}
+.program-diagram.expanded svg {
+    max-height: none;
+}
+.diagram-toggle {
+    font-size: 12px;
+    padding: 4px 10px;
+}
+.preview-error {
+    padding: 12px;
+    background: #fff3cf;
+    color: #705718;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+    main {
+        padding: 20px 10px;
+    }
+    article,
+    .tool,
+    .reply {
+        padding: 12px;
+    }
+    .tool-children {
+        padding-left: 8px;
+    }
+}
+.reply {
+    border-color: #b39b4c;
+    background: #fff8df;
+}
+pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    background: #e6eee8;
+    padding: 12px;
+    border-radius: 5px;
+}
+label {
+    display: block;
+    font-size: 13px;
+    font-weight: 650;
+}
+input,
+textarea {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin: 6px 0 12px;
+    font: inherit;
+    border: 1px solid #b5c8bb;
+    border-radius: 6px;
+}
+button {
+    padding: 9px 15px;
+    margin: 0 8px 4px 0;
+    border: 1px solid #809d90;
+    border-radius: 6px;
+    background: white;
+    color: #244b3b;
+    font: inherit;
+    cursor: pointer;
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.error {
+    color: #972b33;
+}
+footer {
+    font-size: 12px;
+    color: #56726a;
+    margin: 25px 0;
+}
+code {
+    font-size: 0.9em;
+}

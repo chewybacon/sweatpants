@@ -386,10 +386,11 @@ function upsertGraphNode(
         `Node "${node.nodeId}" was reused with conflicting immutable facts`,
       );
     }
-    const merged =
-      existing.synthetic && !synthetic
-        ? preserveSettledToolResult(existing.node, node)
-        : cloneNodeWithMutable(existing.node, node);
+    // Placement anchors and snapshots cannot undo an accepted tool result.
+    const merged = preserveSettledToolResult(
+      existing.node,
+      existing.synthetic && !synthetic ? node : cloneNodeWithMutable(existing.node, node),
+    );
     const nodes = mapCopy(state.nodes);
     nodes.set(node.nodeId, {
       // Attachment identity is stable across merges: the already-resolved
@@ -789,6 +790,7 @@ function toolNode(
   callId: string,
   name: string,
   parentMessageId?: string,
+  subagentRunId?: string,
 ): ChatProjectionState {
   if (toolNodeIdFor(state, callId) !== undefined) {
     return state;
@@ -800,7 +802,13 @@ function toolNode(
       `Tool call "${callId}" has no parent message`,
     );
   }
-  const next = ensureMessage(state, messageId, "assistant");
+  const parent = ensureMessage(state, messageId, "assistant");
+  // Tool-only messages have no TEXT_MESSAGE_START to carry their owner.
+  // Preserve it on the resolved parent so checkpoint snapshots can reopen the call.
+  const next =
+    subagentRunId === undefined
+      ? parent
+      : updateMessage(parent, messageId, (message) => ({ ...message, subagentRunId }));
   const nodeId = `execution:${callId}`;
   const node: PublicActivityNode = {
     nodeId,
@@ -848,18 +856,14 @@ function activityNode(
       (state.messageById.has(event.messageId) ? event.messageId : undefined) ??
       latestMessageId(state, "assistant") ??
       latestMessageId(state);
-    let next = state;
-    if (parentMessageId !== undefined && !next.messageNodeById.has(parentMessageId)) {
-      next = ensureMessage(next, parentMessageId, "assistant");
-    }
     const nodeId = `activity:${event.messageId}`;
     const node: PublicActivityNode = {
       nodeId,
       parentNodeId:
         parentMessageId === undefined
           ? null
-          : (next.messageNodeById.get(parentMessageId) ?? `message:${parentMessageId}`),
-      sequence: next.nextSequence,
+          : (state.messageNodeById.get(parentMessageId) ?? `message:${parentMessageId}`),
+      sequence: state.nextSequence,
       kind: "activity",
       state: "running",
       presentation: "public",
@@ -870,7 +874,7 @@ function activityNode(
       },
     };
     return upsertGraphNode(
-      next,
+      state,
       node,
       event.messageId,
       parentMessageId === undefined
@@ -1014,7 +1018,10 @@ function activityDelta(state: ChatProjectionState, event: ActivityDeltaEvent): C
     );
   }
   const nodes = mapCopy(state.nodes);
-  nodes.set(nodeId, { ...current, node: applyPatchToNode(current.node, event) });
+  nodes.set(nodeId, {
+    ...current,
+    node: preserveSettledToolResult(current.node, applyPatchToNode(current.node, event)),
+  });
   return { ...state, nodes };
 }
 
@@ -1443,7 +1450,13 @@ function foldEventContent(state: ChatProjectionState, event: AGUIEvent): ChatPro
         "Structured output stream ended before completion",
       );
     case EventType.TOOL_CALL_START:
-      return toolNode(state, event.toolCallId, event.toolCallName, event.parentMessageId);
+      return toolNode(
+        state,
+        event.toolCallId,
+        event.toolCallName,
+        event.parentMessageId,
+        event.subagentRunId,
+      );
     case EventType.TOOL_CALL_ARGS: {
       return updateTool(state, event.toolCallId, (node) => {
         const data = node.publicData;

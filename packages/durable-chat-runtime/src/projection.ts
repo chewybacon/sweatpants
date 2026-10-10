@@ -289,7 +289,8 @@ function* replayConversationFrames(
     // Classify once, then fold each batch with a single derivation. Folding
     // per frame would pay a full index refresh for every event.
     const providerEvents: AGUIEvent[] = [];
-    const activityEvents: AGUIEvent[] = [];
+    const publicEvents: AGUIEvent[] = [];
+    let activityEventCount = 0;
     const activityRecordOrder: string[] = [];
     const seenActivityRecords = new Set<string>();
     const activityOwners = new Map<string, string>();
@@ -312,20 +313,27 @@ function* replayConversationFrames(
         }
         if (event.subagentRunId !== undefined)
           activityOwners.set(event.messageId, event.subagentRunId);
-        activityEvents.push(event);
+        publicEvents.push(event);
+        activityEventCount += 1;
         continue;
       }
       providerEvents.push(event);
+      if (options.includeActivity) {
+        publicEvents.push(event);
+      }
     }
 
     const providerProjection = foldAGUIEvents(createChatProjection(), providerEvents);
-    const activityProjection = foldAGUIEvents(createChatProjection(), activityEvents);
+    // Activity placement and tool results describe the same nodes. Fold both
+    // in journal order so checkpoint activities contain the completed results.
+    // Keep provider history separate: activity-only UI must not enter model context.
+    const activityProjection = foldAGUIEvents(createChatProjection(), publicEvents);
 
     yield* note({
       kind: "frames-replayed",
       frames: frames.length,
       providerEvents: providerEvents.length,
-      activityEvents: activityEvents.length,
+      activityEvents: activityEventCount,
     });
     return { providerProjection, activityProjection, activityRecordOrder, activityOwners };
   });

@@ -1,0 +1,8 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "customConditions": ["development"]
+    },
+    "include": ["src/**/*", "vitest.config.ts", "vite.config.ts"],
+    "exclude": ["node_modules", "dist"]
+}
