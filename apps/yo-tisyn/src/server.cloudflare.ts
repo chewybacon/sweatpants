@@ -1,10 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
+import { handle as astroHandle } from "@astrojs/cloudflare/handler";
 import { createChatFetchHandler } from "@sweatpants/agent-host/server";
 import { pi } from "@sweatpants/model-provider-pi-ai";
 import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai";
 import { createTisynModels } from "./cloudflare/model-catalog.ts";
 import { createCloudflareTisynApp, type CloudflareBindings } from "./cloudflare/application.ts";
 import { createConversationRouter, type ConversationNamespace } from "./cloudflare/routing.ts";
+
 export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
 export { ToolExecutors } from "./cloudflare/tool-executors.ts";
 
@@ -41,7 +43,7 @@ export class Conversations extends DurableObject<Env> {
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const path = new URL(request.url).pathname;
     if (path === "/health") {
       return Response.json({
@@ -50,11 +52,12 @@ export default {
         host: "conversation-do",
         tools: "executor-do",
         evaluation: "quickjs-in-tool-executor-do",
+        site: "astro",
       });
     }
     if (path === "/api/chat" || path.startsWith("/api/chat/")) {
       return createConversationRouter(env.CONVERSATIONS)(request);
     }
-    return env.ASSETS.fetch(request);
+    return astroHandle(request, env, ctx);
   },
 };

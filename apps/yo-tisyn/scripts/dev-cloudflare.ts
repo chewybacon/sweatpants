@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-// Match yo-chat: build dependencies, refresh real credentials, initialize D1, then Vite.
+// Match yo-chat: build dependencies, refresh real credentials, initialize D1, then Astro.
 function command(args: string[], env = process.env, cwd?: string) {
   const result = spawnSync("pnpm", args, { cwd, env, stdio: "inherit" });
   if (result.error) {
@@ -47,15 +47,13 @@ console.log("Starting yo-tisyn on :8103 with OpenCode / Haiku 5.5.");
 command(
   [
     "exec",
-    "vite",
-    "--mode",
-    "cloudflare",
+    "astro",
+    "dev",
     "--host",
     "127.0.0.1",
     "--port",
     "8103",
     "--strictPort",
-    "--force",
     ...process.argv.slice(2),
   ],
   env,

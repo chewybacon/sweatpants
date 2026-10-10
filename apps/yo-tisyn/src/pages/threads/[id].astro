@@ -1,0 +1,18 @@
+---
+import SiteLayout from "../../layouts/SiteLayout.astro";
+import { App } from "../../App.tsx";
+
+export const prerender = false;
+const threadId = Astro.params.id;
+if (!threadId || !/^[a-f0-9-]{16,64}$/i.test(threadId)) {
+  return Astro.redirect("/threads");
+}
+---
+<SiteLayout title={`Thread ${threadId.slice(0, 8)} · yo-tisyn`} description="Resume a durable yo-tisyn workflow.">
+  <section class="page-intro compact">
+    <span class="eyebrow">Durable thread</span>
+    <h2>Resume the workflow</h2>
+    <p>This page reads the same conversation ID. The page shell is SSR; chat streaming remains a browser island.</p>
+  </section>
+  <App client:only="react" initialThreadId={threadId} />
+</SiteLayout>
