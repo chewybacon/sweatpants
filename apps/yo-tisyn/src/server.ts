@@ -1,0 +1,62 @@
+import { createServer } from "node:http";
+import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
+import { pi } from "@sweatpants/model-provider-pi-ai";
+import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
+import { createTisynApp } from "./application.ts";
+import { TisynEvaluationPort } from "./evaluation.ts";
+import { createNodeEvaluationDriver } from "./evaluation-node.ts";
+
+const app = createTisynApp({
+  execution: inProcess({
+    *setup() {
+      yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
+    },
+  }),
+  storage: chatStorageFromEnv({ defaultPath: new URL("../.data/chat.sqlite", import.meta.url) }),
+  model: pi({
+    provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+    model: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-5.5",
+    // Sonnet 5.5 rejects the provider default of disabled thinking.
+    streamOptions: { thinking: "low" },
+  }),
+});
+const server = createServer((request, response) => {
+  const url = request.url ?? "/";
+  if (url === "/health") {
+    response.end("yo-tisyn");
+    return;
+  }
+  if (!url.startsWith("/api/chat")) {
+    response.statusCode = 404;
+    response.end("Not found");
+    return;
+  }
+  void app
+    .handler(nodeRequestToWebRequest(request, "http://127.0.0.1:8102"))
+    .then((result) => sendWebResponse(response, result))
+    .catch((error: unknown) => {
+      console.error("[yo-tisyn] request failed", error);
+      if (!response.headersSent) {
+        response.statusCode = 500;
+      }
+      response.end("yo-tisyn request failed; see server log");
+    });
+});
+server.listen(8102, "127.0.0.1", () => console.log("yo-tisyn API: http://127.0.0.1:8102"));
+let closing = false;
+async function close() {
+  if (closing) {
+    return;
+  }
+  closing = true;
+  server.close();
+  await app.close();
+}
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void close().catch((error: unknown) => {
+      console.error("[yo-tisyn] shutdown failed", error);
+      process.exitCode = 1;
+    });
+  });
+}

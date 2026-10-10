@@ -11,7 +11,11 @@ import {
   replayConversationViews,
   type ProjectionFrame,
 } from "../projection.ts";
-import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
+import {
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
+  validateConversationSegment,
+  type ConversationStreamEvent as StreamEvent,
+} from "@sweatpants/chat-core";
 
 function frames(...events: readonly StreamEvent[]): ProjectionFrame[] {
   return parseBufferedFrames([...events]);
@@ -59,6 +63,161 @@ describe("conversation replay projection", () => {
       replayConversationViews(input).activitySnapshots,
     );
   });
+
+  it("preserves tool-only ownership through a checkpoint and a resumed segment", async () => {
+    const input = frames(
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: "child-call",
+        toolCallName: "ask",
+        parentMessageId: "child-message",
+        subagentRunId: "parent-owner",
+      },
+      {
+        type: EventType.TOOL_CALL_ARGS,
+        toolCallId: "child-call",
+        delta: "{}",
+        subagentRunId: "parent-owner",
+      },
+      { type: EventType.TOOL_CALL_END, toolCallId: "child-call", subagentRunId: "parent-owner" },
+    );
+    const checkpoint = await run(() => buildCheckpointSnapshotEventsFromFrames(input));
+    expect(checkpoint).toContainEqual({
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: [
+        {
+          id: "child-message",
+          role: "assistant",
+          subagentRunId: "parent-owner",
+          toolCalls: [
+            { id: "child-call", type: "function", function: { name: "ask", arguments: "{}" } },
+          ],
+        },
+      ],
+    });
+    expect(() =>
+      validateConversationSegment([
+        { type: EventType.RUN_STARTED, threadId: "thread", runId: "resumed" },
+        ...checkpoint,
+        { type: EventType.STATE_SNAPSHOT, snapshot: {} },
+        {
+          type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+          authority: {
+            conversationId: "thread",
+            revision: "1",
+            state: "running",
+            activeLogicalTurnId: "turn",
+            activeExecutionId: "execution",
+            latestCompletedExecutionId: null,
+          },
+        },
+        {
+          type: EventType.TOOL_CALL_RESULT,
+          toolCallId: "child-call",
+          messageId: "result",
+          role: "tool",
+          content: "reply",
+          subagentRunId: "parent-owner",
+        },
+        {
+          type: CONVERSATION_AUTHORITY_FRAME_TYPE,
+          authority: {
+            conversationId: "thread",
+            revision: "2",
+            state: "idle",
+            activeLogicalTurnId: null,
+            activeExecutionId: null,
+            latestCompletedExecutionId: "execution",
+          },
+        },
+        {
+          type: EventType.RUN_FINISHED,
+          threadId: "thread",
+          runId: "resumed",
+          outcome: { type: "success" },
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it.each([
+    {
+      content: { status: "ok", output: { reply: "done" } },
+      state: "output-available",
+      result: { output: { reply: "done" } },
+    },
+    {
+      content: { status: "error", errorText: "child failed" },
+      state: "output-error",
+      result: { errorText: "child failed" },
+    },
+  ])(
+    "retains $state in activity checkpoints after a parked child resumes",
+    async ({ content, state, result }) => {
+      const pending = frames(
+        {
+          type: EventType.TOOL_CALL_START,
+          toolCallId: "child",
+          toolCallName: "ask",
+          parentMessageId: "assistant",
+          subagentRunId: "parent-owner",
+        },
+        { type: EventType.TOOL_CALL_ARGS, toolCallId: "child", delta: "{}" },
+        { type: EventType.TOOL_CALL_END, toolCallId: "child" },
+        {
+          type: EventType.ACTIVITY_SNAPSHOT,
+          messageId: "execution:child",
+          subagentRunId: "parent-owner",
+          activityType: "sweatpants:public-execution",
+          content: {
+            version: 1,
+            node: {
+              nodeId: "execution:child",
+              parentNodeId: "message:assistant",
+              sequence: 0,
+              kind: "tool-call",
+              state: "input-available",
+              presentation: "public",
+              publicData: {
+                kind: "tool-call",
+                callId: "child",
+                name: "ask",
+                input: {},
+                rawInput: "{}",
+              },
+            },
+          },
+          replace: true,
+        },
+      );
+      const parked = await run(() => buildCheckpointSnapshotEventsFromFrames(pending));
+      expect(replayConversationViews(frames(...parked)).activitySnapshots).toMatchObject([
+        { content: { node: { state: "input-available" } } },
+      ]);
+      const completed = frames(...parked, {
+        type: EventType.TOOL_CALL_RESULT,
+        toolCallId: "child",
+        messageId: "result",
+        role: "tool",
+        subagentRunId: "parent-owner",
+        content: JSON.stringify(content),
+      });
+      const views = replayConversationViews(completed);
+      expect(views.activitySnapshots).toMatchObject([
+        {
+          messageId: "execution:child",
+          subagentRunId: "parent-owner",
+          content: { node: { state, publicData: result } },
+        },
+      ]);
+      expect(views.providerMessages).toEqual(providerHistoryFromFrames(completed));
+      expect(views.providerMessages).toContainEqual(
+        expect.objectContaining({ role: "tool", toolCallId: "child" }),
+      );
+      const checkpoint = await run(() => buildCheckpointSnapshotEventsFromFrames(completed));
+      expect(replayConversationViews(frames(...checkpoint))).toEqual(views);
+    },
+  );
 
   it("exposes semantic replay and materialization stages", () => {
     const input = frames(messageSnapshot, activitySnapshot);

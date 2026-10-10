@@ -233,7 +233,21 @@ function modelContextMessagesFromRoots(roots: readonly Json[]): ModelContext["me
       return a === b ? 0 : a < b ? -1 : 1;
     })
     .map((root) => root.message);
-  return projectChatHistory(agUiMessagesToChatHistoryEntries(messages));
+  // Public roots retain child execution for the UI. It is not conversation-model history.
+  // Tool results inherit ownership from their opener, even without their own owner tag.
+  const childCallIds = new Set(
+    messages.flatMap((message) =>
+      message.role === "assistant" && message.subagentRunId !== undefined
+        ? (message.toolCalls ?? []).map((call) => call.id)
+        : [],
+    ),
+  );
+  const outerMessages = messages.filter(
+    (message) =>
+      message.subagentRunId === undefined &&
+      (message.role !== "tool" || !childCallIds.has(message.toolCallId)),
+  );
+  return projectChatHistory(agUiMessagesToChatHistoryEntries(outerMessages));
 }
 
 function taskModelMessages(records: readonly DurableSemanticRecord[]): ModelContext["messages"] {
