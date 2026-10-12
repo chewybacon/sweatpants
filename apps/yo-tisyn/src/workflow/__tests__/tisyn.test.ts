@@ -29,8 +29,8 @@ import { programs, tisynExposure } from "../agent.ts";
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { ask } from "../tools/ask.ts";
 import { echo } from "../tools/echo.ts";
-import { TisynEvaluationPort } from "../evaluation.ts";
-import { createNodeEvaluationDriver } from "../evaluation-node.ts";
+import { TisynEvaluationPort } from "../evaluation/port.ts";
+import { createNodeEvaluationDriver } from "../evaluation/node.ts";
 
 const workflow = `Let("before", Eval("echo", {"message":"before"}),
   Let("reply", Eval("ask", {"message":Concat("After ",Get(Ref("before"),"message"),", what next?")}),

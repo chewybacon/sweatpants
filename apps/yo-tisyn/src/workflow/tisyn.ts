@@ -6,9 +6,9 @@ import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { z } from "zod";
 
 import { MAX_SOURCE_LENGTH, parseTisynSource } from "./source.ts";
-import { createEvaluation, EVALUATION_LIMITS } from "./evaluation.ts";
+import { createEvaluation, EVALUATION_LIMITS } from "./evaluation/port.ts";
 import type { TisynExpr } from "@tisyn/ir";
-import packageJson from "../package.json" with { type: "json" };
+import packageJson from "../../package.json" with { type: "json" };
 
 export type BoundTool = DurableTool & AnyToolContract;
 const structural = new Set([

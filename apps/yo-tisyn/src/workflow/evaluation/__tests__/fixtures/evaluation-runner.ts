@@ -1,7 +1,7 @@
 import { run, scoped } from "effection";
 import { parseDSL } from "@tisyn/dsl";
-import { createEvaluation, TisynEvaluationPort } from "../../evaluation.ts";
-import { createNodeEvaluationDriver } from "../../evaluation-node.ts";
+import { createEvaluation, TisynEvaluationPort } from "../../port.ts";
+import { createNodeEvaluationDriver } from "../../node.ts";
 
 const report = await run(function* () {
   yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());

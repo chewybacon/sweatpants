@@ -1,12 +1,4 @@
 ---
-import SiteLayout from "../layouts/SiteLayout.astro";
-import { App } from "../App.tsx";
+export const prerender = false;
+return Astro.redirect("/playground");
 ---
-<SiteLayout title="yo-tisyn · durable workflow playground" description="Author durable workflows as typed Tisyn programs.">
-  <section class="page-intro">
-    <span class="eyebrow">Playground</span>
-    <h2>One authored program. Durable rounds.</h2>
-    <p>Try a workflow, answer its typed questions, and watch Sweatpants keep the accepted work while evaluators come and go.</p>
-  </section>
-  <App client:only="react" />
-</SiteLayout>

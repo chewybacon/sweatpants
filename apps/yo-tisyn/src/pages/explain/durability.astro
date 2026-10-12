@@ -1,9 +1,0 @@
----
-import SiteLayout from "../../layouts/SiteLayout.astro";
-import { DurabilityExplainer } from "../../DurabilityExplainer.tsx";
-
-export const prerender = false;
----
-<SiteLayout title="Durability explained · yo-tisyn" description="See how Sweatpants parks and recovers typed workflows.">
-  <DurabilityExplainer client:only="react" />
-</SiteLayout>

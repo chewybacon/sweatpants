@@ -3,8 +3,8 @@ import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
 import { pi } from "@sweatpants/model-provider-pi-ai";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
 import { createTisynApp } from "./application.ts";
-import { TisynEvaluationPort } from "./evaluation.ts";
-import { createNodeEvaluationDriver } from "./evaluation-node.ts";
+import { TisynEvaluationPort } from "../workflow/evaluation/port.ts";
+import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
 
 const app = createTisynApp({
   execution: inProcess({
@@ -12,7 +12,7 @@ const app = createTisynApp({
       yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
     },
   }),
-  storage: chatStorageFromEnv({ defaultPath: new URL("../.data/chat.sqlite", import.meta.url) }),
+  storage: chatStorageFromEnv({ defaultPath: new URL("../../.data/chat.sqlite", import.meta.url) }),
   model: pi({
     provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
     model: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-5.5",

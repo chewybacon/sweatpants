@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { run, scoped } from "effection";
 import variant from "@jitl/quickjs-wasmfile-release-sync";
 import { memoizePromiseFactory, newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
-import { createQuickJSEvaluationDriver } from "../evaluation-quickjs.ts";
-import { createEvaluation, TisynEvaluationPort } from "../evaluation.ts";
-import { parseProgram } from "../tisyn.ts";
-import { boundTools } from "../agent.ts";
+import { createQuickJSEvaluationDriver } from "../quickjs.ts";
+import { createEvaluation, TisynEvaluationPort } from "../port.ts";
+import { parseProgram } from "../../tisyn.ts";
+import { boundTools } from "../../agent.ts";
 
 const load = memoizePromiseFactory(() => newQuickJSWASMModuleFromVariant(variant));
 

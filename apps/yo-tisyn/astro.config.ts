@@ -1,6 +1,7 @@
 import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
+import { unplugin as stylex } from "@stylexjs/unplugin";
 import { clientContractPlugin } from "@sweatpants/vite-plugin";
 
 export default defineConfig({
@@ -12,7 +13,7 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
-    plugins: [clientContractPlugin()],
+    plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
     build: { minify: true },
     ssr: {
       noExternal: true,

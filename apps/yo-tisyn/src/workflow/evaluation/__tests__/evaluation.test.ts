@@ -6,8 +6,8 @@ import {
   EVALUATION_LIMITS,
   TisynEvaluationPort,
   type Evaluation,
-} from "../evaluation.ts";
-import { createNodeEvaluationDriver } from "../evaluation-node.ts";
+} from "../port.ts";
+import { createNodeEvaluationDriver } from "../node.ts";
 
 function withNode<T>(body: () => Operation<T>): Promise<T> {
   return run(function* () {

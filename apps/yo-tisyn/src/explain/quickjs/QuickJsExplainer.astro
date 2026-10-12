@@ -1,0 +1,118 @@
+---
+import "./quickjs-explainer.css";
+// Native SVG keeps the original walkthrough inspectable; StyleX owns the site shell.
+---
+<div class="quickjs-explainer">
+
+<header class="explainer-header">
+  <div class="eyebrow">Inside the runtime / interactive walkthrough</div>
+  <div class="topline"><h1>Durable work. <br><span>Disposable computation.</span></h1><a class="quickjs-title-link" href="/playground">Try a workflow ↗</a></div>
+  <p class="intro">A Durable Object decides <strong>where code runs</strong>. QuickJS lets us <strong>bound the computation inside it</strong>. Sweatpants remembers the work when that computation disappears.</p>
+</header>
+<div class="explainer-main">
+  <div class="scenarios" role="group" aria-label="Choose a walkthrough">
+    <button data-scenario="round" aria-pressed="true">One round of the loop</button>
+    <button data-scenario="replay" aria-pressed="false">Park & recover</button>
+    <button data-scenario="guard" aria-pressed="false">Stop runaway code</button>
+  </div>
+  <div class="workspace">
+    <section class="visual" aria-label="Animated architecture diagram">
+      <div class="visual-top"><span>Follow the highlighted route. Select a box to inspect it.</span><div class="zoom" role="group" aria-label="Diagram zoom"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-fit">Fit</button><button id="zoom-in" aria-label="Zoom in">+</button></div></div>
+      <div class="controls">
+        <button class="primary" id="play" aria-label="Play walkthrough">▶ Play</button><button id="back" aria-label="Previous step">← Back</button><button id="next" aria-label="Next step">Next →</button><button id="reset" aria-label="Restart walkthrough">↺</button>
+        <span class="count" id="step-count">1 / 14</span>
+        <label class="sr-only" for="speed">Playback speed</label><select id="speed"><option value="6500">Slow</option><option value="4200" selected>Normal</option><option value="2200">Fast</option></select>
+      </div>
+      <div class="progress"><input id="scrub" type="range" min="0" max="13" value="0" aria-label="Walkthrough step"><span>← → to step</span></div>
+      <div class="diagram-scroll" id="diagram-scroll">
+      <svg id="map" viewBox="0 0 1220 745" role="group" aria-label="Browser to ingress Worker to Conversations Durable Object. Sweatpants dispatches to tool-executor Durable Objects, records outcomes in D1, and sends UI updates through a response-stream Durable Object. QuickJS runs only the Tisyn kernel, not the tools.">
+        <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#514c65"/></marker><marker id="arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#9ccfd8"/></marker><marker id="arrow-blue" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#9ccfd8"/></marker><marker id="arrow-gold" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#f6c177"/></marker><marker id="arrow-purple" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#c4a7e7"/></marker></defs>
+        <rect class="group-box" x="725" y="250" width="470" height="265" rx="15"/>
+        <text class="group-label" x="750" y="277">TOOL EXECUTOR DOs</text>
+        <text class="tiny" x="750" y="494">Parent program and children have separate owned scopes.</text>
+        <g class="flow blue" data-flow="ingress"><path id="edge-ingress" d="M110 285 V111 H235"/></g>
+        <g class="flow blue" data-flow="route"><path id="edge-route" d="M327 170 V260"/></g>
+        <g class="flow purple" data-flow="model-request"><path id="edge-model-request" d="M528 260 V170"/></g>
+        <g class="flow purple" data-flow="model-return"><path id="edge-model-return" d="M607 170 V260"/></g>
+        <g class="flow" data-flow="run"><path id="edge-run" d="M670 342 H755"/></g>
+        <g class="flow" data-flow="yield"><path id="edge-yield" d="M755 414 H670"/></g>
+        <g class="flow blue" data-flow="dispatch"><path id="edge-dispatch" d="M610 515 V559 H1080 V441"/></g>
+        <g class="flow blue" data-flow="child-return"><path id="edge-child-return" d="M990 329 H976 V225 H644 V260"/></g>
+        <g class="flow gold" data-flow="write"><path id="edge-write" d="M397 515 V605"/></g>
+        <g class="flow gold" data-flow="read"><path id="edge-read" d="M485 605 V515"/></g>
+        <g class="flow blue" data-flow="publish"><path id="edge-publish" d="M250 462 H220 V655 H202"/></g>
+        <g class="flow blue" data-flow="deliver"><path id="edge-deliver" d="M110 605 V417"/></g>
+        <text class="route-label" x="32" y="233">request / reply</text>
+        <text class="route-label" x="681" y="330">JSON data</text>
+        <text class="route-label" x="680" y="440">descriptor</text>
+        <text class="route-label" x="778" y="214">child result → host → evaluator</text>
+        <text class="route-label" x="758" y="583">Sweatpants dispatches; the VM does not call tools</text>
+        <text class="route-label" x="358" y="575">accept</text>
+        <text class="route-label" x="495" y="575">replay</text>
+        <g data-node="browser" role="button" tabindex="0" aria-label="Inspect browser">
+          <rect class="card" x="25" y="285" width="177" height="132" rx="12"/>
+          <text class="tiny" x="42" y="312">HUMAN INTERACTION</text><text class="title" x="42" y="341">Your browser</text><text class="sub" x="42" y="367">Task, reply, decline</text><text class="mono" id="browser-state" x="42" y="397">send a task</text>
+        </g>
+        <g data-node="worker" role="button" tabindex="0" aria-label="Inspect ingress Worker">
+          <rect class="card" x="235" y="49" width="185" height="121" rx="12"/>
+          <text class="tiny" x="254" y="76">THIN HTTP INGRESS</text><text class="title" x="254" y="106">Worker</text><text class="sub" x="254" y="135">Routes to a DO</text><text class="tiny" x="254" y="155">Not the evaluator</text>
+        </g>
+        <g data-node="model" class="node-purple" role="button" tabindex="0" aria-label="Inspect model provider">
+          <rect class="card" x="480" y="49" width="190" height="121" rx="12"/>
+          <text class="tiny" x="497" y="76">EXTERNAL MODEL</text><text class="title" x="497" y="106">Author a program</text><text class="sub" x="497" y="135">OpenCode · Haiku 5.5</text><text class="tiny" x="497" y="155">Tisyn, not JavaScript</text>
+        </g>
+        <text class="tiny" x="483" y="196">No model call between loop rounds</text>
+        <g data-node="host" class="node-blue" role="button" tabindex="0" aria-label="Inspect Sweatpants Agent Host in the Conversations Durable Object">
+          <rect class="card" x="250" y="260" width="420" height="255" rx="15"/>
+          <text class="group-label" x="274" y="290">CONVERSATIONS DO</text>
+          <rect x="273" y="311" width="374" height="93" rx="9" fill="#302c44"/>
+          <text class="title" x="290" y="342">Sweatpants Agent Host</text>
+          <text class="sub" x="290" y="368">Schedule · dispatch · park · recover</text>
+          <text class="tiny" x="290" y="389">Journal authority backed by D1</text>
+          <rect x="273" y="421" width="374" height="70" rx="8" fill="#191724"/>
+          <text class="tiny" id="packet-label" x="287" y="442">AT THIS STEP</text>
+          <text class="mono" id="packet-value" x="287" y="469">receive the task</text>
+        </g>
+        <g data-node="vm" class="node-teal" role="button" tabindex="0" aria-label="Inspect the QuickJS WebAssembly virtual machine">
+          <rect class="card" x="755" y="296" width="201" height="169" rx="12"/>
+          <text class="title" x="772" y="324" style="font-size:18px">QuickJS / WASM</text>
+          <rect x="772" y="337" width="167" height="72" rx="7" fill="#243f4e"/>
+          <text class="title" x="783" y="364" style="font-size:17px">Tisyn kernel</text><text class="tiny" x="783" y="387">Unchanged npm code</text>
+          <circle class="vm-ring" cx="923" cy="354" r="8"/>
+          <text class="tiny" id="vm-state" x="772" y="431">NOT CREATED</text>
+          <rect class="guard-bar-bg" x="772" y="443" width="167" height="4" rx="2"/><rect class="guard-bar" id="guard-bar" x="772" y="443" width="0" height="4" rx="2"/>
+        </g>
+        <g data-node="tools" class="node-blue" role="button" tabindex="0" aria-label="Inspect native durable ask and echo tools">
+          <rect class="card" x="990" y="296" width="182" height="145" rx="12"/>
+          <text class="tiny" x="1007" y="322">DURABLE CHILDREN</text><text class="title" x="1007" y="351">ask / echo</text><text class="sub" x="1007" y="377">Native tool code</text><text class="tiny" x="1007" y="398">Outside the VM</text><text class="mono" id="child-state" x="1007" y="423">not started</text>
+        </g>
+        <g data-node="streams" class="node-blue" role="button" tabindex="0" aria-label="Inspect response-stream Durable Objects">
+          <rect class="card" x="25" y="605" width="177" height="105" rx="12"/>
+          <text class="tiny" x="42" y="630">UI DELIVERY</text><text class="title" x="42" y="656" style="font-size:14px">ResponseStream DO</text><text class="sub" x="42" y="684">Replayable updates</text>
+        </g>
+        <g data-node="journal" class="node-gold" role="button" tabindex="0" aria-label="Inspect the durable D1 journal">
+          <rect class="card" x="250" y="605" width="420" height="105" rx="12"/>
+          <text class="title" x="274" y="638" style="fill:#f6c177">D1 · durable journal</text><text class="sub" x="274" y="665">Accepted program, outcomes, pending work</text><text class="tiny" x="274" y="691" style="fill:#f6c177">SURVIVES COMPUTE REPLACEMENT</text>
+        </g>
+        <text class="sub" x="750" y="645" style="fill:#9ccfd8">Disposable ≠ forgotten.</text><text class="tiny" x="750" y="674">The VM can vanish. The accepted work stays in D1.</text>
+      </svg>
+      </div>
+      <div class="map-help">Boxes show roles, not exact instance counts. Tool children may run in different DO instances. Scroll or zoom to inspect the map.</div>
+    </section>
+    <aside class="sidebar">
+      <section class="story" aria-label="Current explanation">
+        <div class="story-head" aria-live="polite" aria-atomic="true"><div class="phase" id="phase"></div><h2 id="step-title"></h2><p id="step-copy"></p><pre class="snippet"><code id="step-code"></code></pre></div>
+        <div class="metrics"><div><span class="metric-label">Model calls in this workflow</span><div class="metric-value model" id="model-count">0</div></div><div><span class="metric-label">Temporary evaluator</span><div class="metric-value vm" id="vm-metric">Not created</div></div></div>
+        <div class="ledger"><h3>What the journal remembers</h3><p>Conceptual entries, not literal event names.</p><ol id="journal-list"></ol><div class="empty" id="journal-empty">No program accepted yet.</div></div>
+      </section>
+      <section class="inspector" aria-label="Selected component"><h3 id="inspect-title">QuickJS is not a second durable runtime</h3><p id="inspect-copy">It is a JavaScript engine running the Tisyn kernel. Sweatpants still owns tools, journal authority, scheduling, parking, and recovery. Select any box to explore its job.</p></section>
+    </aside>
+  </div>
+  <div class="limits" aria-label="Actual configured limits"><div class="limit"><strong>256 checks</strong><span>QuickJS interrupt budget per advance. Not 256 DSL instructions.</span></div><div class="limit"><strong>32 MiB</strong><span>VM allocation limit. Not a memory quota for the entire DO.</span></div><div class="limit"><strong>64 KiB</strong><span>VM stack limit. Bounds recursion before it overruns the host stack.</span></div><div class="limit"><strong>256 calls</strong><span>Shared adapter limit for tool calls across one authored program.</span></div></div>
+  <div class="takeaway"><b>QuickJS evaluates. Sweatpants remembers and acts.</b><small>Human waiting consumes no evaluation budget. Limits fail explicitly; they do not turn failure into successful completion.</small></div>
+</div>
+<footer><div class="legend"><span style="--dot:var(--blue)">Sweatpants / execution & delivery</span><span style="--dot:var(--teal)">Bounded temporary computation</span><span style="--dot:var(--gold)">Durable authority</span><span style="--dot:var(--purple)">Model authoring & summary</span></div>Illustration, not a live trace. Animation timing and the compute bar explain the sequence; they are not performance measurements.</footer>
+
+</div>
+
+<script src="./quickjs-walkthrough.js"></script>
