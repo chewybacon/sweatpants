@@ -35,6 +35,7 @@
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/frame-renderer": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
+        "@sweatpants/model-decision": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
         "@sweatpants/storage-d1": "workspace:*",

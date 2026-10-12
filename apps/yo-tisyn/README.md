@@ -114,6 +114,60 @@ Admitted: JSON values, `Let`, `Ref`, `Seq`, `If`, `Fn`, `Call`, `While`, `Get`, 
 
 For accumulation, use recursive `Fn`/`Call` with the accumulator as a parameter. Bindings are immutable; `While` does not mutate outer bindings. One accepted program runs every round. Each call to a bound tool remains a separate durable child under the same workflow. The outer model is not called between rounds; the program can explicitly request additional completions through `sample`.
 
+### Decisions and branching
+
+Both app placements enable `.decisions({ provider: "opencode", id: "jev-1.13" })`.
+This capability is independent of `.samples()` and is included in workflow identity.
+The model supplies classification instructions and choices in its authored program:
+
+```text
+Let("answer", Classify({
+  "input": "I was charged twice",
+  "instructions": "Choose the matching support category",
+  "choices": {"billing": "Charges and payments", "technical": "Product problems"}
+}),
+  If(Eq(Get(Ref("answer"), "type"), "refusal"),
+    "Classification refused",
+    Switch(Get(Ref("answer"), "choice"), {
+      "billing": Eval("echo", {"message": "Billing selected"}),
+      "technical": Eval("echo", {"message": "Technical selected"})
+    }, "Unknown category")
+  )
+)
+```
+
+`Classify` returns a choice answer with `choice`, `probabilities`, and `confidence`,
+or `{type: "refusal"}`. Confidence is the provider's statistic, not necessarily the
+selected choice's probability. `Switch(selector, cases, fallback)` evaluates its
+selector once and executes only the selected branch. Admission validates every
+branch. These forms lower to existing `Get`/`Eval` and `Let`/`If` IR; the published
+Tisyn kernel and QuickJS bridge are unchanged. Program previews show lowered IR.
+
+`Eval("decision", {input, question: {type: "choice", instructions, choices}})`
+is the underlying capability; `choices` here is an array of `{value, description}`.
+It returns `{answer, model, usage}`. The SDK exposes the same request through
+`.decisions(binding)` and `yield* context.decision(request)` in durable tools.
+Applications register `createDecisionEffectRegistration()` and install a scoped
+provider using `installDecisionProvider(createPiAiDecisionProvider())`.
+
+The `@sweatpants/model-decision` package owns the contract, fail-closed provider
+port, and `model.decision` durable effect. Accepted answers replay from the journal,
+including across park/resume; a crash before acceptance can repeat inference and
+billing. Requests allow 2–64 unique labels and at most 32 KiB of encoded JSON input.
+Provider responses must contain a valid distribution over exactly those labels.
+Keep arithmetic, counters, and stopping rules in authored deterministic code.
+
+This slice implements choice decisions through OpenCode Jev. The contract handles
+refusal, although Jev's current Pi adapter does not produce one. OpenAI's dedicated
+decisions adapter, predicate/score questions, batching, and automatic confidence
+policies are not implemented.
+
+Live validation used Haiku-authored `Classify`/`Switch`, Jev classification, a
+billing-only human reply, browser reload while parked, and successful completion
+with `billing:DEMO-42`. Unit coverage additionally destroys the execution scope,
+restores serialized journal authority, and proves the accepted decision is not
+requested again. Evidence is under `.artifacts/yo-tisyn-decisions/`.
+
 ### Sampling inside a workflow
 
 `Eval("sample", {"prompt": ...})` returns `{"text": ...}`. Inputs are a required

@@ -1,3 +1,8 @@
+import {
+  createDecisionEffectRegistration,
+  installDecisionProvider,
+  type DecisionProviderDriver,
+} from "@sweatpants/model-decision";
 import { createChatApp } from "@sweatpants/agent-host/server";
 import { ToolExposurePolicyContext } from "@sweatpants/chat-core";
 import {
@@ -10,16 +15,22 @@ import { programs, tisynExposure } from "../workflow/agent.ts";
 type AppOptions = Parameters<typeof createChatApp>[0];
 
 /** The same application runs in the local server and protocol test rig. */
-export function createTisynApp(options: Pick<AppOptions, "storage" | "model" | "execution">) {
+export function createTisynApp(
+  options: Pick<AppOptions, "storage" | "model" | "execution"> & {
+    decisionProvider?: DecisionProviderDriver;
+  },
+) {
   return createChatApp({
     ...options,
     name: "yo-tisyn",
     secret: "yo-tisyn-local-spike-not-for-public-deployment",
     tools: programs,
+    effects: [createDecisionEffectRegistration()],
     // Initial validation, up to three repairs, execution, and final summary.
     maxToolIterations: 6,
     setup: {
       application: function* () {
+        if (options.decisionProvider) yield* installDecisionProvider(options.decisionProvider);
         yield* setupDurableStreams({
           bufferStore: createInMemoryBufferStore<string>(),
           registryStore: createInMemoryRegistryStore(),

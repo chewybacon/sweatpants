@@ -1,3 +1,4 @@
+import { decisionBinding } from "./decisions.ts";
 import type { ToolExposurePolicy } from "@sweatpants/chat-core";
 import { createTisynTool } from "./tisyn.ts";
 import { echo } from "./tools/echo.ts";
@@ -10,7 +11,9 @@ if (samplingMode !== "child" && samplingMode !== "direct") {
 }
 export const boundTools = samplingMode === "direct" ? [echo, ask] : [echo, ask, sample];
 const builder = createTisynTool(boundTools);
-export const tisyn = (samplingMode === "direct" ? builder.samples() : builder).build();
+export const tisyn = (samplingMode === "direct" ? builder.samples() : builder)
+  .decisions(decisionBinding)
+  .build();
 export const programs = [tisyn, ...boundTools];
 export const tisynExposure: ToolExposurePolicy = {
   *filter({ entries }) {

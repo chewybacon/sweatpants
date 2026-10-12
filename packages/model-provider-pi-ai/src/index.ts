@@ -20,6 +20,7 @@ import {
 } from "@sweatpants/model-provider";
 
 export * from "./auth.ts";
+export * from "./decision.ts";
 
 export interface ModelSelection {
   provider: string;

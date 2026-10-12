@@ -1,3 +1,5 @@
+import { decisionRequestSchema, type DecisionBinding } from "@sweatpants/model-decision";
+import { decisionContract, type DecisionContext } from "./decisions.ts";
 import type { Operation } from "effection";
 import { createDurableTool, type AnyToolContract } from "@sweatpants/agent-sdk";
 import type { DurableProgramContext, DurableTool } from "@sweatpants/durable-execution";
@@ -65,10 +67,16 @@ export function parseProgram(
   source: string,
   tools: readonly BoundTool[],
   sampling = false,
+  decisions = false,
 ): TisynExpr {
   const ir = parseTisynSource(source);
   const names = new Set(tools.map((tool) => tool.name));
-  if (sampling) names.add("sample");
+  if (sampling) {
+    names.add("sample");
+  }
+  if (decisions) {
+    names.add("decision");
+  }
   const pending: unknown[] = [ir];
   let nodes = 0;
   while (pending.length) {
@@ -128,8 +136,9 @@ export function* executeProgram(
   tools: readonly BoundTool[],
   context: DurableProgramContext,
   sampling?: SamplingContext,
+  decisions?: DecisionContext,
 ): Operation<Json> {
-  const ir = parseProgram(source, tools, sampling !== undefined);
+  const ir = parseProgram(source, tools, sampling !== undefined, decisions !== undefined);
   const registry = new Map(tools.map((tool) => [tool.name, tool]));
   const kernel = yield* createEvaluation(ir);
   let next = yield* kernel.next();
@@ -138,11 +147,19 @@ export function* executeProgram(
   while (!next.done) {
     const descriptor = next.value;
     const tool = registry.get(descriptor.id);
-    if (!tool && !(sampling && descriptor.id === "sample")) {
+    if (
+      !tool &&
+      !(sampling && descriptor.id === "sample") &&
+      !(decisions && descriptor.id === "decision")
+    ) {
       throw new Error(`No Tisyn tool binding: ${descriptor.id}`);
     }
     const input = validateAuthoredSchema<Json>(
-      tool ? tool.parameters : samplingParameters,
+      tool
+        ? tool.parameters
+        : descriptor.id === "decision"
+          ? decisionRequestSchema
+          : samplingParameters,
       descriptor.data,
     );
     if (input.status !== "ok") {
@@ -176,7 +193,9 @@ export function* executeProgram(
             },
           }),
         )
-      : yield* sampleText(samplingParameters.parse(input.value), sampling!);
+      : descriptor.id === "decision"
+        ? yield* decisions!.decision(decisionRequestSchema.parse(input.value))
+        : yield* sampleText(samplingParameters.parse(input.value), sampling!);
     yield* context.emit("tool_completed", {
       callId,
       tool: descriptor.id,
@@ -204,9 +223,10 @@ export function validateProgram(
   source: string,
   tools: readonly BoundTool[],
   sampling = false,
+  decisions = false,
 ): Json {
   try {
-    parseProgram(source, tools, sampling);
+    parseProgram(source, tools, sampling, decisions);
     return { status: "valid", executed: false };
   } catch (error) {
     return {
@@ -225,8 +245,12 @@ function buildTisynTool(
     description: `Limits: ${EVALUATION_LIMITS.toolCalls} tool calls per program; ${EVALUATION_LIMITS.stepMilliseconds} ms of synchronous evaluation between tool calls (human wait time is excluded). Limits fail explicitly; they are not successful completion. Recursion also has a JavaScript stack limit.`,
   },
   sampling = false,
+  decisions?: DecisionBinding,
 ) {
-  const names = new Set<string>(sampling ? ["sample"] : []);
+  const names = new Set<string>([
+    ...(sampling ? ["sample"] : []),
+    ...(decisions ? ["decision"] : []),
+  ]);
   for (const tool of tools) {
     if (names.has(tool.name) || structural.has(tool.name) || reserved.has(tool.name)) {
       throw new Error(`Duplicate or reserved Tisyn tool name: ${tool.name}`);
@@ -251,6 +275,9 @@ function buildTisynTool(
   }));
   if (sampling) {
     contracts.push(samplingContract);
+  }
+  if (decisions) {
+    contracts.push(decisionContract);
   }
   const description = [
     "Execute a small Tisyn workflow. This is the only tool you can call directly.",
@@ -283,6 +310,12 @@ Let("loop", Fn(["history"],
     "Inspect tool results according to their contracts. Carry any state needed by later calls as function parameters.",
     "Sampling calls receive only the context you explicitly supply. You can construct their prompts from earlier tool results and read their returned text with Get.",
     profile.description,
+    ...(decisions
+      ? [
+          'Classify({"input": value, "instructions": "what to classify", "choices": {"label": "meaning", "other": "other meaning"}}) performs one decision and returns its answer. Labels are distinct identifiers. Branch on answer.type first: only "choice" has choice, probabilities and confidence; "refusal" requires a separate path.',
+          'Switch(value, {"label": branch, "other": branch}, fallback) evaluates value once and runs only the selected branch. All branches are validated. Branches can call Fn values. Use Classify for bounded semantic choices and sample for generated text. Keep arithmetic and exact limits in code. Choose uncertainty thresholds only when appropriate to the task.',
+        ]
+      : []),
     "No Try, concurrency, computed IR, arbitrary JS, imports, or undeclared operations.",
     "Use a single program to carry values across tool calls. Human replies are returned by ask, not invented by you.",
     "Registered tool contracts:",
@@ -296,6 +329,8 @@ Let("loop", Fn(["history"],
         canonicalJson({
           interpreter: profile.id,
           authorValidation: 1,
+          decisionSyntax: 1,
+          decisions: decisions ?? null,
           sampling: sampling
             ? {
                 identity: samplingIdentity,
@@ -322,27 +357,51 @@ Let("loop", Fn(["history"],
         validateOnly: z.boolean().optional(),
       }),
     );
+  if (decisions) {
+    const ready = builder.decisions(decisions);
+    if (sampling) {
+      return ready.samples().execute(function* ({ program, validateOnly }, context) {
+        if (validateOnly) {
+          return validateProgram(program, bindings, true, true);
+        }
+        return yield* executeProgram(program, bindings, context, context, context);
+      });
+    }
+    return ready.execute(function* ({ program, validateOnly }, context) {
+      if (validateOnly) {
+        return validateProgram(program, bindings, false, true);
+      }
+      return yield* executeProgram(program, bindings, context, undefined, context);
+    });
+  }
   if (sampling) {
     return builder.samples().execute(function* ({ program, validateOnly }, context) {
-      if (validateOnly) return validateProgram(program, bindings, true);
+      if (validateOnly) {
+        return validateProgram(program, bindings, true);
+      }
       return yield* executeProgram(program, bindings, context, context);
     });
   }
   return builder.execute(function* ({ program, validateOnly }, context) {
-    if (validateOnly) return validateProgram(program, bindings);
+    if (validateOnly) {
+      return validateProgram(program, bindings);
+    }
     return yield* executeProgram(program, bindings, context);
   });
 }
 
 /** Opt in to a native sampling pull; registered tools retain child invocation semantics. */
 export function createTisynTool(tools: readonly BoundTool[], profile?: EvaluationProfile) {
-  function builder(sampling: boolean) {
+  function builder(sampling: boolean, decisions?: DecisionBinding) {
     return {
       samples() {
-        return builder(true);
+        return builder(true, decisions);
+      },
+      decisions(binding: DecisionBinding) {
+        return builder(sampling, Object.freeze({ ...binding }));
       },
       build() {
-        return buildTisynTool(tools, profile, sampling);
+        return buildTisynTool(tools, profile, sampling, decisions);
       },
     };
   }

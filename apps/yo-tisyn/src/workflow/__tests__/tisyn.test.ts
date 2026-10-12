@@ -1,3 +1,9 @@
+import {
+  createDecisionEffectRegistration,
+  installDecisionProvider,
+  type DecisionAnswer,
+} from "@sweatpants/model-decision";
+import { decisionBinding } from "../decisions.ts";
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { assertJson } from "@sweatpants/foundation";
@@ -38,7 +44,8 @@ const workflow = `Let("before", Eval("echo", {"message":"before"}),
       Eval("echo", {"message":Get(Get(Ref("reply"),"content"),"reply")}),
       Construct({"action":Get(Ref("reply"),"action")}))))`;
 
-function fixture(source: string) {
+function fixture(source: string, decision?: DecisionAnswer) {
+  const decisions: unknown[] = [];
   const enteredEchoes: unknown[] = [];
   // Observe entry into the real tool. No client, descriptor, or tool result is replaced.
   const observedEcho: typeof echo = {
@@ -48,7 +55,8 @@ function fixture(source: string) {
       return yield* echo.program(input, context);
     },
   };
-  const runner = createTisynTool([observedEcho, ask]).build();
+  const builder = createTisynTool([observedEcho, ask]);
+  const runner = (decision ? builder.decisions(decisionBinding) : builder).build();
   const tools = [runner, observedEcho, ask];
   const registry = createDurableToolRegistry(tools);
   const active = new Set<ProgramAttachment>();
@@ -115,6 +123,13 @@ function fixture(source: string) {
       function* () {
         return yield* withProgramDriverTestScope(authority, function* () {
           yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
+          if (decision)
+            yield* installDecisionProvider({
+              *decide(input) {
+                decisions.push(input);
+                return { answer: decision, model: decisionBinding, usage: null };
+              },
+            });
           yield* TisynEvaluationPort.api.around({
             *open(args, next) {
               const handle = yield* next(...args);
@@ -127,7 +142,7 @@ function fixture(source: string) {
             },
           });
           return yield* DurableEffectRegistryContext.with(
-            createDurableEffectRegistry([]),
+            createDurableEffectRegistry(decision ? [createDecisionEffectRegistration()] : []),
             function* () {
               return yield* driveInstalledTestProgramTree({ attach });
             },
@@ -157,6 +172,7 @@ function fixture(source: string) {
     advanceUntilBlocked,
     pendingReply,
     enteredEchoes,
+    decisions,
     active,
     evaluations,
     attach,
@@ -396,6 +412,87 @@ describe("real Sweatpants journal and driver", () => {
       expect(f.enteredEchoes).toEqual([]);
       expect(f.active.size).toBe(0);
       expect(f.evaluations.size).toBe(0);
+    });
+  });
+});
+
+describe("durable model decisions", () => {
+  const classification =
+    'Classify({"input":"Please continue", "instructions":"Classify intent", "choices":{"continue":"Continue", "stop":"Stop"}})';
+  it("replays an accepted decision across scope replacement and resumes only the chosen parked branch", async () => {
+    const f = fixture(
+      `Let("d", ${classification}, Switch(Get(Ref("d"),"choice"), {
+      "continue": Let("a", Eval("ask", {"message":"Next item?"}), Eval("echo", {"message":Get(Get(Ref("a"),"content"),"reply")})),
+      "stop": Eval("echo", {"message":"unselected"})
+    }, Throw("unknown decision")))`,
+      {
+        type: "choice",
+        choice: "continue",
+        confidence: 0.8,
+        probabilities: [
+          { value: "continue", probability: 0.9 },
+          { value: "stop", probability: 0.1 },
+        ],
+      },
+    );
+    const parked = await run(function* () {
+      const authority = yield* f.start();
+      expect(yield* f.advanceUntilBlocked(authority)).toMatchObject({
+        state: "parked",
+        reason: "elicit",
+      });
+      expect(f.decisions).toHaveLength(1);
+      expect(f.enteredEchoes).toEqual([]);
+      return { snapshot: authority.exportSnapshot(), pending: f.pendingReply(authority) };
+    });
+    await run(function* () {
+      const authority = yield* createAuthorityScenarioDriver({
+        ...f.authorityOptions,
+        snapshot: JSON.parse(JSON.stringify(parked.snapshot)),
+      });
+      const capability = authority.resolutionCapability(
+        f.attach.sessionId,
+        parked.pending.taskId,
+        parked.pending.pullId,
+      );
+      expect(
+        yield* authority.resolve({
+          capability,
+          audience: "user:reply",
+          outcome: { status: "ok", value: { action: "accept", content: { reply: "resumed" } } },
+        }),
+      ).not.toMatchObject({ status: "rejected" });
+      expect(yield* f.advanceUntilBlocked(authority)).toMatchObject({
+        state: "completed",
+        value: { message: "resumed" },
+      });
+      expect(f.decisions).toHaveLength(1);
+      expect(f.enteredEchoes).toEqual([{ message: "resumed" }]);
+      const pulls = authority
+        .readJournal(f.attach.sessionId)
+        .filter(
+          ({ payload }) => payload.type === "PullRequested" && payload.descriptor.kind === "effect",
+        );
+      expect(pulls).toHaveLength(1);
+      expect(pulls[0]!.payload).toMatchObject({
+        descriptor: { name: "model.decision", input: { binding: decisionBinding } },
+      });
+      expect(f.active.size).toBe(0);
+      expect(f.evaluations.size).toBe(0);
+    });
+  });
+  it("returns refusals as values and runs the authored refusal branch", async () => {
+    const f = fixture(
+      `Let("d", ${classification}, If(Eq(Get(Ref("d"),"type"),"refusal"), Eval("echo",{"message":"refused"}), Throw("must not run")))`,
+      { type: "refusal" },
+    );
+    await run(function* () {
+      const authority = yield* f.start();
+      expect(yield* f.advanceUntilBlocked(authority)).toMatchObject({
+        state: "completed",
+        value: { message: "refused" },
+      });
+      expect(f.decisions).toHaveLength(1);
     });
   });
 });

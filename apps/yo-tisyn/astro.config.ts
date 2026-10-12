@@ -13,6 +13,8 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
+    // The child/direct experiment servers must not invalidate each other's optimizer files.
+    cacheDir: `node_modules/.vite-${process.env.PUBLIC_TISYN_SAMPLING ?? "child"}`,
     define: {
       "process.env.PUBLIC_TISYN_SAMPLING": JSON.stringify(
         process.env.PUBLIC_TISYN_SAMPLING ?? "child",

@@ -91,6 +91,9 @@
         },
         {
             "path": "./packages/durable-streams-cloudflare"
+        },
+        {
+            "path": "./packages/model-decision"
         }
     ],
     "files": []

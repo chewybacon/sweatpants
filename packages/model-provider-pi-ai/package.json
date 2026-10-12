@@ -36,6 +36,7 @@
         "@earendil-works/pi-ai": "^1.0.1",
         "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
+        "@sweatpants/model-decision": "workspace:*",
         "@sweatpants/model-provider": "workspace:*"
     },
     "devDependencies": {
