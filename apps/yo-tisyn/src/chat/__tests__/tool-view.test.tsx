@@ -28,6 +28,17 @@ function completed(
 }
 
 describe("readable tool cards", () => {
+  it("keeps authored macros visible separately from expanded Tisyn", () => {
+    const program =
+      'WithMacros({"Guard":{"params":["condition","action"],"body":If(Hole("condition"),Hole("action"),null)}},Use("Guard",true,"done"))';
+    const { container } = render(<Part part={completed("tisyn", { program }, "done")} />);
+    const sources = container.querySelectorAll(".source code");
+    expect(sources[0]?.textContent).toBe(program);
+    expect(sources[1]?.textContent).toContain("If(");
+    expect(sources[1]?.textContent).not.toContain("WithMacros");
+    expect(screen.getByText("Expanded Tisyn")).toBeTruthy();
+  });
+
   it("shows echo text once, with labeled input collapsed and HTML treated as text", () => {
     const message = "<img src=x onerror=alert(1)>";
     const { container } = render(<Part part={completed("echo", { message }, { message })} />);

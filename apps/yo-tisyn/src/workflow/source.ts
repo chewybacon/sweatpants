@@ -1,7 +1,9 @@
+import { validateAuthoring } from "./author-validation.ts";
 import { parseDSL } from "@tisyn/dsl";
 import { validateIr } from "@tisyn/validate";
 import type { TisynExpr } from "@tisyn/ir";
 import { expandDecisionSyntax, lowerDecisionSyntax } from "./decision-syntax.ts";
+import { expandMacroSyntax, lowerMacroSyntax } from "./macro-syntax.ts";
 
 export const MAX_SOURCE_LENGTH = 12_000;
 
@@ -36,10 +38,13 @@ function checkSource(source: string): void {
 
 export function parseTisynSource(source: string): TisynExpr {
   checkSource(source);
-  const ir = lowerDecisionSyntax(parseDSL(expandDecisionSyntax(source)));
+  const ir = lowerDecisionSyntax(
+    lowerMacroSyntax(parseDSL(expandDecisionSyntax(expandMacroSyntax(source)))),
+  );
   const validated = validateIr(ir);
   if (!validated.ok) {
     throw new Error(`Invalid Tisyn IR: ${JSON.stringify(validated.errors)}`);
   }
+  validateAuthoring(ir);
   return ir;
 }

@@ -1,3 +1,4 @@
+import kernelBundle from "../workflow/evaluation/generated/kernel-source.json" with { type: "json" };
 import { DurableObject } from "cloudflare:workers";
 import { handle as astroHandle } from "@astrojs/cloudflare/handler";
 import { createChatFetchHandler } from "@sweatpants/agent-host/server";
@@ -55,6 +56,7 @@ export default {
         host: "conversation-do",
         tools: "executor-do",
         evaluation: "quickjs-in-tool-executor-do",
+        kernel: kernelBundle.provenance,
         sampling: samplingMode,
         site: "astro",
       });

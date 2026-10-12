@@ -101,9 +101,17 @@ export function ProgramPreview({ source }: { source: string }) {
       <details className="source">
         <summary>Tisyn source</summary>
         <pre>
-          <code>{plan.value?.source ?? source}</code>
+          <code>{source}</code>
         </pre>
       </details>
+      {plan.value && plan.value.source !== source && (
+        <details className="source">
+          <summary>Expanded Tisyn</summary>
+          <pre>
+            <code>{plan.value.source}</code>
+          </pre>
+        </details>
+      )}
     </section>
   );
 }

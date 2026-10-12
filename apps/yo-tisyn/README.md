@@ -32,11 +32,53 @@ pnpm --dir apps/yo-tisyn build:cloudflare
 
 The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5`. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts Astro with the official Cloudflare adapter. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
 
-**The loop example works locally in Cloudflare.** Executor `setup` installs the evaluation driver inside each program's owned scope. QuickJS/WASM runs a bundle of the unchanged published Tisyn kernel. Sweatpants still owns all tool calls, journal records, parking, and replay. Playwright verifies six accumulated replies, reload while waiting, decline, and completed-state reload with the real provider. Test Rig also replaces workerd while the loop is parked and resumes the same pending interaction.
+**The loop example works locally in Cloudflare.** Executor `setup` installs the evaluation driver inside each program's owned scope. QuickJS/WASM runs a generated bundle of the resolved Tisyn kernel; this can be a published package or an explicitly linked checkout. Sweatpants still owns all tool calls, journal records, parking, and replay. Playwright verifies six accumulated replies, reload while waiting, decline, and completed-state reload with the real provider. Test Rig also replaces workerd while the loop is parked and resumes the same pending interaction.
 
 Start a **New conversation** after this update. Work accepted under the earlier missing-driver profile is not migrated or silently restarted.
 
 Local state and the generated signing secret live in `.wrangler/`; credentials are passed as secret bindings, not written into the bundle. The base Wrangler configuration keeps the local D1 placeholder. The production environment uses a separate provisioned database. Existing local databases are not replaced. Restart the launcher to reload refreshed credentials.
+
+## Developing against a local Tisyn checkout
+
+Install the Tisyn checkout with its own pinned pnpm version first (`pnpm install
+--frozen-lockfile` from that repository). From `sweatpants/`:
+
+```sh
+pnpm --dir apps/yo-tisyn tisyn:local /absolute/path/to/tisyn
+pnpm --dir apps/yo-tisyn tisyn:status
+# After editing the kernel or its language dependencies:
+pnpm --dir apps/yo-tisyn tisyn:refresh
+```
+
+The local command builds Tisyn's kernel/DSL dependency graph and replaces only
+this app's four existing pnpm symlinks (`ir`, `validate`, `dsl`, `kernel`). It
+records their original targets in ignored `.wrangler/tisyn-local.json`; manifests
+and lockfiles remain unchanged. The repositories keep their own pnpm versions.
+Run `tisyn:published` to restore the original package links and regenerate the
+bundle. A reinstall may replace local links; checks fail explicitly when the
+selected checkout and resolved packages disagree.
+
+`tisyn:refresh` regenerates the QuickJS bundle after compiling the local packages.
+`kernel:build` and `kernel:check` also compile a selected local checkout before
+bundling, so a deployment cannot silently use stale `dist/` code. Restart the dev
+server after switching between published/local packages; use a new conversation
+when the evaluator identity changes.
+
+Cloudflare builds resolve these local links at build time. Deploy with the same
+`deploy:prepare` / `deploy` commands below; the remote Worker does not need the
+checkout. The generated bundle and `/health` include package versions, the local
+Tisyn revision, dirty state for build inputs, a source fingerprint, and the kernel
+SHA-256, with no local paths. The existing Cloudflare tool profile includes the
+kernel SHA-256 in its durable identity. These fingerprints describe the kernel
+build; they are not a substitute for recording both repository revisions for a
+reviewable deployment.
+
+Local bundles are development artifacts. A clean checkout with published
+packages will intentionally fail `kernel:check` against a locally generated
+bundle. Before landing the consumer change, either pin a released candidate or
+explicitly provision the recorded Tisyn checkout in CI; do not label a local
+bundle as a published one. The tail-call regression tests require the candidate
+kernel and are expected to fail against the current published kernel.
 
 ## Cloudflare deployment
 
@@ -113,6 +155,38 @@ The interpreter digest includes the declared Tisyn versions and adapter profile.
 Admitted: JSON values, `Let`, `Ref`, `Seq`, `If`, `Fn`, `Call`, `While`, `Get`, `Construct`, `Arr`, `Concat`, arithmetic, comparisons, boolean operations, `Throw`, and registered `Eval` calls.
 
 For accumulation, use recursive `Fn`/`Call` with the accumulator as a parameter. Bindings are immutable; `While` does not mutate outer bindings. One accepted program runs every round. Each call to a bound tool remains a separate durable child under the same workflow. The outer model is not called between rounds; the program can explicitly request additional completions through `sample`.
+
+### Local syntax macros
+
+The authoring adapter provides `When(condition, body)` and `Unless(condition,
+body)`. Both lower to `If` and return `null` when their body is skipped. Authors
+can also define reusable syntax templates within a single submitted program:
+
+```text
+WithMacros({"Guard": {
+  "params": ["condition", "action"],
+  "body": If(Hole("condition"), Hole("action"), null)
+}}, Seq(
+  Use("Guard", false, Eval("echo", {"message":"skipped"})),
+  Use("Guard", true, Eval("echo", {"message":"runs"}))
+))
+```
+
+`Hole` substitutes unevaluated syntax. Repeating a hole repeats its expression
+and any effects; use a caller `Let` when an input should be evaluated once.
+Definitions are local to `WithMacros` and cannot shadow another macro in scope.
+This first version excludes `Let`, `Fn`, `Ref`, `Try`, and nested `WithMacros`
+from templates to prevent introduced bindings from capturing caller variables.
+Arguments may contain bindings and references. Use ordinary functions for
+runtime recursion and state; these templates are not general Lisp macros.
+
+Expansion is pure and bounded: 16 definitions, 8 parameters, 64 calls, 4000
+visited values, and 64 levels of expansion traversal. Expanded IR still passes
+the ordinary validation and tool capability checks, including skipped branches.
+The authoring digest records `macroSyntax: 1`; replay expands the same stored
+source under that adapter identity. Program previews show expanded IR, while
+the source view retains macro definitions. No new kernel operation or durable
+effect is introduced. Macros are currently an app adapter experiment.
 
 ### Decisions and branching
 
