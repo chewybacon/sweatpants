@@ -5,7 +5,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { programs, tisynExposure } from "./agent.ts";
+import { programs, tisynExposure } from "../workflow/agent.ts";
 
 type AppOptions = Parameters<typeof createChatApp>[0];
 

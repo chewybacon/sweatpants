@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createContext, Script, type Context } from "node:vm";
 import { evaluate, EMPTY_ENV } from "@tisyn/kernel";
 import { assertJson } from "@sweatpants/foundation";
-import { EVALUATION_LIMITS, type TisynEvaluationDriver } from "./evaluation.ts";
+import { EVALUATION_LIMITS, type TisynEvaluationDriver } from "./port.ts";
 
 // Only this fixed host expression runs in the VM. Authored source stays Tisyn IR.
 // The VM interrupts synchronous kernel work; it is NOT a security or memory sandbox.

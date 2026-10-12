@@ -1,0 +1,431 @@
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+:root {
+    color-scheme: dark;
+    background: #191724;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+}
+
+html {
+    min-width: 320px;
+    background: #191724;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background: #191724;
+    color: #e0def4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+button,
+input,
+textarea,
+code,
+pre,
+kbd,
+samp {
+    font: inherit;
+}
+
+button,
+a {
+    -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+    background: #c4a7e744;
+    color: #e0def4;
+}
+
+.page-intro {
+    max-width: 760px;
+    margin-bottom: clamp(28px, 5vw, 52px);
+}
+
+.page-intro.compact {
+    margin-bottom: 28px;
+}
+
+.page-intro h1,
+.page-intro h2 {
+    max-width: 720px;
+    margin: 10px 0 14px;
+    color: #e0def4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-size: clamp(2.2rem, 5vw, 3.8rem);
+    font-weight: 600;
+    letter-spacing: -0.058em;
+    line-height: 0.98;
+    text-wrap: balance;
+}
+
+.page-intro p,
+.section-copy,
+.thread-list-island > p,
+.explainer-island > p {
+    max-width: 680px;
+    color: #908caa;
+    font-size: 0.98rem;
+    line-height: 1.7;
+}
+
+.eyebrow {
+    color: #908caa;
+    font-size: 0.65rem;
+    font-weight: 750;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.chat-app {
+    max-width: 960px;
+    margin-inline: auto;
+    display: grid;
+    gap: 20px;
+}
+
+.conversation {
+    display: grid;
+    gap: 14px;
+}
+
+.message-card {
+    min-width: 0;
+}
+
+.message-status,
+.composer-status,
+.thread-meta {
+    color: #908caa;
+    font-size: 0.72rem;
+}
+
+.message-parts {
+    min-width: 0;
+    margin-top: 18px;
+    color: #d0cee4;
+    line-height: 1.65;
+}
+
+.message-parts > :first-child {
+    margin-top: 0;
+}
+
+.message-parts a {
+    color: #9ccfd8;
+}
+
+.empty-state {
+    width: 100%;
+}
+
+.empty-state p,
+.example-prompt,
+.thread-card code,
+.thread-list-island p,
+.explainer-island p {
+    color: #908caa;
+}
+
+.section-copy {
+    margin: 10px 0 0;
+}
+
+.prompt-examples,
+.thread-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+.prompt-example,
+.thread-card {
+    min-width: 0;
+    height: 100%;
+}
+
+.prompt-example {
+    transition:
+        border-color 160ms,
+        transform 160ms,
+        background-color 160ms;
+}
+
+.prompt-example:hover {
+    border-color: #7d7894;
+    background: #2a2739;
+    transform: translateY(-2px);
+}
+
+.prompt-example strong {
+    color: #e0def4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.example-prompt {
+    margin: 0;
+    min-height: 62px;
+    overflow-wrap: anywhere;
+    font-size: 0.8rem;
+    line-height: 1.55;
+}
+
+.composer-card {
+    position: static;
+}
+
+.composer-actions {
+    margin-top: 14px;
+}
+
+.composer-status {
+    margin-left: auto;
+}
+
+.thread-meta {
+    padding-inline: 6px;
+}
+
+.thread-meta code,
+.thread-card code {
+    color: #b0aec4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    overflow-wrap: anywhere;
+}
+
+.thread-list-island {
+    min-height: 440px;
+}
+
+.thread-list-island > p {
+    margin: 0;
+}
+
+.thread-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.thread-card code {
+    display: block;
+    font-size: 0.72rem;
+}
+
+.tool,
+.reply {
+    margin-top: 14px;
+    padding: 16px;
+    border: 1px solid #514c65;
+    border-radius: 12px;
+    background: #26233a;
+}
+
+.tool-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tool-heading > strong {
+    color: #e0def4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-size: 1.05rem;
+}
+
+.tool-status {
+    border: 1px solid #514c65;
+    border-radius: 999px;
+    background: #302c44;
+    color: #908caa;
+    padding: 4px 9px;
+    font-size: 0.65rem;
+}
+
+.tool-status.output-available {
+    border-color: #31748f;
+    background: #223638;
+    color: #9ccfd8;
+}
+
+.tool-status.output-error,
+.error-card,
+.error {
+    color: #eb6f92;
+}
+
+.tool-children {
+    margin-top: 14px;
+    padding-left: 14px;
+    border-left: 2px solid #31748f;
+}
+
+.field-label {
+    display: block;
+    color: #908caa;
+    font-size: 0.65rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+blockquote {
+    margin: 8px 0;
+    color: #e0def4;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-size: 1.18rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+pre {
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid #403d52;
+    border-radius: 10px;
+    background: #191724;
+    color: #9ccfd8;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+details {
+    margin-top: 12px;
+}
+
+summary {
+    color: #908caa;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+summary:hover {
+    color: #c4a7e7;
+}
+
+.program-diagram {
+    overflow: auto;
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: #e0def4;
+}
+
+.diagram-toggle {
+    margin-top: 10px;
+    border: 0;
+    background: transparent;
+    color: #9ccfd8;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.hint,
+.preview-error {
+    color: #908caa;
+    font-size: 0.75rem;
+}
+
+.explainer-island {
+    min-width: 0;
+}
+
+@media (max-width: 700px) {
+    .prompt-examples,
+    .thread-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .composer-status {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
+
+.page-intro.compact {
+    max-width: 960px;
+    margin-inline: auto;
+}
+.thread-intro-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}

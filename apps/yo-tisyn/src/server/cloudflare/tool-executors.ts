@@ -6,8 +6,8 @@ import {
   newVariant,
   memoizePromiseFactory,
 } from "quickjs-emscripten-core";
-import { TisynEvaluationPort } from "../evaluation.ts";
-import { createQuickJSEvaluationDriver } from "../evaluation-quickjs.ts";
+import { TisynEvaluationPort } from "../../workflow/evaluation/port.ts";
+import { createQuickJSEvaluationDriver } from "../../workflow/evaluation/quickjs.ts";
 import { programs } from "./agent.ts";
 
 const load = memoizePromiseFactory(() =>

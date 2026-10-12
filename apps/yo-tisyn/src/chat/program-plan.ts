@@ -7,7 +7,7 @@ import {
   print,
   type TisynExpr,
 } from "@tisyn/ir";
-import { parseTisynSource } from "./source.ts";
+import { parseTisynSource } from "../workflow/source.ts";
 
 const operators: Record<string, string> = {
   eq: "=",

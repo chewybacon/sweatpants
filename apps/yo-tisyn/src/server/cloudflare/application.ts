@@ -8,7 +8,7 @@ import {
 import { setupDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { cloudflare, type ToolExecutorNamespace } from "@sweatpants/tool-runtime-cloudflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { tisynExposure } from "../agent.ts";
+import { tisynExposure } from "../../workflow/agent.ts";
 import { programs } from "./agent.ts";
 
 export interface CloudflareBindings {

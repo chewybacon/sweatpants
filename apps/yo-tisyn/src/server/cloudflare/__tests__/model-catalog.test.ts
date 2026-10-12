@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { createTisynModels } from "../cloudflare/model-catalog.ts";
+import { createTisynModels } from "../model-catalog.ts";
 
 it("resolves OpenCode Haiku 5.5 without installing a Copilot provider", () => {
   const models = createTisynModels(new InMemoryCredentialStore());

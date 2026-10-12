@@ -26,11 +26,11 @@ SQLite state lives in `apps/yo-tisyn/.data/chat.sqlite`. Stream buffers are in m
 
 ```sh
 pnpm --dir apps/yo-tisyn dev:cloudflare
-# Build the Worker and SPA without deploying:
+# Build the Astro Worker and client assets without deploying:
 pnpm --dir apps/yo-tisyn build:cloudflare
 ```
 
-The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5`. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts the official Cloudflare Vite plugin. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
+The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5`. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts Astro with the official Cloudflare adapter. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
 
 **The loop example works locally in Cloudflare.** Executor `setup` installs the evaluation driver inside each program's owned scope. QuickJS/WASM runs a bundle of the unchanged published Tisyn kernel. Sweatpants still owns all tool calls, journal records, parking, and replay. Playwright verifies six accumulated replies, reload while waiting, decline, and completed-state reload with the real provider. Test Rig also replaces workerd while the loop is parked and resumes the same pending interaction.
 
@@ -63,17 +63,40 @@ Deployed Playwright checks cover six accumulated replies, one authored recursive
 
 ## Shape
 
-- `src/agent.ts`: one declared tool list, plus a model exposure policy.
-- `src/tisyn.ts`: real DSL parser → real IR validator → restricted profile → real kernel evaluator.
-- `src/evaluation.ts`: portable evaluation port, scope-owned sessions, and shared tool-call budget.
-- `src/evaluation-node.ts`: published kernel plus the Node VM compute guard.
-- `src/evaluation-quickjs.ts`: interruptible, memory-limited compute for the DO executor.
-- `src/evaluation-kernel.ts`: trusted VM bridge over the published kernel. `pnpm kernel:build` generates its bundle; tests, types, and Cloudflare builds verify it with `kernel:check`.
-- `src/cloudflare/`: Agent Host composition, conversation routing, and executor-side setup.
-- `src/application.ts`: shared application setup for the local server and protocol test rig.
+Source is grouped by responsibility:
+
+```text
+src/
+  workflow/              Tisyn admission, durable tool binding, and tool inventory
+    tools/               The ask and echo durable programs
+    evaluation/          Evaluation port, Node/QuickJS drivers, and kernel bundle
+  server/                Node and Cloudflare entry points and application setup
+    cloudflare/          Cloudflare placement, model catalog, and executor setup
+  chat/                  Chat island, interactions, tool cards, and program preview
+  threads/               Thread list and browser-local conversation index
+  explain/quickjs/       QuickJS walkthrough component, script, and styles
+  design-system/         Shared visual primitives and theme
+  styles/                Global site styles
+  layouts/               Astro site shell
+  pages/                 Astro routes
+  __tests__/             Application acceptance tests and Cloudflare fixtures
+```
+
+Unit tests live in `__tests__/` beside the code they exercise. The workflow layer
+owns execution semantics; server composition selects its evaluation driver. Chat
+presentation shares the source parser to draw plans but never runs the evaluator.
+
+- `src/workflow/agent.ts`: one declared tool list, plus a model exposure policy.
+- `src/workflow/tisyn.ts`: real DSL parser → real IR validator → restricted profile → real kernel evaluator.
+- `src/workflow/evaluation/port.ts`: portable evaluation port, scope-owned sessions, and shared tool-call budget.
+- `src/workflow/evaluation/node.ts`: published kernel plus the Node VM compute guard.
+- `src/workflow/evaluation/quickjs.ts`: interruptible, memory-limited compute for the DO executor.
+- `src/workflow/evaluation/kernel.ts`: trusted VM bridge over the published kernel. `pnpm kernel:build` generates its bundle; tests, types, and Cloudflare builds verify it with `kernel:check`.
+- `src/server/cloudflare/`: Agent Host composition, conversation routing, and executor-side setup.
+- `src/server/application.ts`: shared application setup for the local server and protocol test rig.
 - Each external descriptor becomes a pinned Sweatpants `invoke` child with validated tool arguments.
 - `echo` records its work. `ask` uses its original typed `reply` elicitation and interaction binding.
-- `src/ask-plugin.tsx`: the existing `makePlugin(ask).onElicit(...)` path renders the reply form.
+- `src/chat/ask-plugin.tsx`: the existing `makePlugin(ask).onElicit(...)` path renders the reply form.
 - Generated instructions and schemas come from the same tools used for dispatch.
 - Only `tisyn` is advertised to the model. The full inventory remains installed for child interaction contracts.
 - A recorded pull ID supplies a replay-stable namespace for tool-start/tool-complete emissions. The model cannot supply these IDs.
@@ -110,6 +133,12 @@ Cloudflare installs the QuickJS driver through the executor's `setup` generator.
 
 ## Presentation
 
+The Astro shell and React islands use a local StyleX design system. Its semantic component roles follow the `@yodash/base` surface model. The first theme is Rosé Pine dark. Filled actions own semantic surfaces, quiet actions use container tints, and disabled controls use neutral overlays. The site does not depend on the Dynobase repository at build time.
+
+The site root opens the playground. QuickJS is the visual explainer. `/playground` always redirects to a fresh `/threads/[id]` URL; reloading or opening that URL resumes the same conversation. The browser index retains up to twelve recent IDs and tolerates malformed stored JSON.
+
+The QuickJS Astro component restores the original standalone SVG walkthrough, with 25 steps across three scenarios, moving packets, component inspection, zoom, scrubbing, keyboard stepping, and reduced-motion support. Its native diagram styles use the same Rosé Pine palette as the StyleX shell.
+
 Empty conversations show three editable starting points: a running response loop, combining two replies, and a simple echo. The task input starts empty. Example buttons replace the draft and focus the input without submitting. Examples disappear once the conversation has messages. The composer has its own top spacing.
 
 Tool cards show readable status and results. Echo displays its text once. Ask displays one reply or decline/cancel outcome, including after reload. Input and result JSON remain in collapsed details. Unknown result shapes use a labeled JSON fallback.
@@ -120,7 +149,7 @@ The diagram supports enlargement and a text outline. Formatted source stays avai
 
 ## Evidence
 
-`pnpm --dir apps/yo-tisyn test`: **80 passing tests**: 24 profile/durable binding tests, 6 loop protocol scenarios, 7 Cloudflare placement/guard scenarios, 21 evaluator/guard tests, 10 program-plan tests, 11 presentation/example tests, and one OpenCode model-catalog test. Cloudflare covers real DO execution, parked-loop recovery after workerd replacement, decline/cancel, compute and memory limits, non-JSON rejection, and a healthy evaluation after each failure.
+`pnpm --dir apps/yo-tisyn test`: **82 passing tests**: 24 profile/durable binding tests, 6 loop protocol scenarios, 7 Cloudflare placement/guard scenarios, 21 evaluator/guard tests, 10 program-plan tests, 11 presentation/example tests, one OpenCode model-catalog test, and two browser-index recovery tests. Cloudflare covers real DO execution, parked-loop recovery after workerd replacement, decline/cancel, compute and memory limits, non-JSON rejection, and a healthy evaluation after each failure.
 
 The durable binding tests use the real parser, validator, kernel, durable tools, journal authority, and program driver. They verify:
 

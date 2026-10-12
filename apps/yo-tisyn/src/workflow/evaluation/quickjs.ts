@@ -2,11 +2,7 @@ import { call } from "effection";
 import { assertJson } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { QuickJSContext, QuickJSWASMModule } from "quickjs-emscripten-core";
-import {
-  EVALUATION_LIMITS,
-  type EvaluationStep,
-  type TisynEvaluationDriver,
-} from "./evaluation.ts";
+import { EVALUATION_LIMITS, type EvaluationStep, type TisynEvaluationDriver } from "./port.ts";
 import kernelBundle from "./generated/kernel-source.json" with { type: "json" };
 
 export const QUICKJS_LIMITS = Object.freeze({

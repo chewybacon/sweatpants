@@ -1,11 +1,5 @@
 ---
-import SiteLayout from "../layouts/SiteLayout.astro";
-import { App } from "../App.tsx";
+// A fresh URL is the identity of a new conversation. Reloading that URL resumes it.
+export const prerender = false;
+return Astro.redirect(`/threads/${crypto.randomUUID()}`);
 ---
-<SiteLayout title="Playground · yo-tisyn">
-  <section class="page-intro compact">
-    <span class="eyebrow">New thread</span>
-    <h2>Start a durable workflow</h2>
-  </section>
-  <App client:only="react" />
-</SiteLayout>

@@ -10,7 +10,7 @@
         "kernel:build": "tsx scripts/build-kernel.ts",
         "kernel:check": "tsx scripts/build-kernel.ts --check",
         "dev": "astro dev --host 127.0.0.1 --port 8101 --strictPort",
-        "dev:server": "NODE_OPTIONS=--conditions=development tsx src/server.ts",
+        "dev:server": "NODE_OPTIONS=--conditions=development tsx src/server/node.ts",
         "check": "pnpm kernel:check && astro-check && tsc --noEmit",
         "test": "pnpm kernel:check && vitest run",
         "build": "pnpm kernel:check && astro build",
@@ -22,8 +22,6 @@
         "dev:cloudflare": "tsx scripts/dev-cloudflare.ts"
     },
     "dependencies": {
-        "@astryxdesign/core": "0.6.7",
-        "@astryxdesign/theme-neutral": "0.6.7",
         "@earendil-works/pi-ai": "1.0.1",
         "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
         "@stylexjs/stylex": "0.19.1",
@@ -58,8 +56,8 @@
         "@astrojs/check": "0.9.10",
         "@astrojs/cloudflare": "14.3.4",
         "@astrojs/react": "7.0.1",
-        "@astryxdesign/cli": "0.6.7",
         "@cloudflare/workers-types": "5.20261005.1",
+        "@stylexjs/unplugin": "0.19.1",
         "@sweatpants/cloudflare-tasks": "workspace:*",
         "@sweatpants/test-rig": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",

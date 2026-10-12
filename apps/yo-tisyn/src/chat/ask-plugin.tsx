@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Badge, Button, Card, HStack, TextInput, VStack } from "@astryxdesign/core";
 import { makePlugin, type ReactRenderableProps } from "@sweatpants/react-chat";
-import { ask } from "./tools/ask.ts";
+import { Badge, Button, Card, Stack, TextInput } from "../design-system/primitives.tsx";
+import { ask } from "../workflow/tools/ask.ts";
 import { ReplyOutcome, type Reply } from "./reply.tsx";
 
 export function ReplyForm({
@@ -12,12 +12,12 @@ export function ReplyForm({
 }: ReactRenderableProps<Reply> & { prompt: string }) {
   const [reply, setReply] = useState("");
   return (
-    <Card className="reply" variant="yellow" padding={4}>
-      <VStack gap={3}>
-        <HStack gap={2} vAlign="center">
-          <Badge label="INPUT NEEDED" variant="warning" />
+    <Card.Root className="reply" tone="warning" padding={4}>
+      <Stack gap={3}>
+        <Stack direction="horizontal" gap={2} align="center" wrap>
+          <Badge tone="warning">Input needed</Badge>
           <strong>{prompt}</strong>
-        </HStack>
+        </Stack>
         {response ? (
           <ReplyOutcome response={response} />
         ) : (
@@ -27,35 +27,40 @@ export function ReplyForm({
               onRespond({ action: "accept", content: { reply } });
             }}
           >
-            <VStack gap={2}>
+            <Stack gap={3}>
               <TextInput
                 label="Your reply"
                 value={reply}
-                isDisabled={disabled}
-                onChange={setReply}
+                disabled={disabled}
+                onValueChange={setReply}
               />
-              <HStack gap={2} wrap="wrap">
-                <Button label="Reply" type="submit" variant="primary" isDisabled={disabled} />
+              <Stack direction="horizontal" gap={2} wrap>
+                <Button type="submit" disabled={disabled}>
+                  Reply
+                </Button>
                 <Button
-                  label="Decline"
                   type="button"
-                  variant="secondary"
-                  isDisabled={disabled}
+                  variant="outline"
+                  color="secondary"
+                  disabled={disabled}
                   onClick={() => onRespond({ action: "decline" })}
-                />
+                >
+                  Decline
+                </Button>
                 <Button
-                  label="Cancel"
                   type="button"
                   variant="ghost"
-                  isDisabled={disabled}
+                  disabled={disabled}
                   onClick={() => onRespond({ action: "cancel" })}
-                />
-              </HStack>
-            </VStack>
+                >
+                  Cancel
+                </Button>
+              </Stack>
+            </Stack>
           </form>
         )}
-      </VStack>
-    </Card>
+      </Stack>
+    </Card.Root>
   );
 }
 

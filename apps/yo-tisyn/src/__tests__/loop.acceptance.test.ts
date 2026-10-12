@@ -3,10 +3,10 @@ import { call } from "effection";
 import { withTestScenario, normalizeResponsesHistory } from "@sweatpants/test-rig";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import type { ChatUIPart, ChatUIMessage } from "@sweatpants/chat-core";
-import { createTisynApp } from "../application.ts";
+import { createTisynApp } from "../server/application.ts";
 import { inProcess } from "@sweatpants/agent-host/server";
-import { TisynEvaluationPort } from "../evaluation.ts";
-import { createNodeEvaluationDriver } from "../evaluation-node.ts";
+import { TisynEvaluationPort } from "../workflow/evaluation/port.ts";
+import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
 import { startCloudflareHost } from "./fixtures/cloudflare-host.ts";
 
 // Based on the model-authored loop probe; now exercise the actual application.

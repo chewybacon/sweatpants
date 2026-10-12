@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { unplugin as stylex } from "@stylexjs/unplugin";
+
 export default defineConfig({
+  plugins: [stylex.rollup()],
   resolve: {
     conditions: ["development"],
   },
