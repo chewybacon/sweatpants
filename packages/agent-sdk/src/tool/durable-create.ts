@@ -1,4 +1,14 @@
 import {
+  MODEL_DECISION_EFFECT,
+  MODEL_DECISION_SCHEMA_ENTRIES,
+  decisionBindingSchema,
+  decisionRequestSchema,
+  validateDecisionResult,
+  type DecisionBinding,
+  type DecisionRequest,
+  type DecisionResult,
+} from "@sweatpants/model-decision";
+import {
   decodeModelSampleResult,
   MODEL_SAMPLE_CONTRACT,
   MODEL_SAMPLE_PULL_INPUT_DESCRIPTOR,
@@ -138,6 +148,7 @@ export type DurableProgramContextFor<
   TElicits extends ElicitsMap = {},
   TSamples extends boolean = false,
   TExtensions extends DurableExtensionMap = {},
+  TDecisions extends boolean = false,
 > = Omit<DurableProgramContext, "effect" | "elicit" | "use"> & {
   effect<D extends EffectFromMap<E>>(
     definition: D,
@@ -154,7 +165,10 @@ export type DurableProgramContextFor<
     request: ElicitRequestFor<TElicits[K]>,
   ): Operation<ProgramElicitResult<JsonOutput<ExtractElicitResponse<TElicits[K]>>>>;
 } & (TSamples extends true ? DurableSamplingContext : {}) &
-  DurableExtensionContext<TExtensions>;
+  DurableExtensionContext<TExtensions> &
+  (TDecisions extends true
+    ? { decision(request: DecisionRequest): Operation<DecisionResult> }
+    : {});
 
 /**
  * Crank-native durable tool definition satisfying the execution-neutral
@@ -230,13 +244,16 @@ export interface CreateDurableToolBuilderWithParameters<
   ): CreateDurableToolBuilderWithParameters<N, I, O, Next>;
   effects<Effects extends EffectMap>(
     effects: Effects,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, false, {}>;
-  samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true, {}>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, false>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true>;
+  decisions(
+    binding: DecisionBinding,
+  ): CreateDurableToolBuilderReady<N, I, O, E, {}, false, {}, true>;
   uses<Extensions extends DurableExtensionMap>(
     extensions: Extensions,
   ): CreateDurableToolBuilderReady<N, I, O, E, {}, false, Extensions>;
   execute<Result extends O extends Json ? O : Json>(
-    program: (input: I, context: DurableProgramContextFor<{}, E, false, {}>) => Operation<Result>,
+    program: (input: I, context: DurableProgramContextFor<{}, E, false>) => Operation<Result>,
   ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
 
@@ -248,18 +265,22 @@ export interface CreateDurableToolBuilderReady<
   Effects extends EffectMap,
   Samples extends boolean = false,
   Extensions extends DurableExtensionMap = {},
+  Decisions extends boolean = false,
 > {
   effects<Next extends EffectMap>(
     effects: Next,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects & Next, Samples, Extensions>;
-  samples(): CreateDurableToolBuilderReady<N, I, O, E, Effects, true, Extensions>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects & Next, Samples, Extensions, Decisions>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, Effects, true, Extensions, Decisions>;
+  decisions(
+    binding: DecisionBinding,
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, Samples, Extensions, true>;
   uses<Next extends DurableExtensionMap>(
     extensions: Next,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, Samples, Extensions & Next>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, Samples, Extensions & Next, Decisions>;
   execute<Result extends O extends Json ? O : Json>(
     program: (
       input: I,
-      context: DurableProgramContextFor<Effects, E, Samples, Extensions>,
+      context: DurableProgramContextFor<Effects, E, Samples, Extensions, Decisions>,
     ) => Operation<Result>,
   ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
@@ -278,6 +299,7 @@ type BuilderState = {
   elicits?: ElicitsMap;
   effects?: EffectMap;
   samples?: boolean;
+  decisions?: DecisionBinding;
   extensions?: DurableExtensionMap;
 };
 
@@ -386,6 +408,13 @@ function builder(state: BuilderState): unknown {
       }
       return builder({ ...state, effects: { ...state.effects, ...effects } });
     },
+    decisions(binding: DecisionBinding) {
+      requireStage(state.parameters, ".parameters()", ".decisions()");
+      if (state.decisions) {
+        throw new Error("Decision capability already declared");
+      }
+      return builder({ ...state, decisions: Object.freeze(decisionBindingSchema.parse(binding)) });
+    },
     samples() {
       requireStage(state.parameters, ".parameters()", ".samples()");
       return builder({ ...state, samples: true });
@@ -408,7 +437,7 @@ function builder(state: BuilderState): unknown {
         identity: `${identityPrefix}/input`,
         role: "program_input",
         version,
-        ...(state.parametersProjections ?? {}),
+        ...state.parametersProjections,
       });
       catalog.push(input.entry);
       let outputDescriptor: PortableSchemaDescriptor;
@@ -417,7 +446,7 @@ function builder(state: BuilderState): unknown {
           identity: `${identityPrefix}/output`,
           role: "program_output",
           version,
-          ...(state.outputProjections ?? {}),
+          ...state.outputProjections,
         });
         catalog.push(output.entry);
         outputDescriptor = output.descriptor;
@@ -461,7 +490,16 @@ function builder(state: BuilderState): unknown {
       // Effect schema catalog entries travel with their authored definitions;
       // sampling is a pull kind and contributes only its wire validators.
       const declaredEffects: EffectMap = { ...state.effects };
-      if (state.samples) catalog.push(...MODEL_SAMPLE_PULL_SCHEMA_ENTRIES);
+      if (state.decisions) {
+        if (Object.hasOwn(declaredEffects, MODEL_DECISION_EFFECT.name)) {
+          throw new Error("Declare model.decision with .decisions()");
+        }
+        declaredEffects[MODEL_DECISION_EFFECT.name] = MODEL_DECISION_EFFECT;
+        catalog.push(...MODEL_DECISION_SCHEMA_ENTRIES);
+      }
+      if (state.samples) {
+        catalog.push(...MODEL_SAMPLE_PULL_SCHEMA_ENTRIES);
+      }
       for (const definition of Object.values(declaredEffects)) {
         catalog.push(...effectCatalogEntries(definition));
       }
@@ -531,18 +569,23 @@ function builder(state: BuilderState): unknown {
             bindings.elicits,
             state.samples === true,
             state.extensions ?? {},
+            state.decisions,
           ),
         );
       const extensionIdentity = sortStrings(Object.keys(state.extensions ?? {})).map((alias) => {
-        const extension = state.extensions![alias]!;
+        const extension = state.extensions![alias];
         return { alias, name: extension.name, digest: extension.digest };
       });
       const bindExtensions = (baseDigest: string) =>
-        extensionIdentity.length === 0
+        extensionIdentity.length === 0 && !state.decisions
           ? baseDigest
           : stableTupleHash([
               "sweatpants.durable-extension-program.v1",
-              { baseDigest, extensions: extensionIdentity },
+              {
+                baseDigest,
+                extensions: extensionIdentity,
+                ...(state.decisions ? { decisions: state.decisions } : {}),
+              },
             ]);
       const generatedIdentity = (implementationArtifactDigest: string) =>
         generateProgramArtifactIdentity({
@@ -562,7 +605,7 @@ function builder(state: BuilderState): unknown {
               generatedIdentity(state.implementationArtifactDigest),
               factory,
             )
-          : extensionIdentity.length > 0
+          : extensionIdentity.length > 0 || state.decisions
             ? createGeneratedPinnedDurableProgram(
                 generatedIdentity(sha256("sweatpants.durable-extension-client.v1")),
                 factory,
@@ -604,6 +647,7 @@ function contextForDeclarations(
   bindings: ToolInteractionBindings["elicits"],
   sampling: boolean,
   extensions: DurableExtensionMap,
+  decisions?: DecisionBinding,
 ): DurableProgramContext {
   const clients = new Map<unknown, ReturnType<DurableExtensionMap[string]["createClient"]>>(
     Object.values(extensions).map((extension) => [extension, extension.createClient(context)]),
@@ -614,6 +658,19 @@ function contextForDeclarations(
   const adapted = Object.freeze({
     ...context,
     ...aliases,
+    ...(decisions
+      ? {
+          *decision(request: DecisionRequest): Operation<DecisionResult> {
+            const checked = decisionRequestSchema.parse(request);
+            const result = yield* context.effect(
+              MODEL_DECISION_EFFECT,
+              { binding: decisions, request: checked },
+              { audience: "effect:model.decision" },
+            );
+            return validateDecisionResult(checked, result);
+          },
+        }
+      : {}),
     use(extension: unknown) {
       const client = clients.get(extension);
       if (!client) {

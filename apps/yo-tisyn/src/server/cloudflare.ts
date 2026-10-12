@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { handle as astroHandle } from "@astrojs/cloudflare/handler";
 import { createChatFetchHandler } from "@sweatpants/agent-host/server";
-import { pi } from "@sweatpants/model-provider-pi-ai";
+import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";
 import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai";
 import { createTisynModels } from "./cloudflare/model-catalog.ts";
 import { createCloudflareTisynApp, type CloudflareBindings } from "./cloudflare/application.ts";
@@ -30,14 +30,16 @@ export class Conversations extends DurableObject<Env> {
       for (const [id, credential] of Object.entries(records)) {
         await credentials.modify(id, async () => credential);
       }
+      const models = createTisynModels(credentials);
       return createCloudflareTisynApp(
         this.env,
         pi({
           provider: this.env.DEFAULT_CHAT_MODEL_PROVIDER,
           model: this.env.DEFAULT_CHAT_MODEL_ID,
-          models: createTisynModels(credentials),
+          models,
           streamOptions: { thinking: "low" },
         }),
+        createPiAiDecisionProvider({ models }),
       );
     })(request);
   }

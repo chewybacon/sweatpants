@@ -2,6 +2,8 @@ import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import {
   ChatProjectionError,
+  appendAGUIMessage,
+  decodePublicActivity,
   createChatProjection,
   decodeAGUIEvent,
   foldAGUIEvent,
@@ -39,6 +41,65 @@ function activity(input: {
 }
 
 describe("headless nested projection", () => {
+  it.each([
+    { state: "output-error", errorText: "Tool outcome is unknown after interruption" },
+    { state: "output-available", output: { booked: true } },
+  ])("retains $state when input completion replays after a checkpoint", (outcome) => {
+    let state = foldAGUIEvent(createChatProjection(), {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "booking",
+      role: "assistant",
+    });
+    const { state: terminalState, ...result } = outcome;
+    state = foldAGUIEvent(
+      state,
+      activity({
+        messageId: "booking-tool",
+        nodeId: "execution:booking-call",
+        parentNodeId: "message:booking",
+        sequence: 0,
+        kind: "tool-call",
+        state: terminalState,
+        publicData: {
+          kind: "tool-call",
+          callId: "booking-call",
+          name: "book_flight",
+          input: {},
+          rawInput: "{}",
+          ...result,
+        },
+      }),
+    );
+    const before = materializeChatMessages(state);
+    state = foldAGUIEvent(state, { type: EventType.TOOL_CALL_END, toolCallId: "booking-call" });
+    expect(materializeChatMessages(state)).toEqual(before);
+
+    // A later accepted result replaces, rather than merges with, the prior outcome.
+    for (const failed of [false, true]) {
+      const eventResult = foldAGUIEvent(state, {
+        type: EventType.TOOL_CALL_RESULT,
+        toolCallId: "booking-call",
+        messageId: "booking-result",
+        content: JSON.stringify(
+          failed ? { status: "error", errorText: "Booking failed" } : { booked: true },
+        ),
+      });
+      const messageResult = appendAGUIMessage(state, {
+        id: "booking-result",
+        role: "tool",
+        toolCallId: "booking-call",
+        content: JSON.stringify({ booked: true }),
+        ...(failed ? { error: "Booking failed" } : {}),
+      });
+      for (const projected of [eventResult, messageResult]) {
+        const node = projected.nodes.get("execution:booking-call")!.node;
+        expect(node.state).toBe(failed ? "output-error" : "output-available");
+        expect(() => decodePublicActivity({ version: 1, node })).not.toThrow();
+        expect(node.publicData).not.toHaveProperty(failed ? "output" : "errorText");
+      }
+    }
+  });
+
   it("replaces the server-derived base when a complete message snapshot arrives", () => {
     let state = createChatProjection();
     state = foldAGUIEvent(state, {

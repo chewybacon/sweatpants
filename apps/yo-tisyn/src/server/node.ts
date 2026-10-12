@@ -1,12 +1,13 @@
 import { createServer } from "node:http";
 import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
-import { pi } from "@sweatpants/model-provider-pi-ai";
+import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
 import { createTisynApp } from "./application.ts";
 import { TisynEvaluationPort } from "../workflow/evaluation/port.ts";
 import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
 
 const app = createTisynApp({
+  decisionProvider: createPiAiDecisionProvider(),
   execution: inProcess({
     *setup() {
       yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());

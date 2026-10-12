@@ -1257,7 +1257,7 @@ function appendMessageCore(state: ChatProjectionState, message: Message): ChatPr
     return nodeId === undefined
       ? state
       : updateTool(state, message.toolCallId, (node) => {
-          const data = node.publicData;
+          const { output: _output, errorText: _errorText, ...data } = node.publicData;
           return {
             ...node,
             state: message.error === undefined ? "output-available" : "output-error",
@@ -1471,6 +1471,11 @@ function foldEventContent(state: ChatProjectionState, event: AGUIEvent): ChatPro
     }
     case EventType.TOOL_CALL_END: {
       return updateTool(state, event.toolCallId, (node) => {
+        // Replay can deliver input completion after a retained terminal outcome.
+        // Input completion must not move that outcome back to an earlier state.
+        if (node.state === "output-available" || node.state === "output-error") {
+          return node;
+        }
         const data = node.publicData;
         const rawInput = data.rawInput ?? "";
         const parsed = (() => {
@@ -1493,7 +1498,7 @@ function foldEventContent(state: ChatProjectionState, event: AGUIEvent): ChatPro
         next = toolNode(next, event.toolCallId, "tool", event.messageId);
       }
       return updateTool(next, event.toolCallId, (node) => {
-        const data = node.publicData;
+        const { output: _output, errorText: _errorText, ...data } = node.publicData;
         const output =
           typeof event.content === "string"
             ? parseJsonOrString(event.content)

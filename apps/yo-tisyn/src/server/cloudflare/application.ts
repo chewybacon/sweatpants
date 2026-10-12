@@ -1,3 +1,8 @@
+import {
+  createDecisionEffectRegistration,
+  installDecisionProvider,
+  type DecisionProviderDriver,
+} from "@sweatpants/model-decision";
 import { createChatApp, type ChatModel } from "@sweatpants/agent-host/server";
 import { ToolExposurePolicyContext } from "@sweatpants/chat-core";
 import { createD1Storage } from "@sweatpants/storage-d1";
@@ -19,7 +24,11 @@ export interface CloudflareBindings {
 }
 
 /** Same Agent Host composition as yo-chat: D1 authority, DO tools, DO delivery. */
-export function createCloudflareTisynApp(bindings: CloudflareBindings, model: ChatModel) {
+export function createCloudflareTisynApp(
+  bindings: CloudflareBindings,
+  model: ChatModel,
+  decisionProvider?: DecisionProviderDriver,
+) {
   if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET) {
     throw new Error("PROGRAM_DRIVER_CAPABILITY_SECRET is required");
   }
@@ -28,6 +37,7 @@ export function createCloudflareTisynApp(bindings: CloudflareBindings, model: Ch
     secret: bindings.PROGRAM_DRIVER_CAPABILITY_SECRET,
     storage: createD1Storage(bindings.JOURNAL),
     tools: programs,
+    effects: [createDecisionEffectRegistration()],
     execution: cloudflare({ executors: bindings.TOOL_EXECUTORS }),
     model,
     // Initial validation, up to three repairs, execution, and final summary.
@@ -35,6 +45,7 @@ export function createCloudflareTisynApp(bindings: CloudflareBindings, model: Ch
     shutdownDeadlineMs: 0,
     setup: {
       application: function* () {
+        if (decisionProvider) yield* installDecisionProvider(decisionProvider);
         yield* setupDurableStreams({
           ...createCloudflareResponseStores<string>(bindings.RESPONSE_STREAMS),
           retentionPolicy: { mode: "retain_forever" },
