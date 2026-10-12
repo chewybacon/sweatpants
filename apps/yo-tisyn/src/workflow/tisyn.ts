@@ -1,3 +1,4 @@
+import kernelBundle from "./evaluation/generated/kernel-source.json" with { type: "json" };
 import { decisionRequestSchema, type DecisionBinding } from "@sweatpants/model-decision";
 import { decisionContract, type DecisionContext } from "./decisions.ts";
 import type { Operation } from "effection";
@@ -240,7 +241,7 @@ export function validateProgram(
 function buildTisynTool(
   tools: readonly BoundTool[],
   profile: EvaluationProfile = {
-    id: "yo-tisyn@0.0.1/profile-5-guarded-loops",
+    id: `yo-tisyn@0.0.1/profile-5-guarded-loops/${kernelBundle.provenance.kernelSha256}/${kernelBundle.provenance.source?.fingerprint ?? "published"}`,
     limits: EVALUATION_LIMITS,
     description: `Limits: ${EVALUATION_LIMITS.toolCalls} tool calls per program; ${EVALUATION_LIMITS.stepMilliseconds} ms of synchronous evaluation between tool calls (human wait time is excluded). Limits fail explicitly; they are not successful completion. Recursion also has a JavaScript stack limit.`,
   },
@@ -295,8 +296,10 @@ function buildTisynTool(
     "Seq(a,b) runs in order and returns b. If(condition,then,else) chooses one branch.",
     'Construct({"key": expr}) evaluates object fields. Arr(a,b) builds an array. Plain objects elsewhere are literal data.',
     "Concat(a,b) joins strings. Add/Sub/Mul/Div and Eq/Gt/Lt operate on values. And/Or short-circuit.",
+    "When(condition, body) and Unless(condition, body) are provided macros: execute body only when the condition is true or false respectively, otherwise return null.",
+    'You may author local syntax macros: WithMacros({"Require":{"params":["condition","message"],"body":If(Hole("condition"),true,Throw(Hole("message")))}}, Use("Require",Gt(3,0),"Expected positive")). Use(name,arg1,...) substitutes unevaluated syntax for Hole("parameter") before execution. Repeating a Hole repeats its expression/effects; use a caller Let to evaluate once. Macro templates cannot contain Let, Fn, Ref, Try, or nested WithMacros; arguments may contain these. Macros are local to this source, limited to 16 definitions, 8 parameters and 64 expansions. Recursive macros are rejected by expansion bounds. Expanded code still undergoes normal capability validation. Prefer functions for runtime recursion and state.',
     "Available: JSON literals, Let, Ref, Seq, If, Get, Construct, Arr, Concat, arithmetic/comparisons, And/Or/Not, Throw.",
-    'Fn(["parameter"], body) defines a function. Call(functionExpression, argument) calls it. Functions use the caller environment plus parameter bindings.',
+    'Fn(["parameter"], body) defines a function. Call(functionExpression, arg1, arg2, ...) calls it with exactly one argument per parameter; do not pack arguments into an array. Functions use the caller environment plus parameter bindings.',
     "A function bound by Let can call itself through Ref. Carry accumulated state as function parameters. Bindings are immutable; While(condition, [body]) does not mutate outer bindings.",
     'Recursion example: Let("countdown", Fn(["n"], If(Eq(Ref("n"),0),0,Call(Ref("countdown"),Sub(Ref("n"),1)))), Call(Ref("countdown"),3))',
     `Interactive accumulation example (adapt the state and conditions to the task):
@@ -312,7 +315,7 @@ Let("loop", Fn(["history"],
     profile.description,
     ...(decisions
       ? [
-          'Classify({"input": value, "instructions": "what to classify", "choices": {"label": "meaning", "other": "other meaning"}}) performs one decision and returns its answer. Labels are distinct identifiers. Branch on answer.type first: only "choice" has choice, probabilities and confidence; "refusal" requires a separate path.',
+          'Classify({"input": value, "instructions": "what to classify", "choices": {"label": "meaning", "other": "other meaning"}}) performs one decision and returns its answer directly: {"type":"choice","choice":"label","confidence":1,"probabilities":[{"value":"label","probability":1}]} or {"type":"refusal"}. Read Get(result,"type") and Get(result,"choice"); there is no answer field on a Classify result. Raw Eval("decision", request) instead returns an envelope with an answer field. Labels are distinct identifiers. Branch on answer.type first: only "choice" has choice, probabilities and confidence; "refusal" requires a separate path.',
           'Switch(value, {"label": branch, "other": branch}, fallback) evaluates value once and runs only the selected branch. All branches are validated. Branches can call Fn values. Use Classify for bounded semantic choices and sample for generated text. Keep arithmetic and exact limits in code. Choose uncertainty thresholds only when appropriate to the task.',
         ]
       : []),
@@ -328,8 +331,9 @@ Let("loop", Fn(["history"],
       digest: sha256(
         canonicalJson({
           interpreter: profile.id,
-          authorValidation: 1,
+          authorValidation: 2,
           decisionSyntax: 1,
+          macroSyntax: 1,
           decisions: decisions ?? null,
           sampling: sampling
             ? {

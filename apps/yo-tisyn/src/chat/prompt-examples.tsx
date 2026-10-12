@@ -2,17 +2,19 @@ import { Button, Card, Heading, Stack } from "../design-system/primitives.tsx";
 
 const examples = [
   {
-    title: "Loop until I decline",
-    prompt: "ask me for input in a loop until I decline, echo the accumulated response as it goes",
-  },
-  {
-    title: "Combine two replies",
+    title: "Plan a get-together",
     prompt:
-      "Ask me for two words, then echo them joined with a space. Stop if I decline or cancel.",
+      "Help me collect RSVPs for Alex, Sam, and Jo. Ask me about one person at a time. If they're coming, ask what they'd like to eat; if not, move on. At the end, give me a guest list and the meal orders.",
   },
   {
-    title: "Try a simple echo",
-    prompt: 'Echo "hello world" using one Tisyn program.',
+    title: "Quiz me on capitals",
+    prompt:
+      "Quiz me on world capitals, one question at a time. Let's do three questions. Tell me whether each answer is right, explain any mistakes, and give me my score at the end.",
+  },
+  {
+    title: "Name my bookstore",
+    prompt:
+      "Help me find a name for a cozy neighborhood bookstore. Suggest one name at a time and ask what I think. If I don't like it, use my feedback to improve the next suggestion. When I pick one, give me the name and a short tagline.",
   },
 ];
 
@@ -25,7 +27,8 @@ export function PromptExamples({ onSelect }: { onSelect: (prompt: string) => voi
             Choose a starting point
           </Heading>
           <p className="section-copy">
-            Each example becomes a single typed program before any durable work begins.
+            Try a quiz, plan something together, or explore an idea. Choose an example and make it
+            your own.
           </p>
         </div>
         <div className="prompt-examples">

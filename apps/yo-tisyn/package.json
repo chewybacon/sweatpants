@@ -19,7 +19,11 @@
         "deploy:prepare": "tsx scripts/prepare-deployment.ts && tsx scripts/prepare-cloudflare.ts --remote",
         "deploy": "pnpm build:deploy && wrangler deploy --config dist/server/wrangler.json --secrets-file .wrangler/deployment-secrets.json",
         "astro": "astro",
-        "dev:cloudflare": "tsx scripts/dev-cloudflare.ts"
+        "dev:cloudflare": "tsx scripts/dev-cloudflare.ts",
+        "tisyn:local": "tsx scripts/tisyn-local.ts local",
+        "tisyn:refresh": "tsx scripts/tisyn-local.ts refresh",
+        "tisyn:status": "tsx scripts/tisyn-local.ts status",
+        "tisyn:published": "tsx scripts/tisyn-local.ts published"
     },
     "dependencies": {
         "@earendil-works/pi-ai": "1.0.1",

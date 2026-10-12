@@ -1,54 +1,11 @@
+import { expandConstructors } from "./constructor-syntax.ts";
 import { Eq, Eval, Get, If, Let, Ref, type TisynExpr } from "@tisyn/ir";
 
 const classifyMarker = "__tisyn_classify";
 const switchMarker = "__tisyn_switch";
 
-/** Adapt two constructors into parseable marker IR; the upstream parser still owns syntax. */
 export function expandDecisionSyntax(source: string): string {
-  let output = "";
-  let quote = "";
-  let escaped = false;
-  const parentheses: boolean[] = [];
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (quote) {
-      output += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === "\\") {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = "";
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      output += ch;
-      continue;
-    }
-    if (/[A-Za-z_]/.test(ch)) {
-      const token = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i))![0];
-      const opening = /^\s*\(/.exec(source.slice(i + token.length));
-      if (opening && (token === "Classify" || token === "Switch")) {
-        output += `Eval("${token === "Classify" ? classifyMarker : switchMarker}", [`;
-        parentheses.push(true);
-        i += token.length + opening[0].length - 1;
-      } else {
-        output += token;
-        i += token.length - 1;
-      }
-      continue;
-    }
-    if (ch === "(") {
-      parentheses.push(false);
-    }
-    if (ch === ")" && parentheses.pop()) {
-      output += "]";
-    }
-    output += ch;
-  }
-  return output;
+  return expandConstructors(source, { Classify: classifyMarker, Switch: switchMarker });
 }
 
 function object(value: unknown): value is Record<string, TisynExpr> {
