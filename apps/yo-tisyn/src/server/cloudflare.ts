@@ -6,6 +6,7 @@ import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai"
 import { createTisynModels } from "./cloudflare/model-catalog.ts";
 import { createCloudflareTisynApp, type CloudflareBindings } from "./cloudflare/application.ts";
 import { createConversationRouter, type ConversationNamespace } from "./cloudflare/routing.ts";
+import { samplingMode } from "../workflow/agent.ts";
 
 export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
 export { ToolExecutors } from "./cloudflare/tool-executors.ts";
@@ -52,6 +53,7 @@ export default {
         host: "conversation-do",
         tools: "executor-do",
         evaluation: "quickjs-in-tool-executor-do",
+        sampling: samplingMode,
         site: "astro",
       });
     }

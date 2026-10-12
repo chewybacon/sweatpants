@@ -95,3 +95,70 @@ describe("window projection", () => {
     expect(projection.nodes.get(toolNodeId)?.node.parentNodeId).toBe(messageNodeId);
   });
 });
+
+it("uses a loaded parent result instead of stale data in archived descendant anchors", () => {
+  const parent = {
+    nodeId: "parent",
+    parentNodeId: null,
+    sequence: 0,
+    kind: "tool-call",
+    presentation: "public",
+    publicData: { kind: "tool-call", callId: "call", name: "work", input: {} },
+  };
+  const completed = {
+    ...parent,
+    state: "output-available",
+    publicData: { ...parent.publicData, output: "finished" },
+  };
+  function root(id: string, position: string, node: unknown, anchors: unknown[]) {
+    return decodePublicProjectionRoot({
+      rootId: `activity:${id}`,
+      position,
+      kind: "activity-subtree",
+      state: "sealed",
+      attribution: {},
+      rootNodeId: id,
+      producerSequence: 0,
+      anchors,
+      unloadedDescendantCount: 0,
+      nodes: [
+        {
+          activityRecordId: id,
+          producerSequence: 0,
+          event: {
+            type: "ACTIVITY_SNAPSHOT",
+            messageId: id,
+            activityType: "sweatpants:public-execution",
+            content: { version: 1, node },
+            replace: true,
+          },
+        },
+      ],
+    });
+  }
+  const child = (id: string) => ({
+    nodeId: id,
+    parentNodeId: "parent",
+    sequence: id === "early" ? 0 : 1,
+    kind: "activity",
+    state: "complete",
+    presentation: "public",
+    publicData: { kind: "activity", activityType: "step" },
+  });
+  const roots = [
+    root("parent", "0", completed, []),
+    root("early", "1", child("early"), [parent]),
+    root("late", "2", child("late"), [{ ...parent, publicData: completed.publicData }]),
+  ];
+  const projection = projectionFromPublicRoots(roots);
+  expect(projection.nodes.get("parent")?.node).toMatchObject({
+    state: "output-available",
+    publicData: { output: "finished" },
+  });
+  expect(() =>
+    projectionFromPublicRoots([
+      roots[0],
+      root("bad", "3", child("bad"), [{ ...parent, sequence: 99 }]),
+    ]),
+  ).toThrow("conflicts");
+});

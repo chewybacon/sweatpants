@@ -13,6 +13,7 @@ import {
 } from "./chat-client-projection.ts";
 import type { PublicPlacementAnchor, PublicProjectionRoot } from "./conversation-window.ts";
 import { compareDurablePositions } from "./conversation-window.ts";
+import { decodePublicActivity } from "./chat-client-codec.ts";
 
 export class PublicRootConflictError extends Error {
   readonly code = "public_root_conflict";
@@ -89,6 +90,16 @@ function* indexRoots(
     const byId = new Map<string, PublicProjectionRoot>();
     const byPosition = new Map<string, PublicProjectionRoot>();
     const anchors = new Map<string, PublicPlacementAnchor>();
+    const bodies = new Map(
+      ordered.flatMap((root) =>
+        root.kind === "activity-subtree"
+          ? root.nodes.map(({ event }) => {
+              const node = decodePublicActivity(event.content).node;
+              return [node.nodeId, node] as const;
+            })
+          : [],
+      ),
+    );
 
     for (const root of ordered) {
       const sameId = byId.get(root.rootId);
@@ -104,7 +115,26 @@ function* indexRoots(
       byId.set(root.rootId, root);
       byPosition.set(root.position, root);
 
-      for (const anchor of rootAnchors(root)) {
+      for (const hint of rootAnchors(root)) {
+        const body = bodies.get(hint.nodeId);
+        // Archived descendants retain placement hints captured before a parent
+        // settled. A loaded parent body owns its current public data.
+        if (
+          body &&
+          (body.parentNodeId !== hint.parentNodeId ||
+            body.sequence !== hint.sequence ||
+            body.kind !== hint.kind ||
+            body.presentation !== hint.presentation ||
+            (body.publicData?.kind === "tool-call" &&
+              (hint.publicData.kind !== "tool-call" ||
+                body.publicData.callId !== hint.publicData.callId ||
+                body.publicData.name !== hint.publicData.name)))
+        ) {
+          throw new PublicRootConflictError(
+            `Placement anchor ${hint.nodeId} conflicts with its body`,
+          );
+        }
+        const anchor = body?.publicData ? { ...hint, publicData: body.publicData } : hint;
         const previous = anchors.get(anchor.nodeId);
         if (previous && JSON.stringify(previous) !== JSON.stringify(anchor)) {
           throw new PublicRootConflictError(`Placement anchor ${anchor.nodeId} conflicts`);

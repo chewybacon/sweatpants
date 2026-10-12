@@ -57,7 +57,7 @@ pnpm --dir apps/yo-tisyn run deploy
 
 The Worker environment is named `ssr`, matching yo-chat and the SDK browser-resolution settings. The default named Worker environment failed model calls after deployment even though local workerd passed. Matching `ssr` fixed deployed calls; minification and the OpenCode-only catalog also pass with that configuration.
 
-All three tools are durable and use the ToolExecutors DO. Agent Host and model sampling run in the Conversations DO. There are no ordinary tools requiring a ToolSessions DO. The ingress Worker routes requests.
+All registered tools are durable and use the ToolExecutors DO. Agent Host and model sampling run in the Conversations DO. There are no ordinary tools requiring a ToolSessions DO. The ingress Worker routes requests.
 
 Deployed Playwright checks cover six accumulated replies, one authored recursive program, mid-loop reload, Decline and Cancel, and completed-state reload. Remote D1 confirms exactly two model preparations per conversation: authoring and final summary. Haiku chose newline-separated accumulation for one program and direct concatenation for the other; the prompt does not specify a separator. Evidence: `../.pi/evidence/yo-tisyn-spike/deployment/`.
 
@@ -68,7 +68,7 @@ Source is grouped by responsibility:
 ```text
 src/
   workflow/              Tisyn admission, durable tool binding, and tool inventory
-    tools/               The ask and echo durable programs
+    tools/               The ask, echo, and sample durable programs
     evaluation/          Evaluation port, Node/QuickJS drivers, and kernel bundle
   server/                Node and Cloudflare entry points and application setup
     cloudflare/          Cloudflare placement, model catalog, and executor setup
@@ -96,6 +96,7 @@ presentation shares the source parser to draw plans but never runs the evaluator
 - `src/server/application.ts`: shared application setup for the local server and protocol test rig.
 - Each external descriptor becomes a pinned Sweatpants `invoke` child with validated tool arguments.
 - `echo` records its work. `ask` uses its original typed `reply` elicitation and interaction binding.
+- `sample` requests a text completion through the SDK's durable sampling pull. Its prompt and optional system prompt are supplied by the authored program.
 - `src/chat/ask-plugin.tsx`: the existing `makePlugin(ask).onElicit(...)` path renders the reply form.
 - Generated instructions and schemas come from the same tools used for dispatch.
 - Only `tisyn` is advertised to the model. The full inventory remains installed for child interaction contracts.
@@ -111,13 +112,50 @@ The interpreter digest includes the declared Tisyn versions and adapter profile.
 
 Admitted: JSON values, `Let`, `Ref`, `Seq`, `If`, `Fn`, `Call`, `While`, `Get`, `Construct`, `Arr`, `Concat`, arithmetic, comparisons, boolean operations, `Throw`, and registered `Eval` calls.
 
-For accumulation, use recursive `Fn`/`Call` with the accumulator as a parameter. Bindings are immutable; `While` does not mutate outer bindings. One accepted program runs every round. Each ask/echo remains a separate durable child under the same workflow. The outer model is not called between rounds.
+For accumulation, use recursive `Fn`/`Call` with the accumulator as a parameter. Bindings are immutable; `While` does not mutate outer bindings. One accepted program runs every round. Each call to a bound tool remains a separate durable child under the same workflow. The outer model is not called between rounds; the program can explicitly request additional completions through `sample`.
+
+### Sampling inside a workflow
+
+`Eval("sample", {"prompt": ...})` returns `{"text": ...}`. Inputs are a required
+nonempty `prompt` (up to 32,768 characters), an optional `systemPrompt` (up to
+8,192 characters), and an optional `maxTokens` (1–4096, default 1024). The sampling
+child declares `.samples()` and calls `context.sample()`. No tools or previous
+conversation history are included in that request. The program must construct
+any needed context explicitly, including earlier replies and sample results.
+
+Two placements share this contract and the same model-visible instructions:
+
+```ts
+createTisynTool([echo, ask, sample]).build(); // sample is a durable child
+createTisynTool([echo, ask]).samples().build(); // sample is a pull in Tisyn itself
+```
+
+Set `PUBLIC_TISYN_SAMPLING=child` (default) or `PUBLIC_TISYN_SAMPLING=direct`
+before starting `dev:cloudflare`, `dev:server`, or building the Worker. Astro
+captures this setting at build/start time; restart to change it. `/health` on
+Cloudflare reports the selected mode. Each mode has its own workflow identity;
+use a new thread when switching modes. Both emit sampling start/completion cards,
+but direct mode does not create a separate sampling child. Direct sampling is
+rejected unless the builder explicitly enables it, and enabling both bindings
+with the same name is rejected.
+
+The app supplies capability contracts and general Tisyn authoring guidance. It
+does not supply task-specific sampling prompts, output schemas, counters, or
+stopping rules. Those decisions belong to the model-authored program. Sampling
+returns text; there is no new JSON parsing operation or structured-output API in
+this binding. Existing platform compute and tool-call limits still apply.
+
+Accepted sampling outcomes belong to the durable journal, so reconstruction
+consumes them instead of requesting replacement completions. Enabling sampling
+changes the workflow identity through the tool inventory or native capability;
+use a new conversation for this version. The earlier loop evidence below covers
+ask/echo workflows. The sampling comparison is recorded separately below.
 
 Choose **Loop until I decline** on the empty conversation screen: **ask me for input in a loop until I decline, echo the accumulated response as it goes**. Selecting an example fills and focuses the task input; it does not send it.
 
 Rejected: `Try`, concurrency, resource/scope operations, computed structural IR, and undeclared effects. Admission checks the IR, including unselected branches and generic `Eval` IDs. This deliberately rejects some otherwise valid Tisyn data.
 
-The profile limits source length, source nesting, array length, and visited IR values. It rejects selected prototype-related fields. Evaluation allows at most 256 tool calls per program. Node gives each synchronous kernel advance a 250 ms wall-clock timeout. Cloudflare gives each advance 256 QuickJS interrupt checks, with a 32 MiB VM allocation limit and 64 KiB VM stack limit. Human wait time consumes neither budget. The Cloudflare budget is not a wall-clock deadline or an exact Tisyn instruction count. Limits fail explicitly, never as successful completion.
+The profile limits source length, source nesting, array length, and visited IR values. It rejects selected prototype-related fields. Evaluation allows at most 256 tool calls per program. Node gives each synchronous kernel advance a 250 ms wall-clock timeout. Cloudflare gives each advance 256 QuickJS interrupt checks, with a 32 MiB VM allocation limit and 128 KiB VM stack limit. Human wait time consumes neither budget. The Cloudflare budget is not a wall-clock deadline or an exact Tisyn instruction count. Limits fail explicitly, never as successful completion.
 
 The Node evaluation driver runs the fixed expression `kernel.next(input)` through Node's VM timeout. It does not compile authored source to JavaScript or add a Tisyn runtime. The VM is **not a security or memory sandbox**. This is a wall-clock guard, not a deterministic instruction budget; heavy machine load can cause rejection. Intermediate value growth still occurs in the server process, and the final result-size check runs after evaluation. Tool string limits still apply. Use trusted local inputs only.
 
@@ -149,7 +187,7 @@ The diagram supports enlargement and a text outline. Formatted source stays avai
 
 ## Evidence
 
-`pnpm --dir apps/yo-tisyn test`: **82 passing tests**: 24 profile/durable binding tests, 6 loop protocol scenarios, 7 Cloudflare placement/guard scenarios, 21 evaluator/guard tests, 10 program-plan tests, 11 presentation/example tests, one OpenCode model-catalog test, and two browser-index recovery tests. Cloudflare covers real DO execution, parked-loop recovery after workerd replacement, decline/cancel, compute and memory limits, non-JSON rejection, and a healthy evaluation after each failure.
+`pnpm --dir apps/yo-tisyn test`: **88 passing tests**: five sampling capability/contract tests plus 24 profile/durable binding tests, 6 loop protocol scenarios, one twenty-reply Cloudflare checkpoint-spill scenario, 7 Cloudflare placement/guard scenarios, 21 evaluator/guard tests, 10 program-plan tests, 11 presentation/example tests, one OpenCode model-catalog test, and two browser-index recovery tests. Cloudflare covers real DO execution, parked-loop recovery after workerd replacement, decline/cancel, compute and memory limits, non-JSON rejection, and a healthy evaluation after each failure.
 
 The durable binding tests use the real parser, validator, kernel, durable tools, journal authority, and program driver. They verify:
 
@@ -164,6 +202,117 @@ The durable binding tests use the real parser, validator, kernel, durable tools,
 - Model exposure contains only `tisyn`, while `ask` keeps its interaction contract.
 
 These are scope/snapshot recovery tests, **not an OS-process-kill or SQLite recovery test**. Echo has no external service client. Entry observation wraps the real echo program; it does not replace its result.
+
+### Sampling comparison (2026-10-12)
+
+Computer-use checks ran against real local Cloudflare/workerd with OpenCode
+Haiku 5.5. Both modes used identical model-visible capability descriptions and
+no task-specific app prompt. One plain game request per mode produced individual
+`ask` programs, with no sampling or durable game loop. Child mode continued in
+ordinary chat after question one; direct mode issued a second single-question
+program. This is a small behavioral observation, not a model reliability estimate.
+
+A separate neutral user request explicitly asked for a repeated word-association
+workflow using sampling. Both modes authored one recursive program, sampled
+`Sea` for `ocean`, survived browser reload while parked, sampled `Woods` for
+`forest`, and accepted Decline. The journal distinguishes the two sample-child
+invocations in child mode from the native sample pulls in direct mode. This
+covers browser reload, not process replacement during a pending sample.
+
+The programs returned only `Stopped.` (child) or `done` (direct); both outer
+model summaries then incorrectly said no words had been exchanged. The accepted
+tool cards and journals show both rounds. The follow-up below tests generic guidance
+about returning enough workflow state for the final summary.
+
+Snapshots, screenshots, generated source, and journal counts are under
+`.artifacts/yo-tisyn-sampling/` at the workspace root.
+
+#### Generic authoring guidance follow-up
+
+The tool description now asks for a complete interactive workflow, sampling with
+explicit accumulated context when reasoning is needed, and a final value that
+preserves completed work and the reason for stopping. The single-question example
+was removed. No game-specific prompt, counter, or output schema was added.
+
+Real Haiku 5.5 browser checks with the same plain game request produced these
+observations (two child attempts, one direct attempt):
+
+- All three authored recursive sampling loops with a twenty-question bound.
+  The first child attempt failed syntax validation before executing.
+- The child retry sampled two questions and stopped its workflow on Decline.
+  It nevertheless returned only `Game stopped by user.`. The outer model then
+  attempted another game workflow, which failed syntax validation. Its first
+  program included a `correct` branch, but that branch was not exercised.
+- Direct mode sampled two questions and resumed after a parked browser reload.
+  Decline did not stop its generated loop: it sampled a third question and parked
+  again. Its source omitted action handling and early success handling. This
+  thread remains parked for inspection; the twenty-question bound was not run
+  to completion.
+- The neutral word-association request failed syntax validation in direct mode.
+  Child mode reported `chat_segment_order_invalid` and showed no reply control;
+  reload showed an empty conversation still waiting for a reply. Its journal
+  retains pending work. Neither neutral run reached a final summary.
+
+This small sample shows improved whole-interaction planning, not reliable program
+correctness or improved summaries. It also exposes a separate stream/hydration
+failure whose cause has not been established. Useful next experiments are
+syntax-validation feedback and model repair before execution, generic terminal
+result handling, and recovering the missing parked interaction. Preserve these
+failed attempts when comparing future changes.
+
+Evidence is under `.artifacts/yo-tisyn-sampling/guidance-v2/`, including generated
+source, browser snapshots/screenshots, and journal entries. App tests and app
+type checks pass. The broader landing gate remains blocked by the previously
+observed Redis skip-baseline regression (19 skips against 17); this follow-up
+does not rerun that unchanged failure.
+
+#### Complete games with generic validation feedback
+
+`tisyn` accepts `validateOnly: true` to parse and check admitted operations without
+creating an evaluator or running effects. It returns `valid` or `invalid`, an
+`executed: false` marker, and parser diagnostics on failure. Execution retains
+the existing fail-closed behavior. Generic guidance asks the model to validate,
+repair up to three times, then execute the same source. The outer iteration
+budget is six: initial validation, three repairs, execution, and final summary.
+A generic accumulation-loop example and explicit terminal-result guidance help
+authoring; no game prompt, counter, or success protocol is supplied by the app.
+
+Two complete real Haiku 5.5 games used the unchanged user request
+“I'm thinking of a word, let's play 20 questions”:
+
+| Mode                    | Hidden word | Observed result                                                                                                                                                                                                                                            |
+| ----------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direct `.samples()`     | elephant    | One syntax repair, then nine questions in one executing workflow. Reloaded at question eight, confirmed the ninth-question guess, returned a useful success result, and summarized correctly.                                                              |
+| Registered sample child | umbrella    | Three syntax repairs, then exactly twenty questions in one executing workflow. Reloaded at question twelve, returned `out_of_questions` with all twenty Q&A pairs, and summarized accurately without starting another workflow. It did not guess the word. |
+
+The journal confirms nine native sampling pulls in the direct game and twenty
+sample-child invocations in the child game, plus their separate outer authoring,
+validation-feedback, and summary requests. Both ended with an enabled composer.
+The game's rules and sampling prompts were authored by the model. This proves
+the capability in these runs, not reliable strategy or syntax generation.
+
+Longer play exposed three shared projection bugs: replaying answered-elicitation
+deltas after their activity records were archived; dropping ancestor placement
+anchors while re-checkpointing retained descendants; and treating stale archived
+anchor data as conflicting with a loaded parent's completed result. The runtime
+now replays only retained activity deltas, carries ancestor anchors forward,
+and gives loaded parent bodies precedence over stale anchor data while checking
+placement identity. Earlier failed attempts remain as evidence; recovery of
+every previously failed publication is not established by these successful runs.
+
+The twenty-reply regression also exposed stack exhaustion at 64 KiB. The final
+128 KiB QuickJS limit passes both the finite loop and existing infinite-recursion
+failure/recovery checks. A 256 KiB trial passed the finite loop but failed VM
+cleanup under infinite recursion, so it is not the retained setting. Live games
+ran before that final reduction; the twenty-round Cloudflare regression and all
+existing guards pass at 128 KiB. A compute-only replay of both exact generated
+programs at 128 KiB matched every accepted tool descriptor and final result:
+18 calls for the direct game and 40 for the child game. This replay used recorded
+results and made no replacement model requests.
+
+Browser snapshots, screenshots, generated programs, and selected journal facts
+are in `.artifacts/yo-tisyn-sampling/full-game/`. The expanded deterministic test
+covers twenty replies, parked reload, completion, and final model history.
 
 ### Integrated loop
 
@@ -206,7 +355,8 @@ All four Tisyn imports resolved to registry packages inside that copy. An app im
 
 ## Gates
 
-- App tests: 80 passed. Earlier shared-package checks: chat core 127 passed; durable chat runtime 147 passed.
+- Complete-game validation: app 88 passed, chat core 128 passed, durable chat runtime 147 passed (363 total). Focused type checks and formatting passed.
+- The October 12 complete-game landing run passed stages 1–10, including clean builds, repository lint, package/test/app types, and formatting. Stage 11 completed its package tests but failed the coverage gate: Redis was unavailable at `localhost:6379`, causing 19 skips against the baseline of 17. The baseline was not changed; stages 12–21 did not run. Summary: `.artifacts/landing/2026-10-12T11-03-04-342Z-deterministic/summary.json`.
 - Evaluation-port iteration: app tests, types, production build, and focused type-aware lint pass. Evidence: `../.pi/evidence/yo-tisyn-spike/evaluation-port/`.
 - Cloudflare loop iteration: app tests/types and all 16 Cloudflare runtime tests pass. Existing executor conformance fixtures now require setup-installed services during replay and cancellation. Evidence: `../.pi/evidence/yo-tisyn-spike/cloudflare-loop/`. The earlier placement-only checkpoint remains documented under `cloudflare-local/`; it did not make the example work. No full landing rerun, as requested.
 - Platform acceptance: 99 tests passed. The SQLite lane passed all 42 tests on a separate run after an initial timeout; no timeout was increased.

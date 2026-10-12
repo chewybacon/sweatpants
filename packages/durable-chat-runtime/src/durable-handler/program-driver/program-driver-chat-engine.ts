@@ -1,4 +1,6 @@
 import { resource, type Operation, type Stream } from "effection";
+import { checkpointHotRoots } from "@sweatpants/history-store";
+import { decodePublicProjectionRoot } from "@sweatpants/chat-core";
 
 import { runWithTurnEventWriter } from "../model-sampling/turn-event-api.ts";
 import { runProgramDriverChatActivation } from "./program-driver-chat-activation.ts";
@@ -45,13 +47,27 @@ export function createProgramDriverChatEngine(
 function* activateAndPresent(params: ProgramDriverChatEngineParams): Operation<StreamEvent[]> {
   for (;;) {
     const composition = composeProgramDriverChat(params);
+    const head = yield* params.conversationStore.loadHead(params.conversationId);
+    const checkpoint = head?.checkpoint
+      ? yield* params.conversationStore.getCheckpoint(head.checkpoint)
+      : null;
+    // Only retained activities can receive replayed deltas. Completed activities
+    // may have spilled to immutable history; replay must not resurrect them.
+    const retainedActivityIds = new Set(
+      (checkpoint ? checkpointHotRoots(checkpoint.payload) : []).flatMap((value) => {
+        const root = decodePublicProjectionRoot(value);
+        return root.kind === "activity-subtree"
+          ? root.nodes.map((node) => node.activityRecordId)
+          : [];
+      }),
+    );
     const activation = yield* runProgramDriverChatActivation(composition.activation);
     const presentationContext =
       activation.disposition.kind === "restart"
         ? { ...composition.presentation, continueAfterCancellation: true }
         : composition.presentation;
     const presented = yield* presentProgramDriverChatActivation(
-      presentationContext,
+      { ...presentationContext, retainedActivityIds },
       activation.report,
     );
     if (activation.disposition.kind === "present" && !presented.continueActivation) {
