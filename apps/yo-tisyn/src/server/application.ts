@@ -16,7 +16,8 @@ export function createTisynApp(options: Pick<AppOptions, "storage" | "model" | "
     name: "yo-tisyn",
     secret: "yo-tisyn-local-spike-not-for-public-deployment",
     tools: programs,
-    maxToolIterations: 4,
+    // Initial validation, up to three repairs, execution, and final summary.
+    maxToolIterations: 6,
     setup: {
       application: function* () {
         yield* setupDurableStreams({

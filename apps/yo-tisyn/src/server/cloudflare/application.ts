@@ -30,7 +30,8 @@ export function createCloudflareTisynApp(bindings: CloudflareBindings, model: Ch
     tools: programs,
     execution: cloudflare({ executors: bindings.TOOL_EXECUTORS }),
     model,
-    maxToolIterations: 4,
+    // Initial validation, up to three repairs, execution, and final summary.
+    maxToolIterations: 6,
     shutdownDeadlineMs: 0,
     setup: {
       application: function* () {

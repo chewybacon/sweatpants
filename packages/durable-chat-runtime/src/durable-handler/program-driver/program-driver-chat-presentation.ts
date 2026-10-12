@@ -21,6 +21,7 @@ export interface ChatPresentationContext {
   readonly toolInventory: readonly ToolInventoryEntry[];
   readonly continueAfterCancellation: boolean;
   readonly cancellationMessage: string;
+  readonly retainedActivityIds: ReadonlySet<string>;
   readonly publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<{
     readonly authority: ConversationAuthority;
     readonly window?: ConversationWindowFrame;
@@ -54,6 +55,7 @@ export function* presentProgramDriverChatActivation(
   const acceptedElicits = before.filter(
     ({ payload }) =>
       payload.type === "PullResolved" &&
+      context.retainedActivityIds.has(`elicit:${payload.pullId}`) &&
       projection.pullRequests.get(payload.pullId)?.descriptor.kind === "elicit",
   );
   const projected = projectRecords([...acceptedElicits, ...after.slice(before.length)], projection);

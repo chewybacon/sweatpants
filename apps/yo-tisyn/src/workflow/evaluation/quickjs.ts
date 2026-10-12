@@ -8,7 +8,7 @@ import kernelBundle from "./generated/kernel-source.json" with { type: "json" };
 export const QUICKJS_LIMITS = Object.freeze({
   interruptChecks: 256,
   memoryBytes: 32 * 1024 * 1024,
-  stackBytes: 64 * 1024,
+  stackBytes: 128 * 1024,
   toolCalls: EVALUATION_LIMITS.toolCalls,
 });
 

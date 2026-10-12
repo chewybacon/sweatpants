@@ -48,7 +48,7 @@ function fixture(source: string) {
       return yield* echo.program(input, context);
     },
   };
-  const runner = createTisynTool([observedEcho, ask]);
+  const runner = createTisynTool([observedEcho, ask]).build();
   const tools = [runner, observedEcho, ask];
   const registry = createDurableToolRegistry(tools);
   const active = new Set<ProgramAttachment>();
@@ -195,7 +195,7 @@ describe("Tisyn profile", () => {
     expect(parseProgram(source, [echo, ask])).toBeTruthy();
   });
   it("rejects duplicate bindings", () =>
-    expect(() => createTisynTool([echo, echo])).toThrow("Duplicate"));
+    expect(() => createTisynTool([echo, echo]).build()).toThrow("Duplicate"));
 });
 
 describe("real Sweatpants journal and driver", () => {

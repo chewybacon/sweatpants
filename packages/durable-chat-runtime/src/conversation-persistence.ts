@@ -419,6 +419,7 @@ function previousRootEvents(
 function ancestorAnchors(
   event: Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>,
   byNodeId: ReadonlyMap<string, Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>>,
+  retainedAnchors: ReadonlyMap<string, PublicPlacementAnchor>,
 ): readonly PublicPlacementAnchor[] {
   const result: PublicPlacementAnchor[] = [];
   const seen = new Set<string>();
@@ -428,12 +429,13 @@ function ancestorAnchors(
       throw new Error(`Public activity placement contains a cycle at ${parentId}`);
     }
     seen.add(parentId);
-    const parent = byNodeId.get(parentId);
+    const parentEvent = byNodeId.get(parentId);
+    const parent = parentEvent ? activityAnchor(parentEvent) : retainedAnchors.get(parentId);
     if (!parent) {
       throw new Error(`Public activity node ${parentId} is missing its placement anchor`);
     }
-    result.push(activityAnchor(parent));
-    parentId = decodePublicActivity(parent.content).node.parentNodeId;
+    result.push(parent);
+    parentId = parent.parentNodeId;
   }
   result.reverse();
   return result;
@@ -571,6 +573,15 @@ function* compactPublicRoots(params: {
   const byNodeId = new Map(
     activityEvents.map((event) => [decodePublicActivity(event.content).node.nodeId, event]),
   );
+  // An ancestor body may already be archived. Its immutable placement remains
+  // in the retained descendant's anchors and must survive the next checkpoint.
+  const retainedAnchors = new Map(
+    params.previous.flatMap((root) =>
+      root.kind === "activity-subtree"
+        ? root.anchors.map((anchor) => [anchor.nodeId, anchor] as const)
+        : [],
+    ),
+  );
   const activityRoots: Array<Omit<PublicProjectionRoot, "position">> = activityEvents.map(
     (event) => {
       const activity = decodePublicActivity(event.content);
@@ -589,7 +600,7 @@ function* compactPublicRoots(params: {
         ...(params.executionId ? { executionId: params.executionId } : {}),
         rootNodeId: activity.node.nodeId,
         producerSequence,
-        anchors: ancestorAnchors(event, byNodeId),
+        anchors: ancestorAnchors(event, byNodeId, retainedAnchors),
         nodes: [{ activityRecordId: event.messageId, producerSequence, event }],
         unloadedDescendantCount: 0,
       } as Omit<PublicProjectionRoot, "position">;

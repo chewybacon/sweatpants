@@ -10,6 +10,14 @@ import { createEvaluation, EVALUATION_LIMITS } from "./evaluation/port.ts";
 import type { TisynExpr } from "@tisyn/ir";
 import packageJson from "../../package.json" with { type: "json" };
 
+import {
+  samplingContract,
+  samplingIdentity,
+  samplingParameters,
+  sampleText,
+  type SamplingContext,
+} from "./sampling.ts";
+
 export type BoundTool = DurableTool & AnyToolContract;
 const structural = new Set([
   "let",
@@ -53,9 +61,14 @@ const reserved = new Set([
 ]);
 const unsafeKeys = new Set(["__proto__", "prototype", "constructor"]);
 /** Fail closed before any tool can run, including effects inside unselected branches. */
-export function parseProgram(source: string, tools: readonly BoundTool[]): TisynExpr {
+export function parseProgram(
+  source: string,
+  tools: readonly BoundTool[],
+  sampling = false,
+): TisynExpr {
   const ir = parseTisynSource(source);
   const names = new Set(tools.map((tool) => tool.name));
+  if (sampling) names.add("sample");
   const pending: unknown[] = [ir];
   let nodes = 0;
   while (pending.length) {
@@ -114,8 +127,9 @@ export function* executeProgram(
   source: string,
   tools: readonly BoundTool[],
   context: DurableProgramContext,
+  sampling?: SamplingContext,
 ): Operation<Json> {
-  const ir = parseProgram(source, tools);
+  const ir = parseProgram(source, tools, sampling !== undefined);
   const registry = new Map(tools.map((tool) => [tool.name, tool]));
   const kernel = yield* createEvaluation(ir);
   let next = yield* kernel.next();
@@ -124,12 +138,15 @@ export function* executeProgram(
   while (!next.done) {
     const descriptor = next.value;
     const tool = registry.get(descriptor.id);
-    if (!tool) {
+    if (!tool && !(sampling && descriptor.id === "sample")) {
       throw new Error(`No Tisyn tool binding: ${descriptor.id}`);
     }
-    const input = validateAuthoredSchema<Json>(tool.parameters, descriptor.data);
+    const input = validateAuthoredSchema<Json>(
+      tool ? tool.parameters : samplingParameters,
+      descriptor.data,
+    );
     if (input.status !== "ok") {
-      throw new Error(`Invalid arguments for ${tool.name}: ${JSON.stringify(input)}`);
+      throw new Error(`Invalid arguments for ${descriptor.id}: ${JSON.stringify(input)}`);
     }
     if (invocationId === undefined) {
       invocationId = yield* context.record(
@@ -144,23 +161,25 @@ export function* executeProgram(
     const callId = `${invocationId}/tool-${callIndex++}`;
     yield* context.emit("tool_started", {
       callId,
-      tool: tool.name,
+      tool: descriptor.id,
       input: assertJson(input.value),
     });
-    const value = yield* context.pull(
-      assertJson({
-        kind: "invoke",
-        child: {
-          id: tool.manifest.programId,
-          version: tool.manifest.version,
-          digest: tool.manifest.digest,
-          input: assertJson(input.value),
-        },
-      }),
-    );
+    const value = tool
+      ? yield* context.pull(
+          assertJson({
+            kind: "invoke",
+            child: {
+              id: tool.manifest.programId,
+              version: tool.manifest.version,
+              digest: tool.manifest.digest,
+              input: assertJson(input.value),
+            },
+          }),
+        )
+      : yield* sampleText(samplingParameters.parse(input.value), sampling!);
     yield* context.emit("tool_completed", {
       callId,
-      tool: tool.name,
+      tool: descriptor.id,
       result: assertJson(value),
       failed: false,
     });
@@ -180,15 +199,34 @@ export interface EvaluationProfile {
   description: string;
 }
 
-export function createTisynTool(
+/** Author feedback only: never creates an evaluator or dispatches an effect. */
+export function validateProgram(
+  source: string,
+  tools: readonly BoundTool[],
+  sampling = false,
+): Json {
+  try {
+    parseProgram(source, tools, sampling);
+    return { status: "valid", executed: false };
+  } catch (error) {
+    return {
+      status: "invalid",
+      executed: false,
+      diagnostic: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function buildTisynTool(
   tools: readonly BoundTool[],
   profile: EvaluationProfile = {
     id: "yo-tisyn@0.0.1/profile-5-guarded-loops",
     limits: EVALUATION_LIMITS,
     description: `Limits: ${EVALUATION_LIMITS.toolCalls} tool calls per program; ${EVALUATION_LIMITS.stepMilliseconds} ms of synchronous evaluation between tool calls (human wait time is excluded). Limits fail explicitly; they are not successful completion. Recursion also has a JavaScript stack limit.`,
   },
+  sampling = false,
 ) {
-  const names = new Set<string>();
+  const names = new Set<string>(sampling ? ["sample"] : []);
   for (const tool of tools) {
     if (names.has(tool.name) || structural.has(tool.name) || reserved.has(tool.name)) {
       throw new Error(`Duplicate or reserved Tisyn tool name: ${tool.name}`);
@@ -211,8 +249,19 @@ export function createTisynTool(
       ]),
     ),
   }));
+  if (sampling) {
+    contracts.push(samplingContract);
+  }
   const description = [
     "Execute a small Tisyn workflow. This is the only tool you can call directly.",
+    "Before executing a program, call this tool with validateOnly: true. This checks syntax and admitted operations without running any effects. If invalid, correct the diagnostic and validate again (at most three repairs). After validation succeeds, call with the identical program and validateOnly: false to execute. A valid check does not prove runtime logic correct.",
+    "For an interactive task, author the complete interaction as one workflow, including how it continues after each reply and how it ends. Do not implement only the first question and leave the remaining interaction to outer chat turns.",
+    "When the next action requires reasoning about earlier replies, call sample inside the workflow with the task and accumulated context. Use its result to choose the next action or construct the next prompt. Choose the workflow's state and stopping conditions from the user's request.",
+    "The caller receives your program's final value, not the intermediate child-tool transcript. Return accumulated facts that explain what completed, useful results, and why execution stopped. Preserve completed work when a later interaction is declined or cancelled; a bare terminal string cannot distinguish an empty run from a productive one.",
+    "After a workflow returns a terminal result, summarize it and end your turn. Do not restart a completed, declined, or cancelled interaction unless the user requests a new one.",
+    'For every ask result, branch on Get(Ref("answer"), "action") before reading content: only "accept" has content.reply. On decline or cancel, return the accumulated state and that stop reason immediately.',
+    "Account for successful completion as well as exhaustion of any limit. Include the latest reply in accumulated state before checking completion. Make the reply protocol clear to the user and handle that protocol in your program.",
+    "Keep source readable with indentation and small named functions. Fn has exactly two arguments: the parameter array and one body expression. Let has exactly three: name, value, body. Use Seq to combine expressions into one body.",
     "The program is constructor DSL, NOT JavaScript. Use double-quoted strings.",
     'Eval("name", {"key": value}) calls a registered tool and returns its JSON result.',
     'Let("x", expression, body) binds a result. Ref("x") reads it. Get(expr, "key") reads an object field.',
@@ -223,22 +272,38 @@ export function createTisynTool(
     'Fn(["parameter"], body) defines a function. Call(functionExpression, argument) calls it. Functions use the caller environment plus parameter bindings.',
     "A function bound by Let can call itself through Ref. Carry accumulated state as function parameters. Bindings are immutable; While(condition, [body]) does not mutate outer bindings.",
     'Recursion example: Let("countdown", Fn(["n"], If(Eq(Ref("n"),0),0,Call(Ref("countdown"),Sub(Ref("n"),1)))), Call(Ref("countdown"),3))',
+    `Interactive accumulation example (adapt the state and conditions to the task):
+Let("loop", Fn(["history"],
+  Let("answer", Eval("ask", {"message":"Next item?"}),
+    If(Eq(Get(Ref("answer"),"action"),"accept"),
+      Call(Ref("loop"), Concat(Ref("history"), "\\n", Get(Get(Ref("answer"),"content"),"reply"))),
+      Construct({"status":Get(Ref("answer"),"action"),"history":Ref("history")})))),
+  Call(Ref("loop"),""))`,
     "For repetition, write ONE program with Fn/Call recursion or While. Keep all rounds inside that invocation until its stop condition. Do not unroll rounds or return to the model between rounds.",
-    "For ask-driven repetition, branch on action. Accept continues; decline and cancel stop. Echo accumulated text after each accepted reply, not after stopping.",
+    "Inspect tool results according to their contracts. Carry any state needed by later calls as function parameters.",
+    "Sampling calls receive only the context you explicitly supply. You can construct their prompts from earlier tool results and read their returned text with Get.",
     profile.description,
     "No Try, concurrency, computed IR, arbitrary JS, imports, or undeclared operations.",
     "Use a single program to carry values across tool calls. Human replies are returned by ask, not invented by you.",
-    'Example: Let("x", Eval("echo", {"message":"hello"}), Eval("ask", {"message":Get(Ref("x"),"message")}))',
     "Registered tool contracts:",
     JSON.stringify(contracts),
   ].join("\n");
-  return createDurableTool("tisyn")
+  const builder = createDurableTool("tisyn")
     .description(description)
     .identity({
       version: "0.0.1",
       digest: sha256(
         canonicalJson({
           interpreter: profile.id,
+          authorValidation: 1,
+          sampling: sampling
+            ? {
+                identity: samplingIdentity,
+                dispatch: "direct",
+                parameters: samplingContract.parameters,
+                output: samplingContract.output,
+              }
+            : null,
           evaluationLimits: profile.limits,
           tisyn: Object.fromEntries(
             Object.entries(packageJson.dependencies).filter(([name]) => name.startsWith("@tisyn/")),
@@ -251,8 +316,35 @@ export function createTisynTool(
         }),
       ),
     })
-    .parameters(z.object({ program: z.string().min(1).max(MAX_SOURCE_LENGTH) }))
-    .execute(function* ({ program }, context) {
-      return yield* executeProgram(program, bindings, context);
+    .parameters(
+      z.object({
+        program: z.string().min(1).max(MAX_SOURCE_LENGTH),
+        validateOnly: z.boolean().optional(),
+      }),
+    );
+  if (sampling) {
+    return builder.samples().execute(function* ({ program, validateOnly }, context) {
+      if (validateOnly) return validateProgram(program, bindings, true);
+      return yield* executeProgram(program, bindings, context, context);
     });
+  }
+  return builder.execute(function* ({ program, validateOnly }, context) {
+    if (validateOnly) return validateProgram(program, bindings);
+    return yield* executeProgram(program, bindings, context);
+  });
+}
+
+/** Opt in to a native sampling pull; registered tools retain child invocation semantics. */
+export function createTisynTool(tools: readonly BoundTool[], profile?: EvaluationProfile) {
+  function builder(sampling: boolean) {
+    return {
+      samples() {
+        return builder(true);
+      },
+      build() {
+        return buildTisynTool(tools, profile, sampling);
+      },
+    };
+  }
+  return builder(false);
 }

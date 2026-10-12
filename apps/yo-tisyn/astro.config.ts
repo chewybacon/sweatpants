@@ -13,6 +13,11 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
+    define: {
+      "process.env.PUBLIC_TISYN_SAMPLING": JSON.stringify(
+        process.env.PUBLIC_TISYN_SAMPLING ?? "child",
+      ),
+    },
     plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
     build: { minify: true },
     ssr: {
