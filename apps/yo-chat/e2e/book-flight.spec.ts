@@ -88,9 +88,9 @@ async function expectBookingResponse(
   await expect(response, `expected booking response ${index + 1}`).toBeVisible({
     timeout: RESPONSE_TIMEOUT,
   });
-  await expect(response).toContainText(
-    new RegExp(`(?:booked|confirmed).*${route.from}.*${route.to}`, "is"),
-  );
+  // Confirmation may precede or follow the route in a natural-language response.
+  await expect(response).toContainText(BOOKING_RESPONSE);
+  await expect(response).toContainText(new RegExp(`${route.from}.*${route.to}`, "is"));
 }
 
 test("book_flight survives refresh and preserves an implied return journey", async ({ page }) => {
