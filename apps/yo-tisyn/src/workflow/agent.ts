@@ -1,3 +1,4 @@
+import { createSchemeTool } from "./scheme/tool.ts";
 import { createSessionTool } from "./session.ts";
 import {
   documentCreate,
@@ -23,14 +24,16 @@ const primitives: readonly BoundTool[] = [
 export const session = createSessionTool(primitives);
 export const boundTools: readonly BoundTool[] = [...primitives, session];
 export const tisyn = createTisynTool(boundTools).samples().decisions(decisionBinding).build();
-export const programs: readonly BoundTool[] = [tisyn, ...boundTools];
-export const tisynExposure: ToolExposurePolicy = {
-  *filter({ entries }) {
-    if (!entries) {
-      throw new Error("Tisyn requires an installed tool inventory");
-    }
-    return entries
-      .filter((entry) => entry.definition.name === tisyn.name)
-      .map((entry) => entry.definition);
-  },
-};
+export const scheme = createSchemeTool(primitives);
+export const programs: readonly BoundTool[] = [scheme, tisyn, ...boundTools];
+export function workflowExposureFor(language: "scheme" | "tisyn"): ToolExposurePolicy {
+  return {
+    *filter({ entries }) {
+      if (!entries) throw new Error("Workflow authoring requires an installed tool inventory");
+      return entries
+        .filter((entry) => entry.definition.name === language)
+        .map((entry) => entry.definition);
+    },
+  };
+}
+export const workflowExposure = workflowExposureFor("scheme");

@@ -1,0 +1,78 @@
+{
+    "name": "@sweatpants/scheme-runtime",
+    "version": "0.1.0",
+    "description": "Hoot Scheme evaluator and reproducible metered WASM build",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src",
+        "generated",
+        "licenses",
+        "scripts",
+        "toolchain.json"
+    ],
+    "type": "module",
+    "imports": {
+        "#scheme-kernel-wasm": "./generated/kernel.wasm",
+        "#scheme-reflect-wasm": "./generated/reflect.wasm",
+        "#scheme-wtf8-wasm": "./generated/wtf8.wasm"
+    },
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/evaluation.ts",
+                "types": "./src/evaluation.ts"
+            },
+            "import": {
+                "types": "./dist/evaluation.d.ts",
+                "default": "./dist/evaluation.js"
+            },
+            "default": "./src/evaluation.ts"
+        },
+        "./node": {
+            "development": {
+                "import": "./src/node.ts",
+                "types": "./src/node.ts"
+            },
+            "import": {
+                "types": "./dist/node.d.ts",
+                "default": "./dist/node.js"
+            },
+            "default": "./src/node.ts"
+        },
+        "./worker": {
+            "development": {
+                "import": "./src/worker.ts",
+                "types": "./src/worker.ts"
+            },
+            "import": {
+                "types": "./dist/worker.d.ts",
+                "default": "./dist/worker.js"
+            },
+            "default": "./src/worker.ts"
+        },
+        "./kernel.wasm": "./generated/kernel.wasm",
+        "./reflect.wasm": "./generated/reflect.wasm",
+        "./wtf8.wasm": "./generated/wtf8.wasm",
+        "./manifest": "./generated/manifest.json"
+    },
+    "scripts": {
+        "build": "pnpm wasm:check && tsup",
+        "check": "tsc -b",
+        "wasm:build": "python3 scripts/build.py",
+        "wasm:check": "python3 scripts/manifest.py --check",
+        "test": "vitest run",
+        "wasm:verify": "python3 scripts/build.py --verify"
+    },
+    "dependencies": {
+        "@sweatpants/foundation": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

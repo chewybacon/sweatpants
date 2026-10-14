@@ -4,17 +4,20 @@
     "private": true,
     "type": "module",
     "imports": {
-        "#quickjs-wasm": "@jitl/quickjs-wasmfile-release-sync/wasm"
+        "#quickjs-wasm": "@jitl/quickjs-wasmfile-release-sync/wasm",
+        "#scheme-kernel-wasm": "@sweatpants/scheme-runtime/kernel.wasm",
+        "#scheme-reflect-wasm": "@sweatpants/scheme-runtime/reflect.wasm",
+        "#scheme-wtf8-wasm": "@sweatpants/scheme-runtime/wtf8.wasm"
     },
     "scripts": {
         "kernel:build": "tsx scripts/build-kernel.ts",
         "kernel:check": "tsx scripts/build-kernel.ts --check",
         "dev": "astro dev --host 127.0.0.1 --port 8101 --strictPort",
         "dev:server": "NODE_OPTIONS=--conditions=development tsx src/server/node.ts",
-        "check": "pnpm kernel:check && astro-check && tsc --noEmit",
-        "test": "pnpm kernel:check && vitest run",
-        "build": "pnpm kernel:check && astro build",
-        "build:cloudflare": "pnpm kernel:check && astro build",
+        "check": "pnpm kernel:check && pnpm scheme:check && astro-check && tsc --noEmit",
+        "test": "pnpm kernel:check && pnpm scheme:check && vitest run",
+        "build": "pnpm kernel:check && pnpm scheme:check && astro build",
+        "build:cloudflare": "pnpm kernel:check && pnpm scheme:check && astro build",
         "build:deploy": "CLOUDFLARE_ENV=production pnpm build:cloudflare",
         "deploy:prepare": "tsx scripts/prepare-deployment.ts && tsx scripts/prepare-cloudflare.ts --remote",
         "deploy": "pnpm build:deploy && wrangler deploy --config dist/server/wrangler.json --secrets-file .wrangler/deployment-secrets.json",
@@ -24,7 +27,9 @@
         "tisyn:refresh": "tsx scripts/tisyn-local.ts refresh",
         "tisyn:status": "tsx scripts/tisyn-local.ts status",
         "tisyn:published": "tsx scripts/tisyn-local.ts published",
-        "verify:reasoning": "NODE_OPTIONS=--conditions=development tsx scripts/verify-reasoning.ts"
+        "verify:reasoning": "NODE_OPTIONS=--conditions=development tsx scripts/verify-reasoning.ts",
+        "scheme:build": "pnpm --filter @sweatpants/scheme-runtime wasm:build",
+        "scheme:check": "pnpm --filter @sweatpants/scheme-runtime wasm:check"
     },
     "dependencies": {
         "@dagrejs/dagre": "^3.1.1",
@@ -45,6 +50,7 @@
         "@sweatpants/model-decision": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
+        "@sweatpants/scheme-runtime": "workspace:*",
         "@sweatpants/storage-d1": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/tool-runtime": "workspace:*",

@@ -1,3 +1,4 @@
+import schemeManifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
 import kernelBundle from "../workflow/evaluation/generated/kernel-source.json" with { type: "json" };
 import { DurableObject } from "cloudflare:workers";
 import { handle as astroHandle } from "@astrojs/cloudflare/handler";
@@ -60,7 +61,8 @@ export default {
         },
         host: "conversation-do",
         tools: "executor-do",
-        evaluation: "quickjs-in-tool-executor-do",
+        evaluation: "hoot-scheme-in-tool-executor-do",
+        scheme: schemeManifest,
         kernel: kernelBundle.provenance,
         sampling: "native",
         site: "astro",

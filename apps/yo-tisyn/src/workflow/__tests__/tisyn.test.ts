@@ -40,7 +40,7 @@ import {
   type AuthorityScenarioDriver,
 } from "@sweatpants/journal-authority/testing";
 import { createTisynTool, parseProgram, type BoundTool } from "../tisyn.ts";
-import { programs, tisynExposure } from "../agent.ts";
+import { programs, workflowExposure } from "../agent.ts";
 import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { ask } from "../tools/ask.ts";
 import { echo } from "../tools/echo.ts";
@@ -353,10 +353,10 @@ function fixture(
 }
 
 describe("Tisyn profile", () => {
-  it("exposes only Tisyn while retaining child interaction contracts", async () => {
+  it("exposes Scheme authoring while retaining child interaction contracts", async () => {
     const entries = programs.map((tool) => createToolInventoryEntry(tool));
-    const definitions = await run(() => tisynExposure.filter({ phase: "outer-chat", entries }));
-    expect(definitions.map((definition) => definition.name)).toEqual(["tisyn"]);
+    const definitions = await run(() => workflowExposure.filter({ phase: "outer-chat", entries }));
+    expect(definitions.map((definition) => definition.name)).toEqual(["scheme"]);
     expect(entries.find((entry) => entry.definition.name === "ask")?.elicits?.reply).toBeDefined();
   });
   it("admits sequential bindings, branches, and real tool arguments", () => {

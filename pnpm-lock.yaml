@@ -1078,6 +1078,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/scheme-runtime':
+        specifier: workspace:*
+        version: link:../../packages/scheme-runtime
       '@sweatpants/storage-d1':
         specifier: workspace:*
         version: link:../../packages/storage-d1
@@ -2170,6 +2173,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+
+  packages/scheme-runtime:
+    dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
 
   packages/storage-d1:
     dependencies:

@@ -54,6 +54,7 @@ status here. Statuses:
 | `packages/react-chat` | library | |
 | `packages/durable-streams-cloudflare` | library | Durable Object response buffers and registry storage for yo-chat |
 | `packages/storage-d1` | library | D1 durable kernel for the conversation and execution repositories |
+| `packages/scheme-runtime` | library | Hoot evaluator and pinned WASM build consumed by yo-tisyn |
 | `packages/storage-sqlite` | library | |
 | `packages/stream-bridge` | library | |
 | `packages/test-rig` | infrastructure | Test substrate consumed only by acceptance/yo-chat test contexts |

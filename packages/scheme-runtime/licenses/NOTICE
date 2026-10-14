@@ -1,0 +1,137 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: hoot
+Upstream-Contact: https://community.spritely.institute/
+Source: https://codeberg.org/spritely/hoot
+
+Files: *
+Copyright: 2005,2008-2011,2013-2015,2017-2020 Free Software Foundation, Inc.
+           2017-2026 David Thompson <dthompson2@worcester.edu>
+           2023 Spritely Institute, Igalia.
+           2023-2026 David Thompson <dave@spritely.institute>
+           2023 Robin Templeton <robin@spritely.institute>
+           2023 Christine Lemmer-Webber <christine@spritely.institute>
+           2024-2026 Andy Wingo <wingo@igalia.com>
+           2023-2026 Igalia, S.L.
+           2024 Vivianne Langdon <puttabutta@gmail.com>
+License: Apache-2.0
+
+Files: lib/hoot/numbers.scm
+Copyright: 2024 Igalia, S.L.
+           David Thompson <dave@spritely.institute>
+           2010--2011 Taylor R. Campbell
+License: Apache-2.0 and BSD-2-Clause
+
+Files: m4/guile.m4
+Copyright: 1998, 2001, 2006, 2010, 2012, 2013, 2014, 2020, 2025 Free Software Foundation, Inc.
+License: LGPL-3+
+
+Files: lib/ice-9/match.scm
+Copyright: 2010, 2011, 2012, 2020, 2024 Free Software Foundation, Inc.
+License: LGPL-3+
+Comment:
+ The above license applies to the file as a whole as some code is
+ borrowed from upstream Guile, but the majority of the code falls
+ under the public domain. See below.
+ .
+ This code is written by Alex Shinn and placed in the
+ Public Domain.  All warranties are disclaimed.
+
+Files: module/hoot/frontend-cli.scm
+Copyright: 2023, 2024, 2025, 2026 Igalia, S.L.
+           2005,2008-2011,2013-2015,2017-2020 Free Software Foundation, Inc.
+License: Apache-2.0
+
+Files: module/language/cps/hoot/lower-primcalls.scm module/language/cps/hoot.scm module/language/cps/hoot/unify-returns.scm
+Copyright: 2023 Free Software Foundation, Inc.
+License: LGPL-3+
+
+Files: module/language/cps/hoot/tailify.scm
+Copyright: 2021, 2023, 2024 Free Software Foundation, Inc.
+License: LGPL-3+
+
+Files: module/wasm/assemble.scm
+Copyright: 2023, 2024, 2026 Igalia, S.L.
+           2024 David Thompson <dave@spritely.institute>
+           2001, 2009-2023, 2025, 2025 Free Software Foundation, Inc.
+License: Apache-2.0 and LGPL-3+
+
+Files: lib/hoot/expander.scm
+Copyright: 2024, 2025 Igalia, S.L.
+           1997-1998,2000-2003,2005-2006,2008-2013,2015-2022,2024 Free Software Foundation, Inc.
+           1992-1997 Cadence Research Systems
+License: LGPL-3+ and Chez-Scheme
+
+Files: debian/*
+Copyright: 2024-2026 Simon Josefsson <simon@josefsson.org>
+License: Apache-2.0
+Comment: Debian packaging is licensed under the same terms as upstream
+
+License: BSD-2-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+License: LGPL-3+
+ This library is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Lesser General Public License as
+ published by the Free Software Foundation, either version 3 of the
+ License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with this program.  If not, see
+ <http://www.gnu.org/licenses/>.
+Comment:
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 3 can be found in /usr/share/common-licenses/LGPL-3.
+
+License: Chez-Scheme
+ Permission to copy this software, in whole or in part, to use this
+ software for any lawful purpose, and to redistribute this software
+ is granted subject to the restriction that all copies made of this
+ software must include this copyright notice in full.  This software
+ is provided AS IS, with NO WARRANTY, EITHER EXPRESS OR IMPLIED,
+ INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY
+ OR FITNESS FOR ANY PARTICULAR PURPOSE.  IN NO EVENT SHALL THE
+ AUTHORS BE LIABLE FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES OF ANY
+ NATURE WHATSOEVER.
+Comment: https://codeberg.org/spritely/hoot/issues/787
+ This code is already part of Guile in Debian, see:
+ https://sources.debian.org/src/guile-3.0/3.0.10%2Breally3.0.10-6/module/ice-9/psyntax.scm
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+ .
+     https://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+Comment:
+ On Debian systems, the complete text of the Apache version 2.0 license
+ can be found in "/usr/share/common-licenses/Apache-2.0".

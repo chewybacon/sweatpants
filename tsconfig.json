@@ -94,6 +94,9 @@
         },
         {
             "path": "./packages/model-decision"
+        },
+        {
+            "path": "./packages/scheme-runtime"
         }
     ],
     "files": []

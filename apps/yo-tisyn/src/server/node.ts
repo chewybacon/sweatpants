@@ -1,3 +1,5 @@
+import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
+import { createNodeSchemeDriver } from "@sweatpants/scheme-runtime/node";
 import { createServer } from "node:http";
 import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
 import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";
@@ -8,9 +10,11 @@ import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
 import { reasoningLevel } from "./model-settings.ts";
 
 const app = createTisynApp({
+  workflowLanguage: "scheme",
   decisionProvider: createPiAiDecisionProvider(),
   execution: inProcess({
     *setup() {
+      yield* SchemeEvaluationPort.installDriver(createNodeSchemeDriver());
       yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
     },
   }),

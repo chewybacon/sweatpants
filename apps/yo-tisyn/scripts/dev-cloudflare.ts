@@ -29,6 +29,7 @@ function command(args: string[], env = process.env, cwd?: string) {
 }
 if (!options.listModels) {
   command(["kernel:check"]);
+  command(["scheme:check"]);
   command([
     "--filter",
     "yo-tisyn^...",

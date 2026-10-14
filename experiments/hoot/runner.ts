@@ -3,10 +3,7 @@ import { createDurableTool } from "@sweatpants/agent-sdk";
 import { assertJson, sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 import { ask, askParameters } from "../../apps/yo-tisyn/src/workflow/tools/ask.ts";
-import {
-  randomValue,
-  randomParameters,
-} from "../../apps/yo-tisyn/src/workflow/random.ts";
+import { randomValue, randomParameters } from "../../apps/yo-tisyn/src/workflow/random.ts";
 import { createSchemeEvaluation } from "./evaluation.ts";
 
 // Experimental identity includes the interpreter, bridge, dispatcher and tool contracts.

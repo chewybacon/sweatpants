@@ -1,0 +1,10 @@
+{
+    "baseImage": "debian@sha256:1f11c32b03195c1b28c55e4579755659edae5c76dd76a69b4e4fb34c58fa8744",
+    "platform": "linux/arm64",
+    "debianSnapshot": "20261014T000000Z",
+    "packages": {
+        "guile-hoot": "0.9.0-4",
+        "guile-3.0": "3.0.11-2+b1",
+        "guile-3.0-libs": "3.0.11-2+b1"
+    }
+}

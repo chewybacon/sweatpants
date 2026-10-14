@@ -1,720 +1,663 @@
 {
-  "model": "opencode/claude-haiku-5-5",
-  "thinking": "medium",
-  "maxTokens": 12000,
-  "rows": [
-    {
-      "task": "greeting",
-      "language": "scheme",
-      "trial": 1,
-      "attempts": [
+    "model": "opencode/claude-haiku-5-5",
+    "thinking": "medium",
+    "maxTokens": 12000,
+    "rows": [
         {
-          "source": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\")))))\n  (let ((action (field r \"action\")))\n    (if (equal? action \"accept\")\n        (let ((name (field (field r \"content\") \"reply\")))\n          (object (cons \"status\" \"done\")\n                  (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n        (object (cons \"status\" action)))))",
-          "raw": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\")))))\n  (let ((action (field r \"action\")))\n    (if (equal? action \"accept\")\n        (let ((name (field (field r \"content\") \"reply\")))\n          (object (cons \"status\" \"done\")\n                  (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n        (object (cons \"status\" action)))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 479,
-            "total": 1345,
-            "cacheRead": 862,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0002395,
-              "cacheRead": 0.00000862,
-              "cacheWrite": 0,
-              "total": 0.00024852
-            }
-          },
-          "milliseconds": 4412,
-          "effort": "medium",
-          "sourceCharacters": 358,
-          "passed": true,
-          "validation": {
-            "value": {
-              "status": "done",
-              "greeting": "Hello, Ada \"Lovelace\" λ😀!"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              }
-            ],
-            "random": [],
-            "restores": 1,
-            "journalRecords": 21,
-            "stops": [
-              "decline",
-              "cancel"
+            "task": "greeting",
+            "language": "scheme",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\")))))\n  (let ((action (field r \"action\")))\n    (if (equal? action \"accept\")\n        (let ((name (field (field r \"content\") \"reply\")))\n          (object (cons \"status\" \"done\")\n                  (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n        (object (cons \"status\" action)))))",
+                    "raw": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\")))))\n  (let ((action (field r \"action\")))\n    (if (equal? action \"accept\")\n        (let ((name (field (field r \"content\") \"reply\")))\n          (object (cons \"status\" \"done\")\n                  (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n        (object (cons \"status\" action)))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 479,
+                        "total": 1345,
+                        "cacheRead": 862,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0002395,
+                            "cacheRead": 0.00000862,
+                            "cacheWrite": 0,
+                            "total": 0.00024852
+                        }
+                    },
+                    "milliseconds": 4412,
+                    "effort": "medium",
+                    "sourceCharacters": 358,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "status": "done",
+                            "greeting": "Hello, Ada \"Lovelace\" λ😀!"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            }
+                        ],
+                        "random": [],
+                        "restores": 1,
+                        "journalRecords": 21,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
             ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "greeting",
-      "language": "tisyn",
-      "trial": 1,
-      "attempts": [
-        {
-          "source": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
-          "raw": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 667,
-            "total": 1694,
-            "cacheRead": 1023,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0003335,
-              "cacheRead": 0.00001023,
-              "cacheWrite": 0,
-              "total": 0.00034413
-            }
-          },
-          "milliseconds": 4251,
-          "effort": "medium",
-          "sourceCharacters": 227,
-          "passed": true,
-          "validation": {
-            "value": {
-              "greeting": "Hello, Ada \"Lovelace\" λ😀!",
-              "status": "done"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              }
-            ],
-            "random": [],
-            "restores": 1,
-            "journalRecords": 28,
-            "stops": [
-              "decline",
-              "cancel"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "prs",
-      "language": "tisyn",
-      "trial": 1,
-      "attempts": [
-        {
-          "source": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random({\"choices\":[\"rock\",\"paper\",\"scissors\"]}),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
-          "raw": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random({\"choices\":[\"rock\",\"paper\",\"scissors\"]}),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 7256,
-            "total": 8391,
-            "cacheRead": 1131,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0036279999999999997,
-              "cacheRead": 0.00001131,
-              "cacheWrite": 0,
-              "total": 0.0036397099999999996
-            }
-          },
-          "milliseconds": 29657,
-          "effort": "medium",
-          "sourceCharacters": 1204,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
         },
         {
-          "source": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
-          "raw": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 3977,
-            "total": 5923,
-            "cacheRead": 0,
-            "cacheWrite": 1942,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0019885,
-              "cacheRead": 0,
-              "cacheWrite": 0.00024275,
-              "total": 0.0022316499999999995
-            }
-          },
-          "milliseconds": 18712,
-          "effort": "medium",
-          "sourceCharacters": 1218,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
-        }
-      ]
-    },
-    {
-      "task": "prs",
-      "language": "scheme",
-      "trial": 1,
-      "attempts": [
-        {
-          "source": "(letrec ((beats?\n         (lambda (a b)\n           (or (and (equal? a \"rock\") (equal? b \"scissors\"))\n               (and (equal? a \"scissors\") (equal? b \"paper\"))\n               (and (equal? a \"paper\") (equal? b \"rock\")))))\n        (valid?\n         (lambda (r)\n           (or (equal? r \"rock\")\n               (equal? r \"paper\")\n               (equal? r \"scissors\"))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (> round 3)\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
-          "raw": "(letrec ((beats?\n         (lambda (a b)\n           (or (and (equal? a \"rock\") (equal? b \"scissors\"))\n               (and (equal? a \"scissors\") (equal? b \"paper\"))\n               (and (equal? a \"paper\") (equal? b \"rock\")))))\n        (valid?\n         (lambda (r)\n           (or (equal? r \"rock\")\n               (equal? r \"paper\")\n               (equal? r \"scissors\"))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (> round 3)\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 2351,
-            "total": 3325,
-            "cacheRead": 0,
-            "cacheWrite": 970,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0011755,
-              "cacheRead": 0,
-              "cacheWrite": 0.00012125,
-              "total": 0.00129715
-            }
-          },
-          "milliseconds": 10945,
-          "effort": "medium",
-          "sourceCharacters": 2572,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+            "task": "greeting",
+            "language": "tisyn",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
+                    "raw": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 667,
+                        "total": 1694,
+                        "cacheRead": 1023,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0003335,
+                            "cacheRead": 0.00001023,
+                            "cacheWrite": 0,
+                            "total": 0.00034413
+                        }
+                    },
+                    "milliseconds": 4251,
+                    "effort": "medium",
+                    "sourceCharacters": 227,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "greeting": "Hello, Ada \"Lovelace\" λ😀!",
+                            "status": "done"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            }
+                        ],
+                        "random": [],
+                        "restores": 1,
+                        "journalRecords": 28,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
+            ]
         },
         {
-          "source": "(letrec ((beats?\n         (lambda (a b)\n           (if (equal? a \"rock\")\n               (equal? b \"scissors\")\n               (if (equal? a \"scissors\")\n                   (equal? b \"paper\")\n                   (if (equal? a \"paper\")\n                       (equal? b \"rock\")\n                       #f)))))\n        (valid?\n         (lambda (r)\n           (if (equal? r \"rock\")\n               #t\n               (if (equal? r \"paper\")\n                   #t\n                   (equal? r \"scissors\")))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (not (< round 4))\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
-          "raw": "(letrec ((beats?\n         (lambda (a b)\n           (if (equal? a \"rock\")\n               (equal? b \"scissors\")\n               (if (equal? a \"scissors\")\n                   (equal? b \"paper\")\n                   (if (equal? a \"paper\")\n                       (equal? b \"rock\")\n                       #f)))))\n        (valid?\n         (lambda (r)\n           (if (equal? r \"rock\")\n               #t\n               (if (equal? r \"paper\")\n                   #t\n                   (equal? r \"scissors\")))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (not (< round 4))\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 1911,
-            "total": 3693,
-            "cacheRead": 0,
-            "cacheWrite": 1778,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0009555,
-              "cacheRead": 0,
-              "cacheWrite": 0.00022225,
-              "total": 0.00117815
-            }
-          },
-          "milliseconds": 7628,
-          "effort": "medium",
-          "sourceCharacters": 2706,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
-        }
-      ]
-    },
-    {
-      "task": "badge",
-      "language": "scheme",
-      "trial": 1,
-      "attempts": [
-        {
-          "source": "(letrec\n  ((stop? (lambda (r) (not (equal? (field r \"action\") \"accept\"))))\n   (stop-result (lambda (r) (object (cons \"status\" (field r \"action\")))))\n   (with-reply (lambda (r on-ok)\n     (if (stop? r)\n         (stop-result r)\n         (on-ok (field (field r \"content\") \"reply\")))))\n   (ask (lambda (msg)\n     (effect \"ask\" (object (cons \"message\" msg)))))\n   (ask-review (lambda (name color)\n     (effect \"ask\"\n       (object (cons \"message\"\n                     (string-append \"Current badge: name \" name\n                                    \", favorite color \" color\n                                    \". Choose done, change name, or change color.\"))\n               (cons \"suggestions\" (array \"done\" \"change name\" \"change color\"))))))\n   (review (lambda (name color)\n     (with-reply (ask-review name color)\n       (lambda (text)\n         (if (equal? text \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? text \"change name\")\n                 (with-reply (ask \"What name should be on the badge?\")\n                   (lambda (new-name) (review new-name color)))\n                 (if (equal? text \"change color\")\n                     (with-reply (ask \"What is your new favorite color?\")\n                       (lambda (new-color) (review name new-color)))\n                     (review name color)))))))))\n  (with-reply (ask \"What is your name?\")\n    (lambda (name)\n      (with-reply (ask \"What is your favorite color?\")\n        (lambda (color)\n          (review name color))))))",
-          "raw": "(letrec\n  ((stop? (lambda (r) (not (equal? (field r \"action\") \"accept\"))))\n   (stop-result (lambda (r) (object (cons \"status\" (field r \"action\")))))\n   (with-reply (lambda (r on-ok)\n     (if (stop? r)\n         (stop-result r)\n         (on-ok (field (field r \"content\") \"reply\")))))\n   (ask (lambda (msg)\n     (effect \"ask\" (object (cons \"message\" msg)))))\n   (ask-review (lambda (name color)\n     (effect \"ask\"\n       (object (cons \"message\"\n                     (string-append \"Current badge: name \" name\n                                    \", favorite color \" color\n                                    \". Choose done, change name, or change color.\"))\n               (cons \"suggestions\" (array \"done\" \"change name\" \"change color\"))))))\n   (review (lambda (name color)\n     (with-reply (ask-review name color)\n       (lambda (text)\n         (if (equal? text \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? text \"change name\")\n                 (with-reply (ask \"What name should be on the badge?\")\n                   (lambda (new-name) (review new-name color)))\n                 (if (equal? text \"change color\")\n                     (with-reply (ask \"What is your new favorite color?\")\n                       (lambda (new-color) (review name new-color)))\n                     (review name color)))))))))\n  (with-reply (ask \"What is your name?\")\n    (lambda (name)\n      (with-reply (ask \"What is your favorite color?\")\n        (lambda (color)\n          (review name color))))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 2651,
-            "total": 3594,
-            "cacheRead": 0,
-            "cacheWrite": 939,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0013254999999999999,
-              "cacheRead": 0,
-              "cacheWrite": 0.000117375,
-              "total": 0.001443275
-            }
-          },
-          "milliseconds": 13752,
-          "effort": "medium",
-          "sourceCharacters": 1588,
-          "passed": true,
-          "validation": {
-            "value": {
-              "status": "done",
-              "name": "Grace",
-              "color": "green"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              },
-              {
-                "prompt": "What is your favorite color?"
-              },
-              {
-                "prompt": "Current badge: name Ada, favorite color blue. Choose done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What name should be on the badge?"
-              },
-              {
-                "prompt": "Current badge: name Grace, favorite color blue. Choose done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What is your new favorite color?"
-              },
-              {
-                "prompt": "Current badge: name Grace, favorite color green. Choose done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              }
-            ],
-            "random": [],
-            "restores": 7,
-            "journalRecords": 123,
-            "stops": [
-              "decline",
-              "cancel"
+            "task": "prs",
+            "language": "tisyn",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random({\"choices\":[\"rock\",\"paper\",\"scissors\"]}),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
+                    "raw": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random({\"choices\":[\"rock\",\"paper\",\"scissors\"]}),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 7256,
+                        "total": 8391,
+                        "cacheRead": 1131,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0036279999999999997,
+                            "cacheRead": 0.00001131,
+                            "cacheWrite": 0,
+                            "total": 0.0036397099999999996
+                        }
+                    },
+                    "milliseconds": 29657,
+                    "effort": "medium",
+                    "sourceCharacters": 1204,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                },
+                {
+                    "source": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
+                    "raw": "Let(\"round\",Fn([\"n\",\"wins\",\"losses\",\"ties\"],If(Gt(Ref(\"n\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":If(Eq(Ref(\"n\"),1),\"Round 1 of 3: choose rock, paper, or scissors.\",If(Eq(Ref(\"n\"),2),\"Round 2 of 3: choose rock, paper, or scissors.\",\"Round 3 of 3: choose rock, paper, or scissors.\")),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"win\",Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),Or(And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))]],Call(Ref(\"round\"),Add(Ref(\"n\"),1),Add(Ref(\"wins\"),If(Ref(\"win\"),1,0)),Add(Ref(\"losses\"),If(Or(Ref(\"win\"),Ref(\"tie\")),0,1)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0))))),Call(Ref(\"round\"),Ref(\"n\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\")))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))))),Call(Ref(\"round\"),1,0,0,0))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 3977,
+                        "total": 5923,
+                        "cacheRead": 0,
+                        "cacheWrite": 1942,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0019885,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.00024275,
+                            "total": 0.0022316499999999995
+                        }
+                    },
+                    "milliseconds": 18712,
+                    "effort": "medium",
+                    "sourceCharacters": 1218,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                }
             ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "badge",
-      "language": "tisyn",
-      "trial": 1,
-      "attempts": [
-        {
-          "source": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.'\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
-          "raw": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.'\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 5497,
-            "total": 6601,
-            "cacheRead": 0,
-            "cacheWrite": 1100,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0027485,
-              "cacheRead": 0,
-              "cacheWrite": 0.0001375,
-              "total": 0.0028864
-            }
-          },
-          "milliseconds": 24199,
-          "effort": "medium",
-          "sourceCharacters": 1534,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
         },
         {
-          "source": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
-          "raw": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 7792,
-            "total": 9760,
-            "cacheRead": 0,
-            "cacheWrite": 1964,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0038959999999999997,
-              "cacheRead": 0,
-              "cacheWrite": 0.0002455,
-              "total": 0.0041419
-            }
-          },
-          "milliseconds": 30895,
-          "effort": "medium",
-          "sourceCharacters": 1533,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
-        }
-      ]
-    },
-    {
-      "task": "greeting",
-      "language": "tisyn",
-      "trial": 2,
-      "attempts": [
-        {
-          "source": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
-          "raw": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 571,
-            "total": 1598,
-            "cacheRead": 1023,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0002855,
-              "cacheRead": 0.00001023,
-              "cacheWrite": 0,
-              "total": 0.00029613
-            }
-          },
-          "milliseconds": 3616,
-          "effort": "medium",
-          "sourceCharacters": 227,
-          "passed": true,
-          "validation": {
-            "value": {
-              "greeting": "Hello, Ada \"Lovelace\" λ😀!",
-              "status": "done"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              }
-            ],
-            "random": [],
-            "restores": 1,
-            "journalRecords": 28,
-            "stops": [
-              "decline",
-              "cancel"
+            "task": "prs",
+            "language": "scheme",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "(letrec ((beats?\n         (lambda (a b)\n           (or (and (equal? a \"rock\") (equal? b \"scissors\"))\n               (and (equal? a \"scissors\") (equal? b \"paper\"))\n               (and (equal? a \"paper\") (equal? b \"rock\")))))\n        (valid?\n         (lambda (r)\n           (or (equal? r \"rock\")\n               (equal? r \"paper\")\n               (equal? r \"scissors\"))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (> round 3)\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
+                    "raw": "(letrec ((beats?\n         (lambda (a b)\n           (or (and (equal? a \"rock\") (equal? b \"scissors\"))\n               (and (equal? a \"scissors\") (equal? b \"paper\"))\n               (and (equal? a \"paper\") (equal? b \"rock\")))))\n        (valid?\n         (lambda (r)\n           (or (equal? r \"rock\")\n               (equal? r \"paper\")\n               (equal? r \"scissors\"))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (> round 3)\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 2351,
+                        "total": 3325,
+                        "cacheRead": 0,
+                        "cacheWrite": 970,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0011755,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.00012125,
+                            "total": 0.00129715
+                        }
+                    },
+                    "milliseconds": 10945,
+                    "effort": "medium",
+                    "sourceCharacters": 2572,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                },
+                {
+                    "source": "(letrec ((beats?\n         (lambda (a b)\n           (if (equal? a \"rock\")\n               (equal? b \"scissors\")\n               (if (equal? a \"scissors\")\n                   (equal? b \"paper\")\n                   (if (equal? a \"paper\")\n                       (equal? b \"rock\")\n                       #f)))))\n        (valid?\n         (lambda (r)\n           (if (equal? r \"rock\")\n               #t\n               (if (equal? r \"paper\")\n                   #t\n                   (equal? r \"scissors\")))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (not (< round 4))\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
+                    "raw": "(letrec ((beats?\n         (lambda (a b)\n           (if (equal? a \"rock\")\n               (equal? b \"scissors\")\n               (if (equal? a \"scissors\")\n                   (equal? b \"paper\")\n                   (if (equal? a \"paper\")\n                       (equal? b \"rock\")\n                       #f)))))\n        (valid?\n         (lambda (r)\n           (if (equal? r \"rock\")\n               #t\n               (if (equal? r \"paper\")\n                   #t\n                   (equal? r \"scissors\")))))\n        (play\n         (lambda (round wins losses ties note)\n           (if (not (< round 4))\n               (object (cons \"status\" \"done\")\n                       (cons \"wins\" wins)\n                       (cons \"losses\" losses)\n                       (cons \"ties\" ties))\n               (let ask-loop ((note-now note))\n                 (let* ((res (effect \"ask\"\n                               (object (cons \"message\"\n                                             (string-append note-now\n                                                            \"Round \"\n                                                            (number->string round)\n                                                            \" of 3: choose rock, paper, or scissors.\"))\n                                       (cons \"suggestions\"\n                                             (array \"rock\" \"paper\" \"scissors\")))))\n                        (action (field res \"action\")))\n                   (if (equal? action \"accept\")\n                       (let ((reply (field (field res \"content\") \"reply\")))\n                         (if (valid? reply)\n                             (let* ((cpu (effect \"random\"\n                                           (object (cons \"choices\"\n                                                         (array \"rock\" \"paper\" \"scissors\")))))\n                                    (note2 (string-append \"You played \" reply\n                                                          \", I played \" cpu \". \")))\n                               (if (equal? reply cpu)\n                                   (play (+ round 1) wins losses (+ ties 1)\n                                         (string-append note2 \"Tie! \"))\n                                   (if (beats? reply cpu)\n                                       (play (+ round 1) (+ wins 1) losses ties\n                                             (string-append note2 \"You win! \"))\n                                       (play (+ round 1) wins (+ losses 1) ties\n                                             (string-append note2 \"I win! \")))))\n                             (ask-loop \"Invalid reply. \")))\n                       (object (cons \"status\" action))))))))\n  (play 1 0 0 0 \"\"))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 1911,
+                        "total": 3693,
+                        "cacheRead": 0,
+                        "cacheWrite": 1778,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0009555,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.00022225,
+                            "total": 0.00117815
+                        }
+                    },
+                    "milliseconds": 7628,
+                    "effort": "medium",
+                    "sourceCharacters": 2706,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                }
             ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "greeting",
-      "language": "scheme",
-      "trial": 2,
-      "attempts": [
-        {
-          "source": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\"))))\n       (action (field r \"action\")))\n  (if (equal? action \"accept\")\n      (let ((name (field (field r \"content\") \"reply\")))\n        (object (cons \"status\" \"done\")\n                (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n      (object (cons \"status\" action))))",
-          "raw": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\"))))\n       (action (field r \"action\")))\n  (if (equal? action \"accept\")\n      (let ((name (field (field r \"content\") \"reply\")))\n        (object (cons \"status\" \"done\")\n                (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n      (object (cons \"status\" action))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 517,
-            "total": 1383,
-            "cacheRead": 862,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0002585,
-              "cacheRead": 0.00000862,
-              "cacheWrite": 0,
-              "total": 0.00026752
-            }
-          },
-          "milliseconds": 3352,
-          "effort": "medium",
-          "sourceCharacters": 345,
-          "passed": true,
-          "validation": {
-            "value": {
-              "status": "done",
-              "greeting": "Hello, Ada \"Lovelace\" λ😀!"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              }
-            ],
-            "random": [],
-            "restores": 1,
-            "journalRecords": 21,
-            "stops": [
-              "decline",
-              "cancel"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "prs",
-      "language": "scheme",
-      "trial": 2,
-      "attempts": [
-        {
-          "source": "(letrec\n  ((normalize\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" #f))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"scissors\") (equal? c \"paper\")\n          (if (equal? p \"paper\") (equal? c \"rock\") #f)))))\n   (result-object\n    (lambda (w l t)\n      (object (cons \"status\" \"done\")\n              (cons \"wins\" w)\n              (cons \"losses\" l)\n              (cons \"ties\" t))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (result-object w l t)\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (normalize (field (field resp \"content\") \"reply\"))))\n                    (if move\n                        (let* ((cpu (effect \"random\"\n                                      (object (cons \"choices\"\n                                                    (array \"rock\" \"paper\" \"scissors\")))))\n                               (outcome (if (equal? move cpu) \"tie\"\n                                          (if (beats? move cpu) \"win\" \"loss\")))\n                               (w2 (if (equal? outcome \"win\") (+ w 1) w))\n                               (l2 (if (equal? outcome \"loss\") (+ l 1) l))\n                               (t2 (if (equal? outcome \"tie\") (+ t 1) t))\n                               (msg2 (string-append\n                                       \"You chose \" move \", I chose \" cpu\n                                       \": \" outcome \". Round \"\n                                       (number->string (+ round 1))\n                                       \" of 3: choose rock, paper, or scissors.\")))\n                          (play (+ round 1) w2 l2 t2 msg2))\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
-          "raw": "(letrec\n  ((normalize\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" #f))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"scissors\") (equal? c \"paper\")\n          (if (equal? p \"paper\") (equal? c \"rock\") #f)))))\n   (result-object\n    (lambda (w l t)\n      (object (cons \"status\" \"done\")\n              (cons \"wins\" w)\n              (cons \"losses\" l)\n              (cons \"ties\" t))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (result-object w l t)\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (normalize (field (field resp \"content\") \"reply\"))))\n                    (if move\n                        (let* ((cpu (effect \"random\"\n                                      (object (cons \"choices\"\n                                                    (array \"rock\" \"paper\" \"scissors\")))))\n                               (outcome (if (equal? move cpu) \"tie\"\n                                          (if (beats? move cpu) \"win\" \"loss\")))\n                               (w2 (if (equal? outcome \"win\") (+ w 1) w))\n                               (l2 (if (equal? outcome \"loss\") (+ l 1) l))\n                               (t2 (if (equal? outcome \"tie\") (+ t 1) t))\n                               (msg2 (string-append\n                                       \"You chose \" move \", I chose \" cpu\n                                       \": \" outcome \". Round \"\n                                       (number->string (+ round 1))\n                                       \" of 3: choose rock, paper, or scissors.\")))\n                          (play (+ round 1) w2 l2 t2 msg2))\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 3099,
-            "total": 4073,
-            "cacheRead": 970,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0015494999999999999,
-              "cacheRead": 0.0000097,
-              "cacheWrite": 0,
-              "total": 0.0015596
-            }
-          },
-          "milliseconds": 13401,
-          "effort": "medium",
-          "sourceCharacters": 2423,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
         },
         {
-          "source": "(letrec\n  ((norm\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" \"none\"))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"paper\") (equal? c \"rock\")\n          (equal? c \"paper\")))))\n   (outcome\n    (lambda (m c)\n      (if (equal? m c) \"tie\"\n        (if (beats? m c) \"win\" \"loss\"))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (object (cons \"status\" \"done\")\n                  (cons \"wins\" w)\n                  (cons \"losses\" l)\n                  (cons \"ties\" t))\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (norm (field (field resp \"content\") \"reply\"))))\n                    (if (equal? move \"none\")\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")\n                        (let ((cpu (effect \"random\"\n                                     (object (cons \"choices\"\n                                                   (array \"rock\" \"paper\" \"scissors\")))))\n                              )\n                          (let ((res (outcome move cpu)))\n                            (let ((w2 (if (equal? res \"win\") (+ w 1) w))\n                                  (l2 (if (equal? res \"loss\") (+ l 1) l))\n                                  (t2 (if (equal? res \"tie\") (+ t 1) t)))\n                              (let ((msg2\n                                     (string-append\n                                       (string-append\n                                         (string-append \"You chose \" move)\n                                         (string-append \", I chose \" cpu))\n                                       (string-append\n                                         (string-append \": \" res)\n                                         (string-append \". Round \"\n                                           (number->string (+ round 1)))))))\n                                (play (+ round 1) w2 l2 t2\n                                      (string-append msg2\n                                        \" of 3: choose rock, paper, or scissors.\"))))))))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
-          "raw": "(letrec\n  ((norm\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" \"none\"))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"paper\") (equal? c \"rock\")\n          (equal? c \"paper\")))))\n   (outcome\n    (lambda (m c)\n      (if (equal? m c) \"tie\"\n        (if (beats? m c) \"win\" \"loss\"))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (object (cons \"status\" \"done\")\n                  (cons \"wins\" w)\n                  (cons \"losses\" l)\n                  (cons \"ties\" t))\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (norm (field (field resp \"content\") \"reply\"))))\n                    (if (equal? move \"none\")\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")\n                        (let ((cpu (effect \"random\"\n                                     (object (cons \"choices\"\n                                                   (array \"rock\" \"paper\" \"scissors\")))))\n                              )\n                          (let ((res (outcome move cpu)))\n                            (let ((w2 (if (equal? res \"win\") (+ w 1) w))\n                                  (l2 (if (equal? res \"loss\") (+ l 1) l))\n                                  (t2 (if (equal? res \"tie\") (+ t 1) t)))\n                              (let ((msg2\n                                     (string-append\n                                       (string-append\n                                         (string-append \"You chose \" move)\n                                         (string-append \", I chose \" cpu))\n                                       (string-append\n                                         (string-append \": \" res)\n                                         (string-append \". Round \"\n                                           (number->string (+ round 1)))))))\n                                (play (+ round 1) w2 l2 t2\n                                      (string-append msg2\n                                        \" of 3: choose rock, paper, or scissors.\"))))))))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 2755,
-            "total": 4652,
-            "cacheRead": 0,
-            "cacheWrite": 1893,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0013775,
-              "cacheRead": 0,
-              "cacheWrite": 0.000236625,
-              "total": 0.0016145250000000001
-            }
-          },
-          "milliseconds": 11792,
-          "effort": "medium",
-          "sourceCharacters": 2751,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
-        }
-      ]
-    },
-    {
-      "task": "prs",
-      "language": "tisyn",
-      "trial": 2,
-      "attempts": [
-        {
-          "source": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Or(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"reply\"),\"paper\")),Eq(Ref(\"reply\"),\"scissors\")),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),Let(\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\"))))),Let(\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\")),Let(\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\"))),Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
-          "raw": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Or(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"reply\"),\"paper\")),Eq(Ref(\"reply\"),\"scissors\")),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),Let(\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\"))))),Let(\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\")),Let(\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\"))),Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 9606,
-            "total": 10741,
-            "cacheRead": 1131,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.004803,
-              "cacheRead": 0.00001131,
-              "cacheWrite": 0,
-              "total": 0.00481471
-            }
-          },
-          "milliseconds": 38519,
-          "effort": "medium",
-          "sourceCharacters": 1335,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+            "task": "badge",
+            "language": "scheme",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "(letrec\n  ((stop? (lambda (r) (not (equal? (field r \"action\") \"accept\"))))\n   (stop-result (lambda (r) (object (cons \"status\" (field r \"action\")))))\n   (with-reply (lambda (r on-ok)\n     (if (stop? r)\n         (stop-result r)\n         (on-ok (field (field r \"content\") \"reply\")))))\n   (ask (lambda (msg)\n     (effect \"ask\" (object (cons \"message\" msg)))))\n   (ask-review (lambda (name color)\n     (effect \"ask\"\n       (object (cons \"message\"\n                     (string-append \"Current badge: name \" name\n                                    \", favorite color \" color\n                                    \". Choose done, change name, or change color.\"))\n               (cons \"suggestions\" (array \"done\" \"change name\" \"change color\"))))))\n   (review (lambda (name color)\n     (with-reply (ask-review name color)\n       (lambda (text)\n         (if (equal? text \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? text \"change name\")\n                 (with-reply (ask \"What name should be on the badge?\")\n                   (lambda (new-name) (review new-name color)))\n                 (if (equal? text \"change color\")\n                     (with-reply (ask \"What is your new favorite color?\")\n                       (lambda (new-color) (review name new-color)))\n                     (review name color)))))))))\n  (with-reply (ask \"What is your name?\")\n    (lambda (name)\n      (with-reply (ask \"What is your favorite color?\")\n        (lambda (color)\n          (review name color))))))",
+                    "raw": "(letrec\n  ((stop? (lambda (r) (not (equal? (field r \"action\") \"accept\"))))\n   (stop-result (lambda (r) (object (cons \"status\" (field r \"action\")))))\n   (with-reply (lambda (r on-ok)\n     (if (stop? r)\n         (stop-result r)\n         (on-ok (field (field r \"content\") \"reply\")))))\n   (ask (lambda (msg)\n     (effect \"ask\" (object (cons \"message\" msg)))))\n   (ask-review (lambda (name color)\n     (effect \"ask\"\n       (object (cons \"message\"\n                     (string-append \"Current badge: name \" name\n                                    \", favorite color \" color\n                                    \". Choose done, change name, or change color.\"))\n               (cons \"suggestions\" (array \"done\" \"change name\" \"change color\"))))))\n   (review (lambda (name color)\n     (with-reply (ask-review name color)\n       (lambda (text)\n         (if (equal? text \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? text \"change name\")\n                 (with-reply (ask \"What name should be on the badge?\")\n                   (lambda (new-name) (review new-name color)))\n                 (if (equal? text \"change color\")\n                     (with-reply (ask \"What is your new favorite color?\")\n                       (lambda (new-color) (review name new-color)))\n                     (review name color)))))))))\n  (with-reply (ask \"What is your name?\")\n    (lambda (name)\n      (with-reply (ask \"What is your favorite color?\")\n        (lambda (color)\n          (review name color))))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 2651,
+                        "total": 3594,
+                        "cacheRead": 0,
+                        "cacheWrite": 939,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0013254999999999999,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.000117375,
+                            "total": 0.001443275
+                        }
+                    },
+                    "milliseconds": 13752,
+                    "effort": "medium",
+                    "sourceCharacters": 1588,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "status": "done",
+                            "name": "Grace",
+                            "color": "green"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            },
+                            {
+                                "prompt": "What is your favorite color?"
+                            },
+                            {
+                                "prompt": "Current badge: name Ada, favorite color blue. Choose done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What name should be on the badge?"
+                            },
+                            {
+                                "prompt": "Current badge: name Grace, favorite color blue. Choose done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What is your new favorite color?"
+                            },
+                            {
+                                "prompt": "Current badge: name Grace, favorite color green. Choose done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            }
+                        ],
+                        "random": [],
+                        "restores": 7,
+                        "journalRecords": 123,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
+            ]
         },
         {
-          "source": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))],[\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\")))]],Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
-          "raw": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))],[\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\")))]],Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 7235,
-            "total": 9230,
-            "cacheRead": 0,
-            "cacheWrite": 1991,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0036174999999999996,
-              "cacheRead": 0,
-              "cacheWrite": 0.000248875,
-              "total": 0.0038667749999999994
-            }
-          },
-          "milliseconds": 26709,
-          "effort": "medium",
-          "sourceCharacters": 1333,
-          "passed": false,
-          "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
-        }
-      ]
-    },
-    {
-      "task": "badge",
-      "language": "tisyn",
-      "trial": 2,
-      "attempts": [
-        {
-          "source": "LetMany([\n[\"ask\",Fn([\"req\"],OnAccepted(Ask(Ref(\"req\")),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],\n[\"review\",Fn([\"name\",\"color\"],Let(\"r\",Call(Ref(\"ask\"),Construct({\"message\":Concat(\"Badge: \",Ref(\"name\"),\" | Color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),If(Get(Ref(\"r\"),\"ok\"),If(Eq(Get(Ref(\"r\"),\"value\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Get(Ref(\"r\"),\"value\"),\"change name\"),Let(\"n\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new name?\"})),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Get(Ref(\"r\"),\"value\"),\"change color\"),Let(\"c\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new favorite color?\"})),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))),Construct({\"status\":Get(Ref(\"r\"),\"status\")}))))]\n],\nLet(\"r1\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your name?\"})),If(Get(Ref(\"r1\"),\"ok\"),Let(\"r2\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your favorite color?\"})),If(Get(Ref(\"r2\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"r1\"),\"value\"),Get(Ref(\"r2\"),\"value\")),Construct({\"status\":Get(Ref(\"r2\"),\"status\")}))),Construct({\"status\":Get(Ref(\"r1\"),\"status\")}))))",
-          "raw": "LetMany([\n[\"ask\",Fn([\"req\"],OnAccepted(Ask(Ref(\"req\")),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],\n[\"review\",Fn([\"name\",\"color\"],Let(\"r\",Call(Ref(\"ask\"),Construct({\"message\":Concat(\"Badge: \",Ref(\"name\"),\" | Color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),If(Get(Ref(\"r\"),\"ok\"),If(Eq(Get(Ref(\"r\"),\"value\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Get(Ref(\"r\"),\"value\"),\"change name\"),Let(\"n\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new name?\"})),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Get(Ref(\"r\"),\"value\"),\"change color\"),Let(\"c\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new favorite color?\"})),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))),Construct({\"status\":Get(Ref(\"r\"),\"status\")}))))]\n],\nLet(\"r1\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your name?\"})),If(Get(Ref(\"r1\"),\"ok\"),Let(\"r2\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your favorite color?\"})),If(Get(Ref(\"r2\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"r1\"),\"value\"),Get(Ref(\"r2\"),\"value\")),Construct({\"status\":Get(Ref(\"r2\"),\"status\")}))),Construct({\"status\":Get(Ref(\"r1\"),\"status\")}))))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 8581,
-            "total": 9685,
-            "cacheRead": 1100,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0042905,
-              "cacheRead": 0.000011,
-              "cacheWrite": 0,
-              "total": 0.0043019
-            }
-          },
-          "milliseconds": 34603,
-          "effort": "medium",
-          "sourceCharacters": 1525,
-          "passed": true,
-          "validation": {
-            "value": {
-              "color": "green",
-              "name": "Grace",
-              "status": "done"
-            },
-            "questions": [
-              {
-                "prompt": "What is your name?"
-              },
-              {
-                "prompt": "What is your favorite color?"
-              },
-              {
-                "prompt": "Badge: Ada | Color: blue. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What is your new name?"
-              },
-              {
-                "prompt": "Badge: Grace | Color: blue. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What is your new favorite color?"
-              },
-              {
-                "prompt": "Badge: Grace | Color: green. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              }
-            ],
-            "random": [],
-            "restores": 7,
-            "journalRecords": 142,
-            "stops": [
-              "decline",
-              "cancel"
+            "task": "badge",
+            "language": "tisyn",
+            "trial": 1,
+            "attempts": [
+                {
+                    "source": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.'\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+                    "raw": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.'\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 5497,
+                        "total": 6601,
+                        "cacheRead": 0,
+                        "cacheWrite": 1100,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0027485,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.0001375,
+                            "total": 0.0028864
+                        }
+                    },
+                    "milliseconds": 24199,
+                    "effort": "medium",
+                    "sourceCharacters": 1534,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                },
+                {
+                    "source": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+                    "raw": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 7792,
+                        "total": 9760,
+                        "cacheRead": 0,
+                        "cacheWrite": 1964,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0038959999999999997,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.0002455,
+                            "total": 0.0041419
+                        }
+                    },
+                    "milliseconds": 30895,
+                    "effort": "medium",
+                    "sourceCharacters": 1533,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                }
             ]
-          }
-        }
-      ]
-    },
-    {
-      "task": "badge",
-      "language": "scheme",
-      "trial": 2,
-      "attempts": [
+        },
         {
-          "source": "(let-syntax\n  ((with-reply\n    (syntax-rules ()\n      ((_ expr id body)\n       (let ((r expr))\n         (if (equal? (field r \"action\") \"accept\")\n             (let ((id (field (field r \"content\") \"reply\")))\n               body)\n             (object (cons \"status\" (field r \"action\")))))))))\n  (letrec\n    ((ask-name\n      (lambda ()\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"Hi! What is your name?\")))\n         name\n         (ask-color name))))\n     (ask-color\n      (lambda (name)\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"What is your favorite color?\")))\n         color\n         (review name color))))\n     (review\n      (lambda (name color)\n        (with-reply\n         (effect \"ask\"\n                 (object\n                  (cons \"message\"\n                        (string-append \"Name badge: \" name\n                                       \" | Favorite color: \" color\n                                       \". Say done, change name, or change color.\"))\n                  (cons \"suggestions\"\n                        (array \"done\" \"change name\" \"change color\"))))\n         choice\n         (if (equal? choice \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? choice \"change name\")\n                 (with-reply\n                  (effect \"ask\" (object (cons \"message\" \"What would you like your name to be?\")))\n                  new-name\n                  (review new-name color))\n                 (if (equal? choice \"change color\")\n                     (with-reply\n                      (effect \"ask\" (object (cons \"message\" \"What would you like your favorite color to be?\")))\n                      new-color\n                      (review name new-color))\n                     (review name color))))))))\n    (ask-name)))",
-          "raw": "(let-syntax\n  ((with-reply\n    (syntax-rules ()\n      ((_ expr id body)\n       (let ((r expr))\n         (if (equal? (field r \"action\") \"accept\")\n             (let ((id (field (field r \"content\") \"reply\")))\n               body)\n             (object (cons \"status\" (field r \"action\")))))))))\n  (letrec\n    ((ask-name\n      (lambda ()\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"Hi! What is your name?\")))\n         name\n         (ask-color name))))\n     (ask-color\n      (lambda (name)\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"What is your favorite color?\")))\n         color\n         (review name color))))\n     (review\n      (lambda (name color)\n        (with-reply\n         (effect \"ask\"\n                 (object\n                  (cons \"message\"\n                        (string-append \"Name badge: \" name\n                                       \" | Favorite color: \" color\n                                       \". Say done, change name, or change color.\"))\n                  (cons \"suggestions\"\n                        (array \"done\" \"change name\" \"change color\"))))\n         choice\n         (if (equal? choice \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? choice \"change name\")\n                 (with-reply\n                  (effect \"ask\" (object (cons \"message\" \"What would you like your name to be?\")))\n                  new-name\n                  (review new-name color))\n                 (if (equal? choice \"change color\")\n                     (with-reply\n                      (effect \"ask\" (object (cons \"message\" \"What would you like your favorite color to be?\")))\n                      new-color\n                      (review name new-color))\n                     (review name color))))))))\n    (ask-name)))",
-          "stopReason": "stop",
-          "usage": {
-            "input": 4,
-            "output": 2567,
-            "total": 3510,
-            "cacheRead": 939,
-            "cacheWrite": 0,
-            "cost": {
-              "input": 4.0000000000000003e-7,
-              "output": 0.0012835,
-              "cacheRead": 0.00000939,
-              "cacheWrite": 0,
-              "total": 0.0012932899999999999
-            }
-          },
-          "milliseconds": 12585,
-          "effort": "medium",
-          "sourceCharacters": 1880,
-          "passed": true,
-          "validation": {
-            "value": {
-              "status": "done",
-              "name": "Grace",
-              "color": "green"
-            },
-            "questions": [
-              {
-                "prompt": "Hi! What is your name?"
-              },
-              {
-                "prompt": "What is your favorite color?"
-              },
-              {
-                "prompt": "Name badge: Ada | Favorite color: blue. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What would you like your name to be?"
-              },
-              {
-                "prompt": "Name badge: Grace | Favorite color: blue. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              },
-              {
-                "prompt": "What would you like your favorite color to be?"
-              },
-              {
-                "prompt": "Name badge: Grace | Favorite color: green. Say done, change name, or change color.",
-                "suggestions": [
-                  "done",
-                  "change name",
-                  "change color"
-                ]
-              }
-            ],
-            "random": [],
-            "restores": 7,
-            "journalRecords": 123,
-            "stops": [
-              "decline",
-              "cancel"
+            "task": "greeting",
+            "language": "tisyn",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
+                    "raw": "OnAccepted(Ask({\"message\":\"What is your name?\"}),Fn([\"content\",\"exchange\"],Construct({\"status\":\"done\",\"greeting\":Concat(\"Hello, \",Get(Ref(\"content\"),\"reply\"),\"!\")})),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 571,
+                        "total": 1598,
+                        "cacheRead": 1023,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0002855,
+                            "cacheRead": 0.00001023,
+                            "cacheWrite": 0,
+                            "total": 0.00029613
+                        }
+                    },
+                    "milliseconds": 3616,
+                    "effort": "medium",
+                    "sourceCharacters": 227,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "greeting": "Hello, Ada \"Lovelace\" λ😀!",
+                            "status": "done"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            }
+                        ],
+                        "random": [],
+                        "restores": 1,
+                        "journalRecords": 28,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
             ]
-          }
+        },
+        {
+            "task": "greeting",
+            "language": "scheme",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\"))))\n       (action (field r \"action\")))\n  (if (equal? action \"accept\")\n      (let ((name (field (field r \"content\") \"reply\")))\n        (object (cons \"status\" \"done\")\n                (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n      (object (cons \"status\" action))))",
+                    "raw": "(let* ((r (effect \"ask\" (object (cons \"message\" \"What is your name?\"))))\n       (action (field r \"action\")))\n  (if (equal? action \"accept\")\n      (let ((name (field (field r \"content\") \"reply\")))\n        (object (cons \"status\" \"done\")\n                (cons \"greeting\" (string-append \"Hello, \" name \"!\"))))\n      (object (cons \"status\" action))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 517,
+                        "total": 1383,
+                        "cacheRead": 862,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0002585,
+                            "cacheRead": 0.00000862,
+                            "cacheWrite": 0,
+                            "total": 0.00026752
+                        }
+                    },
+                    "milliseconds": 3352,
+                    "effort": "medium",
+                    "sourceCharacters": 345,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "status": "done",
+                            "greeting": "Hello, Ada \"Lovelace\" λ😀!"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            }
+                        ],
+                        "random": [],
+                        "restores": 1,
+                        "journalRecords": 21,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
+            ]
+        },
+        {
+            "task": "prs",
+            "language": "scheme",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "(letrec\n  ((normalize\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" #f))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"scissors\") (equal? c \"paper\")\n          (if (equal? p \"paper\") (equal? c \"rock\") #f)))))\n   (result-object\n    (lambda (w l t)\n      (object (cons \"status\" \"done\")\n              (cons \"wins\" w)\n              (cons \"losses\" l)\n              (cons \"ties\" t))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (result-object w l t)\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (normalize (field (field resp \"content\") \"reply\"))))\n                    (if move\n                        (let* ((cpu (effect \"random\"\n                                      (object (cons \"choices\"\n                                                    (array \"rock\" \"paper\" \"scissors\")))))\n                               (outcome (if (equal? move cpu) \"tie\"\n                                          (if (beats? move cpu) \"win\" \"loss\")))\n                               (w2 (if (equal? outcome \"win\") (+ w 1) w))\n                               (l2 (if (equal? outcome \"loss\") (+ l 1) l))\n                               (t2 (if (equal? outcome \"tie\") (+ t 1) t))\n                               (msg2 (string-append\n                                       \"You chose \" move \", I chose \" cpu\n                                       \": \" outcome \". Round \"\n                                       (number->string (+ round 1))\n                                       \" of 3: choose rock, paper, or scissors.\")))\n                          (play (+ round 1) w2 l2 t2 msg2))\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
+                    "raw": "(letrec\n  ((normalize\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" #f))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"scissors\") (equal? c \"paper\")\n          (if (equal? p \"paper\") (equal? c \"rock\") #f)))))\n   (result-object\n    (lambda (w l t)\n      (object (cons \"status\" \"done\")\n              (cons \"wins\" w)\n              (cons \"losses\" l)\n              (cons \"ties\" t))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (result-object w l t)\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (normalize (field (field resp \"content\") \"reply\"))))\n                    (if move\n                        (let* ((cpu (effect \"random\"\n                                      (object (cons \"choices\"\n                                                    (array \"rock\" \"paper\" \"scissors\")))))\n                               (outcome (if (equal? move cpu) \"tie\"\n                                          (if (beats? move cpu) \"win\" \"loss\")))\n                               (w2 (if (equal? outcome \"win\") (+ w 1) w))\n                               (l2 (if (equal? outcome \"loss\") (+ l 1) l))\n                               (t2 (if (equal? outcome \"tie\") (+ t 1) t))\n                               (msg2 (string-append\n                                       \"You chose \" move \", I chose \" cpu\n                                       \": \" outcome \". Round \"\n                                       (number->string (+ round 1))\n                                       \" of 3: choose rock, paper, or scissors.\")))\n                          (play (+ round 1) w2 l2 t2 msg2))\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 3099,
+                        "total": 4073,
+                        "cacheRead": 970,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0015494999999999999,
+                            "cacheRead": 0.0000097,
+                            "cacheWrite": 0,
+                            "total": 0.0015596
+                        }
+                    },
+                    "milliseconds": 13401,
+                    "effort": "medium",
+                    "sourceCharacters": 2423,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                },
+                {
+                    "source": "(letrec\n  ((norm\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" \"none\"))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"paper\") (equal? c \"rock\")\n          (equal? c \"paper\")))))\n   (outcome\n    (lambda (m c)\n      (if (equal? m c) \"tie\"\n        (if (beats? m c) \"win\" \"loss\"))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (object (cons \"status\" \"done\")\n                  (cons \"wins\" w)\n                  (cons \"losses\" l)\n                  (cons \"ties\" t))\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (norm (field (field resp \"content\") \"reply\"))))\n                    (if (equal? move \"none\")\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")\n                        (let ((cpu (effect \"random\"\n                                     (object (cons \"choices\"\n                                                   (array \"rock\" \"paper\" \"scissors\")))))\n                              )\n                          (let ((res (outcome move cpu)))\n                            (let ((w2 (if (equal? res \"win\") (+ w 1) w))\n                                  (l2 (if (equal? res \"loss\") (+ l 1) l))\n                                  (t2 (if (equal? res \"tie\") (+ t 1) t)))\n                              (let ((msg2\n                                     (string-append\n                                       (string-append\n                                         (string-append \"You chose \" move)\n                                         (string-append \", I chose \" cpu))\n                                       (string-append\n                                         (string-append \": \" res)\n                                         (string-append \". Round \"\n                                           (number->string (+ round 1)))))))\n                                (play (+ round 1) w2 l2 t2\n                                      (string-append msg2\n                                        \" of 3: choose rock, paper, or scissors.\"))))))))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
+                    "raw": "(letrec\n  ((norm\n    (lambda (r)\n      (if (equal? r \"rock\") \"rock\"\n        (if (equal? r \"Rock\") \"rock\"\n          (if (equal? r \"paper\") \"paper\"\n            (if (equal? r \"Paper\") \"paper\"\n              (if (equal? r \"scissors\") \"scissors\"\n                (if (equal? r \"Scissors\") \"scissors\" \"none\"))))))))\n   (beats?\n    (lambda (p c)\n      (if (equal? p \"rock\") (equal? c \"scissors\")\n        (if (equal? p \"paper\") (equal? c \"rock\")\n          (equal? c \"paper\")))))\n   (outcome\n    (lambda (m c)\n      (if (equal? m c) \"tie\"\n        (if (beats? m c) \"win\" \"loss\"))))\n   (play\n    (lambda (round w l t msg)\n      (if (= round 4)\n          (object (cons \"status\" \"done\")\n                  (cons \"wins\" w)\n                  (cons \"losses\" l)\n                  (cons \"ties\" t))\n          (let ((resp (effect \"ask\"\n                        (object (cons \"message\" msg)\n                                (cons \"suggestions\"\n                                      (array \"rock\" \"paper\" \"scissors\"))))))\n            (let ((action (field resp \"action\")))\n              (if (equal? action \"accept\")\n                  (let ((move (norm (field (field resp \"content\") \"reply\"))))\n                    (if (equal? move \"none\")\n                        (play round w l t\n                              \"That is not a valid move. Choose rock, paper, or scissors.\")\n                        (let ((cpu (effect \"random\"\n                                     (object (cons \"choices\"\n                                                   (array \"rock\" \"paper\" \"scissors\")))))\n                              )\n                          (let ((res (outcome move cpu)))\n                            (let ((w2 (if (equal? res \"win\") (+ w 1) w))\n                                  (l2 (if (equal? res \"loss\") (+ l 1) l))\n                                  (t2 (if (equal? res \"tie\") (+ t 1) t)))\n                              (let ((msg2\n                                     (string-append\n                                       (string-append\n                                         (string-append \"You chose \" move)\n                                         (string-append \", I chose \" cpu))\n                                       (string-append\n                                         (string-append \": \" res)\n                                         (string-append \". Round \"\n                                           (number->string (+ round 1)))))))\n                                (play (+ round 1) w2 l2 t2\n                                      (string-append msg2\n                                        \" of 3: choose rock, paper, or scissors.\"))))))))\n                  (object (cons \"status\" action)))))))))\n  (play 1 0 0 0 \"Round 1 of 3: choose rock, paper, or scissors.\")))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 2755,
+                        "total": 4652,
+                        "cacheRead": 0,
+                        "cacheWrite": 1893,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0013775,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.000236625,
+                            "total": 0.0016145250000000001
+                        }
+                    },
+                    "milliseconds": 11792,
+                    "effort": "medium",
+                    "sourceCharacters": 2751,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                }
+            ]
+        },
+        {
+            "task": "prs",
+            "language": "tisyn",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Or(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"reply\"),\"paper\")),Eq(Ref(\"reply\"),\"scissors\")),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),Let(\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\"))))),Let(\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\")),Let(\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\"))),Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
+                    "raw": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Or(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"reply\"),\"paper\")),Eq(Ref(\"reply\"),\"scissors\")),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),Let(\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\"))))),Let(\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\")),Let(\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\"))),Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 9606,
+                        "total": 10741,
+                        "cacheRead": 1131,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.004803,
+                            "cacheRead": 0.00001131,
+                            "cacheWrite": 0,
+                            "total": 0.00481471
+                        }
+                    },
+                    "milliseconds": 38519,
+                    "effort": "medium",
+                    "sourceCharacters": 1335,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                },
+                {
+                    "source": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))],[\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\")))]],Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
+                    "raw": "Let(\"play\",Fn([\"round\",\"wins\",\"losses\",\"ties\",\"note\"],If(Gt(Ref(\"round\"),3),Construct({\"status\":\"done\",\"wins\":Ref(\"wins\"),\"losses\":Ref(\"losses\"),\"ties\":Ref(\"ties\")}),Let(\"ans\",Ask(Construct({\"message\":Concat(Ref(\"note\"),\" Choose rock, paper, or scissors.\"),\"suggestions\":Arr(\"rock\",\"paper\",\"scissors\")})),OnAccepted(Ref(\"ans\"),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Or(Eq(Ref(\"reply\"),\"rock\"),Or(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"reply\"),\"scissors\"))),Let(\"cpu\",Random(Construct({\"choices\":Arr(\"rock\",\"paper\",\"scissors\")})),LetMany([[\"beats\",Or(Or(And(Eq(Ref(\"reply\"),\"rock\"),Eq(Ref(\"cpu\"),\"scissors\")),And(Eq(Ref(\"reply\"),\"paper\"),Eq(Ref(\"cpu\"),\"rock\"))),And(Eq(Ref(\"reply\"),\"scissors\"),Eq(Ref(\"cpu\"),\"paper\")))],[\"tie\",Eq(Ref(\"reply\"),Ref(\"cpu\"))],[\"lose\",And(Not(Ref(\"tie\")),Not(Ref(\"beats\")))]],Call(Ref(\"play\"),Add(Ref(\"round\"),1),Add(Ref(\"wins\"),If(Ref(\"beats\"),1,0)),Add(Ref(\"losses\"),If(Ref(\"lose\"),1,0)),Add(Ref(\"ties\"),If(Ref(\"tie\"),1,0)),Concat(\"Computer chose \",Ref(\"cpu\"),\". \",If(Ref(\"tie\"),\"Tie.\",If(Ref(\"beats\"),\"You win.\",\"You lose.\"))))))),Call(Ref(\"play\"),Ref(\"round\"),Ref(\"wins\"),Ref(\"losses\"),Ref(\"ties\"),\"Invalid choice. Please pick rock, paper, or scissors.\")))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")})))))),Call(Ref(\"play\"),1,0,0,0,\"Let us play three rounds.\"))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 7235,
+                        "total": 9230,
+                        "cacheRead": 0,
+                        "cacheWrite": 1991,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0036174999999999996,
+                            "cacheRead": 0,
+                            "cacheWrite": 0.000248875,
+                            "total": 0.0038667749999999994
+                        }
+                    },
+                    "milliseconds": 26709,
+                    "effort": "medium",
+                    "sourceCharacters": 1333,
+                    "passed": false,
+                    "error": "{\"state\":\"failed\",\"error\":{\"code\":\"program_error\",\"message\":\"Durable program failed\"}}\n\n'failed' !== 'parked'\n"
+                }
+            ]
+        },
+        {
+            "task": "badge",
+            "language": "tisyn",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "LetMany([\n[\"ask\",Fn([\"req\"],OnAccepted(Ask(Ref(\"req\")),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],\n[\"review\",Fn([\"name\",\"color\"],Let(\"r\",Call(Ref(\"ask\"),Construct({\"message\":Concat(\"Badge: \",Ref(\"name\"),\" | Color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),If(Get(Ref(\"r\"),\"ok\"),If(Eq(Get(Ref(\"r\"),\"value\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Get(Ref(\"r\"),\"value\"),\"change name\"),Let(\"n\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new name?\"})),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Get(Ref(\"r\"),\"value\"),\"change color\"),Let(\"c\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new favorite color?\"})),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))),Construct({\"status\":Get(Ref(\"r\"),\"status\")}))))]\n],\nLet(\"r1\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your name?\"})),If(Get(Ref(\"r1\"),\"ok\"),Let(\"r2\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your favorite color?\"})),If(Get(Ref(\"r2\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"r1\"),\"value\"),Get(Ref(\"r2\"),\"value\")),Construct({\"status\":Get(Ref(\"r2\"),\"status\")}))),Construct({\"status\":Get(Ref(\"r1\"),\"status\")}))))",
+                    "raw": "LetMany([\n[\"ask\",Fn([\"req\"],OnAccepted(Ask(Ref(\"req\")),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],\n[\"review\",Fn([\"name\",\"color\"],Let(\"r\",Call(Ref(\"ask\"),Construct({\"message\":Concat(\"Badge: \",Ref(\"name\"),\" | Color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),If(Get(Ref(\"r\"),\"ok\"),If(Eq(Get(Ref(\"r\"),\"value\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Get(Ref(\"r\"),\"value\"),\"change name\"),Let(\"n\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new name?\"})),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Get(Ref(\"r\"),\"value\"),\"change color\"),Let(\"c\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your new favorite color?\"})),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))),Construct({\"status\":Get(Ref(\"r\"),\"status\")}))))]\n],\nLet(\"r1\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your name?\"})),If(Get(Ref(\"r1\"),\"ok\"),Let(\"r2\",Call(Ref(\"ask\"),Construct({\"message\":\"What is your favorite color?\"})),If(Get(Ref(\"r2\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"r1\"),\"value\"),Get(Ref(\"r2\"),\"value\")),Construct({\"status\":Get(Ref(\"r2\"),\"status\")}))),Construct({\"status\":Get(Ref(\"r1\"),\"status\")}))))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 8581,
+                        "total": 9685,
+                        "cacheRead": 1100,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0042905,
+                            "cacheRead": 0.000011,
+                            "cacheWrite": 0,
+                            "total": 0.0043019
+                        }
+                    },
+                    "milliseconds": 34603,
+                    "effort": "medium",
+                    "sourceCharacters": 1525,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "color": "green",
+                            "name": "Grace",
+                            "status": "done"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "What is your name?"
+                            },
+                            {
+                                "prompt": "What is your favorite color?"
+                            },
+                            {
+                                "prompt": "Badge: Ada | Color: blue. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What is your new name?"
+                            },
+                            {
+                                "prompt": "Badge: Grace | Color: blue. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What is your new favorite color?"
+                            },
+                            {
+                                "prompt": "Badge: Grace | Color: green. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            }
+                        ],
+                        "random": [],
+                        "restores": 7,
+                        "journalRecords": 142,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
+            ]
+        },
+        {
+            "task": "badge",
+            "language": "scheme",
+            "trial": 2,
+            "attempts": [
+                {
+                    "source": "(let-syntax\n  ((with-reply\n    (syntax-rules ()\n      ((_ expr id body)\n       (let ((r expr))\n         (if (equal? (field r \"action\") \"accept\")\n             (let ((id (field (field r \"content\") \"reply\")))\n               body)\n             (object (cons \"status\" (field r \"action\")))))))))\n  (letrec\n    ((ask-name\n      (lambda ()\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"Hi! What is your name?\")))\n         name\n         (ask-color name))))\n     (ask-color\n      (lambda (name)\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"What is your favorite color?\")))\n         color\n         (review name color))))\n     (review\n      (lambda (name color)\n        (with-reply\n         (effect \"ask\"\n                 (object\n                  (cons \"message\"\n                        (string-append \"Name badge: \" name\n                                       \" | Favorite color: \" color\n                                       \". Say done, change name, or change color.\"))\n                  (cons \"suggestions\"\n                        (array \"done\" \"change name\" \"change color\"))))\n         choice\n         (if (equal? choice \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? choice \"change name\")\n                 (with-reply\n                  (effect \"ask\" (object (cons \"message\" \"What would you like your name to be?\")))\n                  new-name\n                  (review new-name color))\n                 (if (equal? choice \"change color\")\n                     (with-reply\n                      (effect \"ask\" (object (cons \"message\" \"What would you like your favorite color to be?\")))\n                      new-color\n                      (review name new-color))\n                     (review name color))))))))\n    (ask-name)))",
+                    "raw": "(let-syntax\n  ((with-reply\n    (syntax-rules ()\n      ((_ expr id body)\n       (let ((r expr))\n         (if (equal? (field r \"action\") \"accept\")\n             (let ((id (field (field r \"content\") \"reply\")))\n               body)\n             (object (cons \"status\" (field r \"action\")))))))))\n  (letrec\n    ((ask-name\n      (lambda ()\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"Hi! What is your name?\")))\n         name\n         (ask-color name))))\n     (ask-color\n      (lambda (name)\n        (with-reply\n         (effect \"ask\" (object (cons \"message\" \"What is your favorite color?\")))\n         color\n         (review name color))))\n     (review\n      (lambda (name color)\n        (with-reply\n         (effect \"ask\"\n                 (object\n                  (cons \"message\"\n                        (string-append \"Name badge: \" name\n                                       \" | Favorite color: \" color\n                                       \". Say done, change name, or change color.\"))\n                  (cons \"suggestions\"\n                        (array \"done\" \"change name\" \"change color\"))))\n         choice\n         (if (equal? choice \"done\")\n             (object (cons \"status\" \"done\")\n                     (cons \"name\" name)\n                     (cons \"color\" color))\n             (if (equal? choice \"change name\")\n                 (with-reply\n                  (effect \"ask\" (object (cons \"message\" \"What would you like your name to be?\")))\n                  new-name\n                  (review new-name color))\n                 (if (equal? choice \"change color\")\n                     (with-reply\n                      (effect \"ask\" (object (cons \"message\" \"What would you like your favorite color to be?\")))\n                      new-color\n                      (review name new-color))\n                     (review name color))))))))\n    (ask-name)))",
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4,
+                        "output": 2567,
+                        "total": 3510,
+                        "cacheRead": 939,
+                        "cacheWrite": 0,
+                        "cost": {
+                            "input": 4.0000000000000003e-7,
+                            "output": 0.0012835,
+                            "cacheRead": 0.00000939,
+                            "cacheWrite": 0,
+                            "total": 0.0012932899999999999
+                        }
+                    },
+                    "milliseconds": 12585,
+                    "effort": "medium",
+                    "sourceCharacters": 1880,
+                    "passed": true,
+                    "validation": {
+                        "value": {
+                            "status": "done",
+                            "name": "Grace",
+                            "color": "green"
+                        },
+                        "questions": [
+                            {
+                                "prompt": "Hi! What is your name?"
+                            },
+                            {
+                                "prompt": "What is your favorite color?"
+                            },
+                            {
+                                "prompt": "Name badge: Ada | Favorite color: blue. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What would you like your name to be?"
+                            },
+                            {
+                                "prompt": "Name badge: Grace | Favorite color: blue. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            },
+                            {
+                                "prompt": "What would you like your favorite color to be?"
+                            },
+                            {
+                                "prompt": "Name badge: Grace | Favorite color: green. Say done, change name, or change color.",
+                                "suggestions": ["done", "change name", "change color"]
+                            }
+                        ],
+                        "random": [],
+                        "restores": 7,
+                        "journalRecords": 123,
+                        "stops": ["decline", "cancel"]
+                    }
+                }
+            ]
         }
-      ]
-    }
-  ]
+    ]
 }

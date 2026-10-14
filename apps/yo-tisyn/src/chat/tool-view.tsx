@@ -11,7 +11,9 @@ type ToolPart = Extract<ReactChatUIPart, { type: "tool-call" }>;
 function ToolCard({ part }: { part: ToolPart }) {
   const complete = part.state === "output-available";
   const status = toolStatus(part);
-  const source = part.name === "tisyn" ? stringField(part.input, "program") : undefined;
+  const source = ["tisyn", "scheme"].includes(part.name)
+    ? stringField(part.input, "program")
+    : undefined;
   const echo = complete && part.name === "echo" ? stringField(part.output, "message") : undefined;
   const reply = complete && part.name === "ask" ? readReply(part.output) : undefined;
   const askInput = part.name === "ask" ? askParameters.safeParse(part.input) : undefined;
@@ -36,9 +38,16 @@ function ToolCard({ part }: { part: ToolPart }) {
           {status}
         </span>
       </div>
-      {source !== undefined && part.state !== "input-streaming" && (
-        <ProgramPreview source={source} />
-      )}
+      {source !== undefined &&
+        part.state !== "input-streaming" &&
+        (part.name === "scheme" ? (
+          <details className="tool-data">
+            <summary>Scheme program</summary>
+            <pre>{source}</pre>
+          </details>
+        ) : (
+          <ProgramPreview source={source} />
+        ))}
       {echo !== undefined && (
         <div className="tool-result">
           <span className="field-label">Echoed</span>
@@ -57,7 +66,7 @@ function ToolCard({ part }: { part: ToolPart }) {
       {part.name === "ask" && !reply && !hasReplyRenderer && (
         <p>{stringField(part.input, "message")}</p>
       )}
-      {complete && part.name !== "tisyn" && echo === undefined && !reply && (
+      {complete && !["tisyn", "scheme"].includes(part.name) && echo === undefined && !reply && (
         <div className="tool-result">
           <span className="field-label">Result</span>
           <pre>{JSON.stringify(part.output, null, 2)}</pre>
@@ -86,7 +95,7 @@ function ToolCard({ part }: { part: ToolPart }) {
           )}
         </div>
       )}
-      {part.name === "tisyn" && complete && (
+      {["tisyn", "scheme"].includes(part.name) && complete && (
         <details className="tool-data">
           <summary>Workflow result</summary>
           <pre>{JSON.stringify(part.output, null, 2)}</pre>

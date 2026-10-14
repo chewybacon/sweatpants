@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactChatUIPart } from "@sweatpants/react-chat";
 import type { Json } from "@sweatpants/foundation";
@@ -8,6 +8,17 @@ import { ReplyForm } from "../ask-plugin.tsx";
 import type { Reply } from "../reply.tsx";
 
 afterEach(cleanup);
+afterEach(() => vi.unstubAllGlobals());
+beforeEach(() =>
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  ),
+);
 
 function completed(
   name: string,

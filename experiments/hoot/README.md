@@ -101,6 +101,7 @@ journal authority and effect execution outside WASM. Static typing can remain
 an authoring/IR validation layer independently of this runtime choice.
 
 References:
+
 - https://files.spritely.institute/docs/guile-hoot/latest/Evaluation.html
 - https://files.spritely.institute/docs/guile-hoot/latest/Control.html
 - https://files.spritely.institute/docs/guile-hoot/latest/JavaScript-reflection.html
@@ -163,7 +164,7 @@ stopped; the successful build uses the compiled script.
 
 ### What the result establishes—and what remains
 
-This demonstrates host-controlled, deterministic *control-flow fuel* enforced
+This demonstrates host-controlled, deterministic _control-flow fuel_ enforced
 inside WASM on workerd. It is not Cloudflare's CPU-millisecond limit, nor a count
 of every WASM instruction. Cloudflare documents that its configured CPU limits
 are enforced on its deployed network, not local development:
@@ -290,11 +291,11 @@ these despite the advertised allowlist. This is a profile/admission issue as
 well as a language-authoring comparison, and deserves a parity follow-up.
 
 | Task (two initial trials each) | Scheme | Tisyn |
-| --- | --- | --- |
-| Literal greeting | 2/2 | 2/2 |
-| Three-round game | 0/2 | 0/2 |
-| Badge review and correction | 2/2 | 1/2 |
-| Total | 4/6 | 3/6 |
+| ------------------------------ | ------ | ----- |
+| Literal greeting               | 2/2    | 2/2   |
+| Three-round game               | 0/2    | 0/2   |
+| Badge review and correction    | 2/2    | 1/2   |
+| Total                          | 4/6    | 3/6   |
 
 A single repair with the durable execution diagnostic rescued none of the five
 initial failures. That diagnostic is usually only `Durable program failed`;

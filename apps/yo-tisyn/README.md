@@ -1,8 +1,47 @@
-# yo-tisyn: timeboxed binding spike
+# yo-tisyn: durable workflow engines
 
 **Status: sequential durable workflows, including guarded loops. Not a finished app or a security sandbox.**
 
-Tisyn drives existing Sweatpants durable tools without importing Tisyn's runtime. The durable journal and targeted browser paths pass. Tool-only message ownership and completed tool-card state survive checkpoint reconstruction and browser reload.
+Scheme and the Tisyn comparison engine drive existing Sweatpants durable tools. The journal owns accepted work; evaluator instances are disposable. Tool-only message ownership and completed tool-card state survive checkpoint reconstruction and browser reload.
+
+## Scheme engine
+
+New conversations in the product use the Hoot Scheme engine. The Tisyn engine remains
+installed for the existing comparison/acceptance lanes; it is not exposed alongside
+Scheme to the authoring model.
+
+- One Scheme expression executes in WASM, with proper tail calls, lexical functions,
+  named loops and local hygienic `syntax-rules` macros.
+- `ask`, `sample`, `decision`, `random` and document capabilities bind to the existing
+  Sweatpants contracts. Sampling inherits the caller's reasoning configuration.
+- `(invoke 'expression input)` creates a journaled child with a fresh evaluator.
+  The parent waits for its result. Intermediate effects survive host replacement.
+- `(with-reply request accepted stopped)` composes Ask with typed accept/decline/cancel
+  handling. Accepted callbacks receive both content and the original exchange.
+- `validateOnly` expands/compiles without effects. Reader/expansion diagnostics return
+  to the authoring model. Runtime authored faults include a completed-effect count;
+  retrying a workflow does not undo accepted effects.
+
+The journal remains authoritative. Evaluators and their continuations are disposable:
+recovery replays recorded results into a fresh instance. There is no new parking or
+scheduler primitive. Tool activity and existing Ask plugins render nested effects;
+Scheme source is shown directly, without a static canvas projection yet.
+
+`@sweatpants/scheme-runtime` owns the port, bridge and limits; `tool.ts` binds
+capabilities; `node.ts` and `worker.ts` load the same generated WASM. The Worker adapter
+uses static WASM modules, so it needs no runtime code generation. `packages/scheme-runtime/scripts`
+contains the compiler input and fuel instrumentation. Generated assets and source
+hashes are checked by `pnpm scheme:check`. Rebuild with Docker using:
+
+```sh
+pnpm --dir apps/yo-tisyn scheme:build
+```
+
+Fuel bounds WASM control flow, including expansion, and JSON boundaries have size/depth
+limits. This is **not a memory or wall-clock sandbox**: native allocation has no separate
+quota. Dependency notices are in `packages/scheme-runtime/licenses`. Engine tests cover tail
+calls, macros, validation, fuel exhaustion and fresh-instance recovery. Cloudflare
+acceptance tests replace workerd while a child is waiting for a human reply.
 
 ## Run
 

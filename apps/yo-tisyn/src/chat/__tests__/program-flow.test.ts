@@ -3,7 +3,9 @@ import { createProgramFlow } from "../program-flow.ts";
 
 describe("continuation canvas", () => {
   it("distills conditional score arithmetic without hiding the next yield", () => {
-    const flow = createProgramFlow('Let("score",Add(1,If(true,1,0)),Ask({"message":"Next round?"}))');
+    const flow = createProgramFlow(
+      'Let("score",Add(1,If(true,1,0)),Ask({"message":"Next round?"}))',
+    );
     expect(flow.nodes.map((n) => n.title)).toEqual(["Start", "Ask", "End"]);
     expect(flow.edges).toHaveLength(2);
   });
@@ -16,7 +18,9 @@ describe("continuation canvas", () => {
   });
 
   it("merges outcomes that resume the same recursive continuation", () => {
-    const flow = createProgramFlow('Let("loop",Fn([],Let("answer",Ask({"message":"Again?"}),If(Eq(Get(Ref("answer"),"action"),"accept"),Call(Ref("loop")),Call(Ref("loop"))))),Call(Ref("loop")))');
+    const flow = createProgramFlow(
+      'Let("loop",Fn([],Let("answer",Ask({"message":"Again?"}),If(Eq(Get(Ref("answer"),"action"),"accept"),Call(Ref("loop")),Call(Ref("loop"))))),Call(Ref("loop")))',
+    );
     const ask = flow.nodes.find((n) => n.title === "Ask")!;
     const routes = flow.edges.filter((e) => e.source === ask.id && e.target === ask.id);
     expect(routes).toHaveLength(1);

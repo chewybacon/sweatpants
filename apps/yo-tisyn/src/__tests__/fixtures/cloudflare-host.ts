@@ -7,7 +7,11 @@ import { Miniflare, type MiniflareOptions } from "miniflare";
 import { initializeD1Storage } from "@sweatpants/storage-d1";
 import type { TestModelInstallation } from "@sweatpants/test-rig";
 
-export async function startCloudflareHost(model: TestModelInstallation, installEvaluation = true) {
+export async function startCloudflareHost(
+  model: TestModelInstallation,
+  installEvaluation = true,
+  language: "tisyn" | "scheme" = "tisyn",
+) {
   const directory = await mkdtemp(join(tmpdir(), "yo-tisyn-cloudflare-"));
   const bundle = await build({
     entryPoints: [new URL("./cloudflare-worker.ts", import.meta.url).pathname],
@@ -16,7 +20,14 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
     format: "esm",
     platform: "browser",
     conditions: ["workerd", "development"],
-    external: ["cloudflare:workers", "node:*", "quickjs.wasm"],
+    external: [
+      "cloudflare:workers",
+      "node:*",
+      "quickjs.wasm",
+      "scheme-kernel.wasm",
+      "scheme-reflect.wasm",
+      "scheme-wtf8.wasm",
+    ],
     banner: {
       js: 'import { createRequire } from "node:module"; const require = createRequire("file:///worker.js");',
     },
@@ -28,6 +39,9 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
           .map((name) => [name, `node:${name}`]),
       ),
       "#quickjs-wasm": "quickjs.wasm",
+      "#scheme-kernel-wasm": "scheme-kernel.wasm",
+      "#scheme-reflect-wasm": "scheme-reflect.wasm",
+      "#scheme-wtf8-wasm": "scheme-wtf8.wasm",
     },
   });
   const options: MiniflareOptions = {
@@ -42,6 +56,19 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
             mainModule: "index.js",
             modules: {
               "index.js": { type: "esm", contents: bundle.outputFiles[0].text },
+              ...Object.fromEntries(
+                await Promise.all(
+                  ["kernel", "reflect", "wtf8"].map(async (name) => [
+                    `scheme-${name}.wasm`,
+                    {
+                      type: "wasm" as const,
+                      contents: await readFile(
+                        createRequire(import.meta.url).resolve(`#scheme-${name}-wasm`),
+                      ),
+                    },
+                  ]),
+                ),
+              ),
               "quickjs.wasm": {
                 type: "wasm",
                 contents: await readFile(createRequire(import.meta.url).resolve("#quickjs-wasm")),
@@ -55,6 +82,7 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
             ResponseStream: { type: "durable-object", storage: "sqlite" },
           },
           env: {
+            WORKFLOW_LANGUAGE: { type: "text", value: language },
             CONVERSATIONS: {
               type: "durable-object",
               worker: "yo-tisyn-test",
@@ -95,12 +123,13 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
   }
   return {
     async handle(request: Request): Promise<Response> {
-      return (await worker.dispatchFetch(request.url, {
+      const response = (await worker.dispatchFetch(request.url, {
         method: request.method,
         headers: Object.fromEntries(request.headers),
         body: request.body ? await request.text() : undefined,
         signal: request.signal,
       })) as unknown as Response;
+      return response;
     },
     async replace() {
       await worker.dispose();

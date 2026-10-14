@@ -116,7 +116,8 @@
         "packages/framework/docs/**",
         "**/vitest-effection.ts",
         "apps/yo-chat/src/routeTree.gen.ts",
-        "apps/yo-chat/src/__generated__/**"
+        "apps/yo-chat/src/__generated__/**",
+        "packages/scheme-runtime/generated/**"
     ],
     "overrides": [
         {

@@ -1,3 +1,5 @@
+import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
+import { createWorkerSchemeDriver } from "@sweatpants/scheme-runtime/worker";
 import { createToolExecutorObject } from "@sweatpants/tool-runtime-cloudflare/executor";
 import variant from "@jitl/quickjs-wasmfile-release-sync";
 import wasmModule from "#quickjs-wasm";
@@ -17,6 +19,7 @@ const load = memoizePromiseFactory(() =>
 export const ToolExecutors = createToolExecutorObject({
   tools: programs,
   *setup() {
+    yield* SchemeEvaluationPort.installDriver(createWorkerSchemeDriver());
     yield* TisynEvaluationPort.installDriver(createQuickJSEvaluationDriver(load));
   },
 });

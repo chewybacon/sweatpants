@@ -1,0 +1,171 @@
+import { createDurableTool } from "@sweatpants/agent-sdk";
+import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
+import { decisionRequestSchema } from "@sweatpants/model-decision";
+import type { Operation } from "effection";
+import { z } from "zod";
+import type { BoundTool } from "../tisyn.ts";
+import { decisionBinding, decisionContract } from "../decisions.ts";
+import { randomValue, randomParameters, randomContract } from "../random.ts";
+import {
+  sampleCompletion,
+  samplingParameters,
+  samplingContract,
+  samplingIdentity,
+} from "../sampling.ts";
+import {
+  createSchemeEvaluation,
+  SchemeEvaluationPort,
+  SchemeEvaluationError,
+  limits,
+} from "@sweatpants/scheme-runtime";
+import manifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
+import { schemeReference } from "./reference.ts";
+
+const parameters = z
+  .object({
+    program: z.string().min(1).max(limits.source),
+    input: z.json().optional(),
+    validateOnly: z.boolean().optional(),
+  })
+  .strict();
+const invocation = z
+  .object({ program: z.string().min(1).max(limits.source), input: z.json() })
+  .strict();
+const reserved = new Set(["sample", "decision", "random", "scheme.invoke", "scheme"]);
+
+/** The interpreter yields descriptions. Sweatpants owns every external effect and child. */
+export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
+  const registry = new Map(bindings.map((tool) => [tool.name, tool]));
+  if (registry.size !== bindings.length || bindings.some((tool) => reserved.has(tool.name)))
+    throw new Error("Duplicate or reserved Scheme capability");
+  const capabilities = [...registry.keys(), "random", "sample", "decision", "scheme.invoke"];
+  const contracts = [
+    ...bindings.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.artifacts.parameters.inputProjection,
+      output: tool.artifacts.output?.outputProjection ?? null,
+    })),
+    randomContract,
+    samplingContract,
+    decisionContract,
+  ];
+  const tool: BoundTool = createDurableTool("scheme")
+    .description(schemeReference + "\nBound capabilities:\n" + JSON.stringify(contracts))
+    .identity({
+      version: "0.0.1",
+      digest: sha256(
+        canonicalJson({
+          engine: "hoot-scheme-v1",
+          manifest,
+          host: 1,
+          samplingIdentity,
+          decisionBinding,
+          limits: {
+            ...limits,
+            stepFuel: String(limits.stepFuel),
+            totalFuel: String(limits.totalFuel),
+          },
+          bindings: bindings.map((t) => ({
+            name: t.name,
+            digest: t.manifest.digest,
+            interface: t.interfaceDigest,
+          })),
+        }),
+      ),
+    })
+    .parameters(parameters)
+    .output(z.json())
+    .samples()
+    .decisions(decisionBinding)
+    .execute(function* ({ program, input, validateOnly }, context): Operation<Json> {
+      const validation = yield* SchemeEvaluationPort.api.operations.validate(program);
+      if (!validation.valid)
+        return {
+          status: "invalid",
+          diagnostic: { phase: "validation", message: validation.message },
+          completedEffects: 0,
+        };
+      if (validateOnly) return { status: "valid" };
+      const evaluation = yield* createSchemeEvaluation({
+        source: program,
+        capabilities,
+        input: assertJson(input ?? null),
+      });
+      let count = 0;
+      let invocationId: string | undefined;
+      try {
+        let step = yield* evaluation.next();
+        while (!step.done) {
+          const { id, data } = step.value;
+          const binding = registry.get(id);
+          const schema =
+            binding?.parameters ??
+            (id === "random"
+              ? randomParameters
+              : id === "sample"
+                ? samplingParameters
+                : id === "decision"
+                  ? decisionRequestSchema
+                  : invocation);
+          const checked = validateAuthoredSchema<Json>(schema, data);
+          if (checked.status !== "ok")
+            throw new SchemeEvaluationError(`Invalid ${id} request: ${JSON.stringify(checked)}`);
+          if (invocationId === undefined)
+            invocationId = yield* context.record(
+              { key: "scheme.invocation-id", retrySafety: { mode: "repeatable" } },
+              function* (attempt) {
+                return attempt.pullId;
+              },
+            );
+          const callId = `${invocationId}/tool-${count}`;
+          yield* context.emit("tool_started", {
+            callId,
+            tool: id === "scheme.invoke" ? "scheme" : id,
+            input: assertJson(checked.value),
+          });
+          let value: Json;
+          if (binding || id === "scheme.invoke") {
+            const child = binding ?? tool;
+            value = assertJson(
+              yield* context.pull({
+                kind: "invoke",
+                child: {
+                  id: child.manifest.programId,
+                  version: child.manifest.version,
+                  digest: child.manifest.digest,
+                  input: assertJson(checked.value),
+                },
+              }),
+            );
+          } else if (id === "random")
+            value = yield* randomValue(randomParameters.parse(checked.value), context);
+          else if (id === "decision")
+            value = assertJson(yield* context.decision(decisionRequestSchema.parse(checked.value)));
+          else
+            value = assertJson(
+              yield* sampleCompletion(samplingParameters.parse(checked.value), context, callId),
+            );
+          count++;
+          yield* context.emit("tool_completed", {
+            callId,
+            tool: id === "scheme.invoke" ? "scheme" : id,
+            result: value,
+            failed: false,
+          });
+          step = yield* evaluation.next(value);
+        }
+        return step.value;
+      } catch (error) {
+        // Authored faults are visible outcomes, with accepted work counted. Infrastructure failures propagate.
+        if (!(error instanceof SchemeEvaluationError)) throw error;
+        return {
+          status: "failed",
+          diagnostic: { phase: "execution", message: error.message },
+          completedEffects: count,
+        };
+      }
+    });
+  return tool;
+}

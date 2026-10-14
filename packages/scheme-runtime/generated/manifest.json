@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "toolchain": {
+    "baseImage": "debian@sha256:1f11c32b03195c1b28c55e4579755659edae5c76dd76a69b4e4fb34c58fa8744",
+    "platform": "linux/arm64",
+    "debianSnapshot": "20261014T000000Z",
+    "packages": {
+      "guile-hoot": "0.9.0-4",
+      "guile-3.0": "3.0.11-2+b1",
+      "guile-3.0-libs": "3.0.11-2+b1"
+    }
+  },
+  "metering": {
+    "functions": 19681,
+    "loops": 169
+  },
+  "files": {
+    "toolchain.json": "880011a35306f8252699516a22bc7bdd3dfc52021896a0e1c01cd2e3d6e58e33",
+    "package.json": "e02b7c3f8163b8821e119ca53904bee1a6798b208565c2e672e42f294fe97ba3",
+    "scripts/Dockerfile": "f0ba465563e3b147c5e7ec40cc2b032f1ff93486f1d1ad73435da4cb3e34e9af",
+    "scripts/build.py": "3f2f4ec0afdb12f49ea235abe37929001b98c8c0de14cd188e0a2917667c28f1",
+    "scripts/compile.scm": "9d277eb697f0174aae48e1d2b33817310dab14bde8bf532b6e21c77b73aba0d0",
+    "scripts/kernel.scm": "dd2f772505b3e7b703a5463aa21d401f57e1917ad008c1c0613cb29427073785",
+    "scripts/manifest.py": "d5d96a6cc141690c6bf2374f6f4d7135f234734a88ed55f7c4ab768ff8cf46aa",
+    "scripts/meter.scm": "69053d6710d046c8579a6e85873a66558b880778fec80627f6381c7ff7edee1b",
+    "scripts/prepare.py": "9041bc41e7960d5d402177b29f9a737e8dc6c43b976593f4dfce780906aff599",
+    "src/evaluation.ts": "94892633ba7c6d31ed888362045aae86a97683942efeaa85eefcaa5b1cb206ad",
+    "src/node.ts": "650bc04245b56034df512ed710a7938013d31d78cdce67044302da7ffcc4bfe0",
+    "src/worker.ts": "03b568ef77dba42214e06b9bd664132864e26fc98d610e26b5009dc2b71736b1",
+    "licenses/Apache-2.0": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "licenses/GPL-3": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/LGPL-3": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+    "licenses/NOTICE": "e33328e9e0bc41db73d0716243158c70dc164ee8051310e515f9f9918597e078",
+    "generated/kernel.wasm": "50c66be0f7f38223e8a42c68c25cd2b65ea56bd20084ff9caa16fb245c56375b",
+    "generated/reflect.wasm": "9f89d65fc87cc037fb7c74591eb9c0e8b0237328c0cd98dd4fef50cd11d95701",
+    "generated/wtf8.wasm": "594b0493af12257e37006cd5b2df39588936033696780fdcc2d077a69ba2e7fd",
+    "generated/reflect.cjs": "f576ee07a6ea5e7bb1ec7c54688256399ee90d79a3e0284026654f3a23364d5d",
+    "generated/reflect-worker.mjs": "966499068fc70259cdb3b4373a43cb2440d018b8dbd552e2c69866044dbfae9f",
+    "generated/reflect-worker.d.mts": "d48c155d4d670cba65c712ceb8c1ff5eba22352fabb7694e24b7990fec29322a",
+    "generated/metering.json": "25701de43424ab1f7fd28d2c98793ec7141f53b9569862b434c8c98c09b0c1ab"
+  }
+}

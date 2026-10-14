@@ -16,7 +16,7 @@ export function ProgramPreview({ source }: { source: string }) {
         <summary>{plan.error ? "Program needs repair" : "Program map"}</summary>
         {plan.error ? (
           <p className="preview-error" role="status">
-            {plan.error}
+            Program source cannot be diagrammed: {plan.error}
           </p>
         ) : (
           <>

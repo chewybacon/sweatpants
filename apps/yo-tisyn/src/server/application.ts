@@ -11,7 +11,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { programs, tisynExposure } from "../workflow/agent.ts";
+import { programs, workflowExposureFor } from "../workflow/agent.ts";
 
 type AppOptions = Parameters<typeof createChatApp>[0];
 
@@ -19,6 +19,7 @@ type AppOptions = Parameters<typeof createChatApp>[0];
 export function createTisynApp(
   options: Pick<AppOptions, "storage" | "model" | "execution"> & {
     decisionProvider?: DecisionProviderDriver;
+    workflowLanguage?: "scheme" | "tisyn";
   },
 ) {
   return createChatApp({
@@ -39,7 +40,9 @@ export function createTisynApp(
       },
       chat: function* () {
         // Child contracts stay installed; only model exposure is filtered.
-        yield* ToolExposurePolicyContext.set(tisynExposure);
+        yield* ToolExposurePolicyContext.set(
+          workflowExposureFor(options.workflowLanguage ?? "tisyn"),
+        );
       },
     },
   });

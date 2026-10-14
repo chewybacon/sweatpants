@@ -5,6 +5,7 @@ export function toolLabel(name: string): string {
     (
       {
         tisyn: "Tisyn workflow",
+        scheme: "Scheme workflow",
         ask: "Ask you",
         sample: "Model sample",
         random: "Random draw",
