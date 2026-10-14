@@ -1,0 +1,1 @@
+OnAccepted(Ask({"message":"What is your name?"}),Fn(["content","exchange"],Construct({"status":"done","greeting":Concat("Hello, ",Get(Ref("content"),"reply"),"!")})),Fn(["stop"],Construct({"status":Get(Ref("stop"),"action")})))

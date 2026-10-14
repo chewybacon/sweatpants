@@ -1,3 +1,4 @@
+import { bindingsMarker } from "./collection-syntax.ts";
 import { If, type Expr, type TisynExpr } from "@tisyn/ir";
 import { expandConstructors } from "./constructor-syntax.ts";
 
@@ -52,7 +53,8 @@ export function lowerMacroSyntax(ir: TisynExpr): TisynExpr {
     if (
       value.tisyn === "fn" ||
       value.tisyn === "ref" ||
-      (value.tisyn === "eval" && ["let", "try", markers.WithMacros].includes(String(value.id)))
+      (value.tisyn === "eval" &&
+        ["let", "try", markers.WithMacros, bindingsMarker].includes(String(value.id)))
     ) {
       throw new Error(
         "Macro templates cannot introduce bindings or Ref; pass expressions through Hole",
@@ -62,13 +64,15 @@ export function lowerMacroSyntax(ir: TisynExpr): TisynExpr {
       Object.entries(value).map(([key, child]) => [key, template(child, params, args)]),
     );
   }
+  // Source nesting is bounded before parsing. Count macro nesting here, not the
+  // object/quote wrappers that the parser adds around ordinary expressions.
   function lower(value: TisynExpr, definitions: Map<string, Definition>, depth: number): TisynExpr {
     charge();
     if (depth > 64) {
       throw new Error("Macro expansion nesting exceeds 64 levels");
     }
     if (Array.isArray(value)) {
-      return value.map((child) => lower(child, definitions, depth + 1));
+      return value.map((child) => lower(child, definitions, depth));
     }
     if (!object(value)) {
       return value;
@@ -141,7 +145,7 @@ export function lowerMacroSyntax(ir: TisynExpr): TisynExpr {
       );
     }
     return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [key, lower(child, definitions, depth + 1)]),
+      Object.entries(value).map(([key, child]) => [key, lower(child, definitions, depth)]),
     );
   }
   return lower(ir, new Map(), 0);

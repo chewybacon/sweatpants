@@ -1,3 +1,6 @@
+import { activeWork } from "./activity.ts";
+import { fetchWithAuthoringPolicy } from "./authoring.ts";
+import { choicesPlugin, documentDisplayPlugin } from "./choices-plugin.tsx";
 import { useRef, useState } from "react";
 import { useChat } from "@sweatpants/react-chat";
 import { Badge, Button, Card, Stack, TextArea } from "../design-system/primitives.tsx";
@@ -18,13 +21,57 @@ export function App({ initialThreadId }: AppProps) {
   const [prompt, setPrompt] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
-  const { messages, status, sendMessage, stop, error, renderStatus, canSendMessage } = useChat({
+  const {
+    messages,
+    status,
+    sendMessage,
+    stop,
+    error,
+    renderStatus,
+    canSendMessage,
+    authority,
+    connectionStatus,
+    history,
+    loadOlder,
+  } = useChat({
     api: "/api/chat",
+    fetcher: fetchWithAuthoringPolicy,
     threadId,
-    plugins: [askPlugin],
+    plugins: [askPlugin, choicesPlugin, documentDisplayPlugin],
     pipeline: "markdown",
   });
   const busy = status === "submitted" || status === "streaming";
+  const lastMessage = messages.at(-1);
+  const currentWork =
+    (authority?.state === "running" || authority?.state === "parked") &&
+    connectionStatus === "connected" &&
+    renderStatus === "ready" &&
+    lastMessage?.role === "assistant"
+      ? lastMessage.parts.flatMap((part) => activeWork(part))
+      : [];
+  const activityLabel = error
+    ? "Something went wrong"
+    : connectionStatus === "error"
+      ? "Connection interrupted"
+      : connectionStatus === "connecting"
+        ? "Connecting…"
+        : connectionStatus === "disconnected"
+          ? "Disconnected"
+          : renderStatus === "loading" || !authority
+            ? "Loading conversation…"
+            : authority.state === "recovering"
+              ? "Recovering workflow…"
+              : authority.state === "deleted"
+                ? "Conversation unavailable"
+                : canSendMessage
+                  ? "Ready for a task"
+                  : currentWork.length === 1
+                    ? currentWork[0].label
+                    : currentWork.length > 1
+                      ? `${currentWork.length} active activities`
+                      : authority.state === "parked"
+                        ? "Waiting for workflow to resume…"
+                        : "Working…";
 
   return (
     <div className="chat-app">
@@ -35,7 +82,18 @@ export function App({ initialThreadId }: AppProps) {
       )}
 
       <section className="conversation" aria-label="Conversation">
-        {messages.length === 0 && !busy && (
+        {history.hasOlder && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={history.loadingOlder}
+            onClick={() => void loadOlder()}
+          >
+            {history.loadingOlder ? "Loading earlier activity…" : "Load earlier activity"}
+          </Button>
+        )}
+        {history.error && <p role="alert">{history.error.message}</p>}
+        {messages.length === 0 && !busy && !history.hasOlder && canSendMessage && (
           <PromptExamples
             onSelect={(example) => {
               setPrompt(example);
@@ -64,6 +122,24 @@ export function App({ initialThreadId }: AppProps) {
           </Card.Root>
         ))}
       </section>
+
+      <aside className="workflow-activity" aria-label="Current activity">
+        <p role="status" aria-live="polite">
+          {activityLabel}
+        </p>
+        {currentWork.length > 0 && (
+          <ul>
+            {currentWork.map((work) => (
+              <li key={work.id}>
+                {work.path.length > 0 && (
+                  <span className="activity-path">{work.path.join(" › ")}</span>
+                )}
+                <span>{work.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </aside>
 
       <Card.Root className="composer-card" tone="raised" padding={5}>
         <form
@@ -106,9 +182,7 @@ export function App({ initialThreadId }: AppProps) {
             >
               Stop
             </Button>
-            <span className="composer-status">
-              {busy ? "Working…" : canSendMessage ? "Ready for a task" : "Waiting for your reply"}
-            </span>
+            <span className="composer-status">{activityLabel}</span>
           </Stack>
         </form>
       </Card.Root>

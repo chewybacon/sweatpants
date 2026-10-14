@@ -177,7 +177,15 @@ function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/" && pathname.startsWith(href));
 }
 
-export function SiteChrome({ pathname, children }: { pathname: string; children: ReactNode }) {
+export function SiteChrome({
+  pathname,
+  children,
+  modelLabel = "yo-tisyn",
+}: {
+  pathname: string;
+  children: ReactNode;
+  modelLabel?: string;
+}) {
   const diagramContainer = pathname === "/explain/quickjs" && styles.diagramContainer;
   return (
     <DesignSystemRoot>
@@ -218,7 +226,7 @@ export function SiteChrome({ pathname, children }: { pathname: string; children:
         </main>
         <footer {...stylex.props(styles.container, diagramContainer, styles.footer)}>
           <span>Durable workflows. Disposable computation.</span>
-          <span>OpenCode · Claude Haiku 5.5</span>
+          <span>{modelLabel}</span>
         </footer>
       </div>
     </DesignSystemRoot>

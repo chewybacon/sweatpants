@@ -215,3 +215,5 @@ export {
 //   @sweatpants/agent-sdk/transport/worker
 //
 // =============================================================================
+
+export * from "./tool/documents.ts";

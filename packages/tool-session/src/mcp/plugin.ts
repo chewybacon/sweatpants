@@ -1,3 +1,4 @@
+import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 /**
  * Framework-neutral client elicitation contracts.
  *
@@ -11,6 +12,9 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
+  documentElicitContextSchema,
+  createReadonlyDocumentHandle,
+  type ElicitDocumentHandles,
   type ElicitDefinition,
   type ElicitsMap,
   type ExtractElicitContext,
@@ -44,7 +48,7 @@ export interface ElicitHandlerInput<TDefinition> {
  */
 export type ElicitHandler<TKey extends string, TDefinition, TCapabilities> = (
   input: ElicitHandlerInput<TDefinition>,
-  capabilities: TCapabilities,
+  capabilities: TCapabilities & { readonly documents: ElicitDocumentHandles<TDefinition> },
   metadata: ElicitHandlerMetadata<TKey>,
 ) => Operation<ElicitExchangeCompletion<ExtractElicitResponseInput<TDefinition>>>;
 
@@ -125,6 +129,39 @@ export function createPluginBuilder<TCapabilities, TContract extends PluginToolC
             if (typeof handler !== "function") {
               throw new Error(`Tool "${tool.name}" has no handler for elicitation "${key}"`);
             }
+            const slots = definition.documents ?? {};
+            const hasDocuments = Object.keys(slots).length > 0;
+            const wireContextSchema = hasDocuments
+              ? documentElicitContextSchema(definition.context, slots)
+              : definition.context;
+            const boundHandler: typeof handler = function* (input, capabilities, metadata) {
+              if (!hasDocuments) {
+                return yield* handler(input, { ...capabilities, documents: {} }, metadata);
+              }
+              const envelope = input.context as unknown as {
+                context: unknown;
+                documents: Record<string, unknown>;
+              };
+              const handles = Object.fromEntries(
+                Object.entries(slots).map(([name, schema]) => [
+                  name,
+                  createReadonlyDocumentHandle(schema, envelope.documents[name]),
+                ]),
+              );
+              let context: unknown = undefined;
+              if (definition.context) {
+                const checked = validateAuthoredSchema(definition.context, envelope.context);
+                if (checked.status !== "ok") {
+                  throw new Error("Invalid elicitation context");
+                }
+                context = checked.value;
+              }
+              return yield* handler(
+                { ...input, context } as ElicitHandlerInput<unknown>,
+                { ...capabilities, documents: Object.freeze(handles) },
+                metadata,
+              );
+            };
             const binding: ClientElicitBinding<unknown, TCapabilities> = {
               binding: interactionBinding,
               responseContract: artifact.response,
@@ -133,9 +170,9 @@ export function createPluginBuilder<TCapabilities, TContract extends PluginToolC
               toolName: tool.name,
               key,
               responseSchema: definition.response,
-              ...(definition.context ? { contextSchema: definition.context } : {}),
+              ...(wireContextSchema ? { contextSchema: wireContextSchema } : {}),
               artifacts: artifact,
-              handler,
+              handler: boundHandler,
             };
             bindings.set(interactionBinding.id, Object.freeze(binding));
           }

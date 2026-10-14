@@ -1,0 +1,9 @@
+{
+    "extends": "../../packages/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "customConditions": ["development"],
+        "types": ["node"]
+    },
+    "include": ["evaluation.ts", "runner.ts", "__tests__/*.ts", "comparison/*.ts"],
+    "exclude": ["node_modules", "runtime"]
+}

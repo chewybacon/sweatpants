@@ -72,13 +72,32 @@ describe("Tisyn program plan", () => {
     expect(plan.diagram).not.toContain("-. call .->");
   });
 
+  it("shows effects inside inline exchange callbacks", () => {
+    const plan = createProgramPlan(
+      'OnAccepted(Ask({"message":"Name?"}),Fn(["content","exchange"],Ask({"message":"Anything else?"})),Fn(["stop"],Ref("stop")))',
+    );
+    expect(plan.steps).toContain('Ask "Name?"');
+    expect(plan.steps).toContain('Ask "Anything else?"');
+    expect(plan.steps).toContain("Continue (content, exchange)");
+  });
+
+  it("renders larger plans and explicitly marks an omitted tail", () => {
+    const complete = createProgramPlan(
+      `Seq(${Array.from({ length: 65 }, () => 'Eval("echo",{})').join(",")})`,
+    );
+    expect(complete.truncated).toBe(false);
+    expect(complete.steps).toHaveLength(66);
+    const overview = createProgramPlan(
+      `Seq(${Array.from({ length: 160 }, () => 'Eval("echo",{})').join(",")})`,
+    );
+    expect(overview.truncated).toBe(true);
+    expect(overview.steps.at(-1)).toContain("omitted");
+    expect(overview.steps).not.toContain("Program result");
+    expect(overview.steps.length).toBeLessThan(125);
+  });
+
   it.each([
     ["malformed DSL", "Let(", /Expected|Unexpected|end|argument/i],
-    [
-      "too many nodes",
-      `Seq(${Array.from({ length: 65 }, () => 'Eval("echo",{})').join(",")})`,
-      /64 nodes/,
-    ],
     ["oversized input", " ".repeat(12_001), /12000 characters/],
     ["deep nesting", "[".repeat(49) + "]".repeat(49), /48 levels/],
   ])("rejects %s without producing a misleading partial diagram", (_name, source, error) => {

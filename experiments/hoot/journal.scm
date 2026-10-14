@@ -1,0 +1,56 @@
+(use-modules (hoot eval) (hoot environments) (hoot control))
+
+;; JSON containers have explicit tags; arrays, objects and null stay distinct.
+(define (object . entries)
+  (list->vector (cons "object" (apply append
+    (map (lambda (entry) (list (car entry) (cdr entry))) entries)))))
+(define (array . values) (list->vector (cons "array" values)))
+(define (json-null) (vector "null"))
+(define (field value key)
+  (unless (and (vector? value) (> (vector-length value) 0)
+               (equal? (vector-ref value 0) "object"))
+    (error "field requires an object"))
+  (let loop ((i 1))
+    (cond ((>= i (vector-length value)) (error "missing field" key))
+          ((equal? (vector-ref value i) key) (vector-ref value (+ i 1)))
+          (else (loop (+ i 2))))))
+(define (read-one source)
+  (call-with-input-string source
+    (lambda (port)
+      (let ((value (read port)))
+        (when (eof-object? value) (error "empty source"))
+        (unless (eof-object? (read port)) (error "expected one expression"))
+        value))))
+
+(define tag (make-prompt-tag 'effect))
+(define pending #f)
+(define started? #f)
+(define (effect name payload)
+  (unless (and (string? name) (member name '("random" "ask")))
+    (error "effect capability denied"))
+  (abort-to-prompt tag name payload))
+(define (drive thunk)
+  (call-with-prompt tag thunk
+    (lambda (continuation name payload)
+      (set! pending continuation)
+      (values "effect" name payload))))
+(define (start source)
+  (when started? (error "program already started"))
+  (set! started? #t)
+  (unless (and (string? source) (<= (string-length source) 12000))
+    (error "source exceeds limit"))
+  (drive (lambda ()
+    (values "done"
+      ((eval `(lambda (effect object array json-null field) ,(read-one source))
+         (environment '(only (scheme base)
+           lambda let let* letrec if begin quote define let-syntax syntax-rules
+           + - * = < > not equal? cons car cdr list null? pair?
+           string-append number->string)))
+       effect object array json-null field)))))
+(define (next encoded)
+  (unless pending (error "no pending effect"))
+  ;; Resume input is data, never evaluated as code.
+  (let ((continuation pending) (value (read-one encoded)))
+    (set! pending #f)
+    (drive (lambda () (continuation value)))))
+(values start next)

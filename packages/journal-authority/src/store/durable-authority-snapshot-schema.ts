@@ -1,4 +1,8 @@
-import { CrankError, type DurableProgramManifest } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  workflowDocumentStateSchema,
+  type DurableProgramManifest,
+} from "@sweatpants/durable-execution";
 import { registeredPullKinds } from "../pull-kinds/index.ts";
 import { parser, assertJson, type Parser } from "@sweatpants/foundation";
 import { parsePortableSchemaDescriptor } from "@sweatpants/foundation/schema";
@@ -785,6 +789,7 @@ const sessionSchema = z.strictObject({
     restoreFrontierDigest: unicodeStringSchema.optional(),
     consecutiveRestoreStales: nonNegativeIntegerSchema,
     activationNotBeforeMs: nonNegativeIntegerSchema.optional(),
+    documents: workflowDocumentStateSchema.optional(),
   }),
 });
 const durableAuthoritySnapshotStructureSchema = z.strictObject({

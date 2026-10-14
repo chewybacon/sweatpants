@@ -121,7 +121,7 @@ export function* executeClientElicitHandler<TCapabilities>(
       seq: request.seq,
     }),
   };
-  return yield* binding.handler(input, capabilities, metadata);
+  return yield* binding.handler(input, { ...capabilities, documents: {} }, metadata);
 }
 
 export interface ClientDispatcherOptions<TCapabilities> {

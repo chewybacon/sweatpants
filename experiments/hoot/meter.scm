@@ -1,0 +1,33 @@
+(use-modules (wasm parse) (wasm assemble) (wasm types)
+             (ice-9 match) (ice-9 binary-ports) (srfi srfi-1))
+(define input (cadr (command-line)))
+(define output (caddr (command-line)))
+(define w (call-with-input-file input parse-wasm #:binary #t))
+(display "parsed module\n") (force-output)
+(define index (+ (length (filter (lambda (i) (eq? (import-kind i) 'global)) (wasm-imports w)))
+                 (length (wasm-globals w))))
+(define tick `((global.get ,index) (i64.const 1) (i64.sub) (global.set ,index)
+               (global.get ,index) (i64.const 0) (i64.lt_s)
+               (if #f #f ((unreachable)) ())))
+(define loops 0)
+(define (walk x)
+  (match x
+    (('loop label type body)
+     (set! loops (+ loops 1))
+     `(loop ,label ,type ,(append tick (map walk body))))
+    ((? pair?) (map walk x))
+    (_ x)))
+(define funcs
+  (map (lambda (f) (make-func (func-id f) (func-type f) (func-locals f)
+                             (append tick (map walk (func-body f))))) (wasm-funcs w)))
+(display "instrumented bodies\n") (force-output)
+(define metered
+  (make-wasm (wasm-id w) (wasm-types w) (wasm-imports w) funcs
+    (wasm-tables w) (wasm-memories w)
+    (append (wasm-globals w) (list (make-global #f (make-global-type #t 'i64) '((i64.const 100000000)))))
+    (append (wasm-exports w) (list (make-export "__fuel" 'global index)))
+    (wasm-start w) (wasm-elems w) (wasm-datas w) (wasm-tags w) (wasm-strings w)
+    '())) ; Drop offset-sensitive debug sections after rewriting instructions.
+(display "assembling module\n") (force-output)
+(call-with-output-file output (lambda (port) (put-bytevector port (assemble-wasm metered))) #:binary #t)
+(format #t "Metered ~a functions and ~a loop headers\n" (length funcs) loops)

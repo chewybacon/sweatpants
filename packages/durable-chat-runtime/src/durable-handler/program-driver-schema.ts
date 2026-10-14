@@ -58,7 +58,7 @@ export type ChatProgramInput = {
   contextSource: ModelContextSource;
   systemPrompt?: string;
   toolChoice?: "auto" | "none" | "required";
-  maxIterations: number;
+  maxIterations: number | null;
   catalog: ChatToolCatalog;
 } & JsonObject;
 
@@ -113,7 +113,7 @@ const chatProgramInputSchema = z.strictObject({
     .max(64 * 1024)
     .optional(),
   toolChoice: z.enum(["auto", "none", "required"]).optional(),
-  maxIterations: z.number().int().min(1).max(100),
+  maxIterations: z.number().int().min(1).max(100).nullable(),
   catalog: z.strictObject({
     version: z.literal(1),
     digest: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -188,7 +188,7 @@ const chatRootInputDescriptor = chatEngineSchema(
       },
       systemPrompt: { type: "string" },
       toolChoice: { enum: ["auto", "none", "required"] },
-      maxIterations: { type: "integer", minimum: 1, maximum: 100 },
+      maxIterations: { anyOf: [{ type: "integer", minimum: 1, maximum: 100 }, { type: "null" }] },
       catalog: {
         type: "object",
         required: ["version", "digest", "entries"],
@@ -278,8 +278,8 @@ const chatRootOutputDescriptor = chatEngineSchema(
 
 export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.5.0",
-  digest: sha256("sweatpants.chat-root@1.5.0:workflow-sample-pull"),
+  version: "1.6.0",
+  digest: sha256("sweatpants.chat-root@1.6.0:optional-outer-iteration-limit"),
   inputSchema: chatRootInputDescriptor,
   outputSchema: chatRootOutputDescriptor,
   elicits: {},

@@ -379,6 +379,50 @@ describe("createDurableTool fluent builder", () => {
     ).toThrow(/pull kind/);
   });
 
+  it.each([true, false])(
+    "distinguishes valid null from a parse failure (valid=%s)",
+    async (valid) => {
+      const tool = createDurableTool("durable.nullable-sample")
+        .description("Nullable structured sample")
+        .identity({ version: "1", digest: "2".repeat(64) })
+        .parameters(z.object({}))
+        .samples()
+        .execute(function* (_input, context) {
+          const result = yield* context.sampleSchema({ prompt: "Return null", schema: z.null() });
+          return result.parsed;
+        });
+      const context = createTestDurableProgramContext(() =>
+        (function* (): Operation<TestProgramResume> {
+          return {
+            status: "ok",
+            value: {
+              message: {
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: valid ? "null" : "broken" }],
+                },
+                source: null,
+                usage: null,
+                stopReason: null,
+                responseId: null,
+                errorMessage: null,
+              },
+              output: valid
+                ? { type: "json", value: null }
+                : { type: "json-invalid", error: { message: "Invalid JSON", rawText: "broken" } },
+            },
+          };
+        })(),
+      );
+      const result = run(() => tool.program({}, context));
+      if (valid) {
+        await expect(result).resolves.toBeNull();
+      } else {
+        await expect(result).rejects.toMatchObject({ code: "schema_validation_failed" });
+      }
+    },
+  );
+
   it("rejects invalid sampling request modes and retry counts before a proposal", async () => {
     const tool = createDurableTool("durable.invalid-sample")
       .description("Invalid sampling")

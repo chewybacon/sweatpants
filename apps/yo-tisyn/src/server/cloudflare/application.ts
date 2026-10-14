@@ -1,3 +1,4 @@
+import { documentEffectRegistration } from "../document-effect.ts";
 import {
   createDecisionEffectRegistration,
   installDecisionProvider,
@@ -37,11 +38,11 @@ export function createCloudflareTisynApp(
     secret: bindings.PROGRAM_DRIVER_CAPABILITY_SECRET,
     storage: createD1Storage(bindings.JOURNAL),
     tools: programs,
-    effects: [createDecisionEffectRegistration()],
+    effects: [createDecisionEffectRegistration(), documentEffectRegistration],
     execution: cloudflare({ executors: bindings.TOOL_EXECUTORS }),
     model,
-    // Initial validation, up to three repairs, execution, and final summary.
-    maxToolIterations: 6,
+    // Authoring and repair continue until completion or an explicit stop.
+    maxToolIterations: null,
     shutdownDeadlineMs: 0,
     setup: {
       application: function* () {

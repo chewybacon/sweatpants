@@ -5,6 +5,7 @@ import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bri
 import { createTisynApp } from "./application.ts";
 import { TisynEvaluationPort } from "../workflow/evaluation/port.ts";
 import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
+import { reasoningLevel } from "./model-settings.ts";
 
 const app = createTisynApp({
   decisionProvider: createPiAiDecisionProvider(),
@@ -17,8 +18,7 @@ const app = createTisynApp({
   model: pi({
     provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
     model: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-5.5",
-    // Sonnet 5.5 rejects the provider default of disabled thinking.
-    streamOptions: { thinking: "low" },
+    streamOptions: { thinking: reasoningLevel(process.env["DEFAULT_CHAT_MODEL_THINKING"]) },
   }),
 });
 const server = createServer((request, response) => {

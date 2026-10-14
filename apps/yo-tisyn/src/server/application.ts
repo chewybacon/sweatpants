@@ -1,3 +1,4 @@
+import { documentEffectRegistration } from "./document-effect.ts";
 import {
   createDecisionEffectRegistration,
   installDecisionProvider,
@@ -25,9 +26,9 @@ export function createTisynApp(
     name: "yo-tisyn",
     secret: "yo-tisyn-local-spike-not-for-public-deployment",
     tools: programs,
-    effects: [createDecisionEffectRegistration()],
-    // Initial validation, up to three repairs, execution, and final summary.
-    maxToolIterations: 6,
+    effects: [createDecisionEffectRegistration(), documentEffectRegistration],
+    // Authoring and repair continue until completion or an explicit stop.
+    maxToolIterations: null,
     setup: {
       application: function* () {
         if (options.decisionProvider) yield* installDecisionProvider(options.decisionProvider);

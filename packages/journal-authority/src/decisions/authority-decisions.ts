@@ -1,3 +1,4 @@
+import { operateDocument } from "./document-decisions.ts";
 import { CrankError } from "@sweatpants/durable-execution";
 import { claimActivation, releaseActivation, renewActivation } from "./activation-decisions.ts";
 import type {
@@ -71,6 +72,9 @@ function dispatchCommand<C extends AuthorityCommand>(
   const kernel = createAuthorityKernel(draft);
   let result: unknown;
   switch (command.type) {
+    case "document.operate":
+      result = operateDocument(draft, command.request);
+      break;
     case "execution.open-task":
       result = kernel.openTask(command.request);
       break;

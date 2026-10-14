@@ -1,9 +1,15 @@
 ---
 import "../styles/global.css";
+import { env } from "cloudflare:workers";
+import { reasoningLevel } from "../server/model-settings.ts";
 import { SiteChrome } from "../design-system/SiteChrome.tsx";
 
 const { title = "yo-tisyn", description = "Durable workflows authored as Tisyn programs." } = Astro.props;
 const pathname = Astro.url.pathname;
+const bindings = env as { DEFAULT_CHAT_MODEL_PROVIDER?: string; DEFAULT_CHAT_MODEL_ID?: string; DEFAULT_CHAT_MODEL_THINKING?: string };
+const modelLabel = bindings.DEFAULT_CHAT_MODEL_ID
+  ? `${bindings.DEFAULT_CHAT_MODEL_PROVIDER} · ${bindings.DEFAULT_CHAT_MODEL_ID} · ${reasoningLevel(bindings.DEFAULT_CHAT_MODEL_THINKING)}`
+  : "yo-tisyn";
 ---
 <!doctype html>
 <html lang="en">
@@ -18,7 +24,7 @@ const pathname = Astro.url.pathname;
     <title>{title}</title>
   </head>
   <body>
-    <SiteChrome pathname={pathname}>
+    <SiteChrome pathname={pathname} modelLabel={modelLabel}>
       <slot />
     </SiteChrome>
   </body>

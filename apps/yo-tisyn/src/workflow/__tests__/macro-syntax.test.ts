@@ -57,3 +57,14 @@ it.each([
 ])("rejects invalid or unbounded macro source: %s", (source, message) => {
   expect(() => parseProgram(source, [])).toThrow(message);
 });
+
+it("does not count ordinary IR wrappers as macro expansion nesting", () => {
+  let source = 'Ref("x0")';
+  for (let index = 29; index >= 0; index--) {
+    source = `Let("x${index}",${index},${source})`;
+  }
+  expect(evaluate(parseProgram(source, []), EMPTY_ENV).next()).toEqual({
+    done: true,
+    value: 0,
+  });
+});

@@ -1,9 +1,11 @@
 import { createModels, type CredentialStore, type Model } from "@earendil-works/pi-ai";
 import { opencodeProvider } from "@earendil-works/pi-ai/providers/opencode";
+import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
 
 /** App-owned catalog additions for models newer than the installed Pi catalog. */
 export function createTisynModels(credentials: CredentialStore) {
   const models = createModels({ credentials });
+  models.setProvider(githubCopilotProvider());
   const provider = opencodeProvider();
   // OpenCode's /zen/v1/models and models.dev catalog, verified 2026-10-08.
   const haiku: Model<"anthropic-messages"> = {

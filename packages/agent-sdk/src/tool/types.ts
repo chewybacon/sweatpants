@@ -1,3 +1,4 @@
+import type { DocumentSlots, ElicitDocumentSlots } from "./documents.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
@@ -21,6 +22,7 @@ export interface ToolElicitSchemaArtifact {
   /** Accepted-content descriptor; never the outer wire action envelope. */
   readonly response: PortableSchemaDescriptor;
   readonly context?: PortableSchemaDescriptor;
+  readonly documents?: Readonly<Record<string, PortableSchemaDescriptor>>;
 }
 
 /**
@@ -83,6 +85,7 @@ export interface ElicitDefinition<
   /** Explicit projections required for non-Zod durable schemas. */
   readonly responseProjections?: SchemaProjectionOptions;
   readonly contextProjections?: SchemaProjectionOptions;
+  readonly documents?: DocumentSlots;
 }
 
 export type ElicitEntry<
@@ -137,7 +140,10 @@ export type NormalizedElicitsMap<TElicits extends ElicitsMap = ElicitsMap> = {
     ExtractElicitContext<TElicits[K]>,
     ExtractElicitResponseInput<TElicits[K]>,
     ExtractElicitContextInput<TElicits[K]>
-  >;
+  > &
+    (TElicits[K] extends { readonly documents: DocumentSlots }
+      ? { readonly documents: ElicitDocumentSlots<TElicits[K]> }
+      : {});
 };
 
 // -----------------------------------------------------------------------------

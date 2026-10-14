@@ -1,3 +1,4 @@
+import { documentElicitContextSchema } from "./documents.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { SchemaBinding } from "@sweatpants/foundation/schema";
 
@@ -52,8 +53,12 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
     });
     catalog.push(response.entry);
     let context;
-    if (definition.context) {
-      context = toPortableSchema(definition.context, {
+    const contextSchema =
+      definition.documents && Object.keys(definition.documents).length > 0
+        ? documentElicitContextSchema(definition.context, definition.documents)
+        : definition.context;
+    if (contextSchema) {
+      context = toPortableSchema(contextSchema, {
         identity: `${inputs.identity}/elicits/${key}/context`,
         role: "elicit_context",
         version: inputs.version,
@@ -61,8 +66,19 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
       });
       catalog.push(context.entry);
     }
+    const documents: Record<string, SchemaBinding["descriptor"]> = {};
+    for (const [slot, schema] of Object.entries(definition.documents ?? {})) {
+      const artifact = toPortableSchema(schema, {
+        identity: `${inputs.identity}/elicits/${key}/documents/${slot}`,
+        role: "elicit_context",
+        version: inputs.version,
+      });
+      documents[slot] = artifact.descriptor;
+      catalog.push(artifact.entry);
+    }
     elicits[key] = {
       response: response.descriptor,
+      ...(Object.keys(documents).length ? { documents } : {}),
       ...(context ? { context: context.descriptor } : {}),
     };
   }

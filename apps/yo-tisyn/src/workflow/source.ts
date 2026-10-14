@@ -1,3 +1,7 @@
+import { expandRandomSyntax, lowerRandomSyntax } from "./random.ts";
+import { expandExchangeSyntax, lowerExchangeSyntax } from "./exchange-syntax.ts";
+import { expandCollectionSyntax, lowerCollectionSyntax } from "./collection-syntax.ts";
+import { expandJsonSyntax, lowerJsonSyntax } from "./json-values.ts";
 import { validateAuthoring } from "./author-validation.ts";
 import { parseDSL } from "@tisyn/dsl";
 import { validateIr } from "@tisyn/validate";
@@ -36,11 +40,22 @@ function checkSource(source: string): void {
   }
 }
 
-export function parseTisynSource(source: string): TisynExpr {
+/** Authoring structure before capability sugar is lowered; never execute this tree. */
+export function parseTisynAuthoring(source: string): TisynExpr {
   checkSource(source);
-  const ir = lowerDecisionSyntax(
-    lowerMacroSyntax(parseDSL(expandDecisionSyntax(expandMacroSyntax(source)))),
+  const expanded = expandCollectionSyntax(
+    expandJsonSyntax(
+      expandDecisionSyntax(expandMacroSyntax(expandExchangeSyntax(expandRandomSyntax(source)))),
+    ),
   );
+  return lowerMacroSyntax(parseDSL(expanded));
+}
+
+export function parseTisynSource(source: string): TisynExpr {
+  const macros = parseTisynAuthoring(source);
+  const exchanges = lowerExchangeSyntax(macros);
+  const collections = lowerCollectionSyntax(exchanges);
+  const ir = lowerRandomSyntax(lowerJsonSyntax(lowerDecisionSyntax(collections)));
   const validated = validateIr(ir);
   if (!validated.ok) {
     throw new Error(`Invalid Tisyn IR: ${JSON.stringify(validated.errors)}`);

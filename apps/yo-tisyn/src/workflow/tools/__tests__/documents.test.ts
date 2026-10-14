@@ -1,0 +1,22 @@
+import { expect, it } from "vitest";
+import { createTisynTool } from "../../tisyn.ts";
+import { presentChoices } from "../documents.ts";
+
+it("publishes the choice completion envelope to workflow authors", () => {
+  const output = presentChoices.artifacts.output?.outputProjection;
+  expect(output).toMatchObject({
+    anyOf: [
+      {
+        properties: {
+          action: { const: "accept" },
+          content: { properties: { id: { type: "string" } }, required: ["id"] },
+        },
+        required: ["action", "content", "exchange"],
+      },
+      { properties: { action: { const: "decline" } }, required: ["action"] },
+      { properties: { action: { const: "cancel" } }, required: ["action"] },
+    ],
+  });
+  const workflow = createTisynTool([presentChoices]).build();
+  expect(workflow.description).toContain(`"output":${JSON.stringify(output)}`);
+});

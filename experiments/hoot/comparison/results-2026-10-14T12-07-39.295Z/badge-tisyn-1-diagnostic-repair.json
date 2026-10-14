@@ -1,0 +1,79 @@
+{
+  "task": "badge",
+  "language": "tisyn",
+  "trial": 1,
+  "prompt": "Author a complete interactive program for the user's request. Return source only, no markdown or commentary. It runs until completion, suspending at effects; the host journals results and resumes after human replies. Keep state in program variables/parameters. You may use functions or local macros as useful. No external tools, sampling, imports, or hidden model calls are available.\nCapabilities:\nask request: {message:string, suggestions?:string[]} (at most 6 suggestions). Result: {action:\"accept\",content:{reply:string},exchange:{messages:array,...}} OR {action:\"decline\"} OR {action:\"cancel\"}. Read content only on accept. On decline/cancel at any question immediately return {status:action}. Accepted replies are literal user text. Buttons are suggested text, not guaranteed input.\nrandom request: {choices:distinct string[]} OR {min:integer,max:integer}; returns selected string/integer directly. Each executed call records one draw; bind the result if reusing it.\nOnly the following language features are guaranteed. Source limit 12000 characters. No solution examples are supplied.\n\nLANGUAGE REFERENCE\nTisyn constructor syntax (not JavaScript). One expression with JSON literals.\nLet(\"name\",value,body) binds once; Ref(\"name\") reads. LetMany([[\"name\",value],...],body) sequential bindings. If(condition,then,else) evaluates one branch. Seq(a,b) sequences and returns b.\nConstruct({\"key\":expression,...}) evaluates object fields. Plain objects are literal data. Arr(expr,...) creates an array. Get(object,\"key\") reads a field. Concat(string,...) joins strings. Add(a,b), Sub(a,b), Mul(a,b), Eq(a,b), Lt(a,b), Gt(a,b), And(a,b), Or(a,b), Not(a) compute values.\nAsk(request) or Eval(\"ask\",request) performs ask; Random(request) performs random. Use Construct for computed request fields. The effect expression returns its result directly.\nFn([\"parameter\",...],body) defines a function; Call(function,arg,...) calls it. Functions use the caller environment plus parameter bindings. A function bound with Let/LetMany can call itself via Ref. Bindings immutable; carry changing state as recursive parameters. Tail calls supported.\nOnAccepted(result,Fn([\"content\",\"exchange\"],body),Fn([\"stop\"],body)) runs the matching branch once. stop contains action.\nLocal syntax macros: WithMacros({\"Name\":{\"params\":[\"x\"],\"body\":expression}},body), Use(\"Name\",argument), Hole(\"x\") in templates. Templates cannot introduce Let/Fn/Ref or nested WithMacros; arguments can contain them. Repeating a Hole repeats evaluation. Prefer functions for state/recursion.\n\nUSER REQUEST\nHelp me make a name badge. Ask my name and favorite color. Show me a review where I can change either one as many times as I want, then finish when I say done.\n\nShared machine-readable completion contract for evaluation:\nReturn {status:\"done\",name:<current name>,color:<current color>}. Review question must display current name and color and offer suggestions [\"done\",\"change name\",\"change color\"]. Choosing a change asks for that field only then returns to review. Unrecognized review text re-prompts.\n\nYour previous source:\nLetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.'\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\")))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))\n\nParser/evaluator diagnostic:\nDSLParseError: 'Fn' accepts at most 2 argument(s), got 3 (line 1, col 317)\n\n\nReturn a corrected complete program. This is your one repair attempt.",
+  "diagnostic": "DSLParseError: 'Fn' accepts at most 2 argument(s), got 3 (line 1, col 317)\n",
+  "source": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+  "raw": "LetMany([[\"askField\",Fn([\"msg\"],OnAccepted(Ask(Construct({\"message\":Ref(\"msg\")})),Fn([\"content\",\"exchange\"],Construct({\"ok\":true,\"value\":Get(Ref(\"content\"),\"reply\")})),Fn([\"stop\"],Construct({\"ok\":false,\"status\":Get(Ref(\"stop\"),\"action\")}))))],[\"review\",Fn([\"name\",\"color\"],OnAccepted(Ask(Construct({\"message\":Concat(\"Your badge: \",Ref(\"name\"),\" / favorite color: \",Ref(\"color\"),\". Say done, change name, or change color.\"),\"suggestions\":Arr(\"done\",\"change name\",\"change color\")})),Fn([\"content\",\"exchange\"],Let(\"reply\",Get(Ref(\"content\"),\"reply\"),If(Eq(Ref(\"reply\"),\"done\"),Construct({\"status\":\"done\",\"name\":Ref(\"name\"),\"color\":Ref(\"color\")}),If(Eq(Ref(\"reply\"),\"change name\"),Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Ref(\"color\")),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))),If(Eq(Ref(\"reply\"),\"change color\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Ref(\"name\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Call(Ref(\"review\"),Ref(\"name\"),Ref(\"color\"))))))),Fn([\"stop\"],Construct({\"status\":Get(Ref(\"stop\"),\"action\")}))))]],Let(\"n\",Call(Ref(\"askField\"),\"What name should go on your badge?\"),If(Get(Ref(\"n\"),\"ok\"),Let(\"c\",Call(Ref(\"askField\"),\"What is your favorite color?\"),If(Get(Ref(\"c\"),\"ok\"),Call(Ref(\"review\"),Get(Ref(\"n\"),\"value\"),Get(Ref(\"c\"),\"value\")),Construct({\"status\":Get(Ref(\"c\"),\"status\")}))),Construct({\"status\":Get(Ref(\"n\"),\"status\")}))))",
+  "stopReason": "stop",
+  "usage": {
+    "input": 4,
+    "output": 4148,
+    "total": 6112,
+    "cacheRead": 0,
+    "cacheWrite": 1960,
+    "cost": {
+      "input": 4.0000000000000003e-7,
+      "output": 0.002074,
+      "cacheRead": 0,
+      "cacheWrite": 0.000245,
+      "total": 0.0023193999999999997
+    }
+  },
+  "milliseconds": 16833,
+  "effort": "medium",
+  "passed": true,
+  "validation": {
+    "value": {
+      "color": "green",
+      "name": "Grace",
+      "status": "done"
+    },
+    "questions": [
+      {
+        "prompt": "What name should go on your badge?"
+      },
+      {
+        "prompt": "What is your favorite color?"
+      },
+      {
+        "prompt": "Your badge: Ada / favorite color: blue. Say done, change name, or change color.",
+        "suggestions": [
+          "done",
+          "change name",
+          "change color"
+        ]
+      },
+      {
+        "prompt": "What name should go on your badge?"
+      },
+      {
+        "prompt": "Your badge: Grace / favorite color: blue. Say done, change name, or change color.",
+        "suggestions": [
+          "done",
+          "change name",
+          "change color"
+        ]
+      },
+      {
+        "prompt": "What is your favorite color?"
+      },
+      {
+        "prompt": "Your badge: Grace / favorite color: green. Say done, change name, or change color.",
+        "suggestions": [
+          "done",
+          "change name",
+          "change color"
+        ]
+      }
+    ],
+    "random": [],
+    "restores": 7,
+    "journalRecords": 142,
+    "stops": [
+      "decline",
+      "cancel"
+    ]
+  }
+}

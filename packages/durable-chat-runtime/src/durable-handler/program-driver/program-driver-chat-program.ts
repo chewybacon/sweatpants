@@ -34,7 +34,12 @@ type ChatCall = {
 export const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
   const contextSource = decodeModelContextSource(input.contextSource);
   const completedCallIds = new Set<string>();
-  for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
+  // A delegated invocation may park and resume many times within this one round.
+  for (
+    let iteration = 0;
+    input.maxIterations === null || iteration < input.maxIterations;
+    iteration += 1
+  ) {
     const sampleRequest: ModelSampleSourceRequest = {
       invocation: {
         context: contextSource,

@@ -1,6 +1,21 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { decisionBinding } from "../src/workflow/decisions.ts";
+import { modelOptions } from "./model-options.ts";
+import { createTisynModels } from "../src/server/cloudflare/model-catalog.ts";
+
+const options = modelOptions(process.argv.slice(2));
+if (options.help) {
+  console.log(`Usage: pnpm dev:cloudflare [--provider opencode|github-copilot] [--model ID]
+  [--thinking off|minimal|low|medium|high|xhigh] [--list-models] [--port PORT] [Astro options]
+Defaults: opencode / claude-haiku-5-5 / medium. Copilot defaults to gpt-6.1-sol.
+Examples:
+  pnpm dev:cloudflare --provider github-copilot --model gpt-6.1-sol
+  pnpm dev:cloudflare --provider github-copilot --model claude-opus-5.5 --port 8104
+  pnpm dev:cloudflare --provider github-copilot --list-models`);
+  process.exit(0);
+}
 
 // Match yo-chat: build dependencies, refresh real credentials, initialize D1, then Astro.
 function command(args: string[], env = process.env, cwd?: string) {
@@ -12,22 +27,43 @@ function command(args: string[], env = process.env, cwd?: string) {
     throw new Error(`pnpm ${args.join(" ")} failed (${result.signal ?? result.status})`);
   }
 }
-command(["kernel:check"]);
-command([
-  "--filter",
-  "yo-tisyn^...",
-  "--workspace-concurrency=3",
-  "--aggregate-output",
-  "run",
-  "build",
-]);
-const provider = process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode";
-const model = process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5";
+if (!options.listModels) {
+  command(["kernel:check"]);
+  command([
+    "--filter",
+    "yo-tisyn^...",
+    "--workspace-concurrency=3",
+    "--aggregate-output",
+    "run",
+    "build",
+  ]);
+}
+const { provider, model, thinking } = options;
 command(["model:auth:refresh", "--provider", provider], process.env, "../..");
 const { FileCredentialStore } = await import("@sweatpants/model-provider-pi-ai");
-const credential = await new FileCredentialStore().read(provider);
+const credentials = new FileCredentialStore();
+const credential = await credentials.read(provider);
 if (!credential) {
   throw new Error(`No credential for ${provider}`);
+}
+const models = createTisynModels(credentials);
+const available = await models.getAvailable(provider);
+const selectedModels = available.filter((item) => item.provider === provider);
+if (options.listModels) {
+  for (const item of selectedModels) {
+    console.log(`${item.id} (${item.api}; reasoning: ${item.reasoning})`);
+  }
+  process.exit(0);
+}
+if (!selectedModels.some((item) => item.id === model)) {
+  throw new Error(
+    `Model ${provider}/${model} is not available. Use --provider ${provider} --list-models.`,
+  );
+}
+// Decisions have their own binding even when the authoring/sampling model changes.
+const decisionCredential = await credentials.read(decisionBinding.provider);
+if (!decisionCredential) {
+  throw new Error(`No credential for decision provider ${decisionBinding.provider}`);
 }
 mkdirSync(".wrangler", { recursive: true });
 const secretFile = ".wrangler/yo-tisyn-signing-secret";
@@ -36,14 +72,18 @@ if (!existsSync(secretFile)) {
 }
 const env = {
   ...process.env,
-  MODEL_CREDENTIALS: JSON.stringify({ [provider]: credential }),
+  MODEL_CREDENTIALS: JSON.stringify({
+    [decisionBinding.provider]: decisionCredential,
+    [provider]: credential,
+  }),
   PROGRAM_DRIVER_CAPABILITY_SECRET: readFileSync(secretFile, "utf8"),
   DEFAULT_CHAT_MODEL_PROVIDER: provider,
   DEFAULT_CHAT_MODEL_ID: model,
+  DEFAULT_CHAT_MODEL_THINKING: thinking,
   CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
 };
 command(["exec", "tsx", "scripts/prepare-cloudflare.ts"], env);
-console.log("Starting yo-tisyn on :8103 with OpenCode / Haiku 5.5.");
+console.log(`Starting yo-tisyn with ${provider} / ${model}; reasoning: ${thinking}.`);
 command(
   [
     "exec",
@@ -52,9 +92,9 @@ command(
     "--host",
     "127.0.0.1",
     "--port",
-    "8103",
+    options.port,
     "--strictPort",
-    ...process.argv.slice(2),
+    ...options.astroArgs,
   ],
   env,
 );

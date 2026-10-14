@@ -33,7 +33,7 @@ export interface ChatAdmissionRequest {
   readonly conversationId: string;
   readonly participantId: string;
   readonly contextSource: ModelContextSource;
-  readonly maxIterations: number;
+  readonly maxIterations: number | null;
   readonly tools: readonly ToolSchema[];
   readonly nativePrograms: Readonly<Record<string, PinnedProgram>>;
   readonly ephemeral:

@@ -117,12 +117,34 @@ function toPiContextWithResponseFormat(
   options: StreamOptions | undefined,
 ): PiAi.Context {
   const piContext = encodePiContext(context, model);
-  return options?.responseFormat === undefined
-    ? piContext
-    : appendPiStructuredResponseTool(piContext, options.responseFormat.schema);
+  if (options?.responseFormat === undefined) return piContext;
+  const structured = appendPiStructuredResponseTool(piContext, options.responseFormat.schema);
+  if (!usesReasonedStructuredOutput(options)) return structured;
+  return {
+    ...structured,
+    systemPrompt: [
+      structured.systemPrompt,
+      `Return the final response by calling ${STRUCTURED_RESPONSE_TOOL_NAME} with data matching its schema.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+function usesReasonedStructuredOutput(options: StreamOptions | undefined): boolean {
+  return (
+    options?.responseFormat !== undefined &&
+    options.thinking !== undefined &&
+    options.thinking !== "off"
+  );
 }
 
 function usesDirectPiStream(options: StreamOptions | undefined): boolean {
+  // Let Pi's reasoning-aware path normalize thinking for each provider. Forced
+  // schema-tool selection is incompatible with thinking on some providers.
+  // Auto selection can fail to produce the requested shape; schema validation
+  // remains authoritative and reports that failure to the caller.
+  if (usesReasonedStructuredOutput(options)) return false;
   return options?.toolChoice !== undefined || options?.responseFormat !== undefined;
 }
 

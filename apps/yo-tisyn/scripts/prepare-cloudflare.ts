@@ -6,7 +6,7 @@ const remote = process.argv.includes("--remote");
 await withWranglerEnv<{ JOURNAL: D1Database }>(
   {
     config: "wrangler.tasks.jsonc",
-    persistTo: ".wrangler/worker-state",
+    persistTo: process.env.TISYN_LOCAL_STATE_PATH ?? ".wrangler/worker-state",
     environment: remote ? "production" : undefined,
     remoteBindings: remote,
   },

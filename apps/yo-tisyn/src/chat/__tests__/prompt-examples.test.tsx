@@ -13,8 +13,8 @@ describe("empty conversation examples", () => {
       "Help me collect RSVPs for Alex, Sam, and Jo. Ask me about one person at a time. If they're coming, ask what they'd like to eat; if not, move on. At the end, give me a guest list and the meal orders.",
     ],
     [
-      "Quiz me on capitals",
-      "Quiz me on world capitals, one question at a time. Let's do three questions. Tell me whether each answer is right, explain any mistakes, and give me my score at the end.",
+      "Play Bulls and Cows",
+      "Let's play Bulls and Cows. I'm thinking of a four-digit number with no repeated digits and no leading zero. You guess; I'll tell you the bulls and cows. Keep track of our guesses until you solve it.",
     ],
     [
       "Name my bookstore",

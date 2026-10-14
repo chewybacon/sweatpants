@@ -125,6 +125,7 @@ describe("readable tool cards", () => {
     rerender(
       <ReplyForm prompt="What next?" disabled onRespond={(response) => responses.push(response)} />,
     );
+    fireEvent.click(screen.getByText("Other options"));
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     expect(responses).toHaveLength(1);
     expect(screen.getByLabelText<HTMLInputElement>("Your reply").disabled).toBe(true);
@@ -160,8 +161,88 @@ describe("readable tool cards", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toBe("Program rejected");
-    expect(screen.getByText(/Diagram unavailable:/)).toBeTruthy();
+    expect(screen.getByText(/Program source cannot be diagrammed/)).toBeTruthy();
     expect(screen.getByText("Let(")).toBeTruthy();
     expect(container.querySelector(".source")?.hasAttribute("open")).toBe(false);
   });
+});
+
+it.each(["display_document", "present_choices"])(
+  "restores a settled %s snapshot after local UI is lost",
+  (name) => {
+    const part = completed(name, {}, { status: "displayed" }, [
+      {
+        type: "elicit",
+        id: "saved",
+        elicitId: "saved",
+        bindingId: "binding",
+        key: name === "display_document" ? "display" : "choose",
+        message: "Saved presentation",
+        state: "responded",
+        parts: [],
+        context: {
+          context: {
+            message: "Saved presentation",
+            choices: [
+              { id: "a", label: "Alpha" },
+              { id: "b", label: "Beta" },
+            ],
+            layout: "grid",
+            columns: 2,
+          },
+          documents: {
+            content: {
+              current: {
+                document: { id: "doc" },
+                name: "My document",
+                revision: 3,
+                content: { history: ["first", "second"] },
+              },
+              changes: { kind: "reset" },
+            },
+          },
+        },
+      },
+    ]);
+    const { container, rerender } = render(<Part part={part} />);
+    expect(screen.getAllByText("Saved presentation")).toHaveLength(1);
+    expect(screen.getByText("My document")).toBeTruthy();
+    expect(container.querySelector(".document-content")?.textContent).toContain('"second"');
+    const cells = screen.getAllByRole<HTMLButtonElement>("button");
+    expect(cells).toHaveLength(2);
+    expect(cells.every((cell) => cell.disabled)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    rerender(<Part part={part} />);
+    expect(screen.getAllByText("Saved presentation")).toHaveLength(1);
+  },
+);
+
+it("preserves other child content when a saved document context cannot be decoded", () => {
+  render(
+    <Part
+      part={completed("display_document", {}, { status: "displayed" }, [
+        {
+          type: "elicit",
+          id: "saved",
+          elicitId: "saved",
+          bindingId: "binding",
+          key: "display",
+          message: "Old view",
+          state: "responded",
+          context: {},
+          parts: [
+            {
+              type: "render",
+              id: "fallback",
+              parentElicitId: "saved",
+              sequence: 0,
+              state: "completed",
+              node: <p>Retained content</p>,
+            },
+          ],
+        },
+      ])}
+    />,
+  );
+  expect(screen.getByText("Retained content")).toBeTruthy();
 });

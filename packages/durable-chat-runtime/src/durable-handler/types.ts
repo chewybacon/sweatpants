@@ -53,7 +53,7 @@ export interface WorkflowChatEngineParams {
    * request-scoped contexts.
    */
   historyPolicy?: HistoryPolicy;
-  maxIterations: number;
+  maxIterations: number | null;
   /**
    * Durable conversation identity. This is the only key used for the fold
    * session log.
@@ -145,7 +145,8 @@ export interface DurableChatProgram {
 export interface DurableChatHandlerOptions {
   /** Request-scoped setup: install model providers and per-request contexts. */
   setup?: ChatHandlerSetup;
-  maxToolIterations?: number;
+  /** Outer model rounds only; null disables the limit. Child program turns do not count. */
+  maxToolIterations?: number | null;
   /** Trusted composition identity; wire clientId remains correlation only. */
   resolveParticipantId?: (request: Request) => Operation<string>;
   /** One explicit authority-storage choice. There is no implicit fallback. */

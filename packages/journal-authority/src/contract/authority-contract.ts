@@ -1,5 +1,8 @@
+import type { DocumentCommandRequest } from "./document-command.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type {
+  DocumentResult,
+  WorkflowDocumentState,
   DurableOperationDescriptor,
   DurableProgramManifest,
   ForestReplayPlan,
@@ -233,9 +236,14 @@ export type RecoveryCommand =
   | { readonly type: "recovery.bind-frontier"; readonly request: BindRestoreFrontierRequest }
   | { readonly type: "recovery.consume-ticket"; readonly request: ConsumeRestoreTicketRequest };
 
-export type AuthorityCommand = ExecutionCommand | ActivationControlCommand | RecoveryCommand;
+export type AuthorityCommand =
+  | ExecutionCommand
+  | ActivationControlCommand
+  | RecoveryCommand
+  | { readonly type: "document.operate"; readonly request: DocumentCommandRequest };
 
 export interface CommandResultByType {
+  readonly "document.operate": DocumentResult;
   readonly "execution.open-task": { readonly programCapability: string };
   readonly "execution.bind-attachment": { readonly programCapability: string };
   readonly "execution.bind-mandate": BindMandateResult;
@@ -523,6 +531,7 @@ export interface AuthoritySessionState {
     readonly revision: number;
     /** Protocol-owned root address ordinal; task-id text is never parsed. */
     readonly nextRootOrdinal?: number;
+    readonly documents?: WorkflowDocumentState;
     readonly activationLease?: ActivationLeaseState;
     readonly lastActivationEpoch: number;
     readonly restoreNonce?: string;

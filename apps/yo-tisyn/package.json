@@ -23,14 +23,17 @@
         "tisyn:local": "tsx scripts/tisyn-local.ts local",
         "tisyn:refresh": "tsx scripts/tisyn-local.ts refresh",
         "tisyn:status": "tsx scripts/tisyn-local.ts status",
-        "tisyn:published": "tsx scripts/tisyn-local.ts published"
+        "tisyn:published": "tsx scripts/tisyn-local.ts published",
+        "verify:reasoning": "NODE_OPTIONS=--conditions=development tsx scripts/verify-reasoning.ts"
     },
     "dependencies": {
+        "@dagrejs/dagre": "^3.1.1",
         "@earendil-works/pi-ai": "1.0.1",
         "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
         "@stylexjs/stylex": "0.19.1",
         "@sweatpants/agent-host": "workspace:*",
         "@sweatpants/agent-sdk": "workspace:*",
+        "@sweatpants/chat-contract": "workspace:*",
         "@sweatpants/chat-core": "workspace:*",
         "@sweatpants/durable-chat-runtime": "workspace:*",
         "@sweatpants/durable-effects": "workspace:*",
@@ -51,6 +54,7 @@
         "@tisyn/ir": "0.16.0",
         "@tisyn/kernel": "0.16.0",
         "@tisyn/validate": "0.16.0",
+        "@xyflow/react": "^12.12.0",
         "effection": "catalog:",
         "quickjs-emscripten-core": "0.32.0",
         "react": "catalog:",

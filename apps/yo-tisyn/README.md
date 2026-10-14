@@ -18,7 +18,7 @@ pnpm --dir apps/yo-tisyn dev
 
 Open http://127.0.0.1:8101. The API listens on loopback port 8102.
 
-The server uses the existing Sweatpants credential store, normally `.sweatpants/auth.json`. `YO_CHAT_MODEL_AUTH_FILE` selects another compatible file; pi's agent auth file has a different shape. The default model is `github-copilot/claude-sonnet-5.5`. Override it with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID`. The app sets `thinking: "low"`: Sonnet 5.5 rejected the provider's disabled-thinking default during this spike.
+The server uses the existing Sweatpants credential store, normally `.sweatpants/auth.json`. `YO_CHAT_MODEL_AUTH_FILE` selects another compatible file; pi's agent auth file has a different shape. The default model is `github-copilot/claude-sonnet-5.5`. Override it with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID`. Reasoning defaults to `medium`; override it with `DEFAULT_CHAT_MODEL_THINKING`.
 
 SQLite state lives in `apps/yo-tisyn/.data/chat.sqlite`. Stream buffers are in memory. Server restart recovery through HTTP is **not certified** by this spike.
 
@@ -26,17 +26,43 @@ SQLite state lives in `apps/yo-tisyn/.data/chat.sqlite`. Stream buffers are in m
 
 ```sh
 pnpm --dir apps/yo-tisyn dev:cloudflare
+# Copilot (the same local Cloudflare runtime):
+pnpm --dir apps/yo-tisyn dev:cloudflare --provider github-copilot --model gpt-6.1-sol
+pnpm --dir apps/yo-tisyn dev:cloudflare --provider github-copilot --model claude-opus-5.5
+# Discover models available with your refreshed credential:
+pnpm --dir apps/yo-tisyn dev:cloudflare --provider github-copilot --list-models
+# Override reasoning and port:
+pnpm --dir apps/yo-tisyn dev:cloudflare --thinking high --port 8104
 # Build the Astro Worker and client assets without deploying:
 pnpm --dir apps/yo-tisyn build:cloudflare
 ```
 
-The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5`. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts Astro with the official Cloudflare adapter. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
+The local launcher uses port 8103 and defaults to OpenCode `claude-haiku-5-5` with `medium` reasoning. `--provider github-copilot` defaults to `gpt-6.1-sol`. Flags override `DEFAULT_CHAT_MODEL_PROVIDER`, `DEFAULT_CHAT_MODEL_ID`, and `DEFAULT_CHAT_MODEL_THINKING`; other arguments pass through to Astro. Use `--help` for options. The launcher checks model availability before starting; it never falls back to another model. Restart to switch models, then use a new conversation for a clean comparison. The footer and `/health` show the active configuration. It builds dependencies, refreshes the selected real model credential, initializes local D1, and starts Astro with the official Cloudflare adapter. It follows yo-chat's Agent Host composition: `createChatApp`, request-owned `createChatFetchHandler`, a conversation DO, D1 authority, response-stream DOs, and `cloudflare({ executors })` with `createToolExecutorObject({ tools: programs, setup })`. There is no Dynamic Worker loader or Node executor fallback.
 
 **The loop example works locally in Cloudflare.** Executor `setup` installs the evaluation driver inside each program's owned scope. QuickJS/WASM runs a generated bundle of the resolved Tisyn kernel; this can be a published package or an explicitly linked checkout. Sweatpants still owns all tool calls, journal records, parking, and replay. Playwright verifies six accumulated replies, reload while waiting, decline, and completed-state reload with the real provider. Test Rig also replaces workerd while the loop is parked and resumes the same pending interaction.
 
 Start a **New conversation** after this update. Work accepted under the earlier missing-driver profile is not migrated or silently restarted.
 
 Local state and the generated signing secret live in `.wrangler/`; credentials are passed as secret bindings, not written into the bundle. The base Wrangler configuration keeps the local D1 placeholder. The production environment uses a separate provisioned database. Existing local databases are not replaced. Restart the launcher to reload refreshed credentials.
+
+For simultaneous model comparisons, give each server a separate local state path
+and port. The path is relative to `apps/yo-tisyn` and is used by both D1
+initialization and Astro. Do not point two running servers at the same directory.
+Vite dependency caches are already separated by sampling mode, provider, and model.
+
+```sh
+TISYN_LOCAL_STATE_PATH=.wrangler/opus-state pnpm --dir apps/yo-tisyn dev:cloudflare --provider github-copilot --model claude-opus-5.5 --port 8107
+```
+
+### Verify reasoning against real providers
+
+```sh
+pnpm --dir apps/yo-tisyn verify:reasoning
+pnpm --dir apps/yo-tisyn verify:reasoning --provider github-copilot --model gpt-6.1-sol
+pnpm --dir apps/yo-tisyn verify:reasoning --provider github-copilot --model claude-opus-5.5
+```
+
+Each command makes three small real requests through the app's canonical Pi adapter, at low, medium, and high. It checks outgoing provider effort fields and successful responses. Output contains only reasoning configuration, token usage, and the synthetic reply—not headers or credentials. Haiku and Opus use adaptive thinking plus `output_config.effort`; Sol uses `reasoning.effort`. These checks verify configuration and API acceptance, not how much internal reasoning a provider actually performs. Refresh credentials with `pnpm model:auth:refresh --provider github-copilot` first if needed.
 
 ## Developing against a local Tisyn checkout
 
@@ -244,34 +270,27 @@ requested again. Evidence is under `.artifacts/yo-tisyn-decisions/`.
 
 ### Sampling inside a workflow
 
-`Eval("sample", {"prompt": ...})` returns `{"text": ...}`. Inputs are a required
-nonempty `prompt` (up to 32,768 characters), an optional `systemPrompt` (up to
-8,192 characters), and an optional `maxTokens` (1–4096, default 1024). The sampling
-child declares `.samples()` and calls `context.sample()`. No tools or previous
-conversation history are included in that request. The program must construct
-any needed context explicitly, including earlier replies and sample results.
-
-Two placements share this contract and the same model-visible instructions:
+`Sample({prompt: ...})` (or `Eval("sample", {...})`) binds directly to the
+SDK sampling capability. Both the Tisyn evaluator and the session coordinator
+declare `.samples()`; there is no registered `sample` wrapper tool.
 
 ```ts
-createTisynTool([echo, ask, sample]).build(); // sample is a durable child
-createTisynTool([echo, ask]).samples().build(); // sample is a pull in Tisyn itself
+createTisynTool([echo, ask]).samples().build();
 ```
 
-Set `PUBLIC_TISYN_SAMPLING=child` (default) or `PUBLIC_TISYN_SAMPLING=direct`
-before starting `dev:cloudflare`, `dev:server`, or building the Worker. Astro
-captures this setting at build/start time; restart to change it. `/health` on
-Cloudflare reports the selected mode. Each mode has its own workflow identity;
-use a new thread when switching modes. Both emit sampling start/completion cards,
-but direct mode does not create a separate sampling child. Direct sampling is
-rejected unless the builder explicitly enables it, and enabling both bindings
-with the same name is rejected.
+Requests contain only explicitly authored context and history. Text and structured
+sampling inherit the caller's resolved thinking level; an optional `thinking`
+field overrides it. Structured requests add `schema` and return a validated
+`parsed` value or a repairable validation failure. The SDK implements structured
+sampling and tool sampling on the same lower-level sampling pull.
 
-The app supplies capability contracts and general Tisyn authoring guidance. It
-does not supply task-specific sampling prompts, output schemas, counters, or
-stopping rules. Those decisions belong to the model-authored program. Sampling
-returns text; there is no new JSON parsing operation or structured-output API in
-this binding. Existing platform compute and tool-call limits still apply.
+Sampling still emits UI start/completion cards and records outcomes in the
+journal. `/health` reports `sampling: "native"`. The earlier child/direct
+comparison below is historical; `PUBLIC_TISYN_SAMPLING` no longer selects a mode.
+Use a new thread after upgrading, because capability and session identities changed.
+
+The app supplies capability contracts and general authoring guidance. Task-specific
+schemas, counters, stopping rules, and context selection belong to authored programs.
 
 Accepted sampling outcomes belong to the durable journal, so reconstruction
 consumes them instead of requesting replacement completions. Enabling sampling
@@ -309,9 +328,9 @@ Empty conversations show three editable starting points: a running response loop
 
 Tool cards show readable status and results. Echo displays its text once. Ask displays one reply or decline/cancel outcome, including after reload. Input and result JSON remain in collapsed details. Unknown result shapes use a labeled JSON fallback.
 
-The Tisyn card parses its source with the published DSL and IR packages. It shows a Mermaid plan for sequences, bindings, branches, functions, and loops. Each named function body appears once. Dashed call edges link only unambiguous names; shadowed and computed calls remain labels. `While` includes a back edge and stop branch. Expressions stay in node labels. The plan is not an execution trace and does not claim which branch ran. Nested tool cards show actual execution results.
+The Tisyn card renders one read-only React Flow canvas focused on yields and continuations. A static continuation-passing projection reads authoring IR before lowering. Ask, Sample, and Classify become yield nodes; pure bindings and counter updates disappear; edge labels describe branch outcomes; branches preserve control flow, with normal returns sharing one End node and failures sharing a separate Fail node. Return expressions remain in the endpoint source tooltip. Statically resolved calls connect to shared bodies with recursion back edges. Function resolution follows the kernel's caller environment, including parameter shadowing and function-valued arguments. Specializations include the return continuation, so distinct callers do not receive one another's returns.
 
-The diagram supports enlargement and a text outline. Formatted source stays available in a collapsed panel. Source parsing shares the execution path's length/nesting checks; diagrams have a separate 64-node cap. Generated labels escape Mermaid syntax and HTML. Parse/render errors produce a visible explanation and preserve the source, without blocking tool interaction. The browser never runs the Tisyn evaluator.
+Unresolved targets, effectful call arguments, unsupported control constructs, and recursive calls with a changing continuation remain explicit operation nodes with source details. The projection never executes code or claims runtime state. Canvas colors follow the app’s Rose Pine palette: teal for native Sample/Decision capabilities (including Classify sugar), iris for authored host tools such as Ask and document tools, and gold for control flow. Icons and provenance labels accompany the colors. Unknown operations retain a neutral dashed treatment rather than claiming a tool origin. It is bounded with a visible truncation notice. There is no sidebar, inspector, expansion control, minimap, or attribution badge. The graph runs left to right with compact endpoints. Single-entry cyclic regions are grouped in a subtle Repeat container; terminals remain outside. This first pass groups maximal cycles, so nested cycles share a region. Multi-entry cycles retain explicit edges. Ordinary steps align horizontally, while consecutive branch checks form vertical columns. Branch columns are sized as blocks before laying out the surrounding graph. Orthogonal routes use side gutters and dedicated dashed return lanes above the loop. Drag to pan; pinch or use zoom and fit controls. Ordinary wheel scrolling moves the surrounding page. Original and expanded source remain below, along with actual activity results.
 
 ## Evidence
 
@@ -498,3 +517,563 @@ All four Tisyn imports resolved to registry packages inside that copy. An app im
 ## Decision from this spike
 
 Keep the one-runtime approach. The kernel-to-durable-child binding works at the journal boundary. Before promoting it, test actual host replacement with persistent storage, add memory isolation, and retain immutable implementation artifacts. The local compute/time and tool-call guards are not production resource isolation. Concurrency and catchable error translation remain out of scope.
+
+## Workflow documents and choices
+
+The document spike exposes `document_create`, `document_read`, `document_edit`,
+and `present_choices` to authored Tisyn programs through ordinary `Eval` calls.
+No new Tisyn kernel instruction or input-wait mechanism is involved.
+
+Documents belong to the root workflow. Its child tools share access; another
+root workflow cannot read or edit them, even if it knows a reference. Documents
+and operation receipts are persisted in journal authority control, using the
+existing memory, SQLite, or D1 execution-store placement. Each document command
+atomically stores its revision and receipt. The subsequent effect settlement
+uses the existing journal path; a retry between these commits returns the
+original receipt before checking the revision again.
+
+Edits require `expectedRevision`. Patches use `set` and `remove` with explicit
+path segments: `{ op: "set", path: ["items", "0"], value: "new value" }`.
+`set` at `[]` replaces the document. Array `set` replaces an existing element or
+appends at its length; `remove` shifts later elements. Invalid paths fail the
+whole edit. A conflict returns the current snapshot without changing it.
+
+A read with `sinceRevision` returns the current snapshot and ordered changes
+ending at that same revision. The authority retains the last 32 edits; an older
+revision receives a `reset`. Limits are 16 KiB per document, 64 patches per edit,
+32 documents and 512 operation receipts per authority session, and 1 MiB of
+aggregate document state. Completed workflows are reclaimed on a subsequent
+document operation; their historical tool results remain in the transcript.
+These are bounded spike limits, not an indexed document database.
+
+Durable tool authors declare read-only document slots beside elicitation context:
+
+```ts
+.elicits({
+  choose: {
+    response: z.object({ id: z.string() }),
+    context: z.object({ message: z.string() }),
+    documents: { content: ContentSchema },
+  },
+})
+```
+
+The workflow binds `{ documents: { content: { id, sinceRevision } } }` when calling
+`ctx.elicit`. The SDK records a document read, validates the slot content, and
+side-loads the observation in the elicitation wire envelope. The plugin sees
+its original `input.context` and a typed `ctx.documents.content.read()` operation.
+The handle contains a detached, deeply frozen snapshot, with no mutation method
+or server credential. Content schemas also participate in binding identity.
+
+`present_choices` renders JSON content, revision changes, and list/grid buttons.
+Buttons use the existing accept/decline/cancel elicitation response. Accepted IDs
+are checked against the presented choices on the server. The workflow decides
+what the response means and whether to edit the document.
+
+This first slice refreshes documents on each elicitation. It does not subscribe
+an already-open UI to concurrent changes. Documents contain generic JSON; slot
+schemas validate typed views, but this slice does not provide model-authored
+schema registration, shared conversation/workspace documents, stored macros,
+or indexed views. No document mutation endpoint is exposed to the browser.
+
+### Program-selected views and collection operations
+
+The yo-chat authored games separate program state (board, turn, ordered moves),
+UI context (board/history/last move and terminal status), and inner-model context
+(the state and legal actions supplied to that particular sample). The Tisyn
+surface now supports that pattern without a game-specific tool or system prompt:
+
+- `JsonGet(value, key)` supports computed object keys and existing array indices.
+- `JsonSet(value, key, replacement)` returns an updated copy.
+- `JsonAppend(array, item)`, `JsonLength(arrayOrString)`, and `JsonKeys(object)`
+  support program-owned collections and history; `JsonStringify(value)` provides
+  an explicit textual representation.
+- These constructors lower to a bounded pure adapter operation. They do not run
+  JavaScript, read documents, invoke children, or emit intermediate tool cards.
+  Node and QuickJS share the implementation. Outputs are limited to 32 KiB and
+  programs to 4096 JSON operations, separately from the 256 tool-call limit.
+- `sample` accepts optional JSON `context`, serialized alongside its prompt.
+  Native sampling uses this explicit input. The combined
+  prompt/context is limited to 32 KiB. No document or transcript is automatically
+  attached. A program can choose to include permitted state, ordered interaction
+  history, role information, and available actions.
+- `present_choices` supports `columns` and per-choice `disabled` flags. Disabled
+  choices preserve grid positions, and the server rejects their selection.
+- `display_document` renders a read-only document with optional grid/list cells
+  and automatically acknowledges delivery. It does not ask for another human
+  move or leave the workflow parked at the terminal display. Completed document
+  presentations reconstruct their saved revision from the elicitation snapshot
+  after reconnect, without running plugins or effects again.
+
+These are explicit-context mechanisms, not an enforced secrecy boundary against
+model-authored programs: a program that can read a private value could still
+copy it into a sample or its final result. Hidden-information applications need
+trusted handles and controlled disclosure. Public-information applications can
+explicitly share their board and history with each inner model call. Document
+contents remain separate from the immutable elicitation context and from the
+outer model's conversation history unless the program returns them.
+
+### Flat bindings and sequential collection helpers
+
+`LetMany([["name", expression], ...], body)` lowers to nested `Let` bindings.
+Bindings evaluate once in order, later bindings can refer to earlier ones, and
+repeated names shadow earlier values. The final body is the result. Up to 64
+bindings are admitted, with the normal expanded-program budget still applied.
+
+```text
+LetMany([
+  ["items", [2, 4, 6]],
+  ["total", Reduce(Ref("items"), 0,
+    Fn(["sum", "item", "index"], Add(Ref("sum"), Ref("item"))))]
+], Construct({"total": Ref("total")}))
+```
+
+- `Map(array, Fn(["item", "index"], body))` collects callback results.
+- `Filter(array, Fn(["item", "index"], predicate))` keeps matching input items.
+- `Reduce(array, initial, Fn(["acc", "item", "index"], body))` folds left.
+
+Callbacks receive exactly the listed arguments, with zero-based indices. Input
+expressions evaluate once, in argument order. Arrays are checked before the loop;
+empty arrays invoke no callbacks. Helpers lower to ordinary tail-recursive
+`Fn`/`Call` loops and bounded JSON operations, so callbacks can use the existing
+effects, park points, and replay behavior. There is no parallel dispatch or new
+kernel operation. Generated names avoid all strings in the authored source,
+including callback parameters and nested helpers. `LetMany` is forbidden inside
+binding-free macro templates; it can still be passed through a macro hole.
+
+### Quoted child hello world experiment
+
+The journal-backed tests in `src/workflow/__tests__/tisyn.test.ts` register a
+**test-only** `delegate` tool. This proves child composition without exposing a
+new tool or `Invoke` constructor in the chat app:
+
+```text
+Let("reply", Eval("delegate", {
+  "code": Q(Fn(["name"],
+    Eval("echo", {"message": Concat("Hello, ", Ref("name"), "!")}))),
+  "args": ["world"]
+}), Concat("Parent received: ", Get(Ref("reply"), "message")))
+```
+
+Result: `Parent received: Hello, world!`
+
+`Q` preserves the function IR inside effect data. The existing validator rejects
+quotes directly in structural evaluation positions such as a `Let` value, so
+this experiment does not establish general first-class quoted-code bindings.
+The child receives explicit JSON arguments and opens a fresh evaluator without
+the parent's environment. Its interpreter advances `.next(previousResult)` and
+forwards `echo` and `ask` effects through pinned durable child invocations. The
+parent resumes with the recorded child result. In the QuickJS variant, each
+evaluator has its own context/runtime within the loaded WASM module.
+
+The second experiment records a greeting, parks inside the child on `ask`,
+destroys the scopes, and restores the authority from serialized JSON. It checks
+that the greeting is not repeated and that the parent receives the child's final
+result. Both experiments run against Node and QuickJS with the real journal and
+tool programs; no model or provider is involved.
+
+```sh
+pnpm --dir apps/yo-tisyn exec vitest run src/workflow/__tests__/tisyn.test.ts
+```
+
+The experimental child dispatcher supports `echo`, `ask`, and the optional
+`greet` handler below. Code admission, capability selection, and nested handler
+scopes remain design work before a public primitive.
+
+### One program, two effect interpretations
+
+The same test harness also runs this identical source with two implementations
+of `greet`:
+
+```text
+Let("result", Eval("delegate", {
+  "code": Q(Fn(["name"], Eval("greet", {"name": Ref("name")}))),
+  "args": ["world"]
+}), Construct({"parentReceived": Ref("result")}))
+```
+
+Both implementations accept `{name}` and return either `{status:"ok", text}` or
+`{status:"decline"|"cancel"}`:
+
+- The pure handler computes `Hello, world!` without external work.
+- The human handler invokes the real durable `ask` tool with
+  `How should we greet world?`. An accepted reply becomes the greeting; declining
+  or cancelling returns that status through the child to the parent.
+
+The human execution path is parent → quoted child → greeting handler → ask.
+There is still no `Park` instruction: the driver parks while resolving the
+elicitation. Tests destroy the scopes, restore the journal from JSON, supply a
+reply through the authority, and verify one elicitation and three child
+invocations with no duplicate requests after recovery. Both Node and QuickJS
+exercise accept, decline, and cancel. These are deterministic harness replies,
+not a live browser experiment.
+
+Handler selection in these two experiments is host-configured. Each implementation
+has a distinct manifest digest, and the delegated interpreter's digest includes
+its handler bindings. This proves interchangeable durable implementations of one
+effect contract. The following experiment moves handler implementation into
+Tisyn itself.
+
+### Tisyn-authored effect handlers
+
+The test-only `delegate` interpreter accepts an optional `handlers` object.
+Each key names an admitted effect, and each value is a quoted unary function
+that receives the effect's JSON input and returns its result:
+
+```text
+Let("result", Eval("delegate", {
+  "code": Q(Fn(["name"], Eval("greet", {"name": Ref("name")}))),
+  "args": ["world"],
+  "handlers": {
+    "greet": Q(Fn(["request"], Construct({
+      "status": "ok",
+      "text": Concat("Authored hello, ", Get(Ref("request"), "name"), "!")
+    })))
+  }
+}), Construct({"parentReceived": Ref("result")}))
+```
+
+Result: `{parentReceived: {status: "ok", text: "Authored hello, world!"}}`.
+
+The handler is invoked through the same pinned durable `delegate` program with
+its code and request as journaled input. It opens its own evaluator. The child
+waits for its recorded return value, then resumes through `.next(value)`.
+Changing only the quoted handler to a function that calls `ask` makes the same
+child program interactive. Tests cover acceptance, decline, and cancellation
+after destroying all evaluator scopes and restoring journal JSON.
+
+This experiment defines a deliberately limited scope:
+
+- The handler table applies to effects yielded by that delegated program.
+- A handler executes with the host bindings and an empty local handler table.
+  Calling its own effect name therefore reaches the host implementation.
+- Calls outside the delegated program retain their host bindings.
+- Handlers receive one explicit input and cannot read parent lexical bindings.
+- Inputs and returned values must satisfy the admitted tool's existing contract.
+- Explicit JSON arguments are passed through literal wrappers, so IR-shaped
+  values are not accidentally executed.
+
+Invalid handler arity, invalid output, and references to parent-only variables
+fail the invocation; later parent effects do not run. Code and handler tables are
+recorded invocation inputs, while the interpreter identity pins its host bindings.
+There is no general `Handle` constructor, nested handler stack, resumption value
+exposed to the handler, or public chat capability yet. These tests exercise
+ordinary durable delegation with caller-authored implementations, not multi-shot
+continuations or resumable error handling.
+
+### Two turns with one resumable child
+
+The `session` tool in `src/workflow/session.ts` drives two Tisyn evaluators
+within one durable program. It is installed in the local and Cloudflare tool
+inventories and callable from authored Tisyn. It is not an independently
+addressable child task or an external messaging API.
+
+Parent requests are `session.send`, `session.answer`, `session.close`, and
+`session.cancel`.
+Child requests are `session.receive`, `session.askParent`, and
+`session.turnResult`. These names are ordinary effects interpreted by the
+coordinator; no kernel operations were added.
+
+The important child expression is:
+
+```text
+Let("nextMessage", Eval("session.turnResult", {"findings":"..."}),
+  ...)
+```
+
+The effect's data becomes a turn-result event delivered to the parent. When the
+parent sends another turn, that message becomes `nextMessage`. The child's
+program has not returned, so its earlier bindings remain logically available.
+An `askParent` request similarly receives its answer through `.next(answer)`.
+Returning from the child instead produces a distinct `closed` event.
+
+The experiment runs this sequence in both Node and QuickJS:
+
+1. Parent sends `Investigate A` as turn 1.
+2. Child asks `What budget should I use?`.
+3. Parent delegates that question to the real durable `ask` tool.
+4. All evaluator scopes are destroyed; authority is restored from journal JSON.
+5. The harness supplies `$500`; the parent answers the correlated child question.
+6. Child records its findings through `echo` and yields the first turn result.
+7. Parent sends `Compare B` as turn 2. The second result includes both messages
+   and the budget from the first turn.
+8. Parent closes; child returns its final summary.
+
+Session ID, sequential turn ID, and question request ID enforce one active turn
+and one outstanding question. A new turn or close while a question is pending,
+an answer with mismatched IDs, and a parent returning with an open child fail
+explicitly. Each exchange is recorded, ordinary effects use pinned durable
+invocations, and replay reconstructs both evaluators and checks their exchanges
+against journal truth. There is no saved generator stack or mailbox.
+
+This proves the turn/question/final-result distinction under one coordinator.
+Multiple sessions, independent child ownership, and external message delivery
+remain outside this implementation. The parent can explicitly cancel an open
+child, including one awaiting an answer; this returns a `cancelled` event and
+discards its evaluator. Cancellation does not execute child cleanup code. Tests
+cover decline/cancel after restoring the parent human elicitation.
+
+### Authoring a session in the app
+
+Call `Eval("session", {sessionId, parent, child})` inside the outer Tisyn program.
+`parent` and `child` are DSL source strings. The tool validates both completely
+before starting either evaluator, including unselected branches. Parent-only and
+child-only session effects are admitted separately. Ordinary tools use the same
+pinned registrations and UI events as other Tisyn calls. `sample` is available
+inside sessions in either outer sampling mode; all sampling context is explicit.
+
+Use `validateOnly: true` on the session request for a side-effect-free nested
+source check. The outer Tisyn validator sees the source strings as data, so an
+outer validation success alone does not validate their contents.
+
+Each session allows 64 exchanges and 256 ordinary tool calls, and bounds values
+to 32 KiB. Each evaluator also retains the existing compute and JSON-operation
+limits. Session IDs identify the one conversation within this invocation; they
+cannot reconnect independent workflows to each other. No task-specific prompts
+or bookstore logic are included in the tool implementation.
+
+### Exchanges and conversational repair
+
+`ask` and `present_choices` return `{action: "accept", content, exchange}` on
+acceptance. Decline and cancel have no exchange. The JSON projection is
+`{messages: [...]}`: the existing SDK assistant tool-call and tool-result pair,
+with a runtime-owned, replay-stable call ID. Documents and UI context are not
+copied into those messages. Keep exchanges in a local array with `JsonAppend`;
+pass that array to `sample` as `exchanges`. Each exchange should occur once.
+
+`sample` accepts `prompt`, optional `exchanges`, selected JSON `context`, and
+optional `schema` (a bounded JSON Schema vocabulary advertised in its tool
+contract). Native sampling uses this adapter. The adapter
+validates history, flattens the messages, and appends the current prompt. Nothing
+implicitly attaches the chat transcript or documents.
+
+- Text success: `{status: "ok", text, exchange}`.
+- Structured success: `{status: "ok", text, parsed, exchange}`. The schema is
+  converted to Zod, supplied to the SDK's `sampleSchema`, and validated locally.
+- Structured response validation failure: `{status: "invalid", text: "",
+parseError: {message}}`. No exchange is fabricated for this failure: the SDK
+  does not return the raw failed completion. Provider and cancellation errors
+  still propagate. Invalid/unsupported schema definitions fail before sampling.
+
+For example, this constructor DSL requests a typed interpretation of an accepted
+reply. This is an illustrative composition; live authoring observations are
+recorded below.
+
+```js
+Let(
+    "reply",
+    Eval("ask", { message: "What name should I use?" }),
+    If(
+        Eq(Get(Ref("reply"), "action"), "accept"),
+        Eval("sample", {
+            prompt: "Interpret the reply. If the intended name is unclear, return clarify and a question.",
+            exchanges: Construct([Get(Ref("reply"), "exchange")]),
+            schema: {
+                type: "object",
+                properties: {
+                    kind: { type: "string", enum: ["answer", "clarify"] },
+                    value: { type: "string" },
+                },
+                required: ["kind", "value"],
+                additionalProperties: false,
+            },
+        }),
+        Construct({ stopped: Get(Ref("reply"), "action") }),
+    ),
+);
+```
+
+An authored repair loop keeps literal exchanges separate from current accepted
+facts: elicit, append the exchange, interpret against current state, validate the
+proposal, then apply or clarify. Schema validation establishes structure; program
+logic must validate target IDs and task constraints. A correction changes the
+current fact and recomputes its dependent values, preserving earlier exchanges.
+Document edits use `expectedRevision`; local state can instead travel through
+recursive function parameters. Bound retry loops, retain state when sampling is
+invalid, and avoid automatically repeating external effects. These are composing
+instructions, not a task-specific interpreter or an automatic rollback facility.
+
+### Exchange authoring helpers
+
+`Ask` accepts a conversational presentation as well as the question:
+
+```text
+Ask({
+  title: "Weekend plans",
+  message: "What kind of afternoon would you like?",
+  detail: "We can adjust the plan as we go.",
+  placeholder: "Tell me what sounds good…",
+  suggestions: ["Something relaxed", "An outdoor adventure", "A bit of both"]
+})
+```
+
+Only `message` is required. Suggestions fill an editable draft; they never submit
+automatically or restrict the human's response. The plugin provides a multiline
+reply, a 4096-character limit, keyboard submission (Ctrl/Command+Enter), and
+separate decline/cancel actions under Other options. Blank replies are rejected
+by both the UI and response contract. Accepted text is preserved verbatim.
+Optional presentation fields are recorded in the elicitation context and included
+in its exchange. They are visible to the user: keep undisclosed state out of them.
+Completed cards use the same presentation after reconnect.
+
+The source adapter exposes `Ask(request)` and `Sample(request)` as ordinary
+registered effect calls. `OnAccepted(result, Fn([content, exchange], body),
+Fn([stop], body))` evaluates the result once and lazily selects acceptance or
+stopping. `OnParsed(result, Fn([value, exchange], body), Fn([error], body))` does
+the same for structured sample success or validation failure. Callback parameter
+names in actual DSL source are quoted strings. OnParsed requires a structured
+sample; text-only samples use their ordinary result envelope. Callbacks can also
+be `Ref("handler")` bound to a named function, so existing handlers compose
+without wrapper lambdas. Literal callback arities are checked before execution;
+named callbacks use ordinary function-call validation. Generated bindings avoid
+authored names.
+
+`ObjectSchema({field: StringSchema()})` produces a strict object schema with all
+fields required. `EnumSchema("answer", "clarify")`, `ArraySchema(itemSchema)`,
+`NumberSchema()`, `IntegerSchema()`, and `BooleanSchema()` are also available.
+These are static constructors, lowered before capability validation. Raw supported
+JSON Schema remains available for optional properties, bounds, and unions.
+
+All helpers lower to existing IR operations. They add no kernel keywords,
+scheduler, implicit state mutation, or implicit history. The model must still
+choose an interpretation step and author its state transitions. The generic
+authoring guidance describes the values produced by each capability: Ask obtains
+a reply, Classify selects a label, Sample generates text or typed data, and pure
+expressions compute exact results. The author chooses the composition. Literal
+exchanges and current accepted state remain separate.
+
+The chat UI sends a short task-independent `systemPrompt` through the host's
+existing request control (`src/chat/authoring.ts`). It frames capability selection
+around the value needed by the next step and the information each result can carry.
+Direct API clients supply their own policy. Tool reference text retains callable parameter/result schemas, but omits
+internal elicitation/UI schemas that Tisyn cannot directly invoke.
+
+Structured sampling inherits thinking. With reasoning enabled, the Pi adapter
+uses its reasoning-aware stream and offers the synthetic schema tool with automatic
+selection, plus a schema-return instruction. It validates the returned value;
+selection is not guaranteed and an invalid result remains a repairable failure.
+With thinking off, the existing forced schema-tool path remains available.
+
+Exact constraints should be checked by deterministic authored functions before
+acting on a sampled proposal. A failed check can feed a bounded repair attempt.
+These are authoring recommendations, not automatic proof or repair by the host.
+
+### Live authoring observations (2026-10-13)
+
+With opencode Haiku at medium authoring effort, the generic UI policy and exchange
+helpers produced a shopping-list workflow from an ordinary human request. In one
+complete browser run it added two items, corrected a quantity, removed an item,
+added another, and clarified an ambiguous quantity change without changing state.
+Reloading while clarification was pending preserved the question; answering it
+resumed the workflow and `done` returned the corrected list (one carton of milk,
+six bananas). These are observations from an exploratory run, not a success rate.
+
+A profile-collection run still stored a correction literally in the current field,
+despite using Ask/OnAccepted. The outer model noticed the error after completion,
+but the workflow itself did not repair it. Helper availability and guidance do
+not guarantee that an author chooses structured interpretation. The next useful
+composition is a small reusable human-turn interpreter with explicit current
+state, relevant exchanges, a response schema, and accepted/clarify/stop outcomes.
+That higher-level helper is not implemented here.
+
+The live loop also found two adapter problems: computed Sample requests were
+unnecessarily rejected by the source helper, and structured sampling inherited
+thinking incompatible with Pi's forced schema tool. Both are fixed with focused
+regressions. No task-specific system prompt was added.
+
+A separate 20 Questions run authored a recursive loop with an explicit 20-turn
+bound and forwarded elicitation exchanges to each structured sample. It asked
+19 questions and guessed on turn 20. The guess (washing machine) was wrong; the
+fixed secret was cello. Its guess contradicted an earlier no-electricity answer.
+This distinguishes a working interaction loop from good inference. Its exhausted
+branch also discarded local history, identifying a second useful composition:
+a bounded conversation loop whose terminal outcomes retain accumulated state.
+
+After that terminal result, the outer author started an unsolicited second game.
+Declining it ended the interaction at the outer tool-iteration limit. A terminal
+conversation result should preserve state and clearly distinguish finished work
+from an invitation to reauthor or restart; this remains an authoring limitation.
+
+### Bulls and Cows with repeated digits (2026-10-13)
+
+A live browser run kept `4331` private and asked Haiku to play with repeated digits
+allowed. The initial program accepted feedback but proposed guesses contradicting
+earlier scores. We cancelled it after three replies.
+
+After adding generic guidance to validate proposals deterministically, a fresh
+program authored duplicate-aware scoring and checked candidates against every
+accepted score. It accepted `1234` and `1345`, then rejected three invalid sampled
+proposals and returned the accumulated history. An ordinary “Yes, keep going from
+the history” continuation authored text sampling with thinking followed by
+structured extraction and the same deterministic checks. It guessed `1403`,
+`6314`, then `4331`; we confirmed four bulls and it finished without restarting.
+All five guesses in this run were independently checked against the prior scores.
+No secret or game-specific system prompt was supplied to the model.
+
+This is one exploratory success across two programs, not a consistency estimate.
+Syntax repairs were still needed. The program also eagerly bound its next proposal
+before checking the winning score, causing unnecessary sampling after completion.
+Generic guidance now calls out terminal checks before effectful `LetMany` bindings;
+that final guidance has not yet been validated in another live game. A reusable
+proposal/validation/repair composition should carry rejected values and check
+failures forward rather than resampling the same request unchanged.
+
+The run also exercised long-thread hydration. The UI now exposes the client's
+existing history paging and suppresses empty-state examples while a conversation
+is blocked or has older activity. Loading earlier activity recovered the transcript.
+Transient missing/stale cards and ordering during hydration remain an observation
+to investigate; the paging control alone does not establish a runtime fix.
+Local sources, score audit, and screenshot: `.artifacts/bulls-4331/`.
+
+### Outer iterations and program diagrams
+
+The chat renders existing tool and activity states as an ownership tree. Active
+descendants appear with their tool path; nested message containers group output
+without inventing another agent identity. Completed or failed tools stop activity
+traversal, and opaque activities are not expanded. A pending elicitation is labeled
+as waiting for input (or submitting/failed locally). A parked authority without a
+visible pending interaction is labeled as waiting for the workflow to resume.
+Neither parked state nor nesting proves that a human response or another agent is
+involved. The compact current-activity view uses the latest assistant message;
+the full transcript retains the other roots. This UI adds no lifecycle events or
+reasoning stream to the sampling service.
+
+Both local and Cloudflare compositions set `maxToolIterations: null`. This disables
+the outer authoring-round cap; each delegated Tisyn invocation can already contain
+many samples, elicitation replies, parks, and resumes without incrementing that
+outer counter. Other applications retain the default limit. Explicit cancellation
+and the kernel's per-activation computation bounds remain available. The limit is
+part of a turn's recorded input, so this configuration applies to newly admitted
+turns rather than rewriting journal history.
+
+Program previews wait for complete tool input before parsing. The native program
+map preserves high-level constructs and keeps named function bodies in separate
+views. Large programs produce a marked, bounded outline with full source retained.
+Invalid source shows a diagnostic without blocking tool interaction. The map uses
+ordinary React and CSS, so rendering no longer depends on Mermaid or SVG layout.
+
+## Recorded randomness
+
+`Random({"min": 0, "max": 2})` (or `Eval("random", {"min": 0, "max": 2})`)
+is a native Tisyn host effect returning a uniform integer directly. Both bounds
+are inclusive signed 32-bit integers and `min` must not exceed `max`. The effect
+uses Web Crypto with rejection sampling to avoid modulo bias and works in Node
+and Cloudflare. It is available without enabling model sampling.
+
+```text
+Random({"choices": ["red", "green", "blue"]})
+```
+
+The `choices` form returns the selected string label directly, with equal
+probability for each label. Supply 1–64 distinct, nonempty strings of at most
+200 characters each. Supply either `choices` or `min`/`max`, never both. The
+selected label itself is recorded; the request identity includes choice order.
+
+Each executed draw passes through Sweatpants `context.record`; the accepted
+value is journaled before execution continues. Recovery returns that recorded
+value without drawing again. Separate calls (including loop iterations) create
+separate records. A draw lost before journal acceptance can be retried; an
+accepted value never changes. This is deterministic replay, not a user-seeded
+PRNG or a guarantee that separate program invocations produce identical values.
+Validation-only calls do not draw. The canvas identifies Random as a built-in,
+and the activity stream uses the same start/completion events as other effects.

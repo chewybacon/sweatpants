@@ -17,7 +17,7 @@ export function* prepareChatTools(
   body: ChatRequestBody,
   sessionId: string,
   requestedConversationId: string,
-  maxToolIterations: number,
+  maxToolIterations: number | null,
 ) {
   const log = yield* useLogger("handler:durable");
   const inventoryEntries = yield* ToolInventoryApi.list();

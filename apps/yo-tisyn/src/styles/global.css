@@ -1,3 +1,5 @@
+@import "@xyflow/react/dist/style.css";
+
 *,
 *::before,
 *::after {
@@ -373,7 +375,25 @@ summary:hover {
     margin-top: 12px;
     padding: 12px;
     border-radius: 10px;
-    background: #e0def4;
+    background: #191724;
+}
+
+/* Fit the overview; expanded mode scrolls at the diagram's native width. */
+.program-diagram svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 560px;
+}
+
+.program-diagram.expanded {
+    max-height: 75vh;
+}
+
+.program-diagram.expanded svg {
+    width: var(--diagram-width);
+    max-width: none !important;
+    max-height: none;
 }
 
 .diagram-toggle {
@@ -429,3 +449,253 @@ summary:hover {
     gap: 16px;
     flex-wrap: wrap;
 }
+
+.document-content {
+    max-height: 24rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.document-choices-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+    gap: 0.5rem;
+}
+.document-choices-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Unavailable cells still carry readable spatial information. */
+.document-choices-grid button:disabled {
+    opacity: 1;
+    cursor: default;
+}
+
+.ask-card {
+    border-color: #6e6a86;
+    background: linear-gradient(140deg, #29253c, #211e30);
+    min-width: 0;
+}
+.ask-pending {
+    border-left: 3px solid #ebbcba;
+}
+.ask-settled {
+    border-color: #403d52;
+    background: #211e30;
+}
+.ask-title {
+    color: #c4a7e7;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.ask-question {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.ask-detail {
+    margin: 0;
+    color: #b8b4ce;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.ask-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ask-suggestions button {
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+}
+.ask-hint {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: #b8b4ce;
+    font-size: 0.72rem;
+}
+.ask-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.ask-other-actions summary {
+    cursor: pointer;
+    color: #b8b4ce;
+    padding: 10px 0;
+    font-size: 0.8rem;
+}
+.ask-settled .reply-outcome blockquote {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.workflow-activity {
+    margin: 20px 0 12px;
+    padding: 12px 16px;
+    border-left: 2px solid #9ccfd8;
+    background: #211e30;
+    border-radius: 0 8px 8px 0;
+}
+.workflow-activity p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #e0def4;
+}
+.workflow-activity ul {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+}
+.workflow-activity li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.8rem;
+    margin-top: 6px;
+}
+.activity-path {
+    color: #9ccfd8;
+    overflow-wrap: anywhere;
+}
+.nested-activity {
+    margin-top: 12px;
+    border-left: 2px solid #6e6a86;
+    padding: 8px 0 8px 12px;
+}
+
+/* Program canvas: Rose Pine surfaces with semantic tool and control accents. */
+.program-canvas {
+    --flow-base: #191724;
+    --flow-surface: #26233a;
+    --flow-text: #e0def4;
+    --flow-muted: #a6a0bb;
+    --flow-edge: #817c98;
+    --flow-grid: #393449;
+    --flow-builtin: #9ccfd8;
+    --flow-authored: #c4a7e7;
+    --flow-control: #f6c177;
+    --flow-neutral: #908caa;
+    position: relative;
+    height: clamp(420px, 70vh, 800px);
+    width: 100%;
+    margin: 12px 0;
+    border: 1px solid #403d52;
+    border-radius: 14px;
+    overflow: hidden;
+    color: var(--flow-text);
+}
+.program-canvas .react-flow {
+    --xy-background-color: var(--flow-base);
+    --xy-edge-stroke: var(--flow-edge);
+    --xy-controls-button-background-color: var(--flow-surface);
+    --xy-controls-button-background-color-hover: #403d52;
+    --xy-controls-button-color: var(--flow-text);
+    --xy-controls-button-border-color: #403d52;
+}
+.canvas-tone-builtin { --node-accent: var(--flow-builtin); }
+.canvas-tone-authored { --node-accent: var(--flow-authored); }
+.canvas-tone-branch { --node-accent: var(--flow-control); }
+.canvas-tone-failure { --node-accent: #eb6f92; }
+.canvas-tone-entry, .canvas-tone-exit, .canvas-tone-call, .canvas-tone-yield {
+    --node-accent: var(--flow-neutral);
+}
+.canvas-legend {
+    position: absolute;
+    z-index: 5;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 7px 10px;
+    border: 1px solid #403d52;
+    border-radius: 8px;
+    background: var(--flow-base);
+    pointer-events: none;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.canvas-legend > span { display: flex; align-items: center; gap: 6px; color: var(--flow-muted); }
+.canvas-legend i { width: 7px; height: 7px; border-radius: 2px; background: var(--node-accent); }
+.canvas-card {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--node-accent) 55%, var(--flow-surface));
+    border-left: 3px solid var(--node-accent);
+    border-radius: 12px;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--node-accent) 10%, var(--flow-surface)), var(--flow-surface));
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+    box-shadow: 0 3px 10px #00000024;
+}
+.canvas-card-heading { display: flex; align-items: center; gap: 7px; flex-shrink: 0; height: 22px; color: var(--node-accent); }
+.canvas-symbol { display: flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 5px; background: color-mix(in srgb, var(--node-accent) 13%, transparent); }
+.canvas-symbol svg { width: 15px; height: 15px; }
+.canvas-card small { font-size: 11px; font-weight: 650; line-height: 14px; }
+.canvas-boundary { margin-left: auto; color: var(--flow-muted); font-size: 9px; letter-spacing: .08em; }
+.canvas-card strong {
+    flex-shrink: 0;
+    color: var(--flow-text);
+    font-size: 15px;
+    line-height: 1.25;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.canvas-caption { font-size: 11px; line-height: 1.4; color: var(--flow-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.canvas-card:not(.canvas-yield) { padding: 10px 12px; gap: 7px; }
+.canvas-card:not(.canvas-yield) > .canvas-caption { display: none; }
+.canvas-entry, .canvas-exit { border-left-width: 1px; border-radius: 20px; background: var(--flow-surface); box-shadow: none; }
+.canvas-call { border-style: dashed; }
+.program-canvas .react-flow__handle { width: 6px; height: 6px; border: 2px solid var(--flow-base); background: var(--node-accent); }
+.program-canvas .react-flow__controls { overflow: hidden; border: 1px solid #403d52; border-radius: 8px; box-shadow: 0 3px 10px #00000024; }
+
+/* Compact terminals leave space for the operations and their return lanes. */
+.canvas-entry, .canvas-exit { flex-direction: row; align-items: center; justify-content: center; gap: 8px; }
+.canvas-entry .canvas-card-heading, .canvas-exit .canvas-card-heading { height: 20px; }
+.canvas-entry small, .canvas-exit small { display: none; }
+.canvas-entry strong, .canvas-exit strong { font-size: 13px; }
+.program-canvas .react-flow__handle { opacity: 0; }
+
+.canvas-loop-region {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #f6c17748;
+    border-radius: 20px;
+    background: #f6c17706;
+    pointer-events: none;
+}
+.canvas-loop-region > span {
+    position: absolute;
+    top: 12px;
+    left: 18px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #f6c177;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+.canvas-loop-region b { font-size: 18px; font-weight: 400; }

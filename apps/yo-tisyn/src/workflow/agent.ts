@@ -1,20 +1,29 @@
+import { createSessionTool } from "./session.ts";
+import {
+  documentCreate,
+  documentRead,
+  documentEdit,
+  presentChoices,
+  displayDocument,
+} from "./tools/documents.ts";
 import { decisionBinding } from "./decisions.ts";
 import type { ToolExposurePolicy } from "@sweatpants/chat-core";
-import { createTisynTool } from "./tisyn.ts";
+import { createTisynTool, type BoundTool } from "./tisyn.ts";
 import { echo } from "./tools/echo.ts";
 import { ask } from "./tools/ask.ts";
-import { sample } from "./tools/sample.ts";
-
-export const samplingMode = process.env.PUBLIC_TISYN_SAMPLING ?? "child";
-if (samplingMode !== "child" && samplingMode !== "direct") {
-  throw new Error("PUBLIC_TISYN_SAMPLING must be child or direct");
-}
-export const boundTools = samplingMode === "direct" ? [echo, ask] : [echo, ask, sample];
-const builder = createTisynTool(boundTools);
-export const tisyn = (samplingMode === "direct" ? builder.samples() : builder)
-  .decisions(decisionBinding)
-  .build();
-export const programs = [tisyn, ...boundTools];
+const primitives: readonly BoundTool[] = [
+  echo,
+  ask,
+  documentCreate,
+  documentRead,
+  documentEdit,
+  presentChoices,
+  displayDocument,
+];
+export const session = createSessionTool(primitives);
+export const boundTools: readonly BoundTool[] = [...primitives, session];
+export const tisyn = createTisynTool(boundTools).samples().decisions(decisionBinding).build();
+export const programs: readonly BoundTool[] = [tisyn, ...boundTools];
 export const tisynExposure: ToolExposurePolicy = {
   *filter({ entries }) {
     if (!entries) {

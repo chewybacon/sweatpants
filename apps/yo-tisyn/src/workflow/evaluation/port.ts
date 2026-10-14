@@ -1,10 +1,15 @@
+import { JSON_VALUE_OPERATION } from "../json-values.ts";
 import { resource, type Operation } from "effection";
 import { definePort } from "@sweatpants/foundation/port";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { TisynExpr } from "@tisyn/ir";
 import type { Json } from "@sweatpants/foundation";
 
-export const EVALUATION_LIMITS = Object.freeze({ stepMilliseconds: 250, toolCalls: 256 });
+export const EVALUATION_LIMITS = Object.freeze({
+  stepMilliseconds: 250,
+  toolCalls: 256,
+  valueOperations: 4096,
+});
 
 export type EvaluationStep =
   | { done: false; value: { id: string; data: Json } }
@@ -48,6 +53,7 @@ export function createEvaluation(ir: TisynExpr): Operation<Evaluation> {
     const handle = yield* TisynEvaluationPort.api.operations.open(ir);
     let terminal = false;
     let toolCalls = 0;
+    let valueOperations = 0;
     try {
       yield* provide({
         *next(input) {
@@ -56,8 +62,16 @@ export function createEvaluation(ir: TisynExpr): Operation<Evaluation> {
           }
           try {
             const step = yield* TisynEvaluationPort.api.operations.advance(handle, input);
-            if (!step.done && ++toolCalls > EVALUATION_LIMITS.toolCalls) {
-              throw new Error(`Tisyn program exceeded ${EVALUATION_LIMITS.toolCalls} tool calls`);
+            if (!step.done) {
+              if (step.value.id === JSON_VALUE_OPERATION) {
+                if (++valueOperations > EVALUATION_LIMITS.valueOperations) {
+                  throw new Error(
+                    `Tisyn program exceeded ${EVALUATION_LIMITS.valueOperations} JSON operations`,
+                  );
+                }
+              } else if (++toolCalls > EVALUATION_LIMITS.toolCalls) {
+                throw new Error(`Tisyn program exceeded ${EVALUATION_LIMITS.toolCalls} tool calls`);
+              }
             }
             terminal = step.done;
             return step;

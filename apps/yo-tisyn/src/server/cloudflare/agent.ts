@@ -2,8 +2,8 @@ import { decisionBinding } from "../../workflow/decisions.ts";
 import { sha256 } from "@sweatpants/foundation";
 import kernelBundle from "../../workflow/evaluation/generated/kernel-source.json" with { type: "json" };
 import packageJson from "../../../package.json" with { type: "json" };
-import { boundTools, samplingMode } from "../../workflow/agent.ts";
-import { createTisynTool } from "../../workflow/tisyn.ts";
+import { boundTools } from "../../workflow/agent.ts";
+import { createTisynTool, type BoundTool } from "../../workflow/tisyn.ts";
 import { QUICKJS_LIMITS } from "../../workflow/evaluation/quickjs.ts";
 
 const builder = createTisynTool(boundTools, {
@@ -11,7 +11,5 @@ const builder = createTisynTool(boundTools, {
   limits: QUICKJS_LIMITS,
   description: `Limits: ${QUICKJS_LIMITS.toolCalls} tool calls per program; ${QUICKJS_LIMITS.interruptChecks} QuickJS interrupt checks per synchronous advance; 32 MiB VM memory; ${QUICKJS_LIMITS.stackBytes / 1024} KiB VM stack. Human wait time is excluded. Limits fail explicitly, not as successful completion. This is not a wall-clock deadline.`,
 });
-export const tisyn = (samplingMode === "direct" ? builder.samples() : builder)
-  .decisions(decisionBinding)
-  .build();
-export const programs = [tisyn, ...boundTools];
+export const tisyn = builder.samples().decisions(decisionBinding).build();
+export const programs: readonly BoundTool[] = [tisyn, ...boundTools];

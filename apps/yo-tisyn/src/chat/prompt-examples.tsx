@@ -7,9 +7,9 @@ const examples = [
       "Help me collect RSVPs for Alex, Sam, and Jo. Ask me about one person at a time. If they're coming, ask what they'd like to eat; if not, move on. At the end, give me a guest list and the meal orders.",
   },
   {
-    title: "Quiz me on capitals",
+    title: "Play Bulls and Cows",
     prompt:
-      "Quiz me on world capitals, one question at a time. Let's do three questions. Tell me whether each answer is right, explain any mistakes, and give me my score at the end.",
+      "Let's play Bulls and Cows. I'm thinking of a four-digit number with no repeated digits and no leading zero. You guess; I'll tell you the bulls and cows. Keep track of our guesses until you solve it.",
   },
   {
     title: "Name my bookstore",
@@ -27,7 +27,7 @@ export function PromptExamples({ onSelect }: { onSelect: (prompt: string) => voi
             Choose a starting point
           </Heading>
           <p className="section-copy">
-            Try a quiz, plan something together, or explore an idea. Choose an example and make it
+            Play a game, plan something together, or explore an idea. Choose an example and make it
             your own.
           </p>
         </div>

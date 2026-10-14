@@ -7,7 +7,7 @@ import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai"
 import { createTisynModels } from "./cloudflare/model-catalog.ts";
 import { createCloudflareTisynApp, type CloudflareBindings } from "./cloudflare/application.ts";
 import { createConversationRouter, type ConversationNamespace } from "./cloudflare/routing.ts";
-import { samplingMode } from "../workflow/agent.ts";
+import { reasoningLevel } from "./model-settings.ts";
 
 export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
 export { ToolExecutors } from "./cloudflare/tool-executors.ts";
@@ -18,6 +18,7 @@ interface Env extends CloudflareBindings {
   MODEL_CREDENTIALS: string;
   DEFAULT_CHAT_MODEL_PROVIDER: string;
   DEFAULT_CHAT_MODEL_ID: string;
+  DEFAULT_CHAT_MODEL_THINKING?: string;
 }
 
 export class Conversations extends DurableObject<Env> {
@@ -38,7 +39,7 @@ export class Conversations extends DurableObject<Env> {
           provider: this.env.DEFAULT_CHAT_MODEL_PROVIDER,
           model: this.env.DEFAULT_CHAT_MODEL_ID,
           models,
-          streamOptions: { thinking: "low" },
+          streamOptions: { thinking: reasoningLevel(this.env.DEFAULT_CHAT_MODEL_THINKING) },
         }),
         createPiAiDecisionProvider({ models }),
       );
@@ -52,12 +53,16 @@ export default {
     if (path === "/health") {
       return Response.json({
         app: "yo-tisyn",
-        model: { provider: env.DEFAULT_CHAT_MODEL_PROVIDER, id: env.DEFAULT_CHAT_MODEL_ID },
+        model: {
+          provider: env.DEFAULT_CHAT_MODEL_PROVIDER,
+          id: env.DEFAULT_CHAT_MODEL_ID,
+          thinking: reasoningLevel(env.DEFAULT_CHAT_MODEL_THINKING),
+        },
         host: "conversation-do",
         tools: "executor-do",
         evaluation: "quickjs-in-tool-executor-do",
         kernel: kernelBundle.provenance,
-        sampling: samplingMode,
+        sampling: "native",
         site: "astro",
       });
     }

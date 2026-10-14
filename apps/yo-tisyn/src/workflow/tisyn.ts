@@ -1,3 +1,5 @@
+import { randomContract, randomValue, randomParameters } from "./random.ts";
+import { JSON_VALUE_OPERATION, evaluateJsonValue } from "./json-values.ts";
 import kernelBundle from "./evaluation/generated/kernel-source.json" with { type: "json" };
 import { decisionRequestSchema, type DecisionBinding } from "@sweatpants/model-decision";
 import { decisionContract, type DecisionContext } from "./decisions.ts";
@@ -17,7 +19,7 @@ import {
   samplingContract,
   samplingIdentity,
   samplingParameters,
-  sampleText,
+  sampleCompletion,
   type SamplingContext,
 } from "./sampling.ts";
 
@@ -50,6 +52,7 @@ const structural = new Set([
   "while",
 ]);
 const reserved = new Set([
+  JSON_VALUE_OPERATION,
   "try",
   "concat-arrays",
   "merge-objects",
@@ -62,6 +65,7 @@ const reserved = new Set([
   "provide",
   "timebox",
 ]);
+const MAX_PROGRAM_VALUES = 4000;
 const unsafeKeys = new Set(["__proto__", "prototype", "constructor"]);
 /** Fail closed before any tool can run, including effects inside unselected branches. */
 export function parseProgram(
@@ -69,9 +73,15 @@ export function parseProgram(
   tools: readonly BoundTool[],
   sampling = false,
   decisions = false,
+  operations: readonly string[] = [],
 ): TisynExpr {
   const ir = parseTisynSource(source);
-  const names = new Set(tools.map((tool) => tool.name));
+  const names = new Set([
+    ...tools.map((tool) => tool.name),
+    JSON_VALUE_OPERATION,
+    "random",
+    ...operations,
+  ]);
   if (sampling) {
     names.add("sample");
   }
@@ -82,8 +92,8 @@ export function parseProgram(
   let nodes = 0;
   while (pending.length) {
     const value = pending.pop();
-    if (++nodes > 1000) {
-      throw new Error("Tisyn program exceeds 1000 values");
+    if (++nodes > MAX_PROGRAM_VALUES) {
+      throw new Error(`Tisyn program exceeds ${MAX_PROGRAM_VALUES} values`);
     }
     if (value === null || typeof value !== "object") {
       continue;
@@ -147,20 +157,27 @@ export function* executeProgram(
   let callIndex = 0;
   while (!next.done) {
     const descriptor = next.value;
+    if (descriptor.id === JSON_VALUE_OPERATION) {
+      next = yield* kernel.next(evaluateJsonValue(descriptor.data));
+      continue;
+    }
     const tool = registry.get(descriptor.id);
     if (
       !tool &&
       !(sampling && descriptor.id === "sample") &&
-      !(decisions && descriptor.id === "decision")
+      !(decisions && descriptor.id === "decision") &&
+      descriptor.id !== "random"
     ) {
       throw new Error(`No Tisyn tool binding: ${descriptor.id}`);
     }
     const input = validateAuthoredSchema<Json>(
       tool
         ? tool.parameters
-        : descriptor.id === "decision"
-          ? decisionRequestSchema
-          : samplingParameters,
+        : descriptor.id === "random"
+          ? randomParameters
+          : descriptor.id === "decision"
+            ? decisionRequestSchema
+            : samplingParameters,
       descriptor.data,
     );
     if (input.status !== "ok") {
@@ -194,9 +211,11 @@ export function* executeProgram(
             },
           }),
         )
-      : descriptor.id === "decision"
-        ? yield* decisions!.decision(decisionRequestSchema.parse(input.value))
-        : yield* sampleText(samplingParameters.parse(input.value), sampling!);
+      : descriptor.id === "random"
+        ? yield* randomValue(randomParameters.parse(input.value), context)
+        : descriptor.id === "decision"
+          ? yield* decisions!.decision(decisionRequestSchema.parse(input.value))
+          : yield* sampleCompletion(samplingParameters.parse(input.value), sampling!, callId);
     yield* context.emit("tool_completed", {
       callId,
       tool: descriptor.id,
@@ -249,6 +268,7 @@ function buildTisynTool(
   decisions?: DecisionBinding,
 ) {
   const names = new Set<string>([
+    "random",
     ...(sampling ? ["sample"] : []),
     ...(decisions ? ["decision"] : []),
   ]);
@@ -264,16 +284,8 @@ function buildTisynTool(
     description: tool.description,
     parameters: tool.artifacts.parameters.inputProjection,
     output: tool.artifacts.output?.outputProjection ?? null,
-    elicits: Object.fromEntries(
-      Object.entries(tool.artifacts.elicits).map(([key, value]) => [
-        key,
-        {
-          response: value.response.inputProjection,
-          context: value.context?.inputProjection ?? null,
-        },
-      ]),
-    ),
   }));
+  contracts.push(randomContract);
   if (sampling) {
     contracts.push(samplingContract);
   }
@@ -282,15 +294,30 @@ function buildTisynTool(
   }
   const description = [
     "Execute a small Tisyn workflow. This is the only tool you can call directly.",
-    "Before executing a program, call this tool with validateOnly: true. This checks syntax and admitted operations without running any effects. If invalid, correct the diagnostic and validate again (at most three repairs). After validation succeeds, call with the identical program and validateOnly: false to execute. A valid check does not prove runtime logic correct.",
+    "Before executing a program, call this tool with validateOnly: true. This checks syntax and admitted operations without running any effects. If invalid, correct the diagnostic and validate again (at most three repairs). After repeated syntax errors, simplify the program into small Fn helpers with LetMany instead of repeatedly editing a deeply nested expression. After validation succeeds, call with the identical program and validateOnly: false to execute. A valid check does not prove runtime logic correct.",
     "For an interactive task, author the complete interaction as one workflow, including how it continues after each reply and how it ends. Do not implement only the first question and leave the remaining interaction to outer chat turns.",
-    "When the next action requires reasoning about earlier replies, call sample inside the workflow with the task and accumulated context. Use its result to choose the next action or construct the next prompt. Choose the workflow's state and stopping conditions from the user's request.",
+    'Use Ask({message: ...}) and Sample({prompt: ..., exchanges: ..., context: ..., schema: ...}) to spell these capabilities. They are shorthand for the corresponding admitted effects. Use OnAccepted(Ask({...}), Fn(["content","exchange"], body), Fn(["stop"], body)) and OnParsed(Sample({...schema...}), Fn(["value","exchange"], body), Fn(["error"], body)). Callbacks may also be Ref("name") bound to a Fn with the same parameters. Each evaluates its result once and runs only the matching callback. OnAccepted stop contains action; OnParsed error contains message. OnParsed requires structured sampling with a schema. Use normal Let/Get for text-only sampling.',
+    ...(decisions
+      ? [
+          'Classify({"input": value, "instructions": "what to classify", "choices": {"label": "meaning", "other": "other meaning"}}) performs one decision and returns its answer directly: {"type":"choice","choice":"label","confidence":1,"probabilities":[{"value":"label","probability":1}]} or {"type":"refusal"}. Read Get(result,"type") and Get(result,"choice"); there is no answer field on a Classify result. Raw Eval("decision", request) instead returns an envelope with an answer field. Labels are distinct identifiers. Branch on answer.type first: only "choice" has choice, probabilities and confidence; "refusal" requires a separate path.',
+          'Switch(value, {"label": branch, "other": branch}, fallback) evaluates value once and runs only the selected branch. All branches are validated. Branches can call Fn values. Classify supplies a label, not extracted fields or generated prose. Its input may include explicit state and history. Labels and any uncertainty threshold belong to the task. Switch also works on values computed without a model call.',
+          'Choice composition: Let("result",Classify({"input":"That sounds good","instructions":"Is the speaker agreeing?","choices":{"agree":"agreement","disagree":"disagreement","unclear":"neither is clear"}}),If(Eq(Get(Ref("result"),"type"),"choice"),Switch(Get(Ref("result"),"choice"),{"agree":true,"disagree":false},null),null)).',
+        ]
+      : []),
+    'Schema constructors are pure static JSON Schema: ObjectSchema({field: StringSchema(), count: IntegerSchema(), kind: EnumSchema("answer","revise","clarify")}), ArraySchema(itemSchema), NumberSchema(), BooleanSchema(). ObjectSchema requires every declared field and forbids additional fields. EnumSchema takes scalar literals. Pass these directly in Sample.schema; use raw supported JSON Schema for bounds, optional fields, or anyOf.',
+    'Text generation: Let("draft",Sample({"prompt":"Write a short greeting."}),Get(Ref("draft"),"text")). Typed generation: OnParsed(Sample({"prompt":"Extract a count from the supplied context.","context":"three items","schema":ObjectSchema({"count":IntegerSchema()})}),Fn(["value","exchange"],Ref("value")),Fn(["error"],Construct({"status":"invalid","error":Ref("error")}))). These are independent examples; compose only the effects a task needs.',
+    "Ask obtains human input; it does not interpret it. OnAccepted dispatches accepted replies and stops. A reply may answer the pending question, revise earlier facts, or ask something else. Keep literal exchanges separately from accepted state. Interpretation can produce a named choice, extracted data, or generated text, according to what the next step needs.",
+    'ask and present_choices return exchange.messages on accept. sample returns status "ok" with exchange.messages, and parsed when a schema was supplied; status "invalid" has parseError and no exchange. Accumulate completed exchanges with JsonAppend and pass them explicitly to sample as exchanges. Do not append the same exchange twice. History is conversational evidence, not automatically current state. Document contents are not included in exchanges.',
+    "A state change is an explicit value computed from prior state and new input. Validate domain constraints before applying a proposed change. Clarification leaves unresolved facts unchanged. Corrections preserve original exchanges and recompute dependent values; they do not automatically repeat external effects. A schema checks shape, not truth. Refusal, ambiguity, and validation failure need explicit outcomes; retries may be bounded by the task.",
     "The caller receives your program's final value, not the intermediate child-tool transcript. Return accumulated facts that explain what completed, useful results, and why execution stopped. Preserve completed work when a later interaction is declined or cancelled; a bare terminal string cannot distinguish an empty run from a productive one.",
     "After a workflow returns a terminal result, summarize it and end your turn. Do not restart a completed, declined, or cancelled interaction unless the user requests a new one.",
     'For every ask result, branch on Get(Ref("answer"), "action") before reading content: only "accept" has content.reply. On decline or cancel, return the accumulated state and that stop reason immediately.',
     "Account for successful completion as well as exhaustion of any limit. Include the latest reply in accumulated state before checking completion. Make the reply protocol clear to the user and handle that protocol in your program.",
     "Keep source readable with indentation and small named functions. Fn has exactly two arguments: the parameter array and one body expression. Let has exactly three: name, value, body. Use Seq to combine expressions into one body.",
     "The program is constructor DSL, NOT JavaScript. Use double-quoted strings.",
+    'Prefer LetMany([["name", expression], ["next", expression]], body) for sequential work. Each expression runs once, in order, and can use earlier bindings. The body returns the result. This is nested Let with a flat binding list; repeated names shadow earlier values. Put small named Fn helpers in this list and use another LetMany for each function body with multiple steps.',
+    'Map(array, Fn(["item","index"], body)) builds an array; Filter(array, Fn(["item","index"], predicate)) keeps matching items; Reduce(array, initial, Fn(["acc","item","index"], body)) folds left. Pass exactly two callback parameters for Map/Filter and three for Reduce. Indices start at zero. Callbacks run sequentially and may call tools. The array, initial value, and callback expressions each run once. Empty arrays invoke no callback. These are bounded loops over a fixed input, not parallel work.',
+    'Example: LetMany([["items",[2,4,6]],["total",Reduce(Ref("items"),0,Fn(["sum","item","index"],Add(Ref("sum"),Ref("item"))))]],Construct({"total":Ref("total"),"labels":Map(Ref("items"),Fn(["item","index"],JsonStringify(Ref("item"))))}))',
     'Eval("name", {"key": value}) calls a registered tool and returns its JSON result.',
     'Let("x", expression, body) binds a result. Ref("x") reads it. Get(expr, "key") reads an object field.',
     "Seq(a,b) runs in order and returns b. If(condition,then,else) chooses one branch.",
@@ -302,25 +329,15 @@ function buildTisynTool(
     'Fn(["parameter"], body) defines a function. Call(functionExpression, arg1, arg2, ...) calls it with exactly one argument per parameter; do not pack arguments into an array. Functions use the caller environment plus parameter bindings.',
     "A function bound by Let can call itself through Ref. Carry accumulated state as function parameters. Bindings are immutable; While(condition, [body]) does not mutate outer bindings.",
     'Recursion example: Let("countdown", Fn(["n"], If(Eq(Ref("n"),0),0,Call(Ref("countdown"),Sub(Ref("n"),1)))), Call(Ref("countdown"),3))',
-    `Interactive accumulation example (adapt the state and conditions to the task):
-Let("loop", Fn(["history"],
-  Let("answer", Eval("ask", {"message":"Next item?"}),
-    If(Eq(Get(Ref("answer"),"action"),"accept"),
-      Call(Ref("loop"), Concat(Ref("history"), "\\n", Get(Get(Ref("answer"),"content"),"reply"))),
-      Construct({"status":Get(Ref("answer"),"action"),"history":Ref("history")})))),
-  Call(Ref("loop"),""))`,
     "For repetition, write ONE program with Fn/Call recursion or While. Keep all rounds inside that invocation until its stop condition. Do not unroll rounds or return to the model between rounds.",
     "Inspect tool results according to their contracts. Carry any state needed by later calls as function parameters.",
-    "Sampling calls receive only the context you explicitly supply. You can construct their prompts from earlier tool results and read their returned text with Get.",
+    "Sampling receives only explicitly supplied context and exchanges. Use OnParsed to handle structured results; text-only Sample returns text.",
+    `Source is bounded to ${MAX_SOURCE_LENGTH} characters and the expanded program to ${MAX_PROGRAM_VALUES} JSON values.`,
     profile.description,
-    ...(decisions
-      ? [
-          'Classify({"input": value, "instructions": "what to classify", "choices": {"label": "meaning", "other": "other meaning"}}) performs one decision and returns its answer directly: {"type":"choice","choice":"label","confidence":1,"probabilities":[{"value":"label","probability":1}]} or {"type":"refusal"}. Read Get(result,"type") and Get(result,"choice"); there is no answer field on a Classify result. Raw Eval("decision", request) instead returns an envelope with an answer field. Labels are distinct identifiers. Branch on answer.type first: only "choice" has choice, probabilities and confidence; "refusal" requires a separate path.',
-          'Switch(value, {"label": branch, "other": branch}, fallback) evaluates value once and runs only the selected branch. All branches are validated. Branches can call Fn values. Use Classify for bounded semantic choices and sample for generated text. Keep arithmetic and exact limits in code. Choose uncertainty thresholds only when appropriate to the task.',
-        ]
-      : []),
     "No Try, concurrency, computed IR, arbitrary JS, imports, or undeclared operations.",
     "Use a single program to carry values across tool calls. Human replies are returned by ask, not invented by you.",
+    "Pure JSON operations: JsonGet(value,key) reads an object field or array cell using a computed key; JsonSet(value,key,replacement) returns an updated copy; JsonAppend(array,item) returns an array with one new item; JsonLength(arrayOrString), JsonKeys(object), JsonStringify(value). Indices must exist. No mutation or code evaluation. Carry the returned values in recursive function parameters. Use these to build collections, history, legal choices, and explicit sampling context. Values are bounded to 32 KiB, with at most 4096 JSON operations per program. These pure operations do not consume the separate tool-call budget.",
+    'Random({"min":0,"max":2}) returns a uniform integer directly, with inclusive signed 32-bit bounds. Each executed call draws once and records its result for deterministic replay. Random({"choices":["red","green","blue"]}) chooses uniformly among distinct string labels and returns the selected label directly. Supply choices or min/max, never both. Use Random for chance, Classify for interpreting meaning, and Sample for generating content. Bind a draw with Let when reusing it; another Random call is another draw.',
     "Registered tool contracts:",
     JSON.stringify(contracts),
   ].join("\n");
@@ -331,9 +348,15 @@ Let("loop", Fn(["history"],
       digest: sha256(
         canonicalJson({
           interpreter: profile.id,
-          authorValidation: 2,
+          authorValidation: 3,
+          maxProgramValues: MAX_PROGRAM_VALUES,
           decisionSyntax: 1,
-          macroSyntax: 1,
+          randomEffect: 2,
+          macroSyntax: 3,
+          jsonValues: 2,
+          collectionSyntax: 1,
+          exchangeSyntax: 2,
+          valueOperations: EVALUATION_LIMITS.valueOperations,
           decisions: decisions ?? null,
           sampling: sampling
             ? {

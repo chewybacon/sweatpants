@@ -44,3 +44,5 @@ export * from "./testing/program-driver-conformance.ts";
 export * from "./program-values.ts";
 
 export * from "./purity-scan.ts";
+
+export * from "./documents.ts";

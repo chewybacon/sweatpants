@@ -1,4 +1,9 @@
 import {
+  documentEffect,
+  documentElicitContextSchema,
+  type ElicitDocumentBindings,
+} from "./documents.ts";
+import {
   MODEL_DECISION_EFFECT,
   MODEL_DECISION_SCHEMA_ENTRIES,
   decisionBindingSchema,
@@ -77,17 +82,19 @@ import type {
   ToolCallSampleExchangeCompletion,
 } from "./types.ts";
 
-type JsonCompatible<T> = [T] extends [null | boolean | number | string | undefined]
+type JsonCompatible<T> = [T] extends [Json]
   ? true
-  : [T] extends [readonly (infer Item)[]]
-    ? JsonCompatible<Item>
-    : [T] extends [object]
-      ? false extends {
-          [Key in keyof T]-?: JsonCompatible<T[Key]>;
-        }[keyof T]
-        ? false
-        : true
-      : false;
+  : [T] extends [null | boolean | number | string | undefined]
+    ? true
+    : [T] extends [readonly (infer Item)[]]
+      ? JsonCompatible<Item>
+      : [T] extends [object]
+        ? false extends {
+            [Key in keyof T]-?: JsonCompatible<T[Key]>;
+          }[keyof T]
+          ? false
+          : true
+        : false;
 
 /**
  * Zod represents an optional object property as `property?: T | undefined`.
@@ -137,10 +144,10 @@ type DurableSamplingContext = {
   ): Operation<ParsedSampleExchangeCompletion<T> & { parsed: T }>;
 };
 
-type ElicitRequestFor<E> =
-  ExtractElicitContextInput<E> extends undefined
-    ? { message: string }
-    : { message: string; context: ExtractElicitContextInput<E> };
+type ElicitRequestFor<E> = (ExtractElicitContextInput<E> extends undefined
+  ? { message: string }
+  : { message: string; context: ExtractElicitContextInput<E> }) &
+  ElicitDocumentBindings<E>;
 
 /** Typed durable program context bound to declared effects and elicitations. */
 export type DurableProgramContextFor<
@@ -472,8 +479,12 @@ function builder(state: BuilderState): unknown {
         });
         catalog.push(response.entry);
         let context;
-        if (definition.context) {
-          context = toPortableSchema(definition.context, {
+        const contextSchema =
+          definition.documents && Object.keys(definition.documents).length > 0
+            ? documentElicitContextSchema(definition.context, definition.documents)
+            : definition.context;
+        if (contextSchema) {
+          context = toPortableSchema(contextSchema, {
             identity: `${identityPrefix}/elicits/${key}/context`,
             role: "elicit_context",
             version,
@@ -490,6 +501,13 @@ function builder(state: BuilderState): unknown {
       // Effect schema catalog entries travel with their authored definitions;
       // sampling is a pull kind and contributes only its wire validators.
       const declaredEffects: EffectMap = { ...state.effects };
+      if (
+        Object.values(normalizedElicits).some(
+          (entry) => Object.keys(entry.documents ?? {}).length > 0,
+        )
+      ) {
+        declaredEffects[documentEffect.name] = documentEffect;
+      }
       if (state.decisions) {
         if (Object.hasOwn(declaredEffects, MODEL_DECISION_EFFECT.name)) {
           throw new Error("Declare model.decision with .decisions()");
@@ -570,6 +588,7 @@ function builder(state: BuilderState): unknown {
             state.samples === true,
             state.extensions ?? {},
             state.decisions,
+            normalizedElicits,
           ),
         );
       const extensionIdentity = sortStrings(Object.keys(state.extensions ?? {})).map((alias) => {
@@ -648,6 +667,10 @@ function contextForDeclarations(
   sampling: boolean,
   extensions: DurableExtensionMap,
   decisions?: DecisionBinding,
+  authoredElicits: Record<
+    string,
+    ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>
+  > = {},
 ): DurableProgramContext {
   const clients = new Map<unknown, ReturnType<DurableExtensionMap[string]["createClient"]>>(
     Object.values(extensions).map((extension) => [extension, extension.createClient(context)]),
@@ -714,15 +737,21 @@ function contextForDeclarations(
           },
         }
       : {}),
-    elicit(
+    *elicit(
       key: string,
-      requestOrMessage: { message: string; context?: Json } | string,
+      requestOrMessage:
+        | {
+            message: string;
+            context?: Json;
+            documents?: Record<string, { id: string; sinceRevision?: number }>;
+          }
+        | string,
       response?: PortableSchemaDescriptor,
       rawContext?: Json,
     ) {
       // Low-level escape hatch: (key, message, descriptor, context).
       if (typeof requestOrMessage === "string") {
-        return context.pull(
+        return yield* context.pull(
           assertJson({
             kind: "elicit",
             key,
@@ -737,13 +766,52 @@ function contextForDeclarations(
       if (!declaration || !binding) {
         throw new Error(`Durable tool elicit "${key}" is not declared`);
       }
-      return context.pull(
+      const authored = authoredElicits[key];
+      let wireContext = requestOrMessage.context;
+      const slots = authored?.documents ?? {};
+      if (Object.keys(slots).length > 0) {
+        if (
+          sortStrings(Object.keys(requestOrMessage.documents ?? {})).join("\0") !==
+          sortStrings(Object.keys(slots)).join("\0")
+        ) {
+          throw new Error("Elicitation document slots do not match declaration");
+        }
+        if (authored?.context) {
+          const checked = validateAuthoredSchema(authored.context, requestOrMessage.context);
+          if (checked.status !== "ok") {
+            throw new Error("Invalid elicitation context");
+          }
+        }
+        const documents: Record<string, Json> = {};
+        for (const [slot, schema] of Object.entries(slots)) {
+          const ref = requestOrMessage.documents![slot]!;
+          const result = yield* context.effect(
+            documentEffect,
+            {
+              operation: "read",
+              document: { id: ref.id },
+              ...(ref.sinceRevision === undefined ? {} : { sinceRevision: ref.sinceRevision }),
+            },
+            { audience: `effect:${documentEffect.name}` },
+          );
+          if (result.status !== "ok") {
+            throw new Error(`Cannot bind document: ${result.status}`);
+          }
+          const checked = validateAuthoredSchema(schema, result.observation.current.content);
+          if (checked.status !== "ok") {
+            throw new Error(`Document does not match slot ${slot}`);
+          }
+          documents[slot] = assertJson(result.observation);
+        }
+        wireContext = { context: requestOrMessage.context ?? null, documents };
+      }
+      return yield* context.pull(
         assertJson({
           kind: "elicit",
           key,
           message: requestOrMessage.message,
           response: declaration.response,
-          ...(requestOrMessage.context === undefined ? {} : { context: requestOrMessage.context }),
+          ...(wireContext === undefined ? {} : { context: wireContext }),
           ...((declaration.contextContract ?? declaration.context)
             ? { contextContract: declaration.contextContract ?? declaration.context }
             : {}),
@@ -860,8 +928,15 @@ function* sampleStructured<T>(
       ...base,
       schema: portableSamplingSchema(schema),
     });
-    const candidate = "parsed" in result ? result.parsed : result.text;
-    const validated = validateAuthoredSchema<T>(schema, candidate);
+    // A parse failure uses null as a sentinel; it is not a valid nullable response.
+    if (!("parsed" in result) || result.parseError !== undefined) {
+      lastMessage =
+        "parsed" in result
+          ? (result.parseError?.message ?? "model sample did not produce JSON")
+          : "model sample did not produce JSON";
+      continue;
+    }
+    const validated = validateAuthoredSchema<T>(schema, result.parsed);
     if (validated.status === "schema-error") {
       lastMessage = `schema ${validated.reason} while checking model output`;
       continue;
@@ -923,7 +998,9 @@ function portableSamplingSchema(
 }
 
 function isStandardSchemaValue(value: unknown): value is StandardSchemaV1 {
-  if (!value || typeof value !== "object" || !("~standard" in value)) return false;
+  if (!value || typeof value !== "object" || !("~standard" in value)) {
+    return false;
+  }
   const standard = (value as { "~standard"?: { version?: unknown; validate?: unknown } })[
     "~standard"
   ];

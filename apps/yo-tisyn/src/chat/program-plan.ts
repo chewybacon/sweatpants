@@ -67,13 +67,20 @@ export interface ProgramPlan {
   diagram: string;
   source: string;
   steps: readonly string[];
+  truncated: boolean;
 }
 
 /** Top-level control flow. Nested value expressions stay in labels, not simulated steps. */
 export function createProgramPlan(source: string): ProgramPlan {
   const ir = parseTisynSource(source);
   const lines = ["flowchart TD"];
+  let diagramLength = lines[0].length;
+  function append(...added: string[]): void {
+    lines.push(...added);
+    diagramLength += added.reduce((length, line) => length + line.length + 1, 0);
+  }
   const steps: string[] = [];
+  let omitted: string | undefined;
   const definitions: { name: string; entry: string; body: TisynExpr }[] = [];
   const calls: { node: string; name: string }[] = [];
   // Caller-scoped functions can be shadowed. Only link globally unambiguous names;
@@ -98,18 +105,15 @@ export function createProgramPlan(source: string): ProgramPlan {
   }
   countBindings(ir);
   function node(text: string, kind: "step" | "decision" | "tool" = "step"): string {
-    if (steps.length >= 64) {
-      throw new Error("This program is too large for the diagram (64 nodes maximum).");
-    }
     const id = `n${steps.length}`;
     steps.push(text);
     const quoted = `"${label(text)}"`;
-    lines.push(`${id}${kind === "decision" ? `{${quoted}}` : `[${quoted}]`}:::plan-${kind}`);
+    append(`${id}${kind === "decision" ? `{${quoted}}` : `[${quoted}]`}:::plan-${kind}`);
     return id;
   }
   function connect(from: string[], to: string, branch?: "yes" | "no"): void {
     for (const id of from) {
-      lines.push(`${id} -->${branch ? `|${branch}|` : ""} ${to}`);
+      append(`${id} -->${branch ? `|${branch}|` : ""} ${to}`);
     }
   }
   function sequence(exprs: readonly TisynExpr[]): Flow {
@@ -126,6 +130,11 @@ export function createProgramPlan(source: string): ProgramPlan {
     return { entry: first.entry, exits };
   }
   function flow(expr: TisynExpr): Flow {
+    // Keep large expanded programs renderable without pretending this is the full plan.
+    if (steps.length >= 120 || diagramLength >= 24_000) {
+      omitted ??= node("Additional control flow omitted — see Tisyn source");
+      return { entry: omitted, exits: [] };
+    }
     const data = fields(expr);
     if (isEvalNode(expr)) {
       if (["seq", "let", "if", "call", "while"].includes(expr.id) && !data) {
@@ -142,6 +151,12 @@ export function createProgramPlan(source: string): ProgramPlan {
         const body = flow(data.body);
         connect([declaration], body.entry);
         return { entry: declaration, exits: body.exits };
+      }
+      if (expr.id === "call" && data && Array.isArray(data.args) && isFnNode(data.fn)) {
+        const entry = node(`Continue (${data.fn.params.join(", ")})`);
+        const body = flow(data.fn.body);
+        connect([entry], body.entry);
+        return { entry, exits: body.exits };
       }
       if (expr.id === "call" && data && Array.isArray(data.args)) {
         const id = node(`Call ${describe(data.fn)}(${data.args.map(describe).join(", ")})`);
@@ -212,13 +227,18 @@ export function createProgramPlan(source: string): ProgramPlan {
   for (const call of calls) {
     const definition = definitions.find((value) => value.name === call.name);
     if (definition && bindings.get(call.name) === 1) {
-      lines.push(`${call.node} -. call .-> ${definition.entry}`);
+      append(`${call.node} -. call .-> ${definition.entry}`);
     }
   }
-  lines.push(
+  append(
     "classDef plan-tool fill:#163c35,stroke:#71c9b1,color:#f0fff9",
     "classDef plan-decision fill:#453616,stroke:#e2c36f,color:#fff6d6",
     "classDef plan-step fill:#253449,stroke:#8fa4be,color:#f4f7ff",
   );
-  return { diagram: lines.join("\n"), source: print(ir, { maxWidth: 80 }), steps };
+  return {
+    diagram: lines.join("\n"),
+    source: print(ir, { maxWidth: 80 }),
+    steps,
+    truncated: omitted !== undefined,
+  };
 }

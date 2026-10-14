@@ -1,0 +1,5 @@
+guile-3.0	3.0.11-2+b1
+guile-hoot	0.9.0-4
+guile (GNU Guile) 3.0.11
+workerd 2026-10-01
+v22.21.1

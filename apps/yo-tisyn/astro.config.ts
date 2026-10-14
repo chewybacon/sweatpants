@@ -9,20 +9,30 @@ export default defineConfig({
   session: false,
   adapter: cloudflare({
     imageService: "passthrough",
-    persistState: { path: ".wrangler/worker-state" },
+    persistState: { path: process.env.TISYN_LOCAL_STATE_PATH ?? ".wrangler/worker-state" },
   }),
   integrations: [react()],
   vite: {
-    // The child/direct experiment servers must not invalidate each other's optimizer files.
-    cacheDir: `node_modules/.vite-${process.env.PUBLIC_TISYN_SAMPLING ?? "child"}`,
-    define: {
-      "process.env.PUBLIC_TISYN_SAMPLING": JSON.stringify(
-        process.env.PUBLIC_TISYN_SAMPLING ?? "child",
-      ),
+    // Concurrent provider experiments must not invalidate each other's modules.
+    cacheDir: `node_modules/.vite-${[
+      process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
+      process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5",
+      process.env.TISYN_LOCAL_STATE_PATH ?? "default",
+    ]
+      .map((value) => value.replace(/[^a-zA-Z0-9_-]/g, "_"))
+      .join("-")}`,
+    // Preserve Pi's lazy module paths; prebundle its Anthropic SDK for workerd.
+    optimizeDeps: {
+      exclude: ["@earendil-works/pi-ai"],
+      include: ["@earendil-works/pi-ai > @anthropic-ai/sdk"],
     },
     plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
     build: { minify: true },
     ssr: {
+      optimizeDeps: {
+        exclude: ["@earendil-works/pi-ai"],
+        include: ["@earendil-works/pi-ai > @anthropic-ai/sdk"],
+      },
       noExternal: true,
       resolve: { mainFields: ["browser", "module", "jsnext:main", "jsnext"] },
     },

@@ -125,6 +125,60 @@ describe("configured Pi model provider", () => {
     expect(stream).toHaveBeenCalledOnce();
   });
 
+  it("preserves reasoning for structured sampling without forcing a tool choice", async () => {
+    const stream = vi.fn<ProviderStreams["stream"]>(completedStream);
+    const streamSimple = vi.fn<ProviderStreams["streamSimple"]>(completedStream);
+    const models = createModels();
+    models.setProvider(
+      createProvider({
+        id: customModel.provider,
+        models: [{ ...customModel, reasoning: true }],
+        auth: {
+          apiKey: {
+            name: "Test credentials",
+            resolve: async () => ({ auth: { apiKey: "test-key" }, source: "env" }),
+          },
+        },
+        api: { stream, streamSimple },
+      }),
+    );
+    const provider = createPiAiModelProvider({ models });
+    const model = provider.resolveModel({ provider: customModel.provider, id: customModel.id });
+    await run(function* () {
+      const subscription = yield* provider.runtime.stream(
+        model,
+        { messages: [], tools: [] },
+        {
+          apiKey: "test-key",
+          thinking: "medium",
+          responseFormat: { type: "json_schema", schema: { type: "object" } },
+        },
+      );
+      while (true) {
+        const next = yield* subscription.next();
+        if (next.done) {
+          expect(next.value.errorMessage).toBeNull();
+          break;
+        }
+      }
+    });
+    expect(stream).not.toHaveBeenCalled();
+    expect(streamSimple).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({
+            role: "system",
+            content: expect.stringContaining("Return the final response by calling __schema__"),
+            toolsAdded: [expect.objectContaining({ name: "__schema__" })],
+          }),
+        ],
+      }),
+      expect.objectContaining({ reasoning: "medium" }),
+    );
+    expect(streamSimple.mock.calls[0]?.[2]).not.toHaveProperty("toolChoice");
+  });
+
   it("generates images through the configured collection and its credentials", async () => {
     const imageModel: ImageModel<string> = {
       type: "image",

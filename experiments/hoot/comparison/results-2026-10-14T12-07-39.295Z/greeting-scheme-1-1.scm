@@ -1,0 +1,7 @@
+(let* ((r (effect "ask" (object (cons "message" "What is your name?")))))
+  (let ((action (field r "action")))
+    (if (equal? action "accept")
+        (let ((name (field (field r "content") "reply")))
+          (object (cons "status" "done")
+                  (cons "greeting" (string-append "Hello, " name "!"))))
+        (object (cons "status" action)))))

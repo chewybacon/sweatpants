@@ -1,61 +1,135 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { makePlugin, type ReactRenderableProps } from "@sweatpants/react-chat";
-import { Badge, Button, Card, Stack, TextInput } from "../design-system/primitives.tsx";
-import { ask } from "../workflow/tools/ask.ts";
+import { Badge, Button, Card, Stack, TextArea } from "../design-system/primitives.tsx";
+import { ask, replyLimit, type AskPresentation } from "../workflow/tools/ask.ts";
 import { ReplyOutcome, type Reply } from "./reply.tsx";
 
 export function ReplyForm({
   prompt,
+  title,
+  detail,
+  placeholder,
+  suggestions = [],
   onRespond,
   disabled,
   response,
-}: ReactRenderableProps<Reply> & { prompt: string }) {
+}: ReactRenderableProps<Reply> & AskPresentation & { prompt: string }) {
   const [reply, setReply] = useState("");
+  const id = useId();
+  const input = useRef<HTMLTextAreaElement>(null);
+  const blocked = disabled || !!response;
+  const valid = reply.trim().length > 0 && reply.length <= replyLimit;
+  function send() {
+    if (!blocked && valid) onRespond({ action: "accept", content: { reply } });
+  }
   return (
-    <Card.Root className="reply" tone="warning" padding={4}>
+    <Card.Root className={`reply ask-card ${response ? "ask-settled" : "ask-pending"}`} padding={4}>
       <Stack gap={3}>
-        <Stack direction="horizontal" gap={2} align="center" wrap>
-          <Badge tone="warning">Input needed</Badge>
-          <strong>{prompt}</strong>
+        <Stack direction="horizontal" gap={2} align="center" justify="between" wrap>
+          <span className="ask-title">{title ?? "Over to you"}</span>
+          <Badge tone={response ? "neutral" : "warning"}>
+            {response
+              ? response.action === "accept"
+                ? "Answered"
+                : response.action === "decline"
+                  ? "Declined"
+                  : "Cancelled"
+              : disabled
+                ? "Waiting…"
+                : "Your turn"}
+          </Badge>
         </Stack>
+        <p className="ask-question" id={`${id}-question`}>
+          {prompt}
+        </p>
+        {detail && <p className="ask-detail">{detail}</p>}
         {response ? (
           <ReplyOutcome response={response} />
         ) : (
           <form
+            aria-labelledby={`${id}-question`}
             onSubmit={(event) => {
               event.preventDefault();
-              onRespond({ action: "accept", content: { reply } });
+              send();
             }}
           >
             <Stack gap={3}>
-              <TextInput
+              {suggestions.length > 0 && (
+                <div className="ask-suggestions" aria-label="Suggested replies">
+                  {[...new Set(suggestions)].map((suggestion) => (
+                    <Button
+                      key={suggestion}
+                      type="button"
+                      variant="outline"
+                      disabled={disabled}
+                      onClick={() => {
+                        setReply(suggestion);
+                        input.current?.focus();
+                      }}
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <TextArea
+                ref={input}
+                id={`${id}-reply`}
                 label="Your reply"
+                rows={3}
                 value={reply}
+                maxLength={replyLimit}
+                placeholder={placeholder ?? "Answer, ask a question, or correct something…"}
                 disabled={disabled}
                 onValueChange={setReply}
+                aria-describedby={`${id}-hint`}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey) &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault();
+                    send();
+                  }
+                }}
               />
-              <Stack direction="horizontal" gap={2} wrap>
-                <Button type="submit" disabled={disabled}>
+              <div className="ask-hint" id={`${id}-hint`}>
+                <span>You can correct an earlier answer. Ctrl / ⌘ + Enter to send.</span>
+                <span>
+                  {reply.length.toLocaleString()} / {replyLimit.toLocaleString()}
+                </span>
+              </div>
+              <div className="ask-actions">
+                <Button type="submit" disabled={disabled || !valid}>
                   Reply
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  color="secondary"
-                  disabled={disabled}
-                  onClick={() => onRespond({ action: "decline" })}
-                >
-                  Decline
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={disabled}
-                  onClick={() => onRespond({ action: "cancel" })}
-                >
-                  Cancel
-                </Button>
-              </Stack>
+                <details className="ask-other-actions">
+                  <summary>Other options</summary>
+                  <Stack direction="horizontal" gap={2} wrap>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (!blocked) onRespond({ action: "decline" });
+                      }}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (!blocked) onRespond({ action: "cancel" });
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </Stack>
+                </details>
+              </div>
             </Stack>
           </form>
         )}
@@ -67,7 +141,7 @@ export function ReplyForm({
 export const askPlugin = makePlugin(ask)
   .onElicit({
     reply: function* (input, context) {
-      return yield* context.render(ReplyForm, { prompt: input.context.prompt });
+      return yield* context.render(ReplyForm, input.context);
     },
   })
   .build();
