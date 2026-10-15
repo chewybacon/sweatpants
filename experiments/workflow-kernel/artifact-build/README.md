@@ -7,8 +7,8 @@ Experimental proof for developer-authored `"use workflow"` generators.
 Use Node 22 with the workspace dependencies and SDK build installed:
 
 ```sh
-node scheme-checkpoint-spike/artifact-build/test.mjs
-node scheme-checkpoint-spike/compiled-finally/cleanup-errors-test.mjs
+node experiments/workflow-kernel/artifact-build/test.mjs
+node experiments/workflow-kernel/compiled-finally/cleanup-errors-test.mjs
 ```
 
 ## Boundary
@@ -90,7 +90,7 @@ as a production replacement before that lifecycle is wired and tested.
 Run the integration proof:
 
 ```sh
-node scheme-checkpoint-spike/artifact-build/pull-test.mjs
+node experiments/workflow-kernel/artifact-build/pull-test.mjs
 ```
 
 ## Real journal / ProgramDriver proof
@@ -124,8 +124,8 @@ shutdown reasons, stale/rejected/mismatched receipts, ordered resumes and cache
 isolation after live cancellation.
 
 ```sh
-node scheme-checkpoint-spike/artifact-build/authority-test.mjs
-node scheme-checkpoint-spike/artifact-build/driver-test.mjs
+node experiments/workflow-kernel/artifact-build/authority-test.mjs
+node experiments/workflow-kernel/artifact-build/driver-test.mjs
 ```
 
 Still unproven: database-backed cache storage, concurrent host fencing at a remote

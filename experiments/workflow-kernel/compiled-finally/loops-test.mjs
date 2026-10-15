@@ -19,6 +19,8 @@ for(const [name,body,expected] of cases){
  while(state.status==='waiting'){
   events.push(output.effect);state=JSON.parse(JSON.stringify(state));output=run(artifact.program,state,{reply:'ack'});
  }
+ // Trusted local fixture: execute the original generator for native/VM parity.
+ // eslint-disable-next-line @typescript-eslint/no-implied-eval
  const native=Function(`${source};return workflow;`)()({elicit:function*(key){return yield ['elicit',key];}});
  const nativeEvents=[];let outcome;
  try{let step=native.next();while(!step.done){nativeEvents.push(step.value);step=native.next('ack');}outcome={kind:'returned',value:step.value};}
