@@ -4,7 +4,7 @@ import { choicesPlugin, documentDisplayPlugin } from "./choices-plugin.tsx";
 import { useRef, useState } from "react";
 import { useChat } from "@sweatpants/react-chat";
 import { Badge, Button, Card, Stack, TextArea } from "../design-system/primitives.tsx";
-import { Part } from "./tool-view.tsx";
+import { hasVisiblePart, Part } from "./tool-view.tsx";
 import { askPlugin } from "./ask-plugin.tsx";
 import { rememberThread } from "../threads/thread-index.ts";
 import { PromptExamples } from "./prompt-examples.tsx";
@@ -44,7 +44,8 @@ export function App({ initialThreadId }: AppProps) {
   const lastMessage = messages.at(-1);
   const currentWork =
     (authority?.state === "running" || authority?.state === "parked") &&
-    connectionStatus === "connected" &&
+    (connectionStatus === "connected" ||
+      (authority?.state === "parked" && connectionStatus === "disconnected")) &&
     renderStatus === "ready" &&
     lastMessage?.role === "assistant"
       ? lastMessage.parts.flatMap((part) => activeWork(part))
@@ -55,22 +56,22 @@ export function App({ initialThreadId }: AppProps) {
       ? "Connection interrupted"
       : connectionStatus === "connecting"
         ? "Connecting…"
-        : connectionStatus === "disconnected"
-          ? "Disconnected"
-          : renderStatus === "loading" || !authority
-            ? "Loading conversation…"
-            : authority.state === "recovering"
-              ? "Recovering workflow…"
-              : authority.state === "deleted"
-                ? "Conversation unavailable"
-                : canSendMessage
-                  ? "Ready for a task"
-                  : currentWork.length === 1
-                    ? currentWork[0].label
-                    : currentWork.length > 1
-                      ? `${currentWork.length} active activities`
-                      : authority.state === "parked"
-                        ? "Waiting for workflow to resume…"
+        : renderStatus === "loading" || !authority
+          ? "Loading conversation…"
+          : authority.state === "recovering"
+            ? "Recovering workflow…"
+            : authority.state === "deleted"
+              ? "Conversation unavailable"
+              : canSendMessage
+                ? "Ready for a task"
+                : currentWork.length === 1
+                  ? currentWork[0].label
+                  : currentWork.length > 1
+                    ? `${currentWork.length} active activities`
+                    : authority.state === "parked"
+                      ? "Waiting for workflow to resume…"
+                      : connectionStatus === "disconnected"
+                        ? "Disconnected"
                         : "Working…";
 
   return (
@@ -101,26 +102,28 @@ export function App({ initialThreadId }: AppProps) {
             }}
           />
         )}
-        {messages.map((message) => (
-          <Card.Root
-            key={message.id}
-            className="message-card"
-            tone={message.role === "user" ? "secondary" : "default"}
-            padding={5}
-          >
-            <Stack direction="horizontal" gap={2} align="center">
-              <Badge tone={message.role === "user" ? "secondary" : "neutral"}>
-                {message.role === "user" ? "You" : "Assistant"}
-              </Badge>
-              <span className="message-status">{message.role === "user" ? "sent" : ""}</span>
-            </Stack>
-            <div className="message-parts">
-              {message.parts.map((part) => (
-                <Part key={part.id} part={part} />
-              ))}
-            </div>
-          </Card.Root>
-        ))}
+        {messages
+          .filter((message) => message.parts.some(hasVisiblePart))
+          .map((message) => (
+            <Card.Root
+              key={message.id}
+              className="message-card"
+              tone={message.role === "user" ? "secondary" : "default"}
+              padding={5}
+            >
+              <Stack direction="horizontal" gap={2} align="center">
+                <Badge tone={message.role === "user" ? "secondary" : "neutral"}>
+                  {message.role === "user" ? "You" : "Assistant"}
+                </Badge>
+                <span className="message-status">{message.role === "user" ? "sent" : ""}</span>
+              </Stack>
+              <div className="message-parts">
+                {message.parts.map((part) => (
+                  <Part key={part.id} part={part} />
+                ))}
+              </div>
+            </Card.Root>
+          ))}
       </section>
 
       <aside className="workflow-activity" aria-label="Current activity">

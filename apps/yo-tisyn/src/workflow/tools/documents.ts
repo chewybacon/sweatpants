@@ -70,7 +70,7 @@ export const documentPresentationSchema = z.object({
 
 export const presentChoices = createDurableTool("present_choices", { version: "1" })
   .description(
-    "Present a read-only workflow document with choices. Parks for a normal user response. The workflow must validate the selected choice and perform document edits itself. Pass sinceRevision from the previous presentation (not the latest edit) to highlight changes. Grid columns preserve spatial layout; include disabled choices for unavailable positions. Only enabled choice IDs are accepted.",
+    "Present a read-only workflow document with choices. Parks for a normal user response. The workflow must validate the selected choice and perform document edits itself. Pass sinceRevision from the previous presentation (not the latest edit) to highlight changes. Grid columns preserve spatial layout; include disabled choices for unavailable positions. Only enabled choice IDs are accepted. Pass the document reference returned by document_create (observation.current.document). An unavailable document returns action error with a diagnostic before asking the user.",
   )
   .parameters(
     z.object({
@@ -98,6 +98,7 @@ export const presentChoices = createDurableTool("present_choices", { version: "1
       }),
       z.object({ action: z.literal("decline") }),
       z.object({ action: z.literal("cancel") }),
+      z.object({ action: z.literal("error"), diagnostic: z.object({ code: z.string() }) }),
     ]),
   )
   .elicits({
@@ -107,7 +108,18 @@ export const presentChoices = createDurableTool("present_choices", { version: "1
       documents: { content: z.json() },
     },
   })
+  .effects({ [documentEffect.name]: documentEffect })
   .execute(function* (input, ctx) {
+    const document = yield* ctx.effect(documentEffect, {
+      operation: "read",
+      document: input.document,
+      ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
+    });
+    if (document.status !== "ok")
+      return {
+        action: "error" as const,
+        diagnostic: { code: document.status === "error" ? document.code : "document_unavailable" },
+      };
     const exchangeId = yield* ctx.record(
       { key: "choices.exchange-id", retrySafety: { mode: "repeatable" } },
       function* (attempt) {
@@ -155,7 +167,7 @@ export const presentChoices = createDurableTool("present_choices", { version: "1
 /** A terminal presentation is acknowledged by the renderer, not treated as a user choice. */
 export const displayDocument = createDurableTool("display_document", { version: "1" })
   .description(
-    "Display a read-only document and optional grid/list cells without asking for a human reply. The renderer acknowledges delivery automatically. Useful for final state or results. This does not send document contents to a model. sinceRevision is the last displayed revision, not the latest edit revision.",
+    "Display a read-only document and optional grid/list cells without asking for a human reply. The renderer acknowledges delivery automatically. Useful for final state or results. This does not send document contents to a model. sinceRevision is the last displayed revision, not the latest edit revision. An unavailable document returns status error with a diagnostic.",
   )
   .parameters(
     z.object({
@@ -167,7 +179,12 @@ export const displayDocument = createDurableTool("display_document", { version: 
       columns: z.number().int().min(1).max(8).default(3),
     }),
   )
-  .output(z.object({ status: z.literal("displayed") }))
+  .output(
+    z.union([
+      z.object({ status: z.literal("displayed") }),
+      z.object({ status: z.literal("error"), diagnostic: z.object({ code: z.string() }) }),
+    ]),
+  )
   .elicits({
     display: {
       response: z.object({}),
@@ -175,7 +192,18 @@ export const displayDocument = createDurableTool("display_document", { version: 
       documents: { content: z.json() },
     },
   })
+  .effects({ [documentEffect.name]: documentEffect })
   .execute(function* (input, ctx) {
+    const document = yield* ctx.effect(documentEffect, {
+      operation: "read",
+      document: input.document,
+      ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
+    });
+    if (document.status !== "ok")
+      return {
+        status: "error" as const,
+        diagnostic: { code: document.status === "error" ? document.code : "document_unavailable" },
+      };
     const response = yield* ctx.elicit("display", {
       message: input.message,
       context: {

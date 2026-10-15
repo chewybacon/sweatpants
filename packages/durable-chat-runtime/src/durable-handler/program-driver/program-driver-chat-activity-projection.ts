@@ -58,6 +58,16 @@ export function publicElicitActivityDelta(
   };
 }
 
+/** A synthetic tool-only message owns exactly one call, including its terminal outcome. */
+export function publicToolMessageCompleted(messageId: string): ActivityDeltaEvent {
+  return {
+    type: EventType.ACTIVITY_DELTA,
+    messageId,
+    activityType: "sweatpants:public-execution",
+    patch: [{ op: "replace", path: "/node/state", value: "done" }],
+  };
+}
+
 function executionState(
   status: RecursiveExecutionNode["status"],
 ): PublicGenericActivityNode["state"] {

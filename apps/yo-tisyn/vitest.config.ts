@@ -6,5 +6,6 @@ export default defineConfig({
   resolve: {
     conditions: ["development"],
   },
-  test: { include: ["src/**/__tests__/**/*.test.{ts,tsx}"], testTimeout: 10_000 },
+  // Bound concurrent workerd instances; each acceptance file starts its own host.
+  test: { maxWorkers: 4, include: ["src/**/__tests__/**/*.test.{ts,tsx}"], testTimeout: 10_000 },
 });

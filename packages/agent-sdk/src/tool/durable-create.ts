@@ -109,6 +109,23 @@ type JsonOutput<T> = T extends Json
     : T extends object
       ? { [Key in keyof T]: JsonOutput<Exclude<T[Key], undefined>> } & Json
       : never;
+/** Inferred object unions may contain absent optional properties. */
+type JsonResultCompatible<T> = [T] extends [Json]
+  ? true
+  : T extends (...args: never[]) => unknown
+    ? false
+    : T extends readonly (infer Item)[]
+      ? JsonResultCompatible<Item>
+      : T extends object
+        ? false extends {
+            [Key in keyof T]-?: JsonResultCompatible<
+              {} extends Pick<T, Key> ? Exclude<T[Key], undefined> : T[Key]
+            >;
+          }[keyof T]
+          ? false
+          : true
+        : false;
+
 type EffectInput<D> = D extends EffectDefinition<infer I, Json, Json> ? I : never;
 type EffectOutput<D> = D extends EffectDefinition<Json, infer O, Json> ? O : never;
 type EffectMap = Record<string, EffectDefinition<Json, Json, Json>>;
@@ -259,9 +276,12 @@ export interface CreateDurableToolBuilderWithParameters<
   uses<Extensions extends DurableExtensionMap>(
     extensions: Extensions,
   ): CreateDurableToolBuilderReady<N, I, O, E, {}, false, Extensions>;
-  execute<Result extends O extends Json ? O : Json>(
-    program: (input: I, context: DurableProgramContextFor<{}, E, false>) => Operation<Result>,
-  ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
+  execute<Result extends O extends Json ? O : unknown>(
+    program: (
+      input: I,
+      context: DurableProgramContextFor<{}, E, false>,
+    ) => Operation<Result> & (false extends JsonResultCompatible<Result> ? never : unknown),
+  ): DurableToolDefinition<N, I, O extends Json ? O : JsonOutput<Result>, E>;
 }
 
 export interface CreateDurableToolBuilderReady<
@@ -284,12 +304,12 @@ export interface CreateDurableToolBuilderReady<
   uses<Next extends DurableExtensionMap>(
     extensions: Next,
   ): CreateDurableToolBuilderReady<N, I, O, E, Effects, Samples, Extensions & Next, Decisions>;
-  execute<Result extends O extends Json ? O : Json>(
+  execute<Result extends O extends Json ? O : unknown>(
     program: (
       input: I,
       context: DurableProgramContextFor<Effects, E, Samples, Extensions, Decisions>,
-    ) => Operation<Result>,
-  ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
+    ) => Operation<Result> & (false extends JsonResultCompatible<Result> ? never : unknown),
+  ): DurableToolDefinition<N, I, O extends Json ? O : JsonOutput<Result>, E>;
 }
 
 type BuilderState = {

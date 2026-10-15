@@ -39,6 +39,16 @@ function completed(
 }
 
 describe("readable tool cards", () => {
+  it("renders Scheme in the shared canvas with its original source", () => {
+    const program = '(ask (object (cons "message" "Continue?")))';
+    const { container } = render(<Part part={completed("scheme", { program }, "done")} />);
+    expect(screen.getByLabelText("Expanded program canvas")).toBeTruthy();
+    expect(screen.getByText("Scheme source")).toBeTruthy();
+    expect(container.querySelector(".source code")?.textContent).toBe(program);
+    expect(screen.queryByText("Expanded Tisyn")).toBeNull();
+    expect(container.querySelector<HTMLDetailsElement>(".logic-plan")?.open).toBe(true);
+  });
+
   it("keeps authored macros visible separately from expanded Tisyn", () => {
     const program =
       'WithMacros({"Guard":{"params":["condition","action"],"body":If(Hole("condition"),Hole("action"),null)}},Use("Guard",true,"done"))';

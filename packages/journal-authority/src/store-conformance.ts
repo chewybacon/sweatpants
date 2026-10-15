@@ -1,7 +1,11 @@
 import { canonicalSnapshot, sha256, type Json } from "@sweatpants/foundation";
-import { call, run } from "effection";
+import { all, call, run } from "effection";
 import { describe, expect, it } from "vitest";
-import type { ExecutionStore } from "./store/store.ts";
+import type {
+  CommitExecutionRequest,
+  CommitExecutionResult,
+  ExecutionStore,
+} from "./store/store.ts";
 
 export interface ExecutionStoreBackendCase {
   readonly name: string;
@@ -16,6 +20,105 @@ export function describeExecutionStoreConformance(
   cases: readonly ExecutionStoreBackendCase[],
 ): void {
   describe.each([...cases])("execution store conformance ($name)", ({ create }) => {
+    it("retires replaced authority snapshots atomically, including large payloads and stale writers", async () => {
+      const handle = await create();
+      try {
+        await run(function* () {
+          let revision: string | null = null;
+          const ids: string[] = [];
+          for (let index = 0; index < 4; index++) {
+            const body = index % 2 === 0 ? "x".repeat(1_100_000) : "small";
+            const object = {
+              objectId: `retirement-${index}`,
+              lifetimeScope: "execution" as const,
+              scopeOwnerId: "retirement",
+              objectKind: "authority-snapshot",
+              body,
+              contentHash: sha256(JSON.stringify(body)),
+              byteLength: new TextEncoder().encode(JSON.stringify(body)).byteLength,
+              createdAt: index,
+            };
+            const request: CommitExecutionRequest = {
+              executionId: "retirement",
+              expectedControlRevision: revision,
+              expectedOwnerFence: "0",
+              nextControl: {
+                executionId: "retirement",
+                ownerFence: "0",
+                status: "parked" as const,
+                rootTaskId: "root",
+                stopGeneration: "0",
+                requestedDisposition: null,
+                control: { kind: "authority-control", snapshot: { id: object.objectId } },
+              },
+              objects: [object],
+              updatedAt: index,
+            };
+            const accepted: CommitExecutionResult = yield* handle.store.commitExecution(request);
+            expect(accepted.status).toBe("committed");
+            if (accepted.status !== "committed") throw new Error("Expected commit");
+            revision = accepted.control.controlRevision;
+            // A stale replay cannot remove the winning snapshot or resurrect old data.
+            expect((yield* handle.store.commitExecution(request)).status).toBe("control_conflict");
+            expect(yield* handle.store.getObject({ objectId: object.objectId })).toMatchObject({
+              body,
+            });
+            for (const objectId of ids) {
+              expect(yield* handle.store.getObject({ objectId })).toBeNull();
+            }
+            ids.push(object.objectId);
+          }
+          const contenders: CommitExecutionRequest[] = ["left", "right"].map((label) => {
+            const body = JSON.stringify(label);
+            const object = {
+              objectId: `retirement-${label}`,
+              lifetimeScope: "execution" as const,
+              scopeOwnerId: "retirement",
+              objectKind: "authority-snapshot",
+              body: label,
+              contentHash: sha256(body),
+              byteLength: new TextEncoder().encode(body).byteLength,
+              createdAt: 5,
+            };
+            return {
+              executionId: "retirement",
+              expectedControlRevision: revision,
+              expectedOwnerFence: "0",
+              nextControl: {
+                executionId: "retirement",
+                ownerFence: "0",
+                status: "parked" as const,
+                rootTaskId: "root",
+                stopGeneration: "0",
+                requestedDisposition: null,
+                control: { kind: "authority-control", snapshot: { id: object.objectId } },
+              },
+              objects: [object],
+              updatedAt: 5,
+            };
+          });
+          const outcomes = yield* all(
+            contenders.map((request) => handle.store.commitExecution(request)),
+          );
+          expect(outcomes.filter((outcome) => outcome.status === "committed")).toHaveLength(1);
+          expect(outcomes.filter((outcome) => outcome.status === "control_conflict")).toHaveLength(
+            1,
+          );
+          for (const [index, request] of contenders.entries()) {
+            const stored = yield* handle.store.getObject({
+              objectId: request.objects![0]!.objectId,
+            });
+            if (outcomes[index]!.status === "committed") expect(stored).not.toBeNull();
+            else expect(stored).toBeNull();
+          }
+          for (const objectId of ids)
+            expect(yield* handle.store.getObject({ objectId })).toBeNull();
+        });
+      } finally {
+        await handle.close();
+      }
+    });
+
     it("publishes snapshot objects atomically with control and rejects losing candidates", async () => {
       const handle = await create();
       try {

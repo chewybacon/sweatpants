@@ -213,6 +213,13 @@ export function createMemoryDurableKernel(): DurableKernel {
       resolved.set(item.name, item.entry.record);
     }
 
+    for (const key of mutation.retireExecutionObjects ?? []) {
+      const entry = immutableAliases.get(identity("execution-objects", key));
+      for (const alias of entry?.aliases ?? []) {
+        immutableAliases.delete(identity("execution-objects", alias));
+      }
+    }
+
     let authority: StoredAuthorityRecord | null = null;
     if (mutation.authority) {
       authority = {

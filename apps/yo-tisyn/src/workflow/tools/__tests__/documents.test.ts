@@ -15,6 +15,7 @@ it("publishes the choice completion envelope to workflow authors", () => {
       },
       { properties: { action: { const: "decline" } }, required: ["action"] },
       { properties: { action: { const: "cancel" } }, required: ["action"] },
+      { properties: { action: { const: "error" } }, required: ["action", "diagnostic"] },
     ],
   });
   const workflow = createTisynTool([presentChoices]).build();

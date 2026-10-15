@@ -71,6 +71,24 @@ export function validateMutationStructure(mutation: DurableMutation): void {
     }
   }
 
+  const retired = mutation.retireExecutionObjects ?? [];
+  if (retired.length > DURABLE_MUTATION_MAX_ENSURES || new Set(retired).size !== retired.length) {
+    throw new DurableMutationInvalid("Retired execution object keys must be bounded and unique");
+  }
+  if (
+    retired.length > 0 &&
+    (mutation.authority?.collection !== "execution-controls" ||
+      mutation.authority.expected.revision === null ||
+      mutation.authority.expected.fence == null)
+  ) {
+    throw new DurableMutationInvalid("Retirement requires an existing fenced execution authority");
+  }
+  for (const key of retired) {
+    if (decodeDurableKey(key).length !== 1 || identities.has(`execution-objects\u0000${key}`)) {
+      throw new DurableMutationInvalid("Cannot retire a published execution object or invalid key");
+    }
+  }
+
   if (mutation.authority) {
     validateName(mutation.authority.name, names);
     if (!isAuthorityCollection(mutation.authority.collection)) {

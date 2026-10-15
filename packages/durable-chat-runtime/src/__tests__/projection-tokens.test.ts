@@ -24,7 +24,7 @@ describe("projection tokens", () => {
     await expect(verifyWindowToken(window, { activeKey: key }, 150)).resolves.toEqual(basis);
     const cursorPayload = { ...basis, beforePosition: "11" };
     const cursor = await mintPublicHistoryCursor(cursorPayload, { activeKey: key });
-    await expect(verifyPublicHistoryCursor(cursor, { activeKey: key }, 150)).resolves.toEqual(
+    await expect(verifyPublicHistoryCursor(cursor, { activeKey: key })).resolves.toEqual(
       cursorPayload,
     );
   });

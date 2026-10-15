@@ -372,6 +372,24 @@ export function createD1DurableKernel(
         if (plan.outcome.authority) {
           statements.push(...prepareWrite(session, plan.outcome.authority!, token));
         }
+        for (const key of mutation.retireExecutionObjects ?? []) {
+          const [objectId] = decodeDurableKey(key);
+          statements.push(
+            session
+              .prepare(`DELETE FROM sp_execution_objects WHERE object_id=? AND ${gate}`)
+              .bind(objectId!, token),
+            session
+              .prepare(
+                `DELETE FROM sp_d1_payload_chunks WHERE collection='execution-objects' AND key=? AND ${gate}`,
+              )
+              .bind(key, token),
+            session
+              .prepare(
+                `DELETE FROM sp_d1_payloads WHERE collection='execution-objects' AND key=? AND ${gate}`,
+              )
+              .bind(key, token),
+          );
+        }
         const result = yield* call(() => session.batch(statements));
         if (result[0]!.results.length) {
           return plan.outcome;

@@ -57,6 +57,24 @@ export function privateSegmentEnsure(
   };
 }
 
+function authoritySnapshotId(value: ExecutionControl["control"] | undefined): string | undefined {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    value.kind !== "authority-control"
+  ) {
+    return undefined;
+  }
+  const snapshot = value.snapshot;
+  return snapshot &&
+    typeof snapshot === "object" &&
+    !Array.isArray(snapshot) &&
+    typeof snapshot.id === "string"
+    ? snapshot.id
+    : undefined;
+}
+
 export function planExecutionCommit(input: {
   readonly request: CommitExecutionRequest;
   readonly currentRecord: StoredAuthorityRecord | null;
@@ -93,6 +111,19 @@ export function planExecutionCommit(input: {
     controlRevision: current === null ? "0" : next(current.controlRevision),
     updatedAt: request.updatedAt,
   };
+  // Snapshot lifetime follows the fenced control pointer. Journal/replay segments
+  // remain immutable history; superseded snapshots are replaceable recovery state.
+  const previousSnapshot = authoritySnapshotId(current?.control);
+  const nextSnapshot = authoritySnapshotId(control.control);
+  const retiredSnapshot =
+    previousSnapshot &&
+    nextSnapshot &&
+    previousSnapshot !== nextSnapshot &&
+    request.objects?.some(
+      (object) => object.objectId === nextSnapshot && object.objectKind === "authority-snapshot",
+    )
+      ? previousSnapshot
+      : undefined;
   const ensures = [
     ...(request.objects ?? []).map((object, index): ImmutableEnsure => {
       if (object.lifetimeScope !== "execution" || object.scopeOwnerId !== request.executionId) {
@@ -117,6 +148,9 @@ export function planExecutionCommit(input: {
     kind: "apply",
     mutation: {
       ensures,
+      ...(retiredSnapshot
+        ? { retireExecutionObjects: [executionKeys.object(retiredSnapshot)] }
+        : {}),
       authority: {
         name: "execution-control",
         collection: DurableCollections.executionControls,

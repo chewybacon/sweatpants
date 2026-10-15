@@ -111,3 +111,50 @@ it("recovers a quoted Scheme child and its pending Ask after workerd replacement
     },
   );
 }, 30000);
+
+it.each(["present_choices", "display_document"])(
+  "returns a repairable outcome for a missing document in %s",
+  async (capability) => {
+    await withTestScenario(
+      {
+        binding: "http",
+        modelId: "scheme-missing-document",
+        scenarioTimeoutMs: 20000,
+        createApplication: ({ model }) => startCloudflareHost(model, true, "scheme"),
+      },
+      function* (s) {
+        const turn = yield* s.conversation().send("Show my document.");
+        const initial = yield* s.model.request();
+        const choices =
+          capability === "present_choices"
+            ? '(cons "choices" (array (object (cons "id" "ok") (cons "label" "OK"))))'
+            : "";
+        yield* initial.respond.toolCalls([
+          {
+            id: "missing-document",
+            name: "scheme",
+            arguments: {
+              program: `(effect "${capability}" (object (cons "document" (object (cons "id" "invented"))) (cons "message" "Continue?") ${choices}))`,
+            },
+          },
+        ]);
+        const repair = yield* race([
+          s.model.request(),
+          (function* () {
+            const failure = yield* turn.failure();
+            throw new Error(failure.message);
+          })(),
+        ]);
+        expect(JSON.stringify(repair.body.input)).toContain("not_found");
+        yield* repair.respond.toolCalls([
+          { id: "recover", name: "scheme", arguments: { program: '"Recovered"' } },
+        ]);
+        const final = yield* s.model.request();
+        expect(JSON.stringify(final.body.input)).toContain("Recovered");
+        yield* final.respond.text("Recovered");
+        expect((yield* turn.settled()).text).toBe("Recovered");
+      },
+    );
+  },
+  30000,
+);

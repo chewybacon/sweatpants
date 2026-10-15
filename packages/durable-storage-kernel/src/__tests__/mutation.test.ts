@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { validateMutationStructure } from "../validation.ts";
 import { durableKey } from "../codec.ts";
 import type { DurableMutation, ImmutableEnsure, StoredAuthorityRecord } from "../contract.ts";
 import { evaluateMutation, type MutationSnapshot } from "../mutation.ts";
@@ -138,4 +139,39 @@ describe("mutation decisions", () => {
       ),
     ).toThrow("Duplicate mutation component name");
   });
+});
+
+it("requires fenced authority and disjoint bounded identities for retirement", () => {
+  const key = durableKey("obsolete");
+  expect(() => validateMutationStructure({ ensures: [], retireExecutionObjects: [key] })).toThrow(
+    "fenced",
+  );
+  expect(() =>
+    validateMutationStructure({
+      ensures: [],
+      authority: { ...authority, expected: { revision: "3" } },
+      retireExecutionObjects: [key],
+    }),
+  ).toThrow("fenced");
+  expect(() =>
+    validateMutationStructure({ ensures: [], authority, retireExecutionObjects: [key, key] }),
+  ).toThrow("unique");
+  expect(() =>
+    validateMutationStructure({
+      ensures: [
+        {
+          name: "snapshot",
+          collection: "execution-objects",
+          key,
+          fingerprint: "digest",
+          value: null,
+        },
+      ],
+      authority,
+      retireExecutionObjects: [key],
+    }),
+  ).toThrow("published");
+  expect(() =>
+    validateMutationStructure({ ensures: [], authority, retireExecutionObjects: [key] }),
+  ).not.toThrow();
 });

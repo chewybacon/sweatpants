@@ -1,4 +1,6 @@
-(use-modules (hoot eval) (hoot environments) (hoot control))
+(use-modules (hoot environments) (hoot control) (hoot expander)
+             (hoot syntax-objects) (hoot primitive-eval) (hoot tree-il)
+             (hoot modules) (scheme cxr))
 
 ;; JSON containers are distinct from Scheme lists and procedures.
 (define (object . entries)
@@ -63,10 +65,38 @@
       (set! pending continuation)
       (values "effect" name payload))))
 
+;; Inspect expanded bindings, so macro-generated identifiers and lexical scopes
+;; use Hoot's resolution rather than a second source-language parser.
+(define (checked-eval expression env)
+  (define (check-binding mod name public?)
+    (let ((target (resolve-module env mod)))
+      (unless (and target (module-bound? target name #:private? (not public?)))
+        (error "Unbound identifier" name))))
+  (define (walk node)
+    (cond
+      ((not node) #t)
+      ((or (void? node) (const? node) (lexical-ref? node) (primitive-ref? node)) #t)
+      ((toplevel-ref? node) (check-binding (toplevel-ref-mod node) (toplevel-ref-name node) #f))
+      ((module-ref? node) (check-binding (module-ref-mod node) (module-ref-name node) (module-ref-public? node)))
+      ((conditional? node) (walk (conditional-test node)) (walk (conditional-consequent node)) (walk (conditional-alternate node)))
+      ((call? node) (walk (call-proc node)) (for-each walk (call-args node)))
+      ((primcall? node) (for-each walk (primcall-args node)))
+      ((seq? node) (walk (seq-head node)) (walk (seq-tail node)))
+      ((lambda? node) (walk (lambda-body node)))
+      ((lambda-case? node) (for-each walk (lambda-case-inits node)) (walk (lambda-case-body node)) (walk (lambda-case-alternate node)))
+      ((let? node) (for-each walk (let-vals node)) (walk (let-body node)))
+      ((letrec? node) (for-each walk (letrec-vals node)) (walk (letrec-body node)))
+      ((fix? node) (for-each walk (fix-vals node)) (walk (fix-body node)))
+      ((let-values? node) (walk (let-values-exp node)) (walk (let-values-body node)))
+      (else (error "Unsupported expanded expression" node))))
+  (let ((expanded (expand-syntax (datum->syntax #f expression) env)))
+    (walk expanded)
+    (primitive-eval expanded env)))
+
 ;; Compile without applying: validation expands macros but performs no effects.
 (define (compile-source source)
   (unless (and (string? source) (<= (string-length source) 12000)) (error "source exceeds 12000 characters"))
-  (eval `(lambda (effect object array json-null field array-ref array-length array-append object-set printed input)
+  (checked-eval `(lambda (effect object array json-null field array-ref array-length array-append object-set printed input)
            (letrec ((ask (lambda (request) (effect "ask" request)))
                     (random (lambda (request) (effect "random" request)))
                     (sample (lambda (request) (effect "sample" request)))
@@ -78,14 +108,29 @@
                             (stopped reply)))))
                     (invoke (lambda (code args)
                       (effect "scheme.invoke" (object (cons "program" (printed code)) (cons "input" args))))))
-             ,(read-one source)))
+             (letrec-syntax
+               ((match-result
+                  (syntax-rules ()
+                    ((_ expression key clauses ...)
+                     (let* ((value expression) (tag-value (field value key)))
+                       (%match-result value tag-value clauses ...)))))
+                (%match-result
+                  (syntax-rules (else)
+                    ((_ value tag-value (else result body0 body ...))
+                     (let ((result value)) body0 body ...))
+                    ((_ value tag-value (label result body0 body ...) rest ...)
+                     (if (equal? tag-value label)
+                         (let ((result value)) body0 body ...)
+                         (%match-result value tag-value rest ...))))))
+               ,(read-one source))))
         (environment '(only (scheme base)
           lambda let let* letrec if begin quote quasiquote unquote unquote-splicing define
-          let-syntax letrec-syntax syntax-rules cond case else => and or when unless
-          + - * / = < > <= >= not equal? cons car cdr list null? pair? length reverse append
+          let-syntax letrec-syntax syntax-rules ... _ cond case else => and or when unless
+          + - * / quotient = < > <= >= not equal? cons car cdr cadr list null? pair? length reverse append
           map for-each apply string-append number->string string->number string=? string-length
           substring string? number? boolean? symbol? integer? exact-integer? remainder modulo abs
-          max min zero? positive? negative?))))
+          max min zero? positive? negative?)
+          '(only (scheme cxr) caddr))))
 (define (validate source)
   (protect (lambda () (compile-source source) (values "valid"))))
 (define (start source capabilities encoded-input)

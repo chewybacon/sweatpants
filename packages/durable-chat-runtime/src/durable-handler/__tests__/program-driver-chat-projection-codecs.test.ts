@@ -38,6 +38,7 @@ function emptyIndex(): ChatJournalIndex {
     toolStartBeforePull: new Map(),
     publicToolCallIds: new Set(),
     previousToolStarts: new Map(),
+    toolMessageIds: new Map(),
     unfinishedToolCalls: [],
     cancellationPartials: new Map(),
     modelMessageIds: new Map(),

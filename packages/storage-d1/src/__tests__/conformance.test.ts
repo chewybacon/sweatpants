@@ -69,6 +69,59 @@ describeExecutionStoreConformance([
   },
 ]);
 describe("D1 atomic kernel", () => {
+  it("rolls back retirement with publication and removes chunk rows only on success", async () => {
+    await fresh();
+    const kernel = createD1DurableKernel(db);
+    const old = objectEnsure("retire-large", "x".repeat(1_100_000));
+    const key = durableKey("test");
+    await run(() =>
+      kernel.apply({
+        ensures: [old],
+        authority: {
+          name: "control",
+          collection: "execution-controls",
+          key,
+          expected: { revision: null, fence: "0" },
+          next: { revision: "0", fence: "0", ...controlValue("test", "0") },
+        },
+      }),
+    );
+    expect(
+      Number(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_payload_chunks").first("count")),
+    ).toBeGreaterThan(0);
+    const replacement = {
+      ensures: [objectEnsure("retire-small", "small")],
+      retireExecutionObjects: [old.key],
+      authority: {
+        name: "control",
+        collection: "execution-controls" as const,
+        key,
+        expected: { revision: "0", fence: "0" },
+        next: { revision: "1", fence: "0", ...controlValue("test", "1") },
+      },
+    };
+    await db
+      .prepare(
+        "CREATE TRIGGER reject_retirement BEFORE DELETE ON sp_execution_objects BEGIN SELECT RAISE(ABORT, 'injected retirement failure'); END",
+      )
+      .run();
+    await expect(run(() => kernel.apply(replacement))).rejects.toThrow(
+      "injected retirement failure",
+    );
+    expect(await run(() => kernel.readImmutable("execution-objects", old.key))).not.toBeNull();
+    expect(
+      await run(() => kernel.readImmutable("execution-objects", durableKey("retire-small"))),
+    ).toBeNull();
+    expect((await run(() => kernel.readAuthority("execution-controls", key)))?.revision).toBe("0");
+    await db.prepare("DROP TRIGGER reject_retirement").run();
+    expect((await run(() => kernel.apply(replacement))).status).toBe("committed");
+    expect(await run(() => kernel.readImmutable("execution-objects", old.key))).toBeNull();
+    expect(
+      await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_payload_chunks").first("count"),
+    ).toBe(0);
+    expect(await db.prepare("SELECT COUNT(*) AS count FROM sp_d1_payloads").first("count")).toBe(0);
+  });
+
   it("replaces chunked and inline authority values without leaving stale payload rows", async () => {
     await fresh();
     const kernel = createD1DurableKernel(db);

@@ -1,19 +1,28 @@
 import { useMemo } from "react";
 import { createProgramFlow } from "./program-flow.ts";
+import { createSchemeFlow } from "./scheme-flow.ts";
 import { ProgramCanvas } from "./program-canvas.tsx";
 
-export function ProgramPreview({ source }: { source: string }) {
+export function ProgramPreview({
+  source,
+  language = "tisyn",
+}: {
+  source: string;
+  language?: "scheme" | "tisyn";
+}) {
   const plan = useMemo(() => {
     try {
-      return { value: createProgramFlow(source) };
+      return {
+        value: language === "scheme" ? createSchemeFlow(source) : createProgramFlow(source),
+      };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }
-  }, [source]);
+  }, [source, language]);
   return (
     <section className="program-preview">
       <details open={!plan.error} className="logic-plan">
-        <summary>{plan.error ? "Program needs repair" : "Program map"}</summary>
+        <summary>{plan.error ? "Source preview" : "Program map"}</summary>
         {plan.error ? (
           <p className="preview-error" role="status">
             Program source cannot be diagrammed: {plan.error}
@@ -30,7 +39,7 @@ export function ProgramPreview({ source }: { source: string }) {
         )}
       </details>
       <details className="source">
-        <summary>Tisyn source</summary>
+        <summary>{language === "scheme" ? "Scheme source" : "Tisyn source"}</summary>
         <pre>
           <code>{source}</code>
         </pre>

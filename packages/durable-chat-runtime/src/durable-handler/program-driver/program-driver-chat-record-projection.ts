@@ -7,12 +7,13 @@ import {
   stage,
   type ProjectionProgram,
 } from "@sweatpants/foundation/projection";
-import type { StreamEvent } from "./program-driver-chat-types.ts";
+import type { AGUIEvent } from "@sweatpants/chat-core";
 import type { ChatJournalIndex } from "./program-driver-chat-journal-index.ts";
 import { jsonRecord, toolFailureEnvelope } from "./program-driver-chat-projection-codecs.ts";
 import {
   publicActivityToolStartSnapshots,
   publicElicitActivityDelta,
+  publicToolMessageCompleted,
 } from "./program-driver-chat-activity-projection.ts";
 
 type RecordProjectionNote = { readonly kind: "events-projected"; readonly events: number };
@@ -20,7 +21,7 @@ type RecordProjectionNote = { readonly kind: "events-projected"; readonly events
 function* projectRecordsProgram(
   records: DurableSemanticRecord[],
   index: ChatJournalIndex,
-): ProjectionProgram<StreamEvent[], RecordProjectionNote> {
+): ProjectionProgram<AGUIEvent[], RecordProjectionNote> {
   return yield* stage("project-events", function* () {
     const events = projectRecordsFromIndex(records, index);
     yield* note({ kind: "events-projected", events: events.length });
@@ -31,7 +32,7 @@ function* projectRecordsProgram(
 export function projectRecords(
   records: DurableSemanticRecord[],
   index: ChatJournalIndex,
-): StreamEvent[] {
+): AGUIEvent[] {
   const outcome = runProjectionProgram(
     () => projectRecordsProgram(records, index),
     (error) => error,
@@ -43,14 +44,14 @@ export function projectRecords(
 function projectRecordsFromIndex(
   records: DurableSemanticRecord[],
   index: ChatJournalIndex,
-): StreamEvent[] {
-  const events: StreamEvent[] = [];
+): AGUIEvent[] {
+  const events: AGUIEvent[] = [];
   const activeToolCalls = new Set<string>();
   let cancellationClosed = false;
   let errorClosed: DurableSemanticRecord | undefined;
   for (const recordEntry of records) {
     const subagentRunId = publicSubagentRunId(index, recordEntry.payload.taskId);
-    const emit = (...values: StreamEvent[]) =>
+    const emit = (...values: AGUIEvent[]) =>
       events.push(
         ...values.map((event) =>
           subagentRunId === undefined ? event : { ...event, subagentRunId },
@@ -146,6 +147,7 @@ function projectRecordsFromIndex(
             toolCallName: payload["tool"],
             parentMessageId: `message:${recordEntry.payload.taskId}:${payload["callId"]}`,
           },
+          ...publicActivityToolStartSnapshots(index, recordEntry, payload),
           { type: EventType.TOOL_CALL_END, toolCallId: payload["callId"] },
         );
       }
@@ -166,6 +168,12 @@ function projectRecordsFromIndex(
         ),
         role: "tool",
       });
+      emit(
+        publicToolMessageCompleted(
+          index.toolMessageIds.get(payload["callId"]) ??
+            `message:${recordEntry.payload.taskId}:${payload["callId"]}`,
+        ),
+      );
     }
   }
 
@@ -185,6 +193,8 @@ function projectRecordsFromIndex(
         }),
         role: "tool",
       });
+      const owner = index.toolMessageIds.get(pending.callId);
+      if (owner) events.push(publicToolMessageCompleted(owner));
     }
   }
   const errored = errorClosed;
@@ -204,6 +214,8 @@ function projectRecordsFromIndex(
         }),
         role: "tool",
       });
+      const owner = index.toolMessageIds.get(pending.callId);
+      if (owner) events.push(publicToolMessageCompleted(owner));
     }
   }
   return events;

@@ -159,6 +159,7 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
 
   it("recovers a refreshed game when its nested model request loses the Worker", async () => {
     let host: Awaited<ReturnType<typeof startCloudflareChatHost>>;
+    let phase = "starting conversation";
     await withTestScenario(
       {
         binding: "in-process",
@@ -172,6 +173,7 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
       function* (s) {
         const conversation = s.conversation();
         const first = yield* conversation.send("Play tic-tac-toe");
+        phase = "waiting for outer model";
         const outer = yield* s.model.request();
         yield* outer.respond.toolCalls([{ id: "game-recovery", name: "play_ttt", arguments: {} }]);
         let holdNextSample = false;
@@ -191,6 +193,7 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
         expect(move.context).toEqual(original.context);
         holdNextSample = true;
         yield* move.accept({ position: 0 });
+        phase = "waiting for nested model after human move";
         const interrupted = yield* pendingSample;
         // Hold the provider boundary open while replacing compute. No timer or
         // model guess determines when the host is lost.
@@ -198,6 +201,7 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
         // A late provider answer belongs to the dead host, not its replacement.
         yield* interrupted.respond.text('{"cell":2}');
         const reopening = yield* spawn(() => refreshed.reopen());
+        phase = "waiting for nested model after Worker replacement";
         const replayed = yield* s.model.request();
         expect(replayed.body.input).toEqual(interrupted.body.input);
         yield* replayed.respond.text('{"cell":2}');
@@ -213,10 +217,13 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
         expect(board.board[0]).toBe(board.userSymbol);
         expect(board.board[2]).toBe(board.modelSymbol);
         yield* next.cancel();
+        phase = "waiting for final model after cancellation";
         const final = yield* s.model.request();
         yield* final.respond.text("Game cancelled.");
         expect((yield* game.settled()).text).toContain("Game cancelled.");
       },
-    );
+    ).catch((error: unknown) => {
+      throw new Error(`Cloudflare recovery failed while ${phase}`, { cause: error });
+    });
   }, 30_000);
 });

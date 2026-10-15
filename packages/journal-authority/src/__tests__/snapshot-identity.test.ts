@@ -84,6 +84,40 @@ it("publishes one UUID snapshot across a CAS retry and reuses it after cold relo
     expect(staged).toHaveLength(1);
     expect(yield* store.loadControl("authority:snapshot-identities")).toEqual(control);
     expect((yield* restarted.readSession("session")).length).toBeGreaterThan(0);
+    let interleaved = false;
+    const racingStore: ExecutionStore = {
+      ...store,
+      *getObject(pointer) {
+        if (!interleaved) {
+          interleaved = true;
+          yield* drivers.advance({
+            type: "execution.open-task",
+            request: { ...request, sessionId: "second-session" },
+          });
+          expect(yield* store.getObject({ objectId: snapshot.objectId })).toBeNull();
+        }
+        return yield* store.getObject(pointer);
+      },
+    };
+    const racingReader = yield* createJournal(racingStore, options);
+    expect(yield* racingReader.exportSnapshot()).toEqual(yield* drivers.exportSnapshot());
+    expect(interleaved).toBe(true);
+    expect(staged).toHaveLength(2);
+    const missingStore: ExecutionStore = {
+      ...store,
+      *getObject() {
+        return null;
+      },
+    };
+    const missingReader = yield* createJournal(missingStore, options);
+    let missingFailure: unknown;
+    try {
+      yield* missingReader.exportSnapshot();
+    } catch (error) {
+      missingFailure = error;
+    }
+    expect(missingFailure).toMatchObject({ code: "invalid_journal" });
+
     for (const fault of ["oversized", "invalid-shape"] as const) {
       const invalidStore: ExecutionStore = {
         ...store,

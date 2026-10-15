@@ -24,6 +24,7 @@ export interface ChatJournalIndex {
   readonly toolStartBeforePull: ReadonlyMap<string, ToolStartFact>;
   readonly publicToolCallIds: ReadonlySet<string>;
   readonly previousToolStarts: ReadonlyMap<string, Record<string, Json>>;
+  readonly toolMessageIds: ReadonlyMap<string, string>;
   readonly unfinishedToolCalls: readonly { callId: string; tool: string }[];
   readonly cancellationPartials: ReadonlyMap<string, Json>;
   readonly modelMessageIds: ReadonlyMap<DurableSemanticRecord, string | null>;
@@ -121,12 +122,14 @@ const toolLifecycleFold: Fold<
   DurableSemanticRecord,
   {
     readonly previousToolStarts: ReadonlyMap<string, Record<string, Json>>;
+    readonly toolMessageIds: ReadonlyMap<string, string>;
     readonly unfinishedToolCalls: readonly { callId: string; tool: string }[];
   }
 > = fold(() => {
   const started = new Map<string, string>();
   const completed = new Set<string>();
   const previousToolStarts = new Map<string, Record<string, Json>>();
+  const toolMessageIds = new Map<string, string>();
   return {
     step(record) {
       if (record.payload.type !== "DurableEmission") return;
@@ -138,6 +141,10 @@ const toolLifecycleFold: Fold<
       ) {
         started.set(payload["callId"], payload["tool"]);
         previousToolStarts.set(payload["callId"], payload);
+        toolMessageIds.set(
+          payload["callId"],
+          `message:${record.payload.taskId}:${payload["callId"]}`,
+        );
       }
       if (record.payload.descriptor.eventType === "tool_completed") {
         completed.add(payload["callId"]);
@@ -145,6 +152,7 @@ const toolLifecycleFold: Fold<
     },
     done: () => ({
       previousToolStarts,
+      toolMessageIds,
       unfinishedToolCalls: [...started]
         .filter(([callId]) => !completed.has(callId))
         .map(([callId, tool]) => ({ callId, tool })),
@@ -223,6 +231,7 @@ const chatJournalIndexFold = mapFold(
     pullRequests,
     ...relations,
     previousToolStarts: toolLifecycle.previousToolStarts,
+    toolMessageIds: toolLifecycle.toolMessageIds,
     unfinishedToolCalls: toolLifecycle.unfinishedToolCalls,
     cancellationPartials: new Map(
       cancellationLinks.flatMap(({ pullId, partial }) => {

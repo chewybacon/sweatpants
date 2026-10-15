@@ -521,7 +521,7 @@ class JournalState {
 
   *load(supplied?: ExecutionControl | null): Operation<LoadedAuthority> {
     this.assertOpen();
-    const current =
+    let current =
       supplied === undefined ? yield* this.store.loadControl(this.executionId) : supplied;
     this.assertOpen();
     if (!current) {
@@ -538,82 +538,102 @@ class JournalState {
         authorityControl: null,
       };
     }
-    const authorityControl = this.parseAuthorityControl(current.control);
-    // A descendant can substitute its storage port. Revision counters are local
-    // to that store, so the persisted object identities must match as well.
-    if (
-      this.view &&
-      current.controlRevision === this.view.control.controlRevision &&
-      current.ownerFence === this.view.control.ownerFence &&
-      authorityControl.snapshot.id === this.view.authorityControl.snapshot.id &&
-      authorityControl.journalHead?.segmentId ===
-        this.view.authorityControl.journalHead?.segmentId &&
-      authorityControl.journalHead?.lastSequence ===
-        this.view.authorityControl.journalHead?.lastSequence &&
-      authorityControl.replayHead?.segmentId === this.view.authorityControl.replayHead?.segmentId &&
-      authorityControl.replayHead?.lastSequence ===
-        this.view.authorityControl.replayHead?.lastSequence
-    ) {
-      return { ...this.view, control: current };
-    }
-    const payload = yield* this.store.getObject({ objectId: authorityControl.snapshot.id });
-    if (!payload || typeof payload.body !== "string") {
-      throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
-    }
-    if (payload.lifetimeScope === "execution" && payload.scopeOwnerId !== this.executionId) {
-      throw new CrankError(
-        "invalid_journal",
-        "Stored authority snapshot is outside execution scope",
-      );
-    }
-    // The mutable authority object stores topology and frontiers only. The
-    // complete semantic record collection is reconstructed from immutable
-    // journal segments before the authority is handed to the in-memory engine.
-    let base: DurableAuthoritySnapshot;
-    try {
-      // getObject verified this byte count.
-      // Enforce the same boundary limit without serializing that body again.
-      if (payload.byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
-        throw new CrankError("invalid_journal", "Authority snapshot exceeds its byte limit");
+    for (let attempt = 0; attempt < 64; attempt++) {
+      const authorityControl = this.parseAuthorityControl(current.control);
+      // A descendant can substitute its storage port. Revision counters are local
+      // to that store, so the persisted object identities must match as well.
+      if (
+        this.view &&
+        current.controlRevision === this.view.control.controlRevision &&
+        current.ownerFence === this.view.control.ownerFence &&
+        authorityControl.snapshot.id === this.view.authorityControl.snapshot.id &&
+        authorityControl.journalHead?.segmentId ===
+          this.view.authorityControl.journalHead?.segmentId &&
+        authorityControl.journalHead?.lastSequence ===
+          this.view.authorityControl.journalHead?.lastSequence &&
+        authorityControl.replayHead?.segmentId ===
+          this.view.authorityControl.replayHead?.segmentId &&
+        authorityControl.replayHead?.lastSequence ===
+          this.view.authorityControl.replayHead?.lastSequence
+      ) {
+        return { ...this.view, control: current };
       }
-      base = parseDurableAuthoritySnapshot(payload.body);
-    } catch (error) {
-      throw this.resetFailure(
-        "restoring the stored authority snapshot",
-        `snapshot ${authorityControl.snapshot.id}`,
-        error,
+      const payload = yield* this.store.getObject({ objectId: authorityControl.snapshot.id });
+      if (!payload) {
+        // A replacement may retire the snapshot between the control and object reads.
+        // Only a changed authority permits retry; missing current state is corruption.
+        const latest = yield* this.store.loadControl(this.executionId);
+        if (
+          latest &&
+          (latest.controlRevision !== current.controlRevision ||
+            latest.ownerFence !== current.ownerFence)
+        ) {
+          current = latest;
+          continue;
+        }
+      }
+      if (!payload || typeof payload.body !== "string") {
+        throw new CrankError("invalid_journal", "Stored authority snapshot payload is unavailable");
+      }
+      if (payload.lifetimeScope === "execution" && payload.scopeOwnerId !== this.executionId) {
+        throw new CrankError(
+          "invalid_journal",
+          "Stored authority snapshot is outside execution scope",
+        );
+      }
+      // The mutable authority object stores topology and frontiers only. The
+      // complete semantic record collection is reconstructed from immutable
+      // journal segments before the authority is handed to the in-memory engine.
+      let base: DurableAuthoritySnapshot;
+      try {
+        // getObject verified this byte count.
+        // Enforce the same boundary limit without serializing that body again.
+        if (payload.byteLength > DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES) {
+          throw new CrankError("invalid_journal", "Authority snapshot exceeds its byte limit");
+        }
+        base = parseDurableAuthoritySnapshot(payload.body);
+      } catch (error) {
+        throw this.resetFailure(
+          "restoring the stored authority snapshot",
+          `snapshot ${authorityControl.snapshot.id}`,
+          error,
+        );
+      }
+      const journal = authorityControl.journalHead
+        ? yield* this.store.readJournal({
+            executionId: this.executionId,
+            taskId: "authority",
+            head: authorityControl.journalHead,
+          })
+        : null;
+      const entries = journal
+        ? yield* call(async () => {
+            const values: Json[] = [];
+            for await (const chunk of journal) {
+              values.push(...chunk);
+            }
+            return values;
+          })
+        : [];
+      const collections = this.parseJournalCollections(
+        entries,
+        authorityControl.journalHead?.segmentId ?? "none",
       );
+      const snapshot = {
+        ...base,
+        records: collections.map(
+          ({ sessionId, records }) => [sessionId, records] as [string, DurableSemanticRecord[]],
+        ),
+      };
+      const state = authorityStateFromSnapshot(snapshot);
+      this.assertOpen();
+      this.view = { control: current, authorityControl, snapshot, collections, state };
+      return { control: current, authorityControl, snapshot, collections, state };
     }
-    const journal = authorityControl.journalHead
-      ? yield* this.store.readJournal({
-          executionId: this.executionId,
-          taskId: "authority",
-          head: authorityControl.journalHead,
-        })
-      : null;
-    const entries = journal
-      ? yield* call(async () => {
-          const values: Json[] = [];
-          for await (const chunk of journal) {
-            values.push(...chunk);
-          }
-          return values;
-        })
-      : [];
-    const collections = this.parseJournalCollections(
-      entries,
-      authorityControl.journalHead?.segmentId ?? "none",
+    throw new CrankError(
+      "cas_contention",
+      "Snapshot retirement exceeded the authority read retry budget",
     );
-    const snapshot = {
-      ...base,
-      records: collections.map(
-        ({ sessionId, records }) => [sessionId, records] as [string, DurableSemanticRecord[]],
-      ),
-    };
-    const state = authorityStateFromSnapshot(snapshot);
-    this.assertOpen();
-    this.view = { control: current, authorityControl, snapshot, collections, state };
-    return { control: current, authorityControl, snapshot, collections, state };
   }
 
   control(

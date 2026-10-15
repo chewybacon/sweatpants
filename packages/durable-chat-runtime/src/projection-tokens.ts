@@ -211,10 +211,14 @@ export async function mintPublicHistoryCursor(
   return await signPayload(value as unknown as Json, keyring);
 }
 
+/**
+ * History cursors retain the signed projection basis, including its window-token
+ * timestamps, but do not expire with that window. The history endpoint checks
+ * current authorization and archive lineage/frontier on every read.
+ */
 export async function verifyPublicHistoryCursor(
   token: string,
   keyring: ProjectionTokenKeyring,
-  now = Date.now(),
 ): Promise<PublicHistoryCursorPayload> {
   const payload = await verifiedPayload(token, keyring);
   let cursor: PublicHistoryCursorPayload;
@@ -227,6 +231,5 @@ export async function verifyPublicHistoryCursor(
       { cause: error },
     );
   }
-  assertLive(cursor.expiresAt, now);
   return cursor;
 }

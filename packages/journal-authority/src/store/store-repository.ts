@@ -4,6 +4,7 @@ import {
   DurableCollections,
   DurableIndexes,
   durableKey,
+  decodeDurableKey,
   type DurableKernel,
   type DurableMutationOutcome,
   type StoredScanPage,
@@ -198,6 +199,14 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
             "persisted_data_invalid",
             "Execution commit omitted its control result",
           );
+        }
+        for (const key of decision.mutation.retireExecutionObjects ?? []) {
+          const [objectId] = decodeDurableKey(key);
+          const retained = objectReads.get(objectId!);
+          if (retained) {
+            objectReadBytes -= retained.byteLength;
+            objectReads.delete(objectId!);
+          }
         }
         observed = { executionId: request.executionId, record: outcome.authority };
         return { status: "committed", control: decodeAuthorityControl(outcome.authority) };

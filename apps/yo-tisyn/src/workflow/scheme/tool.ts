@@ -21,6 +21,8 @@ import {
 } from "@sweatpants/scheme-runtime";
 import manifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
 import { schemeReference } from "./reference.ts";
+import { createRecoveryHistory } from "./recovery.ts";
+import { schemeSourceHint } from "./diagnostics.ts";
 
 const parameters = z
   .object({
@@ -59,11 +61,12 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
         canonicalJson({
           engine: "hoot-scheme-v1",
           manifest,
-          host: 1,
+          host: 2,
           samplingIdentity,
           decisionBinding,
           limits: {
             ...limits,
+            validationFuel: String(limits.validationFuel),
             stepFuel: String(limits.stepFuel),
             totalFuel: String(limits.totalFuel),
           },
@@ -81,12 +84,18 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
     .decisions(decisionBinding)
     .execute(function* ({ program, input, validateOnly }, context): Operation<Json> {
       const validation = yield* SchemeEvaluationPort.api.operations.validate(program);
-      if (!validation.valid)
+      if (!validation.valid) {
+        const sourceHint = schemeSourceHint(program);
         return {
           status: "invalid",
-          diagnostic: { phase: "validation", message: validation.message },
+          diagnostic: {
+            phase: "validation",
+            message: validation.message,
+            ...(sourceHint === undefined ? {} : { sourceHint }),
+          },
           completedEffects: 0,
         };
+      }
       if (validateOnly) return { status: "valid" };
       const evaluation = yield* createSchemeEvaluation({
         source: program,
@@ -94,6 +103,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
         input: assertJson(input ?? null),
       });
       let count = 0;
+      const recovery = createRecoveryHistory();
       let invocationId: string | undefined;
       try {
         let step = yield* evaluation.next();
@@ -147,6 +157,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
             value = assertJson(
               yield* sampleCompletion(samplingParameters.parse(checked.value), context, callId),
             );
+          recovery.record(value);
           count++;
           yield* context.emit("tool_completed", {
             callId,
@@ -164,6 +175,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
           status: "failed",
           diagnostic: { phase: "execution", message: error.message },
           completedEffects: count,
+          recovery: recovery.snapshot(),
         };
       }
     });

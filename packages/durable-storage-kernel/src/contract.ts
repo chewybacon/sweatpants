@@ -67,6 +67,8 @@ export interface AuthorityReplacement {
  * their native transport limits when encoding. The kernel bounds mutation cardinality.
  */
 export interface DurableMutation {
+  /** Execution object keys retired atomically with a fenced authority replacement. */
+  readonly retireExecutionObjects?: readonly DurableKey[];
   readonly claim?: ImmutableClaim;
   readonly ensures: readonly ImmutableEnsure[];
   readonly authority?: AuthorityReplacement;

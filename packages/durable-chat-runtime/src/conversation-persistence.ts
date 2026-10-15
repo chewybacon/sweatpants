@@ -525,13 +525,21 @@ function* compactPublicRoots(params: {
   const terminal = newEvents.some(
     (event) => event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR,
   );
-  const ended = new Set(
-    allEvents.flatMap((event) =>
+  const ended = new Set([
+    ...allEvents.flatMap((event) =>
       event.type === EventType.TEXT_MESSAGE_END || event.type === EventType.REASONING_MESSAGE_END
         ? [event.messageId]
         : [],
     ),
-  );
+    // Tool-only messages have no text-end event. Their owned activity closes them.
+    ...snapshots.flatMap((event) => {
+      if (event.type !== EventType.ACTIVITY_SNAPSHOT) return [];
+      const { node } = decodePublicActivity(event.content);
+      return node.publicData?.kind === "message" && node.state === "done"
+        ? [node.publicData.messageId]
+        : [];
+    }),
+  ]);
   const snapshotMessageIds = new Set([
     ...acceptedMessages.map((message) => message.id),
     ...allEvents.flatMap((event) =>

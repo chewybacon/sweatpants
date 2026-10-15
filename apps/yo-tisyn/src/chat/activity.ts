@@ -52,8 +52,9 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
         {
           id: part.id,
           path,
-          label:
-            part.localState === "submitting"
+          label: part.parts.some((child) => child.type === "render" && child.state === "completed")
+            ? "Resuming workflow"
+            : part.localState === "submitting"
               ? "Submitting reply"
               : part.localState === "failed"
                 ? "Reply needs attention"

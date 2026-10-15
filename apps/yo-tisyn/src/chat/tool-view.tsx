@@ -38,16 +38,9 @@ function ToolCard({ part }: { part: ToolPart }) {
           {status}
         </span>
       </div>
-      {source !== undefined &&
-        part.state !== "input-streaming" &&
-        (part.name === "scheme" ? (
-          <details className="tool-data">
-            <summary>Scheme program</summary>
-            <pre>{source}</pre>
-          </details>
-        ) : (
-          <ProgramPreview source={source} />
-        ))}
+      {source !== undefined && part.state !== "input-streaming" && (
+        <ProgramPreview source={source} language={part.name === "scheme" ? "scheme" : "tisyn"} />
+      )}
       {echo !== undefined && (
         <div className="tool-result">
           <span className="field-label">Echoed</span>
@@ -125,7 +118,29 @@ function ToolCard({ part }: { part: ToolPart }) {
   );
 }
 
+/** Match the renderer so protocol-only messages do not create empty chat cards. */
+export function hasVisiblePart(part: ReactChatUIPart): boolean {
+  switch (part.type) {
+    case "text":
+      return part.rendered.trim().length > 0;
+    case "reasoning":
+    case "tool-call":
+      return true;
+    case "message":
+      return part.message.parts.some(hasVisiblePart);
+    case "activity":
+      return part.presentation !== "opaque";
+    case "elicit":
+      return part.parts.some(hasVisiblePart);
+    case "render":
+      return part.node !== null && part.node !== undefined && typeof part.node !== "boolean";
+    default:
+      return false;
+  }
+}
+
 export function Part({ part }: { part: ReactChatUIPart }) {
+  if (!hasVisiblePart(part)) return null;
   switch (part.type) {
     case "text":
       return <div dangerouslySetInnerHTML={{ __html: part.rendered }} />;

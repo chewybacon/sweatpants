@@ -204,7 +204,7 @@ describe("native ConversationWindow production", () => {
         expect(corruption).toMatchObject({ code: "public_root_conflict" });
 
         const cursor = yield* call(() =>
-          verifyPublicHistoryCursor(continued.olderHistoryCursor!, keyring, now + 101),
+          verifyPublicHistoryCursor(continued.olderHistoryCursor!, keyring),
         );
         expect(cursor).toMatchObject({
           lineageId: second.checkpoint.lineageId,
@@ -479,18 +479,18 @@ describe("native ConversationWindow production", () => {
         )).status,
       ).toBe(410);
 
-      const expiredCursor = yield* call(() =>
+      const olderCursor = yield* call(() =>
         mintPublicHistoryCursor(
           { ...validPayload, issuedAt: now - 2_000, expiresAt: now - 1 },
           keyring,
         ),
       );
-      const readsBeforeExpired = headReads;
+      const readsBeforeOlderCursor = headReads;
       expect(
-        (yield* call(() => handler("authorized")(historyRequest(conversationId, expiredCursor))))
+        (yield* call(() => handler("authorized")(historyRequest(conversationId, olderCursor))))
           .status,
-      ).toBe(409);
-      expect(headReads).toBe(readsBeforeExpired);
+      ).toBe(200);
+      expect(headReads).toBeGreaterThan(readsBeforeOlderCursor);
 
       const crossLineageCursor = yield* call(() =>
         mintPublicHistoryCursor({ ...validPayload, lineageId: "another-lineage" }, keyring),

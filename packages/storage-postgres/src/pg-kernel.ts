@@ -736,6 +736,10 @@ async function applyIn(
   ) {
     faultInjection?.("execution-after-segment-insert");
   }
+  for (const key of mutation.retireExecutionObjects ?? []) {
+    const [objectId] = decodeDurableKey(key);
+    await database.delete(spExecutionObjects).where(eq(spExecutionObjects.objectId, objectId!));
+  }
   const authority = plan.outcome.authority;
   if (authority) {
     await replaceAuthority(database, authority, current);

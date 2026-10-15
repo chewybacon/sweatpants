@@ -10,8 +10,10 @@ export const limits = {
   bytes: 65536,
   depth: 32,
   nodes: 4096,
-  stepFuel: 2_000_000n,
-  totalFuel: 20_000_000n,
+  // Metering includes evaluator dispatch, not just authored operations.
+  validationFuel: 2_000_000n,
+  stepFuel: 100_000_000n,
+  totalFuel: 1_000_000_000n,
   effects: 256,
 } as const;
 export class SchemeEvaluationError extends Error {}
@@ -166,7 +168,7 @@ export function createSchemeDriver(load: () => Promise<Machine>): SchemeEvaluati
       if (source.length > limits.source)
         return { valid: false, message: "Scheme source limit exceeded" };
       const machine = yield* call(load);
-      machine.fuel.value = limits.stepFuel;
+      machine.fuel.value = limits.validationFuel;
       try {
         const result = machine[0].call(source);
         if (scalar(result[0]) === "valid" && result.length === 1) return { valid: true };

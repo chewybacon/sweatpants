@@ -84,7 +84,7 @@ async function createHistoryPageResponse(params: {
   try {
     const token = await readHistoryCursorBody(params.request);
     const now = Date.now();
-    const cursor = await verifyPublicHistoryCursor(token, params.config.projectionTokens, now);
+    const cursor = await verifyPublicHistoryCursor(token, params.config.projectionTokens);
     const head = await execute(() => params.store.loadHead(params.conversationId));
     if (!head) {
       return new Response(JSON.stringify({ error: "conversation_not_found" }), {
