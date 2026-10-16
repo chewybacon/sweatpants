@@ -129,8 +129,8 @@ if (process.argv[2] === "step") {
         if (c.name === "normal") {
             fs.writeFileSync(dir + "artifact.json", JSON.stringify(artifact, null, 2));
             fs.writeFileSync(dir + "checkpoint-cleanup.json", JSON.stringify(states[1], null, 2));
-            assert.equal(states[1].frames.at(-1).handlers.at(-1).pending.kind, "returned");
-            assert.equal(states[1].frames.at(-1).handlers.at(-1).pending.value, "answer");
+            const cleanup = states[1].frames.at(-1).handlers.findLast((h) => h.phase === "cleanup");
+            assert.deepEqual(cleanup.pending, { kind: "returned", value: "answer" });
             const edited = build("// Source-only change\n" + c.source);
             assert.deepEqual(fresh(edited, states[1], { reply: "released" }).effect, [
                 "elicit",

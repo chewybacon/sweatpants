@@ -1,9 +1,0 @@
----
-import SiteLayout from "../../layouts/SiteLayout.astro";
-import { ThreadList } from "../../threads/ThreadList.tsx";
----
-<SiteLayout title="Threads · yo-tisyn" description="Resume durable yo-tisyn workflows.">
-  <ThreadList client:only="react">
-    <p slot="fallback" class="hint" role="status">Finding your threads…</p>
-  </ThreadList>
-</SiteLayout>

@@ -368,3 +368,9 @@ export {
 } from "./pull-kinds/index.ts";
 
 export { createInMemoryJournal } from "./shell/in-memory-journal.ts";
+
+export {
+  createEffectionProgramBackend,
+  type ProgramBackend,
+  type ProgramComputation,
+} from "./workflow/program-backend.ts";

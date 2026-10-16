@@ -19,10 +19,10 @@ import {
   driveInstalledTestProgramTree,
   withProgramDriverTestScope,
 } from "@sweatpants/journal-authority/testing";
-import { ask } from "../../../apps/yo-tisyn/src/workflow/tools/ask.ts";
-import { createTisynTool } from "../../../apps/yo-tisyn/src/workflow/tisyn.ts";
-import { TisynEvaluationPort } from "../../../apps/yo-tisyn/src/workflow/evaluation/port.ts";
-import { createQuickJSEvaluationDriver } from "../../../apps/yo-tisyn/src/workflow/evaluation/quickjs.ts";
+import { ask } from "../../../apps/yo-workflow/src/workflow/tools/ask.ts";
+import { createTisynTool } from "../../../apps/yo-workflow/src/workflow/tisyn.ts";
+import { TisynEvaluationPort } from "../../../apps/yo-workflow/src/workflow/evaluation/port.ts";
+import { createQuickJSEvaluationDriver } from "../../../apps/yo-workflow/src/workflow/evaluation/quickjs.ts";
 import variant from "@jitl/quickjs-wasmfile-release-sync";
 import { memoizePromiseFactory, newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
 import { scheme } from "../runner.ts";

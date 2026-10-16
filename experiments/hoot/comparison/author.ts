@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { run } from "effection";
 import { FileCredentialStore, createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import { createTisynModels } from "../../../apps/yo-tisyn/src/server/cloudflare/model-catalog.ts";
+import { createTisynModels } from "../../../apps/yo-workflow/src/server/cloudflare/model-catalog.ts";
 const provider = createPiAiModelProvider({
   models: createTisynModels(
     new FileCredentialStore(

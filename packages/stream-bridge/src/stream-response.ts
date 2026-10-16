@@ -75,8 +75,9 @@ export function createStreamResponse<T>(
         }
 
         try {
+          const activeSubscription = subscription;
           const result = await scope.run(function* () {
-            return yield* subscription!.next();
+            return yield* activeSubscription.next();
           });
 
           if (result.done) {
@@ -154,8 +155,9 @@ export function createReadableStream<T>(
         }
 
         try {
+          const activeSubscription = subscription;
           const result = await scope.run(function* () {
-            return yield* subscription!.next();
+            return yield* activeSubscription.next();
           });
 
           if (result.done) {

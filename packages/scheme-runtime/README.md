@@ -1,6 +1,6 @@
 # Scheme runtime
 
-Hoot Scheme evaluation for Node and Cloudflare Workers. `yo-tisyn` consumes
+Hoot Scheme evaluation for Node and Cloudflare Workers. `yo-workflow` consumes
 this package and owns its authoring instructions, tool bindings, and journal.
 This package owns the restricted evaluator, JSON bridge, runtime limits,
 platform loaders, and generated WASM assets.

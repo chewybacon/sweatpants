@@ -1,31 +1,6 @@
 // Experimental Scheme subset. JSON is the checkpoint format; no host closures are saved.
 import { createHash } from "node:crypto";
-export function parse(source) {
-    const tokens = source.match(/;[^\n]*|"(?:\\.|[^"\\])*"|[()]|[^\s()]+/g) ?? [];
-    const ts = tokens.filter((t) => !t.startsWith(";"));
-    let i = 0;
-    function read() {
-        const t = ts[i++];
-        if (t === undefined) throw Error("Unexpected end of source");
-        if (t === "(") {
-            const xs = [];
-            while (ts[i] !== ")") {
-                if (i >= ts.length) throw Error("Missing )");
-                xs.push(read());
-            }
-            i++;
-            return xs;
-        }
-        if (t === ")") throw Error("Unexpected )");
-        if (t.startsWith('"')) return JSON.parse(t);
-        if (t === "#t" || t === "#f") return t === "#t";
-        if (/^-?\d+$/.test(t)) return Number(t);
-        return { sym: t };
-    }
-    const forms = [];
-    while (i < ts.length) forms.push(read());
-    return forms;
-}
+import { parse } from "../scheme-data/read.mjs";
 const sym = (x) => ({ sym: x });
 const name = (x) => {
     if (!x?.sym) throw Error("Expected identifier");

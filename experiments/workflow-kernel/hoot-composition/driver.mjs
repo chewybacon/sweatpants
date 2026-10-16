@@ -2,10 +2,11 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import { loadMachine } from "./machine.mjs";
 import { source } from "./fixture.mjs";
-import { createWorkflowDriver } from "../../../packages/workflow-driver/dist/index.js";
+import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
 import { assertKernelCompatibility } from "../../../packages/workflow-kernel/dist/index.js";
 import { canonicalDigest, sha256Bytes } from "../../../packages/foundation/dist/index.js";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "../../../packages/durable-execution/dist/index.js";
+import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
 const { call } = createRequire(new URL("../../../package.json", import.meta.url))("effection");
 const wasm = fs.readFileSync(
     new URL("../../../.artifacts/hoot-composition/kernel.wasm", import.meta.url),
@@ -14,13 +15,11 @@ const identity = {
     kind: "hoot-composition-spike",
     version: sha256Bytes(wasm),
     programFormat: "workflow-scheme-spike-1",
-    snapshotFormat: "workflow-state-v2",
+    snapshotFormat: "workflow-state-v3",
 };
-const digest = canonicalDigest({ source, identity });
-export const manifest = {
+const fixtureContract = {
     programId: "hoot-composition",
     version: "1",
-    digest,
     inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
     outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
     effects: {},
@@ -32,7 +31,7 @@ export const manifest = {
     ),
     capabilities: { durableEmissions: true, structuredChildren: false, replay: "strict" },
 };
-function kernel(observe) {
+function kernel(observe, source, digest) {
     let machine = null,
         closed = false;
     function check() {
@@ -52,21 +51,32 @@ function kernel(observe) {
         }
         throw Error("Unknown Hoot boundary");
     }
+    function transition(event, action) {
+        const started = performance.now();
+        const result = boundary(action());
+        observe(event, {
+            boundary: result,
+            inspection: machine.inspect(),
+            durationMs: performance.now() - started,
+        });
+        return result;
+    }
     const execution = {
         *resume(reply) {
             check();
-            return boundary(
+            return transition("resume", () =>
                 reply.kind === "throw" ? machine.reject(reply.value) : machine.resume(reply.value),
             );
         },
         *cancel() {
             check();
-            observe("cancel");
-            return boundary(machine.cancel());
+            return transition("cancel", () => machine.cancel());
         },
         *capture() {
             check();
-            return { kernel: identity, programDigest: digest, state: machine.capture() };
+            const state = machine.capture();
+            observe("capture", { bytes: new TextEncoder().encode(state).length });
+            return { kernel: identity, programDigest: digest, state };
         },
         *dispose() {
             if (machine) {
@@ -88,12 +98,8 @@ function kernel(observe) {
         identity,
         *start(program, input) {
             validate(program);
-            if (input !== null) {
-                throw Error("Fixture has no inputs");
-            }
             machine = yield* call(loadMachine);
-            observe("start");
-            return { execution, boundary: boundary(machine.start(source)) };
+            return { execution, boundary: transition("start", () => machine.start(source, input)) };
         },
         *restore(program, snapshot) {
             validate(program, snapshot);
@@ -101,8 +107,10 @@ function kernel(observe) {
                 throw Error("Invalid snapshot");
             }
             machine = yield* call(loadMachine);
-            observe("restore");
-            return { execution, boundary: boundary(machine.restore(source, snapshot.state)) };
+            return {
+                execution,
+                boundary: transition("restore", () => machine.restore(source, snapshot.state)),
+            };
         },
         *close() {
             yield* execution.dispose();
@@ -110,43 +118,57 @@ function kernel(observe) {
         },
     };
 }
-export function createHootDriver(observe = () => {}) {
-    const driver = createWorkflowDriver({
-        driverKind: "hoot-composition",
-        kernelIdentity: identity,
-        *createKernel() {
-            return kernel(observe);
-        },
-        *loadProgram(requested) {
-            if (requested !== digest) {
-                throw Error("Program unavailable");
-            }
-            return { digest, code: source, kernel: identity };
-        },
-        bindElicit(request, site) {
-            if (
-                !Array.isArray(request) ||
-                request[0] !== "elicit" ||
-                !manifest.elicits[request[1]]
-            ) {
-                throw Error("Unsupported fixture effect");
-            }
-            return {
-                kind: "elicit",
-                key: request[1],
-                message: request[2] ?? request[1],
-                response: ANY_JSON_SCHEMA_DESCRIPTOR,
-                binding: { id: site },
-            };
-        },
-    });
+export function createHootProgram({ source, contract, bindOperation }) {
+    const digest = canonicalDigest({ source, identity, contract });
+    const manifest = { ...contract, digest };
     return {
-        ...driver,
-        *manifest(program) {
-            if (program.digest !== digest) {
-                throw Error("Manifest unavailable");
-            }
-            return manifest;
+        manifest,
+        artifact: { digest, code: source, kernel: identity },
+        createKernel(observe = () => {}) {
+            return kernel(observe, source, digest);
+        },
+        createDriver(observe = () => {}) {
+            const driver = createWorkflowProgramDriver(
+                createKernelProgramBackend({
+                    *manifest(program) {
+                        if (program.digest !== digest) throw Error("Manifest unavailable");
+                        return manifest;
+                    },
+                    kernelIdentity: identity,
+                    *createKernel() {
+                        return kernel(observe, source, digest);
+                    },
+                    *loadProgram(requested) {
+                        if (requested !== digest) {
+                            throw Error("Program unavailable");
+                        }
+                        return { digest, code: source, kernel: identity };
+                    },
+                    bindOperation,
+                }),
+            );
+            return driver;
         },
     };
 }
+const fixture = createHootProgram({
+    source,
+    contract: fixtureContract,
+    bindOperation(request, site) {
+        if (
+            !Array.isArray(request) ||
+            request[0] !== "elicit" ||
+            !fixtureContract.elicits[request[1]]
+        ) {
+            throw Error("Unsupported fixture effect");
+        }
+        return {
+            kind: "elicit",
+            key: request[1],
+            message: request[2] ?? request[1],
+            response: ANY_JSON_SCHEMA_DESCRIPTOR,
+            binding: { id: site },
+        };
+    },
+});
+export const { manifest, createDriver: createHootDriver } = fixture;

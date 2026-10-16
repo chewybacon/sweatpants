@@ -157,6 +157,48 @@ describe("required program recovery contract", () => {
     expect(closed).toBe(true);
     expect(calls).toEqual(["attach", "start", "shutdown:failed"]);
   });
+  it("awaits asynchronous iterator cleanup and preserves its receiver on corrupt history", async () => {
+    const { driver, calls } = fixture();
+    let closed = false;
+    const iterator = {
+      async next() {
+        return { done: false as const, value: { ...entry(), entryDigest: "corrupt" } };
+      },
+      async return() {
+        expect(this).toBe(iterator);
+        await Promise.resolve();
+        closed = true;
+        return { done: true as const, value: undefined };
+      },
+    };
+    const replay = { [Symbol.asyncIterator]: () => iterator };
+    await expect(run(() => driver.restore({ ...request, replay }))).rejects.toThrow(
+      "Replay entry digest differs",
+    );
+    expect(closed).toBe(true);
+    expect(calls).toEqual(["attach", "start", "shutdown:failed"]);
+  });
+  it("closes a rejected asynchronous source and releases its attachment", async () => {
+    const { driver, calls } = fixture();
+    let closed = false;
+    const replay = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => Promise.reject(new Error("source unavailable")),
+          async return() {
+            closed = true;
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    };
+    await expect(run(() => driver.restore({ ...request, replay }))).rejects.toMatchObject({
+      code: "replay_diverged",
+      details: { cause: "source unavailable" },
+    });
+    expect(closed).toBe(true);
+    expect(calls).toEqual(["attach", "start", "shutdown:failed"]);
+  });
   it("rejects a requested position not reached by the supplied history", async () => {
     const { driver, calls } = fixture();
     await expect(

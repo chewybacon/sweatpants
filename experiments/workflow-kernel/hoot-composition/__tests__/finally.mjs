@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { compileWorkflow } from "../../compiled-frames/compiler.mjs";
+import { emitWorkflowScheme } from "../../scheme-compiler/emit.mjs";
 import { compile, start, run as runReference } from "../../compiled-finally/engine.mjs";
 import { loadMachine } from "../machine.mjs";
 const { run, ensure, scoped } = createRequire(new URL("../../../../package.json", import.meta.url))(
@@ -98,11 +98,10 @@ const bodies = {
 };
 for (const [name, body] of Object.entries(bodies)) {
     const source = `import { ensure, scoped } from "effection"; function* workflow(ctx) { "use workflow"; ${body} }`;
-    const { scheme } = compileWorkflow(source, {
+    const { scheme } = emitWorkflowScheme(source, {
         allowFinally: true,
         allowEnsure: true,
         allowScopes: true,
-        compileScheme: compile,
     });
     const normal = await compare(scheme);
     assert.deepEqual(normal, await native(source), `native completion: ${name}`);

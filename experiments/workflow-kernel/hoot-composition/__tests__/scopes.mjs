@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { compileWorkflow } from "../../compiled-frames/compiler.mjs";
+import { emitWorkflowScheme } from "../../scheme-compiler/emit.mjs";
 import { compile, start, run as runReference } from "../../compiled-finally/engine.mjs";
 import { loadMachine } from "../machine.mjs";
 const { run, ensure, scoped } = createRequire(new URL("../../../../package.json", import.meta.url))(
@@ -154,11 +154,10 @@ for (const [name, source] of Object.entries({
         "remaining = remaining - 1; if (remaining === 1) break;",
     ),
 })) {
-    const { scheme } = compileWorkflow(source, {
+    const { scheme } = emitWorkflowScheme(source, {
         allowFinally: true,
         allowEnsure: true,
         allowScopes: true,
-        compileScheme: compile,
     });
     const normal = await compare(scheme);
     assert.deepEqual(normal, await native(source), `native Effection parity: ${name}`);

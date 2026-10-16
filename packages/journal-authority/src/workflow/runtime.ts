@@ -1518,7 +1518,8 @@ function* superviseCommands(state: AttachmentState): Operation<void> {
 /** Opens one resource-owned program attachment. */
 export function openProgramAttachment(
   request: AttachProgramRequest,
-  workflow: () => Workflow<Json>,
+  workflow: () => Operation<Json>,
+  actionIndex = 0,
 ): Operation<ProgramAttachmentHandle> {
   return resource(function* (provide) {
     yield* RecordAttemptPort.installDriver(ordinaryRecordAttemptDriver);
@@ -1532,7 +1533,7 @@ export function openProgramAttachment(
       resolvers: new Set(),
       dispose: withResolvers<Error>("dispose program attachment"),
       phase: "created",
-      actionIndex: 0,
+      actionIndex,
       activeExchange: false,
       disposition: "scope_exit",
     };

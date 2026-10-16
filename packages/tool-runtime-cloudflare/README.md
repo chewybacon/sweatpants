@@ -38,7 +38,7 @@ not cross the RPC boundary. Setup runs again on replay; scope exit releases its
 resources on parking, completion, cancellation, or failure. Setup failures fail
 the program rather than falling back to another placement.
 
-For example, yo-tisyn installs its bounded evaluation driver in the tool-executor
+For example, yo-workflow installs its bounded evaluation driver in the tool-executor
 DO this way. No journal or effect-dispatch ownership moves into that driver.
 
 ## Dynamic Worker placement

@@ -2,6 +2,8 @@ import { scoped, type Operation } from "effection";
 import {
   CrankError,
   ProgramPeer,
+  installProgramCheckpointAcceleration,
+  programRouteDriverKind,
   type AdvancementResult,
   type AttachProgramRequest,
   type ProgramDriver,
@@ -43,6 +45,13 @@ export function driveProgramDriverActivation(
   request: DriveProgramDriverActivationRequest,
 ): Operation<AdvancementResult> {
   return scoped(function* () {
+    const continuation = request.driver.capabilities.continuation;
+    if (continuation) {
+      yield* installProgramCheckpointAcceleration({
+        driverKind: programRouteDriverKind(request.attach.route),
+        format: continuation.format,
+      });
+    }
     const ownerId = request.activationOwnerId ?? `direct:${request.attach.taskId}`;
     for (;;) {
       const plan = yield* request.authority.query({

@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { run } from "effection";
-import { parseProgram } from "../../../apps/yo-tisyn/src/workflow/tisyn.ts";
-import { ask } from "../../../apps/yo-tisyn/src/workflow/tools/ask.ts";
+import { parseProgram } from "../../../apps/yo-workflow/src/workflow/tisyn.ts";
+import { ask } from "../../../apps/yo-workflow/src/workflow/tools/ask.ts";
 import { createSchemeDriver, type Machine } from "../evaluation.ts";
 const require = createRequire(import.meta.url);
 const { Scheme } = require("../runtime/reflect-restricted.cjs") as {

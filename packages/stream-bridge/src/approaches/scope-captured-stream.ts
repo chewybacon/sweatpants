@@ -61,8 +61,9 @@ export function createScopeCapturedStream<T>(
         }
 
         try {
+          const activeSubscription = subscription;
           const result = await scope.run(function* () {
-            return yield* subscription!.next();
+            return yield* activeSubscription.next();
           });
 
           if (result.done) {

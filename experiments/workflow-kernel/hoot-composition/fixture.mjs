@@ -1,5 +1,4 @@
-import { compileWorkflow } from "../compiled-frames/compiler.mjs";
-import { compile } from "../compiled-finally/engine.mjs";
+import { emitWorkflowScheme } from "../scheme-compiler/emit.mjs";
 
 // The real existing frontend emits the developer callee's Scheme and effect sites.
 export const developerSource = `
@@ -13,19 +12,18 @@ function* workflow(ctx, input) {
   const answer = yield* ctx.elicit("approve", hold.content);
   return answer.content;
 }`;
-export const compiled = compileWorkflow(developerSource, {
+export const emitted = emitWorkflowScheme(developerSource, {
     allowFinally: true,
     entryInput: true,
     allowEnsure: true,
-    compileScheme: compile,
 });
 // Replace only the compiler-generated entry invocation with an authored caller.
 const entry = "\n(workflow #f %input)\n";
-if (!compiled.scheme.endsWith(entry)) {
+if (!emitted.scheme.endsWith(entry)) {
     throw Error("Unexpected compiler entry");
 }
 export const source =
-    compiled.scheme.slice(0, -entry.length) +
+    emitted.scheme.slice(0, -entry.length) +
     `
 (define (caller)
   (let ((prefix "Caller received: "))

@@ -1,7 +1,7 @@
 import { type Operation } from "effection";
 import {
   CrankError,
-  ProgramPeer,
+  ProgramRecovery,
   type AdvancementPlan,
   type CaughtUpLeaf,
   type DeliveryMandate,
@@ -91,7 +91,7 @@ export function* bindCaughtUpLeaf(
   const selection = yield* policy.select([{ kind: "crank_native", caughtUp }]);
   if (selection === null || selection.target.kind !== "crank_native") return null;
   const item = selection.target.caughtUp.item;
-  const checkpoint = yield* ProgramPeer.operations.checkpoint(
+  const checkpoint = yield* ProgramRecovery.operations.checkpoint(
     selection.target.caughtUp.restored.attachment,
   );
   const bound = yield* authority.command({

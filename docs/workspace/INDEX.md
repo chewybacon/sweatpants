@@ -30,7 +30,7 @@ status here. Statuses:
 | `apps/yo-mcp` | product | MCP server product endpoint |
 | `apps/yo-slides` | docs | Presentation artifact — slide decks for audiences, not product code |
 | `apps/yo-studio` | product | Studio product endpoint; its `vite.config.ts` AWS-placement branch is part of the parked lambda experiment thread |
-| `apps/yo-tisyn` | parked | Timeboxed Tisyn-to-durable-tool binding spike; re-audit: promote the binding after park/replay evidence or delete the app |
+| `apps/yo-workflow` | parked | Timeboxed Tisyn-to-durable-tool binding spike; re-audit: promote the binding after park/replay evidence or delete the app |
 | `packages/agent-host` | library | |
 | `packages/agent-sdk` | library | |
 | `packages/chat-client` | library | |
@@ -54,7 +54,7 @@ status here. Statuses:
 | `packages/react-chat` | library | |
 | `packages/durable-streams-cloudflare` | library | Durable Object response buffers and registry storage for yo-chat |
 | `packages/storage-d1` | library | D1 durable kernel for the conversation and execution repositories |
-| `packages/scheme-runtime` | library | Hoot evaluator and pinned WASM build consumed by yo-tisyn |
+| `packages/scheme-runtime` | library | Hoot evaluator and pinned WASM build consumed by yo-workflow |
 | `packages/storage-sqlite` | library | |
 | `packages/stream-bridge` | library | |
 | `packages/test-rig` | infrastructure | Test substrate consumed only by acceptance/yo-chat test contexts |
@@ -68,4 +68,4 @@ status here. Statuses:
 | `packages/workspace-lambda-microvm` | parked | Lambda placement experiment (consumed by yo-studio's AWS-placement branch); re-audit: when the experiment resumes, it either gains a real production consumer or is deleted |
 | `packages/workspace-runtime` | library | |
 | `packages/workflow-kernel` | parked | Kernel contract review scaffold; re-audit after Hoot fresh-instance continuation proof |
-| `packages/workflow-driver` | parked | Elicitation-only kernel driver spike; experimental evaluator consumer with authority-owned checkpoints, pending Hoot backend |
+| `packages/program-backend-kernel` | parked | Kernel backend for the shared program driver; experimental Hoot and reference evaluator consumers |

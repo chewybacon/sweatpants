@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { source, compiled } from "../fixture.mjs";
+import { source, emitted } from "../fixture.mjs";
 import { loadMachine } from "../machine.mjs";
-import { parse } from "../../continuation-compiler/engine.mjs";
+import { parse } from "../../scheme-data/read.mjs";
 
 let machine = await loadMachine();
 assert.deepEqual(machine.start(source), {
@@ -19,7 +19,7 @@ const saved = machine.capture();
 const state = parse(saved)[0];
 assert.ok(saved.includes("Caller received: "));
 assert.ok(saved.includes("hold-17"));
-assert.ok(compiled.debug.sites[waiting.site]);
+assert.ok(emitted.debug.sites[waiting.site]);
 const callNames = state[4].filter((f) => f[0]?.sym === "call").map((f) => f[1]?.sym);
 assert.ok(callNames.includes("workflow") && callNames.includes("caller"));
 machine = null;
@@ -54,7 +54,7 @@ assert.deepEqual(machine.resume({ action: "accept", content: "released" }), {
 });
 assert.throws(() => machine.restore(source + " ", saved), /./);
 console.log(
-    "PASS Hoot/Wasm: compiled callee, Scheme caller, portable nested state, fresh-instance restore, cleanup and cancellation",
+    "PASS Hoot/Wasm: emitted callee, Scheme caller, portable nested state, fresh-instance restore, cleanup and cancellation",
 );
 
 machine = await loadMachine();

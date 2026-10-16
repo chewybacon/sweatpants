@@ -20,7 +20,7 @@ import {
   withProgramDriverTestScope,
   type AuthorityScenarioDriver,
 } from "@sweatpants/journal-authority/testing";
-import { ask } from "../../../apps/yo-tisyn/src/workflow/tools/ask.ts";
+import { ask } from "../../../apps/yo-workflow/src/workflow/tools/ask.ts";
 import { scheme } from "../runner.ts";
 import { createSchemeDriver, SchemeEvaluationPort, encode, type Machine } from "../evaluation.ts";
 

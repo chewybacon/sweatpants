@@ -50,3 +50,5 @@ export * from "./purity-scan.ts";
 export * from "./documents.ts";
 
 export * from "./program-recovery.ts";
+
+export * from "./program-recovery-policy.ts";

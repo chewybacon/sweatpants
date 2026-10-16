@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { call, resource, type Operation } from "effection";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import { definePort } from "@sweatpants/foundation/port";
-import type { EvaluationStep } from "../../apps/yo-tisyn/src/workflow/evaluation/port.ts";
+import type { EvaluationStep } from "../../apps/yo-workflow/src/workflow/evaluation/port.ts";
 
 export const limits = {
   source: 12000,

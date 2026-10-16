@@ -1,0 +1,8 @@
+---
+import "../execution/execution.css";
+import SiteLayout from "../layouts/SiteLayout.astro";
+import { ExecutionInspector } from "../execution/ExecutionInspector.tsx";
+---
+<SiteLayout title="Execution · yo-workflow">
+  <ExecutionInspector client:load />
+</SiteLayout>

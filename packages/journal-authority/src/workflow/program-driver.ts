@@ -1,11 +1,15 @@
 import {
   CrankError,
   DurableProgramCancellation,
-  REPLAY_CHECKPOINT_CAPABILITIES,
   replayProgramRecovery,
-  exactProgramKey,
   programRouteDriverKind,
   stableProgramAttachmentId,
+  type AttachProgramRequest,
+  type ProgramCheckpoint,
+  type ProgramRestoreRequest,
+  type RestoredProgramAttachment,
+  verifyProgramReplayEntry,
+  assertProgramReplayFrontier,
   type DurableProgramManifest,
   type DurableToolRegistry,
   type EffectDescriptor,
@@ -16,8 +20,8 @@ import {
   type ProgramStep,
 } from "@sweatpants/durable-execution";
 import { durableEffectKey, type DurableEffectRegistry } from "@sweatpants/durable-effects";
-import type { Json } from "@sweatpants/foundation";
-import { createScope, withResolvers, type Operation } from "effection";
+import { assertJson, canonicalDigest, type Json } from "@sweatpants/foundation";
+import { call, createScope, withResolvers, type Operation } from "effection";
 import {
   InstalledEffectPort,
   openProgramAttachment,
@@ -25,7 +29,11 @@ import {
   type ProgramCommand,
   type ProgramEvent,
 } from "./runtime.ts";
-import { durableToolWorkflow } from "./tool-adapter.ts";
+import {
+  createEffectionProgramBackend,
+  type ProgramBackend,
+  type ProgramComputation,
+} from "./program-backend.ts";
 
 /**
  * Host-configured implementation for one installed effect. The authority
@@ -63,8 +71,12 @@ export function createWorkflowEffectHandlers(
           cancellation: attempt.cancellation,
           resolver: descriptor.resolver,
         });
-        if (disposition.status === "ok") return disposition.value;
-        if (disposition.status === "cancelled") throw new DurableProgramCancellation();
+        if (disposition.status === "ok") {
+          return disposition.value;
+        }
+        if (disposition.status === "cancelled") {
+          throw new DurableProgramCancellation();
+        }
         throw new CrankError(
           disposition.error.code,
           disposition.error.message,
@@ -92,91 +104,128 @@ export interface WorkflowProgramDriverOptions {
  * transports by registry.
  */
 export function createWorkflowProgramDriver(
-  tools: DurableToolRegistry,
+  programs: DurableToolRegistry | ProgramBackend,
   options: WorkflowProgramDriverOptions = {},
 ): ProgramDriver {
+  const backend = "open" in programs ? programs : createEffectionProgramBackend(programs);
   const handlers = options.effectHandlers;
-  return {
-    evaluatorKind: "program",
-    capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
-    ...replayProgramRecovery,
-
-    *attach(request): Operation<ProgramAttachment> {
-      const tool = tools.get(exactProgramKey(request.program));
-      if (!tool) {
-        throw new CrankError(
-          "program_version_unavailable",
-          `No exact program bundle for ${exactProgramKey(request.program)}`,
-        );
-      }
-      // Installed-effect handlers are host configuration: install them into
-      // the caller's scope so every attachment opened here can reach them.
-      if (handlers !== undefined) {
-        yield* InstalledEffectPort.installDriver({
-          *run(descriptor, attempt) {
-            const handler = handlers.get(descriptor.name);
-            if (!handler) {
-              throw new CrankError(
-                "effect_placement_unavailable",
-                `No execution handler for effect ${descriptor.name}@${descriptor.version}`,
-              );
-            }
-            return yield* handler(descriptor.input as Json, descriptor, {
-              ...attempt,
-              sessionId: request.sessionId,
-              taskId: request.taskId,
-            });
-          },
-        });
-      }
-      const attachmentId = stableProgramAttachmentId(request);
-      const open = () => openProgramAttachment(request, durableToolWorkflow(tool, request.input));
-      let handle: WorkflowDriverAttachmentHandle;
-      if (options.detachedScope) {
-        const [scope, destroyScope] = createScope();
-        const ready = withResolvers<ProgramAttachmentHandle>("workflow driver attachment ready");
-        const release = withResolvers<void>("workflow driver attachment release");
-        const owner = scope.run(function* () {
-          try {
-            ready.resolve(yield* open());
-            yield* release.operation;
-          } catch (error) {
-            ready.reject(error instanceof Error ? error : new Error("Workflow attach failed"));
-            throw error;
+  function* attachProgram(
+    request: AttachProgramRequest,
+    checkpoint?: Extract<ProgramCheckpoint, { kind: "continuation" }>,
+    actionIndex = 0,
+  ): Operation<ProgramAttachment> {
+    // Installed-effect handlers are host configuration: install them into
+    // the caller's scope so every attachment opened here can reach them.
+    if (handlers !== undefined) {
+      yield* InstalledEffectPort.installDriver({
+        *run(descriptor, attempt) {
+          const handler = handlers.get(descriptor.name);
+          if (!handler) {
+            throw new CrankError(
+              "effect_placement_unavailable",
+              `No execution handler for effect ${descriptor.name}@${descriptor.version}`,
+            );
           }
-        });
-        const owned = yield* ready.operation;
-        handle = new WorkflowDriverAttachmentHandle(owned, function* (reason) {
+          return yield* handler(descriptor.input as Json, descriptor, {
+            ...attempt,
+            sessionId: request.sessionId,
+            taskId: request.taskId,
+          });
+        },
+      });
+    }
+    const attachmentId = stableProgramAttachmentId(request);
+    const open = function* () {
+      const computation = yield* backend.open(request, checkpoint);
+      const owned = yield* openProgramAttachment(request, () => computation.run(), actionIndex);
+      return { owned, computation };
+    };
+    let handle: WorkflowDriverAttachmentHandle;
+    if (options.detachedScope) {
+      const [scope, destroyScope] = createScope();
+      const ready = withResolvers<{
+        owned: ProgramAttachmentHandle;
+        computation: ProgramComputation;
+      }>("workflow driver attachment ready");
+      const release = withResolvers<void>("workflow driver attachment release");
+      const owner = scope.run(function* () {
+        try {
+          ready.resolve(yield* open());
+          yield* release.operation;
+        } catch (error) {
+          ready.reject(error instanceof Error ? error : new Error("Workflow attach failed"));
+          throw error;
+        }
+      });
+      const { owned, computation } = yield* ready.operation;
+      handle = new WorkflowDriverAttachmentHandle(
+        structuredClone(request),
+        computation,
+        owned,
+        function* (reason) {
           try {
             yield* owned.close(reason);
           } finally {
-            release.resolve();
-            yield* owner;
-            yield* destroyScope();
+            try {
+              yield* computation.dispose();
+            } finally {
+              release.resolve();
+              try {
+                yield* owner;
+              } finally {
+                yield* destroyScope();
+              }
+            }
           }
-        });
-      } else {
-        const owned = yield* open();
-        handle = new WorkflowDriverAttachmentHandle(owned, (reason) => owned.close(reason));
-      }
-      return {
-        attachmentId,
-        taskId: request.taskId,
-        driverKind: programRouteDriverKind(request.route),
-        route: request.route,
-        executionEpoch: request.executionEpoch,
-        handle,
-      };
+        },
+      );
+    } else {
+      const { owned, computation } = yield* open();
+      handle = new WorkflowDriverAttachmentHandle(
+        structuredClone(request),
+        computation,
+        owned,
+        function* (reason) {
+          try {
+            yield* owned.close(reason);
+          } finally {
+            yield* computation.dispose();
+          }
+        },
+      );
+    }
+    return {
+      attachmentId,
+      taskId: request.taskId,
+      driverKind: programRouteDriverKind(request.route),
+      route: request.route,
+      executionEpoch: request.executionEpoch,
+      handle,
+    };
+  }
+  return {
+    evaluatorKind: "program",
+    capabilities: backend.capabilities,
+
+    attach(request) {
+      return attachProgram(request);
     },
 
     *step(attachment, command): Operation<ProgramStep> {
-      const handle = handleOf(attachment);
+      const state = attachmentHandleOf(attachment);
+      const handle = state.value;
+      function present(event: ProgramEvent): ProgramStep {
+        const step = toStep(event);
+        state.frontier = structuredClone(step);
+        return step;
+      }
 
       if (command.type === "start") {
         const event = yield* handle.exchange({ type: "start", input: command.input });
-        return toStep(event);
+        return present(event);
       }
       if (command.type === "authorize") {
+        state.attemptPending = true;
         if (command.descriptor === undefined) {
           throw protocol("authorization without a descriptor");
         }
@@ -207,7 +256,8 @@ export function createWorkflowProgramDriver(
           receipt: command.receipt,
           replayed: command.replayed,
         });
-        return toStep(event);
+        state.attemptPending = false;
+        return present(event);
       }
       if (command.type === "ack_emission") {
         const event = yield* handle.exchange({
@@ -215,16 +265,136 @@ export function createWorkflowProgramDriver(
           actionIndex: command.actionIndex,
           offset: command.offset,
         });
-        return toStep(event);
+        return present(event);
       }
       if (command.type === "cancel") {
+        state.checkpointable = false;
         const event = yield* handle.exchange({
           type: "cancel",
           ...(command.reason === undefined ? {} : { reason: command.reason }),
         });
-        return toStep(event);
+        return present(event);
       }
       throw protocol("unknown program command");
+    },
+
+    *checkpoint(attachment) {
+      const handle = attachmentHandleOf(attachment);
+      if (handle.closed || !handle.frontier) {
+        throw protocol("checkpoint without a live frontier");
+      }
+      if (!handle.checkpointable || handle.attemptPending) {
+        return { kind: "replay" };
+      }
+      const checkpoint = yield* handle.computation.capture();
+      if (checkpoint.kind === "replay") {
+        return checkpoint;
+      }
+      return {
+        ...checkpoint,
+        state: assertJson({
+          identity: recoveryIdentity(handle.request),
+          index: handle.frontier.actionIndex,
+          backend: checkpoint.state,
+          frontierDigest: canonicalDigest(handle.frontier),
+        }),
+      };
+    },
+
+    *restore(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment> {
+      if (request.checkpoint.kind === "replay") {
+        return yield* replayProgramRecovery.restore.call(this, request);
+      }
+      const checkpoint = request.checkpoint;
+      const state = checkpoint.state;
+      if (
+        checkpoint.format !== backend.capabilities.continuation?.format ||
+        checkpoint.programDigest !== request.attach.program.digest ||
+        !state ||
+        typeof state !== "object" ||
+        Array.isArray(state) ||
+        state.identity !== recoveryIdentity(request.attach) ||
+        typeof state.index !== "number" ||
+        !Number.isSafeInteger(state.index) ||
+        state.index < 0 ||
+        state.index !== checkpoint.resumeAfter.actionIndex + 1 ||
+        typeof state.frontierDigest !== "string" ||
+        !("backend" in state)
+      ) {
+        throw protocol("Checkpoint identity or position differs");
+      }
+      const attachment = yield* attachProgram(
+        request.attach,
+        { ...checkpoint, state: state.backend },
+        state.index,
+      );
+      let success = false;
+      try {
+        let frontier = yield* this.step(attachment, { type: "start", input: request.attach.input });
+        if (canonicalDigest(frontier) !== state.frontierDigest) {
+          throw new CrankError("replay_diverged", "Restored workflow frontier differs");
+        }
+        let previous = checkpoint.resumeAfter.replayChainDigest;
+        let through = checkpoint.resumeAfter.actionIndex;
+        const iterator =
+          request.replay[Symbol.iterator]?.() ?? request.replay[Symbol.asyncIterator]?.();
+        if (!iterator) {
+          throw protocol("Replay source has no iterator");
+        }
+        let exhausted = false;
+        try {
+          for (;;) {
+            const next = yield* call(() => Promise.resolve(iterator.next()));
+            if (next.done) {
+              exhausted = true;
+              break;
+            }
+            const entry = next.value;
+            verifyProgramReplayEntry(request.replayChainSeed, entry, previous);
+            assertProgramReplayFrontier(frontier, entry);
+            frontier = yield* this.step(
+              attachment,
+              entry.type === "operation"
+                ? {
+                    type: "resume",
+                    actionIndex: entry.actionIndex,
+                    outcome: entry.outcome,
+                    receipt: entry.receipt,
+                    replayed: true,
+                  }
+                : { type: "ack_emission", actionIndex: entry.actionIndex, offset: entry.offset },
+            );
+            previous = entry.entryDigest;
+            through = entry.actionIndex;
+          }
+        } finally {
+          const close = iterator.return?.bind(iterator);
+          if (!exhausted && close) {
+            yield* call(() => Promise.resolve(close()));
+          }
+        }
+        if (
+          through !== request.replayedThroughActionIndex ||
+          previous !== request.replayChainDigest
+        ) {
+          throw new CrankError(
+            "replay_diverged",
+            "Recovery did not reach requested journal position",
+          );
+        }
+        success = true;
+        return {
+          attachment,
+          frontier,
+          frontierDigest: canonicalDigest(frontier),
+          replayedThroughActionIndex: through,
+          replayChainDigest: previous,
+        };
+      } finally {
+        if (!success) {
+          yield* this.shutdown(attachment, "failed");
+        }
+      }
     },
 
     *shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void> {
@@ -232,14 +402,7 @@ export function createWorkflowProgramDriver(
     },
 
     *manifest(program): Operation<DurableProgramManifest> {
-      const tool = tools.get(exactProgramKey(program));
-      if (!tool) {
-        throw new CrankError(
-          "program_version_unavailable",
-          `No exact program bundle for ${exactProgramKey(program)}`,
-        );
-      }
-      return tool.manifest;
+      return yield* backend.manifest(program);
     },
   };
 }
@@ -282,14 +445,21 @@ function toStep(event: ProgramEvent): ProgramStep {
 
 class WorkflowDriverAttachmentHandle {
   closed = false;
+  checkpointable = true;
+  attemptPending = false;
+  frontier?: ProgramStep;
 
   constructor(
+    readonly request: AttachProgramRequest,
+    readonly computation: ProgramComputation,
     readonly value: ProgramAttachmentHandle,
     readonly dispose: (reason: ProgramShutdownReason) => Operation<void>,
   ) {}
 
   *close(reason: ProgramShutdownReason): Operation<void> {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
     yield* this.dispose(reason);
   }
@@ -306,10 +476,15 @@ function attachmentHandleOf(attachment: ProgramAttachment): WorkflowDriverAttach
   return attachment.handle;
 }
 
-function handleOf(attachment: ProgramAttachment): ProgramAttachmentHandle {
-  return attachmentHandleOf(attachment).value;
-}
-
 function protocol(message: string): CrankError {
   return new CrankError("program_protocol_error", message);
+}
+
+function recoveryIdentity(request: AttachProgramRequest): string {
+  return canonicalDigest({
+    sessionId: request.sessionId,
+    taskId: request.taskId,
+    program: request.program,
+    input: request.input,
+  });
 }

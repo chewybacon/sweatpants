@@ -80,7 +80,7 @@ From this directory:
 sh build.sh
 node verify-node.cjs
 node interrupt-probe.cjs
-../../apps/yo-tisyn/node_modules/.bin/workerd serve workerd.capnp
+../../apps/yo-workflow/node_modules/.bin/workerd serve workerd.capnp
 # In another terminal:
 curl --fail http://127.0.0.1:8124
 ```
@@ -153,7 +153,7 @@ remains unchanged.
 ```sh
 sh build-restricted.sh
 node verify-restricted.cjs
-../../apps/yo-tisyn/node_modules/.bin/workerd serve restricted-workerd.capnp
+../../apps/yo-workflow/node_modules/.bin/workerd serve restricted-workerd.capnp
 # Another terminal:
 curl --fail http://127.0.0.1:8125
 ```
@@ -185,7 +185,7 @@ production integration remain open. No Cloudflare deployment was changed.
 
 `journal.scm`, `evaluation.ts`, and `runner.ts` now connect Hoot's suspended
 continuations to Sweatpants' real durable tool driver and journal authority.
-This is an isolated experiment; yo-tisyn's production evaluator is unchanged.
+This is an isolated experiment; yo-workflow's production evaluator is unchanged.
 
 The frontend is explicitly Scheme. `SchemeEvaluationPort` has the same
 open/advance/close lifecycle and `EvaluationStep` result as the Tisyn evaluator,
@@ -209,7 +209,7 @@ The execution path is:
 
 1. Durable Scheme tool opens a fresh metered WASM evaluator.
 2. Scheme yields `random` with a JSON request. The host validates it and calls
-   yo-tisyn's existing `randomValue`, which records the result in the authority.
+   yo-workflow's existing `randomValue`, which records the result in the authority.
 3. Scheme receives that result through `next`, then yields `ask`.
 4. The host invokes the real pinned Ask durable child. Its elicitation parks.
 5. Scope cleanup closes the evaluation handle; no continuation is serialized.
@@ -248,11 +248,11 @@ do not cap WASM allocation or the cost of a single native operation.
 
 ### Reproduce from this directory
 
-The spike uses the existing yo-tisyn workspace dependencies rather than adding
+The spike uses the existing yo-workflow workspace dependencies rather than adding
 a monorepo package. Create this local link once if absent:
 
 ```sh
-ln -s ../../apps/yo-tisyn/node_modules node_modules
+ln -s ../../apps/yo-workflow/node_modules node_modules
 sh build-journal.sh
 pnpm test
 pnpm exec tsc --noEmit
@@ -274,7 +274,7 @@ in each frontend, with the same host capabilities and recovery expectations.
 ## Model authoring comparison (2026-10-14)
 
 `comparison/` runs real Haiku 5.5 authoring via the same provider adapter and
-credential store as yo-tisyn. It verifies the outgoing reasoning effort is
+credential store as yo-workflow. It verifies the outgoing reasoning effort is
 `medium`. It does not use a mocked model or manually repair generated source.
 
 The primary run is `comparison/results-2026-10-14T12-07-39.295Z/`. Each language

@@ -24,7 +24,7 @@ Box 4 has two tiers, and they are different ports:
 - **Tier A — remote generator, no machine.** `ProgramDriver` (`durable-execution`):
   `attach / step / checkpoint / restore / shutdown / restoreContext? / manifest?`. Replays
   from the journal and runs to the next park point. No shell, disk, or ports.
-  Implementations: `createLocalProgramDriver` (`durable-execution/src/program-driver.ts`),
+  Implementations: `createWorkflowProgramDriver` (`journal-authority/src/workflow/program-driver.ts`),
   `tool-runtime-local` (`durable-driver.ts`, `local-worker-durable-driver.ts`),
   `tool-runtime-agentcore/src/durable-driver.ts`, `a2a/src/driver.ts`.
 - **Tier B — a machine with a disk.** `SandboxProvider` (`workspace-runtime/src/sandbox-substrate.ts`):
@@ -35,6 +35,28 @@ Box 4 has two tiers, and they are different ports:
 
 Because Tier A stops at park points, a single-invocation executor is a natural
 fit for it. Long unparked work lives in box 3, not box 4.
+
+### Program execution backends
+
+`ProgramDriver` is the existing attachment/transport protocol; `ProgramBackend`
+is the computation implementation inside the shared in-process driver. Do not
+add a parallel driver solely to run another language.
+
+- `journal-authority/src/workflow/program-backend.ts` declares `ProgramBackend`
+  and `ProgramComputation`, and implements the ordinary Effection backend.
+- `createWorkflowProgramDriver` accepts a durable-tool registry (Effection) or an
+  explicit backend. `openProgramAttachment` owns pending operations, receipt
+  checks, authorization, and command ordering for both.
+- `program-backend-kernel` adapts `WorkflowKernel` to that computation contract.
+  Experimental Hoot and reference evaluators consume it; production yo-workflow's
+  existing Scheme runtime has not been replaced by these experiments.
+- `durable-execution/src/program-recovery-policy.ts` supplies replay defaults and
+  scoped checkpoint acceleration. Authority-plan validation surrounds middleware.
+- Backend snapshots contain computation state. The shared driver adds protocol
+  position and identity; the authority adds accepted journal provenance.
+
+Dependency direction: `program-backend-kernel` → `journal-authority` and
+`workflow-kernel`; the shared runtime does not import kernel backends or Wasm.
 
 ### Names that look related but are not
 

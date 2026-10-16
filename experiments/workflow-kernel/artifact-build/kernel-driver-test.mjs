@@ -43,7 +43,7 @@ await run(function* () {
         actionIndex: 0,
         outcome,
         receipt,
-        replayed: false,
+        replayed: true,
     });
     assert.equal(release.descriptor.key, "release");
     snapshot = JSON.parse(JSON.stringify(yield* driver.checkpoint(attachment)));
@@ -77,7 +77,7 @@ await run(function* () {
             resolutionOffset: "2",
             outcomeDigest: canonicalDigest(released),
         },
-        replayed: false,
+        replayed: true,
     });
     assert.deepEqual(end, { type: "completed", actionIndex: 2, value: 0 });
     yield* driver.shutdown(restored.attachment, "completed");
@@ -158,7 +158,7 @@ for (const mutate of [
         request.checkpoint.format = "other";
     },
     (request) => {
-        request.checkpoint.state.snapshot.kernel.version = "other";
+        request.checkpoint.state.backend.kernel.version = "other";
     },
 ]) {
     const request = structuredClone({

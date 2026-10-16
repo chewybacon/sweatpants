@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { assertJson, sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
-import { ask, askParameters } from "../../apps/yo-tisyn/src/workflow/tools/ask.ts";
-import { randomValue, randomParameters } from "../../apps/yo-tisyn/src/workflow/random.ts";
+import { ask, askParameters } from "../../apps/yo-workflow/src/workflow/tools/ask.ts";
+import { randomValue, randomParameters } from "../../apps/yo-workflow/src/workflow/random.ts";
 import { createSchemeEvaluation } from "./evaluation.ts";
 
 // Experimental identity includes the interpreter, bridge, dispatcher and tool contracts.
@@ -18,7 +18,7 @@ const fingerprint = sha256(
       "runtime/wtf8.wasm",
       "evaluation.ts",
       "runner.ts",
-      "../../apps/yo-tisyn/src/workflow/random.ts",
+      "../../apps/yo-workflow/src/workflow/random.ts",
     ].map((path) => sha256(readFileSync(new URL(path, import.meta.url)).toString("base64"))),
     ask.manifest.digest,
   ]),

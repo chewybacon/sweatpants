@@ -102,7 +102,7 @@
             "path": "./packages/workflow-kernel"
         },
         {
-            "path": "./packages/workflow-driver"
+            "path": "./packages/program-backend-kernel"
         }
     ],
     "files": []

@@ -38,8 +38,8 @@ function* fixture() {
     },
   });
   const plan = yield* journal.query({ type: "forest.replay-plan", sessionId: "session" });
-  const item = plan.replay[0]!;
-  const request: BindMandateRequest = {
+  const [item] = plan.replay;
+  const request = {
     address: item.address,
     strand: item.strand,
     program: item.program,
@@ -69,7 +69,7 @@ function* fixture() {
       programDigest: digest,
       state: { local: 42 },
     },
-  };
+  } satisfies BindMandateRequest;
   return { store, options, journal, item, request };
 }
 
@@ -81,23 +81,23 @@ describe("authority-owned continuation publication", () => {
       if (bound.status !== "bound") {
         throw Error("expected bind");
       }
-      Reflect.set(request.checkpoint!, "state", { local: 0 });
+      Reflect.set(request.checkpoint, "state", { local: 0 });
       yield* journal.advance({
         type: "execution.release-mandate",
         request: { mandate: bound.mandate, reason: "scope_exit" },
       });
       const restarted = yield* createJournal(store, options);
       const plan = yield* restarted.query({ type: "forest.replay-plan", sessionId: "session" });
-      expect(plan.replay[0]!.checkpoint).toEqual({
+      expect(plan.replay[0].checkpoint).toEqual({
         kind: "continuation",
         format: "test-v1",
         programDigest: digest,
         state: { local: 42 },
         resumeAfter: { actionIndex: -1, replayChainDigest: item.replayChainSeed },
       });
-      Reflect.set(plan.replay[0]!.checkpoint!, "state", null);
+      Reflect.set(plan.replay[0].checkpoint!, "state", null);
       const reread = yield* restarted.query({ type: "forest.replay-plan", sessionId: "session" });
-      expect(reread.replay[0]!.checkpoint!.state).toEqual({ local: 42 });
+      expect(reread.replay[0].checkpoint!.state).toEqual({ local: 42 });
     });
   });
 
@@ -127,7 +127,7 @@ describe("authority-owned continuation publication", () => {
         const before = yield* journal.exportSnapshot();
         const invalid: BindMandateRequest =
           mismatch === "program"
-            ? { ...request, checkpoint: { ...request.checkpoint!, programDigest: "c".repeat(64) } }
+            ? { ...request, checkpoint: { ...request.checkpoint, programDigest: "c".repeat(64) } }
             : {
                 ...request,
                 frontierProof: { ...request.frontierProof, replayChainDigest: "c".repeat(64) },
@@ -151,7 +151,7 @@ describe("authority-owned continuation publication", () => {
         const invalid: ReplayItem = {
           ...item,
           checkpoint: {
-            ...request.checkpoint!,
+            ...request.checkpoint,
             resumeAfter: { actionIndex, replayChainDigest: item.replayChainSeed },
           },
         };

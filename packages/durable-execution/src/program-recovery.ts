@@ -39,7 +39,8 @@ export const replayProgramRecovery = {
       let exhausted = false;
       try {
         for (;;) {
-          const next = yield* call(async () => await iterator.next());
+          // Normalize sync/async iterators at the host boundary; Effection owns the wait.
+          const next = yield* call(() => Promise.resolve(iterator.next()));
           if (next.done) {
             exhausted = true;
             break;
@@ -63,8 +64,9 @@ export const replayProgramRecovery = {
           through = entry.actionIndex;
         }
       } finally {
-        if (!exhausted && iterator.return) {
-          yield* call(async () => await iterator.return!());
+        const close = iterator.return?.bind(iterator);
+        if (!exhausted && close) {
+          yield* call(() => Promise.resolve(close()));
         }
       }
       if (

@@ -1,8 +1,9 @@
+import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
 // Explicit-state JS evaluator implementing the shared kernel interface.
 // This is reference evidence, not the Hoot implementation.
 import { createPullMachine, createCompiledPullTool } from "./pull-adapter.mjs";
 import { hash, copy } from "../compiled-finally/journal.mjs";
-import { createWorkflowDriver } from "../../../packages/workflow-driver/dist/index.js";
+import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
 import { assertKernelCompatibility } from "../../../packages/workflow-kernel/dist/index.js";
 
 export const referenceIdentity = {
@@ -98,28 +99,32 @@ export function createReferenceKernel(bundle, observe = () => {}) {
 
 export function createReferenceWorkflowDriver(bundle, observe = () => {}) {
     const tool = createCompiledPullTool(bundle);
-    const driver = createWorkflowDriver({
-        driverKind: "compiled-spike",
-        kernelIdentity: referenceIdentity,
-        *createKernel() {
-            return createReferenceKernel(bundle, observe);
-        },
-        *loadProgram(digest) {
-            if (digest !== tool.manifest.digest) throw Error("Pinned program unavailable");
-            return { digest, kernel: referenceIdentity, code: bundle };
-        },
-        bindElicit(request) {
-            if (
-                !request ||
-                request.kind !== "elicit" ||
-                typeof request.message !== "string" ||
-                !tool.manifest.elicits[request.key] ||
-                hash(request.response) !== hash(tool.manifest.elicits[request.key].response)
-            )
-                throw Error("Unknown elicitation contract");
-            return copy(request);
-        },
-    });
+    const driver = createWorkflowProgramDriver(
+        createKernelProgramBackend({
+            *manifest() {
+                return tool.manifest;
+            },
+            kernelIdentity: referenceIdentity,
+            *createKernel() {
+                return createReferenceKernel(bundle, observe);
+            },
+            *loadProgram(digest) {
+                if (digest !== tool.manifest.digest) throw Error("Pinned program unavailable");
+                return { digest, kernel: referenceIdentity, code: bundle };
+            },
+            bindOperation(request) {
+                if (
+                    !request ||
+                    request.kind !== "elicit" ||
+                    typeof request.message !== "string" ||
+                    !tool.manifest.elicits[request.key] ||
+                    hash(request.response) !== hash(tool.manifest.elicits[request.key].response)
+                )
+                    throw Error("Unknown elicitation contract");
+                return copy(request);
+            },
+        }),
+    );
     return {
         ...driver,
         *manifest(program) {

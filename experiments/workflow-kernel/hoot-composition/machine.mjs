@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import { inspectSnapshot } from "./inspect.mjs";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { parse } from "../continuation-compiler/engine.mjs";
+import { encodeValue, decodeValue } from "../scheme-data/values.mjs";
 const { Scheme } = createRequire(import.meta.url)(
     "../../../packages/scheme-runtime/generated/reflect.cjs",
 );
@@ -12,20 +13,6 @@ const wasm = fileURLToPath(
 const reflection = fileURLToPath(
     new URL("../../../packages/scheme-runtime/generated/", import.meta.url),
 );
-function encode(value) {
-    if (typeof value === "string" || typeof value === "number") {
-        return JSON.stringify(value);
-    }
-    if (typeof value === "boolean") {
-        return value ? "#t" : "#f";
-    }
-    if (value && !Array.isArray(value) && typeof value === "object") {
-        return `(${Object.entries(value)
-            .map(([key, item]) => `(${JSON.stringify(key)} . ${encode(item)})`)
-            .join(" ")})`;
-    }
-    throw Error("Unsupported experiment reply");
-}
 export function verifyBuild() {
     const record = JSON.parse(
         fs.readFileSync(
@@ -64,14 +51,15 @@ export async function loadMachine() {
     }
     function boundary(values) {
         const [kind, site, data] = values;
-        return { kind, site, value: parse(data)[0] };
+        return { kind, site, value: decodeValue(data) };
     }
     return {
-        start: (source) => boundary(call(0, source)),
-        resume: (value) => boundary(call(1, encode(value))),
-        reject: (error) => boundary(call(5, encode(error))),
+        start: (source, input = null) => boundary(call(0, source, encodeValue(input))),
+        resume: (value) => boundary(call(1, encodeValue(value))),
+        reject: (error) => boundary(call(5, encodeValue(error))),
         cancel: () => boundary(call(2)),
         capture: () => call(3)[0],
+        inspect: () => inspectSnapshot(call(3)[0]),
         restore: (source, snapshot) => boundary(call(4, source, snapshot)),
     };
 }
