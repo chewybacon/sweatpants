@@ -22,7 +22,7 @@ constraints.
 Box 4 has two tiers, and they are different ports:
 
 - **Tier A — remote generator, no machine.** `ProgramDriver` (`durable-execution`):
-  `attach / step / shutdown / restore? / restoreContext? / manifest?`. Replays
+  `attach / step / checkpoint / restore / shutdown / restoreContext? / manifest?`. Replays
   from the journal and runs to the next park point. No shell, disk, or ports.
   Implementations: `createLocalProgramDriver` (`durable-execution/src/program-driver.ts`),
   `tool-runtime-local` (`durable-driver.ts`, `local-worker-durable-driver.ts`),

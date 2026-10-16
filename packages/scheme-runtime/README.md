@@ -32,6 +32,18 @@ to the manifest without replacing assets; use it when changing the toolchain.
 Compiler upgrades require changing the explicit pins, rebuilding, and running
 the evaluator and app durability/Worker acceptance suites.
 
+## Node compatibility follow-up
+
+- [ ] Investigate and retest Node 22 compatibility for the experimental
+      [explicit-state composition evaluator](../../experiments/workflow-kernel/hoot-composition/README.md).
+      Its expanded Wasm binary crashes Node 22.21.1 on arm64 in V8 Liftoff's
+      `PrepareTailCall` with an `is_int9(x)` assertion. Disabling Liftoff is a
+      diagnostic workaround. This finding concerns the experimental binary; it
+      does not establish a failure in this package's production evaluator.
+      Before claiming Node 22 support for the experiment, run its fresh-instance
+      composition, authority, scopes, and finally suites with Liftoff enabled on
+      a current Node 22 release.
+
 ## Boundaries
 
 Hoot's compiler and assembler provide the structured module interface. The

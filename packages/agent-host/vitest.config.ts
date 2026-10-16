@@ -2,7 +2,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    environment: "jsdom",
+    // Server APIs use Node's Request and AbortSignal together; no DOM is needed.
+    environment: "node",
     setupFiles: [],
     // Exclude e2e tests - they have their own config and require a running server
     exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],

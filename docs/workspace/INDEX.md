@@ -67,3 +67,5 @@ status here. Statuses:
 | `packages/vite-plugin` | library | |
 | `packages/workspace-lambda-microvm` | parked | Lambda placement experiment (consumed by yo-studio's AWS-placement branch); re-audit: when the experiment resumes, it either gains a real production consumer or is deleted |
 | `packages/workspace-runtime` | library | |
+| `packages/workflow-kernel` | parked | Kernel contract review scaffold; re-audit after Hoot fresh-instance continuation proof |
+| `packages/workflow-driver` | parked | Elicitation-only kernel driver spike; experimental evaluator consumer with authority-owned checkpoints, pending Hoot backend |

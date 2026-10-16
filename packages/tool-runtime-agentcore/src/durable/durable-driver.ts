@@ -3,6 +3,7 @@ import type { Operation } from "effection";
 import {
   exactProgramKey,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  replayProgramRecovery,
   type AttachProgramRequest,
   type DurableProgramManifest,
   type ProgramAttachment,
@@ -38,6 +39,7 @@ export function createAgentCoreDurableProgramDriver(
   return {
     evaluatorKind: "remote",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    ...replayProgramRecovery,
     ...(options.manifests
       ? {
           *manifest(program) {
@@ -66,17 +68,6 @@ export function createAgentCoreDurableProgramDriver(
       ? {
           *restoreContext(request: AttachProgramRequest) {
             return yield* transport.restoreContext!(request);
-          },
-        }
-      : {}),
-    ...(transport.restore
-      ? {
-          *restore(request: ProgramRestoreRequest) {
-            const restored = yield* transport.restore!(request);
-            return {
-              ...restored,
-              attachment: { ...restored.attachment, driverKind: "agentcore" },
-            };
           },
         }
       : {}),

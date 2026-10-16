@@ -774,15 +774,29 @@ function* competingOutcomes(
       equalResults.filter((result) => result.status === "duplicate").length === 1,
     "equal competing outcomes must converge",
   );
+  // Concurrent completion order is unspecified. The duplicate identifies the
+  // superseded attempt; array position does not determine who won the race.
+  const loser = equalResults[0].status === "duplicate" ? first : second;
+  const winner = equalResults[0].status === "accepted" ? first : second;
   assertEqual(
     caseName,
     yield* authority.resolve({
-      capability: second.resolutionCapability,
+      capability: loser.resolutionCapability,
       audience: "host-effects",
       outcome: { status: "ok", value: "different" },
     }),
     { status: "rejected", code: "idempotency_conflict" },
     "different competing outcome must report idempotency conflict",
+  );
+  assertEqual(
+    caseName,
+    yield* authority.resolve({
+      capability: winner.resolutionCapability,
+      audience: "host-effects",
+      outcome: { status: "ok", value: "different" },
+    }),
+    { status: "rejected", code: "resolution_conflict" },
+    "different outcome from the winning attempt must report resolution conflict",
   );
   const records = yield* authority.readJournal(sessionId);
   assert(

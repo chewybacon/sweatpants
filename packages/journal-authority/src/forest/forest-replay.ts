@@ -350,6 +350,9 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
     route: structuredClone(task.execution.route ?? { driverKind: "program" }),
     executionEpoch: task.execution.epoch,
     groupContext: row.groupContext,
+    ...(task.execution.checkpoint === undefined
+      ? {}
+      : { checkpoint: structuredClone(task.execution.checkpoint) }),
     replay,
     replayedThroughActionIndex,
     replayChainSeed,

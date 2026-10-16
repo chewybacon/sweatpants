@@ -46,41 +46,47 @@ export function createScopeCapturedStream<T>(
   let subscription: Subscription<T, void> | null = null;
   let closed = false;
 
-  const readableStream = new ReadableStream<Uint8Array>({
-    async start() {
-      subscription = await scope.run(function* () {
-        return yield* stream;
-      });
-    },
-
-    async pull(controller) {
-      if (!subscription || closed) {
-        controller.close();
-        return;
-      }
-
-      try {
-        const result = await scope.run(function* () {
-          return yield* subscription!.next();
+  const readableStream = new ReadableStream<Uint8Array>(
+    {
+      async start() {
+        subscription = await scope.run(function* () {
+          return yield* stream;
         });
+      },
 
-        if (result.done) {
+      async pull(controller) {
+        if (!subscription || closed) {
           controller.close();
-          closed = true;
-        } else {
-          controller.enqueue(serialize(result.value));
+          return;
         }
-      } catch (err) {
-        controller.error(err);
-        closed = true;
-      }
-    },
 
-    async cancel() {
-      closed = true;
-      await destroy();
+        try {
+          const result = await scope.run(function* () {
+            return yield* subscription!.next();
+          });
+
+          if (result.done) {
+            controller.close();
+            closed = true;
+          } else {
+            controller.enqueue(serialize(result.value));
+          }
+        } catch (err) {
+          controller.error(err);
+          closed = true;
+        }
+      },
+
+      async cancel() {
+        closed = true;
+        await destroy();
+      },
     },
-  });
+    {
+      // Never advance the Effection subscription without a pending reader.
+      highWaterMark: 0,
+    },
+  );
 
   const response = new Response(readableStream, {
     headers: { "Content-Type": "application/x-ndjson" },

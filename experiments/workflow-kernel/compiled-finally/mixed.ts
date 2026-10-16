@@ -1,4 +1,4 @@
-import { ensure } from 'effection';
+import { ensure } from "effection";
 function* child(ctx) {
   "use workflow";
   yield* ensure(function* () {

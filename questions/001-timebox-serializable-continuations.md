@@ -11,7 +11,6 @@ and check if the operation has gotten a response
 and it hasn't then it needs to send an aborts signal so
 the effection context unwinds
 
-
 ```ts
 
 function* (props) {
@@ -84,13 +83,15 @@ It initially passed 37 cases against installed Effection 4.2.0.
 ## API candidates — not yet committed
 
 ```ts
-yield* ctx.deadline(expiresAt, function* ({ ensure, signal }) {
-  // Own the hold and register cleanup here.
-});
+yield *
+    ctx.deadline(expiresAt, function* ({ ensure, signal }) {
+        // Own the hold and register cleanup here.
+    });
 
-yield* ctx.timebox(durationMs, function* ({ ensure, signal }) {
-  // Convenience over a recorded absolute deadline.
-});
+yield *
+    ctx.timebox(durationMs, function* ({ ensure, signal }) {
+        // Convenience over a recorded absolute deadline.
+    });
 ```
 
 Open: callback capabilities versus a child context; body-signal versus cleanup

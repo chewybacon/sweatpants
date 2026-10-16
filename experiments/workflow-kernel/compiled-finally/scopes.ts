@@ -1,4 +1,4 @@
-import { ensure, scoped } from 'effection';
+import { ensure, scoped } from "effection";
 function* helper(ctx) {
   "use workflow";
   yield* ensure(function* () {

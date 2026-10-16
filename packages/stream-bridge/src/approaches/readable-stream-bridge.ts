@@ -38,44 +38,50 @@ export function createReadableStreamBridge<T>(
   let initialized = false;
   let closed = false;
 
-  const readableStream = new ReadableStream<Uint8Array>({
-    async start() {
-      await scope.run(function* () {
-        subscription = yield* stream;
-        initialized = true;
-      });
-    },
-
-    async pull(controller) {
-      if (!initialized || !subscription || closed) {
-        controller.close();
-        return;
-      }
-
-      try {
-        const sub = subscription;
-        const result = await scope.run(function* () {
-          return yield* sub.next();
+  const readableStream = new ReadableStream<Uint8Array>(
+    {
+      async start() {
+        await scope.run(function* () {
+          subscription = yield* stream;
+          initialized = true;
         });
+      },
 
-        if (result.done) {
+      async pull(controller) {
+        if (!initialized || !subscription || closed) {
           controller.close();
-          closed = true;
-          await destroy();
-        } else {
-          controller.enqueue(serialize(result.value));
+          return;
         }
-      } catch (err) {
-        controller.error(err);
-        await destroy();
-      }
-    },
 
-    async cancel() {
-      closed = true;
-      await destroy();
+        try {
+          const sub = subscription;
+          const result = await scope.run(function* () {
+            return yield* sub.next();
+          });
+
+          if (result.done) {
+            controller.close();
+            closed = true;
+            await destroy();
+          } else {
+            controller.enqueue(serialize(result.value));
+          }
+        } catch (err) {
+          controller.error(err);
+          await destroy();
+        }
+      },
+
+      async cancel() {
+        closed = true;
+        await destroy();
+      },
     },
-  });
+    {
+      // Never advance the Effection subscription without a pending reader.
+      highWaterMark: 0,
+    },
+  );
 
   return {
     *[Symbol.iterator]() {
@@ -102,39 +108,45 @@ export function createReadableStreamFromScope<T>(
   let initialized = false;
   let closed = false;
 
-  return new ReadableStream<Uint8Array>({
-    async start() {
-      await scope.run(function* () {
-        subscription = yield* stream;
-        initialized = true;
-      });
-    },
-
-    async pull(controller) {
-      if (!initialized || !subscription || closed) {
-        controller.close();
-        return;
-      }
-
-      try {
-        const sub = subscription;
-        const result = await scope.run(function* () {
-          return yield* sub.next();
+  return new ReadableStream<Uint8Array>(
+    {
+      async start() {
+        await scope.run(function* () {
+          subscription = yield* stream;
+          initialized = true;
         });
+      },
 
-        if (result.done) {
+      async pull(controller) {
+        if (!initialized || !subscription || closed) {
           controller.close();
-          closed = true;
-        } else {
-          controller.enqueue(serialize(result.value));
+          return;
         }
-      } catch (err) {
-        controller.error(err);
-      }
-    },
 
-    cancel() {
-      closed = true;
+        try {
+          const sub = subscription;
+          const result = await scope.run(function* () {
+            return yield* sub.next();
+          });
+
+          if (result.done) {
+            controller.close();
+            closed = true;
+          } else {
+            controller.enqueue(serialize(result.value));
+          }
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+
+      cancel() {
+        closed = true;
+      },
     },
-  });
+    {
+      // Never advance the Effection subscription without a pending reader.
+      highWaterMark: 0,
+    },
+  );
 }

@@ -29,6 +29,7 @@ import {
   createDurableToolRegistry,
   defineDurableProgramManifest,
   type AttachProgramRequest,
+  replayProgramRecovery,
   type ProgramDriver,
   type ProgramElicitResult,
   type AdvancementResult,
@@ -219,6 +220,7 @@ describe("automatic local durable parent/child recovery", () => {
       const tools = createDurableToolRegistry([parent, child]);
       const concrete = createWorkflowProgramDriver(tools);
       const driver: ProgramDriver = {
+        ...replayProgramRecovery,
         evaluatorKind: concrete.evaluatorKind,
         capabilities: concrete.capabilities,
         *attach(request) {

@@ -127,8 +127,8 @@ const config = defineConfig(({ mode }) => {
       // long deterministic runtime-invariance tests.
       pool: "forks",
       fileParallelism: false,
-      // Use jsdom for DOM testing with Interactors
-      environment: "jsdom",
+      // Keep Node fetch and its abort primitives together while jsdom provides the DOM.
+      environment: "../../scripts/testing/jsdom-with-node-fetch.ts",
       env: {
         DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
         DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.6",

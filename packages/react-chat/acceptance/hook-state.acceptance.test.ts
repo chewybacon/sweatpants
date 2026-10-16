@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { EventType } from "@ag-ui/core";
 import { call, createQueue, resource, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";

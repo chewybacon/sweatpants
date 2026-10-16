@@ -1,13 +1,15 @@
-import { type Operation } from "effection";
+import type { Operation } from "effection";
 import {
   CrankError,
   ProgramPeer,
   type CaughtUpLeaf,
   type ProgramStep,
   type ReplayEntry,
+  verifyProgramReplayEntry,
+  assertProgramReplayFrontier,
   type ReplayItem,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, sha256, canonicalDigest } from "@sweatpants/foundation";
+import { canonicalJson, sha256 } from "@sweatpants/foundation";
 
 /**
  * Reconstructs one planned strand and stops at its head (REQ-008..REQ-011).
@@ -18,51 +20,74 @@ import { canonicalJson, sha256, canonicalDigest } from "@sweatpants/foundation";
  * local, worker, and remote ProgramDriver placements.
  */
 export function* replayStrand(item: ReplayItem): Operation<CaughtUpLeaf> {
-  const attachment = yield* ProgramPeer.operations.attach({
-    sessionId: item.address.sessionId,
-    taskId: item.address.taskId,
-    program: item.program,
-    input: item.input,
-    route: item.route,
-    executionEpoch: item.executionEpoch,
-    ...(item.affinity === undefined ? {} : { affinity: item.affinity }),
-  });
-  let step: ProgramStep;
-  try {
-    step = yield* ProgramPeer.operations.step(attachment, { type: "start", input: item.input });
-    let previous = item.replayChainSeed;
-    let replayedThroughActionIndex = -1;
-    let cancellationReplayed = false;
-    for (const entry of item.replay) {
-      verifyEntry(item, entry, previous);
-      assertExpectedFrontier(step, entry);
-      if (entry.type === "operation" && entry.outcome.status === "cancelled") {
-        cancellationReplayed = true;
-      }
-      step =
-        entry.type === "operation"
-          ? yield* ProgramPeer.operations.step(attachment, {
-              type: "resume",
-              actionIndex: entry.actionIndex,
-              outcome: entry.outcome,
-              receipt: entry.receipt,
-              replayed: true,
-            })
-          : yield* ProgramPeer.operations.step(attachment, {
-              type: "ack_emission",
-              actionIndex: entry.actionIndex,
-              offset: entry.offset,
-            });
-      previous = entry.entryDigest;
-      replayedThroughActionIndex = entry.actionIndex;
+  let verifiedChain = item.replayChainSeed;
+  let verifiedThrough = -1;
+  for (const entry of item.replay) {
+    verifyProgramReplayEntry(item.replayChainSeed, entry, verifiedChain);
+    verifiedChain = entry.entryDigest;
+    verifiedThrough = entry.actionIndex;
+  }
+  if (
+    verifiedChain !== item.replayChainDigest ||
+    verifiedThrough !== item.replayedThroughActionIndex
+  ) {
+    throw new CrankError(
+      "replay_diverged",
+      "Recovery history does not match the planned journal position",
+    );
+  }
+  const checkpoint = item.checkpoint;
+  let replay = item.replay;
+  if (checkpoint !== undefined) {
+    const anchor = checkpoint.resumeAfter;
+    const anchorDigest =
+      anchor.actionIndex === -1
+        ? item.replayChainSeed
+        : item.replay.find((entry) => entry.actionIndex === anchor.actionIndex)?.entryDigest;
+    if (
+      !Number.isSafeInteger(anchor.actionIndex) ||
+      anchor.actionIndex < -1 ||
+      anchor.actionIndex > verifiedThrough ||
+      anchorDigest !== anchor.replayChainDigest ||
+      checkpoint.programDigest !== item.program.digest
+    ) {
+      throw new CrankError("replay_diverged", "Checkpoint anchor differs from accepted history");
     }
+    replay = item.replay.filter((entry) => entry.actionIndex > anchor.actionIndex);
+  }
+  const restored = yield* ProgramPeer.operations.restore({
+    attach: {
+      sessionId: item.address.sessionId,
+      taskId: item.address.taskId,
+      program: item.program,
+      input: item.input,
+      route: item.route,
+      executionEpoch: item.executionEpoch,
+      ...(item.affinity === undefined ? {} : { affinity: item.affinity }),
+    },
+    checkpoint: checkpoint ?? { kind: "replay" },
+    replay,
+    replayChainSeed: item.replayChainSeed,
+    replayChainDigest: item.replayChainDigest,
+    replayedThroughActionIndex: item.replayedThroughActionIndex,
+  });
+  const {
+    attachment,
+    frontier: step,
+    replayChainDigest: previous,
+    replayedThroughActionIndex,
+  } = restored;
+  try {
     if (
       previous !== item.replayChainDigest ||
       replayedThroughActionIndex !== item.replayedThroughActionIndex ||
       replayedThroughActionIndex !== item.plannedHead.actionIndex
     ) {
-      throw new CrankError("replay_diverged", "Replay did not stop at the planned strand head");
+      throw new CrankError("replay_diverged", "Recovery did not stop at the planned strand head");
     }
+    const cancellationReplayed = item.replay.some(
+      (entry) => entry.type === "operation" && entry.outcome.status === "cancelled",
+    );
     const frontierDigest = sha256(
       canonicalJson({
         domain: "sweatpants.caught-up-frontier.v1",
@@ -90,7 +115,9 @@ export function* replayStrand(item: ReplayItem): Operation<CaughtUpLeaf> {
     };
   } catch (error) {
     yield* ProgramPeer.operations.shutdown(attachment, "failed");
-    if (error instanceof CrankError && error.code === "replay_diverged") throw error;
+    if (error instanceof CrankError && error.code === "replay_diverged") {
+      throw error;
+    }
     throw new CrankError("replay_diverged", "Evaluator failed while replaying planned history", {
       cause: error instanceof Error ? error.message : String(error),
     });
@@ -199,41 +226,7 @@ export function* replayWarmSuffix(
 }
 
 function verifyEntry(item: ReplayItem, entry: ReplayEntry, previous: string): void {
-  if (entry.previousEntryDigest !== previous) {
-    throw new CrankError("replay_diverged", "Replay chain predecessor differs");
-  }
-  const { entryDigest: _ignored, ...body } = entry;
-  const expected = sha256(
-    canonicalJson({
-      replayChainSeed: item.replayChainSeed,
-      previousEntryDigest: previous,
-      entryWithoutEntryDigest: body,
-    }),
-  );
-  if (expected !== entry.entryDigest) {
-    throw new CrankError("replay_diverged", "Replay entry digest differs");
-  }
+  verifyProgramReplayEntry(item.replayChainSeed, entry, previous);
 }
 
-function assertExpectedFrontier(step: ProgramStep, entry: ReplayEntry): void {
-  if (step.actionIndex !== entry.actionIndex) {
-    throw new CrankError(
-      "replay_diverged",
-      `Evaluator action index ${step.actionIndex} differs from history ${entry.actionIndex}`,
-    );
-  }
-  if (entry.type === "operation") {
-    if (
-      step.type !== "operation" ||
-      step.descriptor.kind !== entry.descriptorKind ||
-      (step.descriptor.kind !== "sample" &&
-        canonicalDigest(step.descriptor) !== entry.descriptorDigest)
-    ) {
-      throw new CrankError("replay_diverged", "Evaluator operation differs from history");
-    }
-    return;
-  }
-  if (step.type !== "emission" || canonicalDigest(step.descriptor) !== entry.descriptorDigest) {
-    throw new CrankError("replay_diverged", "Evaluator emission differs from history");
-  }
-}
+const assertExpectedFrontier = assertProgramReplayFrontier;

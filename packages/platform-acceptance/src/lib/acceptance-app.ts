@@ -43,6 +43,7 @@ import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlit
 import {
   createDurableToolRegistry,
   type DurableToolRegistry,
+  replayProgramRecovery,
   type ProgramDriver,
   type ProgramRoute,
 } from "@sweatpants/durable-execution";
@@ -325,6 +326,7 @@ export function createAcceptanceApplication(
             registry: durableRegistry,
           });
       const durableDriver: ProgramDriver = {
+        ...replayProgramRecovery,
         evaluatorKind: concreteDurableDriver.evaluatorKind,
         capabilities: concreteDurableDriver.capabilities,
         *attach(request) {

@@ -29,11 +29,12 @@ export const ProgramPeer = createApi("durable-execution:program-peer", {
     const driver = yield* driverFor(attachment.driverKind);
     return yield* driver.step(attachment, command);
   },
+  *checkpoint(attachment: ProgramAttachment) {
+    const driver = yield* driverFor(attachment.driverKind);
+    return yield* driver.checkpoint(attachment);
+  },
   *restore(request: ProgramRestoreRequest) {
     const driver = yield* driverFor(programRouteDriverKind(request.attach.route));
-    if (!driver.restore) {
-      throw new CrankError("program_protocol_error", "Program driver has no restore fast path");
-    }
     return yield* driver.restore(request);
   },
   *shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void> {

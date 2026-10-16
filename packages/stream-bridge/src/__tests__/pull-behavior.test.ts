@@ -9,7 +9,9 @@
  * regardless of consumer demand.
  */
 import { describe, it, expect } from "vitest";
-import { run, call } from "effection";
+import { run, call, useScope } from "effection";
+import { setImmediate } from "node:timers/promises";
+import { createStreamResponse, createReadableStream } from "../stream-response.ts";
 import { createCountingGenerator } from "../test-utils.ts";
 import { createReadableStreamBridge } from "../approaches/readable-stream-bridge.ts";
 import { createAsyncIterableResponse } from "../approaches/async-iterable-response.ts";
@@ -43,6 +45,41 @@ async function readNValues(body: ReadableStream<Uint8Array>, n: number): Promise
 }
 
 describe("Pull Behavior", () => {
+  it("createStreamResponse waits for demand and does not prefetch between reads", async () => {
+    await run(function* () {
+      const { stream, pullLog } = createCountingGenerator({ maxCount: 10 });
+      const { response, destroy } = yield* createStreamResponse(stream);
+      try {
+        yield* call(() => setImmediate());
+        expect(pullLog).toEqual([]);
+
+        const body = response.body;
+        expect(body).not.toBeNull();
+        const results = yield* call(() => readNValues(body!, 3));
+        yield* call(() => setImmediate());
+        expect(results).toEqual([0, 1, 2]);
+        expect(pullLog).toEqual([0, 1, 2]);
+      } finally {
+        yield* call(destroy);
+      }
+    });
+  });
+
+  it("createReadableStream waits for demand and does not prefetch between reads", async () => {
+    await run(function* () {
+      const scope = yield* useScope();
+      const { stream, pullLog } = createCountingGenerator({ maxCount: 10 });
+      const body = createReadableStream(scope, stream);
+      yield* call(() => setImmediate());
+      expect(pullLog).toEqual([]);
+
+      const results = yield* call(() => readNValues(body, 3));
+      yield* call(() => setImmediate());
+      expect(results).toEqual([0, 1, 2]);
+      expect(pullLog).toEqual([0, 1, 2]);
+      yield* call(() => body.cancel());
+    });
+  });
   describe("createReadableStreamBridge (Approach 1)", () => {
     it("should only pull values when consumer requests them", async () => {
       await run(function* () {

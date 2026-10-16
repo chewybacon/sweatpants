@@ -1,6 +1,7 @@
 import type { Json } from "@sweatpants/foundation";
 import type {
   ProgramAttachment,
+  ProgramRecoveryCheckpoint,
   ProgramRoute,
   ReplayEntry,
   RestoredProgramAttachment,
@@ -91,6 +92,8 @@ export interface ReplayItem {
   readonly affinity?: SandboxAffinity;
   readonly executionEpoch: number;
   readonly groupContext: ForkContext;
+  /** Authority-published continuation at a verified prefix of replay. */
+  readonly checkpoint?: Extract<ProgramRecoveryCheckpoint, { kind: "continuation" }>;
   readonly replay: readonly ReplayEntry[];
   readonly replayedThroughActionIndex: number;
   readonly replayChainSeed: string;

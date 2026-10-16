@@ -748,6 +748,18 @@ const taskSchema = z.strictObject({
     input: jsonValueSchema,
   }),
   execution: z.strictObject({
+    checkpoint: z
+      .strictObject({
+        kind: z.literal("continuation"),
+        format: unicodeStringSchema.min(1),
+        programDigest: digestSchema,
+        state: jsonValueSchema,
+        resumeAfter: z.strictObject({
+          actionIndex: z.number().int().min(-1),
+          replayChainDigest: digestSchema,
+        }),
+      })
+      .optional(),
     epoch: nonNegativeIntegerSchema,
     attachmentId: unicodeStringSchema,
     audience: unicodeStringSchema,

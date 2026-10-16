@@ -8,6 +8,7 @@ import type {
   ForestReplayPlan,
   PinnedProgram,
   ProgramRoute,
+  ProgramRecoveryCheckpoint,
   ProgramStep,
   ResolutionReceipt,
   TurnAddress,
@@ -494,6 +495,7 @@ export interface TaskState {
     readonly input: Json;
   };
   readonly execution: {
+    readonly checkpoint?: Extract<ProgramRecoveryCheckpoint, { kind: "continuation" }>;
     readonly epoch: number;
     readonly attachmentId: string;
     readonly audience: string;

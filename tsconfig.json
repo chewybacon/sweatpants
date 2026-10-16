@@ -97,6 +97,12 @@
         },
         {
             "path": "./packages/scheme-runtime"
+        },
+        {
+            "path": "./packages/workflow-kernel"
+        },
+        {
+            "path": "./packages/workflow-driver"
         }
     ],
     "files": []

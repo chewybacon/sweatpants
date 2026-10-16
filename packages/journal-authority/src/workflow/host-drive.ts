@@ -5,6 +5,7 @@ import {
   DurableProgramCancellation,
   ProgramDriverRegistryContext,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  replayProgramRecovery,
   programRouteDriverKind,
   stableProgramAttachmentId,
   type AdvancementResult,
@@ -94,6 +95,7 @@ function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
   return {
     evaluatorKind: "program",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    ...replayProgramRecovery,
     *attach(request): Operation<ProgramAttachment> {
       const handle = yield* openProgramAttachment(request, workflow);
       return {

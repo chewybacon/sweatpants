@@ -2,6 +2,7 @@ import {
   CrankError,
   DurableProgramCancellation,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  replayProgramRecovery,
   exactProgramKey,
   programRouteDriverKind,
   stableProgramAttachmentId,
@@ -98,6 +99,7 @@ export function createWorkflowProgramDriver(
   return {
     evaluatorKind: "program",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    ...replayProgramRecovery,
 
     *attach(request): Operation<ProgramAttachment> {
       const tool = tools.get(exactProgramKey(request.program));

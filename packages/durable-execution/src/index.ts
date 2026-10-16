@@ -5,6 +5,8 @@ export * from "./transitions.ts";
 export type {
   AttachProgramRequest,
   ProgramAttachment,
+  ProgramCheckpoint,
+  ProgramRecoveryCheckpoint,
   ProgramCommand,
   ProgramDriver,
   ProgramDriverCapabilities,
@@ -46,3 +48,5 @@ export * from "./program-values.ts";
 export * from "./purity-scan.ts";
 
 export * from "./documents.ts";
+
+export * from "./program-recovery.ts";

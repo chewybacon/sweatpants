@@ -66,9 +66,10 @@ const program = {
   version: "2.0.0",
   digest: "665d712a75e3914820798aba6979fbab13bcdc556e8936b589ba57b8c6066889",
 };
-const driver = createAgentCoreDurableProgramDriver(
-  createAgentCoreWebSocketProgramTransport(createSigV4AgentCoreWebSocketConnector()),
+const transport = createAgentCoreWebSocketProgramTransport(
+  createSigV4AgentCoreWebSocketConnector(),
 );
+const driver = createAgentCoreDurableProgramDriver(transport);
 const client = new BedrockAgentCoreClient({ region: release.region });
 const sessions = new Set<string>();
 
@@ -198,7 +199,10 @@ async function replayPickCard(): Promise<{
     receipt: first.receipt,
   }) as ReplayOperationEntry;
   const warm = await run(function* () {
-    const restored = yield* driver.restore!({
+    // This certification checks the remote protocol's compute generation, which
+    // is transport evidence rather than a guarantee of shared driver replay.
+    const restored = yield* transport.restore!({
+      checkpoint: { kind: "replay" },
       attach: { ...attach, executionEpoch: 2 },
       replay: [replayEntry],
       replayedThroughActionIndex: 0,
@@ -240,7 +244,10 @@ async function replayPickCard(): Promise<{
     receipt: first.receipt,
   }) as ReplayOperationEntry;
   const cold = await run(function* () {
-    const restored = yield* driver.restore!({
+    // This certification checks the remote protocol's compute generation, which
+    // is transport evidence rather than a guarantee of shared driver replay.
+    const restored = yield* transport.restore!({
+      checkpoint: { kind: "replay" },
       attach: { ...attach, executionEpoch: 3 },
       replay: [coldEntry],
       replayedThroughActionIndex: 0,

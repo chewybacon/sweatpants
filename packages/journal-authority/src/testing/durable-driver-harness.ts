@@ -241,6 +241,15 @@ export function* runDurableDriverRecoveryFixture(
   let attachmentCount = 0;
   let shutdownCount = 0;
   const driver: ProgramDriver = {
+    *checkpoint(attachment) {
+      return yield* concreteDriver.checkpoint(attachment);
+    },
+    *restore(request) {
+      const restored = yield* concreteDriver.restore(request);
+      attachmentCount += 1;
+      activeAttachments += 1;
+      return restored;
+    },
     evaluatorKind: concreteDriver.evaluatorKind,
     capabilities: concreteDriver.capabilities,
     *attach(request) {
@@ -264,16 +273,6 @@ export function* runDurableDriverRecoveryFixture(
       ? {
           *restoreContext(request) {
             return yield* concreteDriver.restoreContext!(request);
-          },
-        }
-      : {}),
-    ...(concreteDriver.restore
-      ? {
-          *restore(request) {
-            const restored = yield* concreteDriver.restore!(request);
-            attachmentCount += 1;
-            activeAttachments += 1;
-            return restored;
           },
         }
       : {}),
@@ -419,6 +418,15 @@ export function* runDurableDriverCancellationFixture(
   let attachmentCount = 0;
   let shutdownCount = 0;
   const driver: ProgramDriver = {
+    *checkpoint(attachment) {
+      return yield* concreteDriver.checkpoint(attachment);
+    },
+    *restore(request) {
+      const restored = yield* concreteDriver.restore(request);
+      attachmentCount += 1;
+      activeAttachments += 1;
+      return restored;
+    },
     evaluatorKind: concreteDriver.evaluatorKind,
     capabilities: concreteDriver.capabilities,
     *attach(request) {

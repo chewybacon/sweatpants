@@ -23,6 +23,7 @@ import type {
   Mandate,
   PeerReadyTarget,
   ProgramRoute,
+  ProgramCheckpoint,
   TurnAddress,
   ProgramStep,
   RecordedOperationDescriptor,
@@ -315,6 +316,8 @@ export interface OpenDurableTaskRequest {
 
 /** Plain bind proposal; runtime handles never cross the decision boundary. */
 export interface BindMandateRequest {
+  /** Captured at the proposed frontier; authority supplies the journal anchor. */
+  readonly checkpoint?: Extract<ProgramCheckpoint, { kind: "continuation" }>;
   readonly address: TurnAddress;
   readonly strand: string;
   readonly program: { readonly id: string; readonly version: string; readonly digest: string };

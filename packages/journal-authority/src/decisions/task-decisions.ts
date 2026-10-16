@@ -215,8 +215,37 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
     return { status: "stale", mismatch: "strand_head" };
   }
 
+  const checkpoint = request.checkpoint;
+  const replayItem = planned.replay.find(
+    (candidate) => candidate.address.taskId === acceptedTask.taskId,
+  );
+  if (
+    checkpoint !== undefined &&
+    (!checkpoint.format ||
+      checkpoint.programDigest !== acceptedTask.program.artifact.digest ||
+      replayItem === undefined ||
+      request.frontierProof.replayChainDigest !== replayItem.replayChainDigest)
+  ) {
+    throw new CrankError(
+      "invalid_command",
+      "Checkpoint does not match the verified journal frontier",
+    );
+  }
+  // Encode before admitting opaque evaluator state: it must be portable JSON.
+  if (checkpoint !== undefined) {
+    encodeInlineJson(checkpoint.state);
+  }
   const task = draft.task(request.address.sessionId, request.address.taskId);
   const session = draft.session(request.address.sessionId);
+  if (checkpoint !== undefined && replayItem !== undefined) {
+    task.execution.checkpoint = {
+      ...structuredClone(checkpoint),
+      resumeAfter: {
+        actionIndex: replayItem.replayedThroughActionIndex,
+        replayChainDigest: replayItem.replayChainDigest,
+      },
+    };
+  }
   // The conditional state transition is the complete guard: no separate
   // validate/claim phase exists. Advancing the epoch fences every older bind.
   task.execution.epoch += 1;

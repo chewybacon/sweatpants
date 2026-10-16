@@ -155,8 +155,30 @@ export interface ProgramReplayStream {
   readonly [Symbol.asyncIterator]?: () => AsyncIterator<ReplayEntry>;
 }
 
+/** Driver-owned portable state. The authority binds it to an accepted journal frontier. */
+export type ProgramCheckpoint =
+  | { readonly kind: "replay" }
+  | {
+      readonly kind: "continuation";
+      readonly format: string;
+      readonly programDigest: string;
+      readonly state: Json;
+    };
+
+/** A continuation may be restored only after the authority binds its journal position. */
+export type ProgramRecoveryCheckpoint =
+  | Extract<ProgramCheckpoint, { kind: "replay" }>
+  | (Extract<ProgramCheckpoint, { kind: "continuation" }> & {
+      readonly resumeAfter: {
+        readonly actionIndex: number;
+        readonly replayChainDigest: string;
+      };
+    });
+
 export interface ProgramRestoreRequest {
+  readonly checkpoint: ProgramRecoveryCheckpoint;
   readonly attach: AttachProgramRequest;
+  /** Full history for replay; only entries after resumeAfter for a continuation. */
   readonly replay: ProgramReplayStream;
   readonly replayedThroughActionIndex: number;
   readonly replayChainSeed: string;
@@ -204,8 +226,10 @@ export interface ProgramDriver {
   step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep>;
   /** Releases attachment resources on every terminal or scope-exit path. */
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
-  /** Optional streamed fresh-task replay fast path. */
-  restore?(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
+  /** Captures recovery data without cancelling or releasing the attachment. */
+  checkpoint(attachment: ProgramAttachment): Operation<ProgramCheckpoint>;
+  /** Restores an attachment to the requested accepted journal frontier. */
+  restore(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
   /** Supplies driver-owned serializable identity/digest domains for authority restoration. */
   restoreContext?(request: AttachProgramRequest): Operation<ProgramRestoreContext>;
   /** Resolves an exact pinned manifest when the driver owns artifact lookup. */

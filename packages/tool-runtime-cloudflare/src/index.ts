@@ -8,6 +8,7 @@ import {
   createDurableToolRegistry,
   exactProgramKey,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  replayProgramRecovery,
   type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramDriver,
@@ -51,6 +52,7 @@ export function createCloudflareProgramDriver(
   return {
     evaluatorKind: "remote",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    ...replayProgramRecovery,
     *attach(request) {
       return yield* resource<ProgramAttachment>(function* (provide) {
         // The returned RPC target pins this attachment within the active request.

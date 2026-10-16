@@ -2,6 +2,7 @@ import {
   CrankError,
   exactProgramKey,
   REPLAY_CHECKPOINT_CAPABILITIES,
+  replayProgramRecovery,
   type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramDriver,
@@ -86,6 +87,7 @@ function createDriver(
   return {
     evaluatorKind: "worker",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
+    ...replayProgramRecovery,
     *attach(request) {
       const worker = yield* acquire();
       const response = yield* worker.send({ type: "attach", request });

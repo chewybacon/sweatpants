@@ -1,6 +1,7 @@
 import { type Operation } from "effection";
 import {
   CrankError,
+  ProgramPeer,
   type AdvancementPlan,
   type CaughtUpLeaf,
   type DeliveryMandate,
@@ -90,9 +91,13 @@ export function* bindCaughtUpLeaf(
   const selection = yield* policy.select([{ kind: "crank_native", caughtUp }]);
   if (selection === null || selection.target.kind !== "crank_native") return null;
   const item = selection.target.caughtUp.item;
+  const checkpoint = yield* ProgramPeer.operations.checkpoint(
+    selection.target.caughtUp.restored.attachment,
+  );
   const bound = yield* authority.command({
     type: "execution.bind-mandate",
     request: {
+      ...(checkpoint.kind === "continuation" ? { checkpoint } : {}),
       address: item.address,
       strand: item.strand,
       program: item.program,
