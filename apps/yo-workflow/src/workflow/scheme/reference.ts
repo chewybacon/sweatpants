@@ -1,25 +1,29 @@
-export const schemeReference = `Author a complete durable workflow in Scheme. Supply program as one expression, optional JSON input, and validateOnly:true to compile/expand without effects. Then execute the identical program with validateOnly:false. Validation returns status valid or invalid with diagnostic.message and, when available, diagnostic.sourceHint locating delimiter boundaries in your source. Hoot internal file locations are not locations in your program. Correct the diagnostic before execution; after repeated errors simplify into small named helpers. Runtime authored faults return status failed, diagnostic, completedEffects, and recovery.acceptedExchanges (literal accepted human exchanges, bounded to 48 KiB with omittedExchanges). A repaired program can receive these through input, reconstruct accepted state, and continue from the next unanswered interaction. If omittedExchanges is nonzero, the recovery history is incomplete. This is evidence for a repair, not automatic replay or rollback; accepted effects remain in the journal, so do not blindly restart a failed workflow with external mutations.
+import { schemeExamples } from "./examples.ts";
+import language from "@sweatpants/scheme-runtime/language" with { type: "json" };
+import { limits, schemeChecks } from "@sweatpants/scheme-runtime";
+
+/** Syntax comes from the built evaluator; capability contracts come from its host. */
+export function createSchemeReference(contracts: readonly unknown[]): string {
+  const surface = [
+    `Scheme imports: ${language.imports.join(", ")}.`,
+    `Injected values: ${language.values.join(", ")}.`,
+    "Procedures (actual evaluator signatures):",
+    ...language.procedures.map(({ signature }) => signature),
+    "Macros (actual syntax-rules patterns; _ is the macro name):",
+    ...language.macros.map(({ name, patterns }) => `${name}: ${patterns.join("; ")}`),
+  ].join("\n");
+  return `Author a complete durable workflow in Scheme. Supply program as one expression, optional JSON input, and validateOnly:true to compile/expand without effects. Then execute the identical program with validateOnly:false. Validation returns status valid or invalid with diagnostic.message and, when available, diagnostic.sourceHint locating delimiter boundaries in your source. Hoot internal file locations are not locations in your program. Correct the diagnostic before execution; after repeated errors simplify into small named helpers. Runtime authored faults return status failed, diagnostic, completedEffects, and recovery.acceptedExchanges (literal accepted human exchanges, bounded to 48 KiB with omittedExchanges). A repaired program can receive these through input, reconstruct accepted state, and continue from the next unanswered interaction. If omittedExchanges is nonzero, the recovery history is incomplete. This is evidence for a repair, not automatic replay or rollback; accepted effects remain in the journal, so do not blindly restart a failed workflow with external mutations.
 
 Program shape: one outer (let () ...) gives small define helpers a shared lexical scope. Put definitions first, then the final expression. let* sequences computations and effects in order. Static JSON schemas, option lists, and configuration can live in input and be read with field rather than rebuilt as deeply nested object/cons expressions.
 
 (match-result expression "tag-field" ("label" result body ...) ... (else other body ...)) evaluates expression and the tag field once, then runs only the matching branch. Each branch binds the whole result to its own name. The final else branch is required and receives unmatched results; its body chooses how to handle them. This is ordinary hygienic syntax for let/cond, with no automatic retries, exceptions, or hidden return. For example:
-(let ()
-  (define (interpret reply)
-    (let* ((text (field (field reply "content") "reply"))
-           (request (object-set (field input "classifier") "input" text))
-           (result (decision request)))
-      (match-result (field result "answer") "type"
-        ("choice" answer (field answer "choice"))
-        (else other other))))
-  (match-result (ask (field input "question")) "action"
-    ("accept" reply (interpret reply))
-    (else stopped stopped)))
-With input: {"question":{"message":"Which kind of help do you need?"},"classifier":{"question":{"type":"choice","instructions":"Choose the kind of help requested.","choices":[{"value":"billing","description":"Bills or payments"},{"value":"technical","description":"Technical assistance"},{"value":"unclear","description":"Not enough information"}]}}}. Static configuration lives in JSON; the program contains only the changing data and control flow. The same form handles sample's "status" or a document operation's "status". Keep branches short by calling named helpers for subsequent steps. Helpers may call one another or recur; named let expresses a local loop. A successful branch returns an ordinary value, so later work can use it through let*. Input is explicit data, not hidden conversation context.
+${schemeExamples.map((example) => `${example.program}\nWith input: ${JSON.stringify(example.input)}`).join("\n\n")}. Static configuration lives in JSON; the program contains only the changing data and control flow. The same form handles sample's "status" or a document operation's "status". Keep branches short by calling named helpers for subsequent steps. Helpers may call one another or recur; named let expresses a local loop. A successful branch returns an ordinary value, so later work can use it through let*. Input is explicit data, not hidden conversation context.
 
 
 Evaluation is pull-driven: an effect suspends the current continuation and returns its recorded result when resumed. A running program can wait for human input across multiple browser turns. Calling Scheme does not answer its questions: Ask and present_choices resume only after an external response. A successful final result means those waits have already completed; do not describe the interaction as still pending or as a choice you made. State is lexical and explicit. Named let and letrec support proper tail recursion. The host may discard WASM and replay accepted results to recover. There is no Park keyword and no background scheduling.
 
-Core: lambda, let (including named let), let*, letrec, define, if, begin, cond, case, and, or, not, when, unless, quote, quasiquote, unquote, unquote-splicing; let-syntax, letrec-syntax and syntax-rules for local hygienic macros. Arithmetic + - * / quotient = < > <= >=, remainder modulo abs max min zero? positive? negative?. Lists cons car cdr cadr caddr list null? pair? length reverse append map for-each apply. Strings string-append number->string string->number string=? string-length substring. Predicates equal? string? number? boolean? symbol? integer? exact-integer?. Booleans #t/#f. No imports, eval, filesystem, network, mutation, or undeclared library procedures.
+${surface}
+No imports, eval, filesystem, network, mutation, or undeclared library procedures.
 
 JSON is distinct from Scheme lists. (object (cons "field" expression) ...) builds an object. (field value "key") reads a required field. (object-set value "key" replacement) returns an updated object. (array expr ...) builds a JSON array; (array-ref value index), (array-length value), (array-append value item) read/extend it immutably. (json-null) is JSON null. Procedures, symbols and Scheme lists cannot cross the effect boundary or be a final result. Use input to access the explicit input supplied to this invocation.
 
@@ -33,5 +37,11 @@ Documents are explicit snapshots: creating a document does not keep it synchroni
 
 Keep functions small, carry changing state in recursive parameters, and let helpers compose repeated interactions. Macros transform syntax before execution; repeating an effect expression repeats the effect. Task rules and stopping conditions come from the user. No game-specific scaffold is provided.
 
-Limits: 12000 source characters; JSON 65536 bytes, depth 32, 4096 nodes; 2000000 control-flow fuel per validation, 100000000 per next, 1000000000 per evaluator, 256 external effects. Fuel includes macro expansion. These are not a wall-clock or native allocation quota. Validation checks syntax, expansion, and unbound identifiers; runtime capability requests and responses are separately checked. Only emitted effects consume the external effect count; pure loops are governed by fuel.
+Limits: ${limits.source} source characters; JSON ${limits.bytes} bytes, depth ${limits.depth}, ${limits.nodes} nodes; ${limits.validationFuel} control-flow fuel per validation, ${limits.stepFuel} per next, ${limits.totalFuel} per evaluator, ${limits.effects} external effects. Fuel includes macro expansion. These are not a wall-clock or native allocation quota. Only emitted effects consume the external effect count; pure loops are governed by fuel.
+
+Validation checks: ${schemeChecks.checked.join(", ")}. Unchecked: ${schemeChecks.unchecked.join(", ")}. It does not execute the program, prove runtime input shapes, or validate unexecuted capability calls. A valid program can still fail on data. Supply input again on every call, including execution after validation; calls do not share input. Omitted input is JSON null.
+
+Bound capabilities (installed request and response contracts):
+${JSON.stringify(contracts)}
 `;
+}

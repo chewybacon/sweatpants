@@ -5,12 +5,17 @@ import { executionViewSchema, type ExecutionView } from "./contract.ts";
 const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 export function ExecutionInspector() {
   const [view, setView] = useState<ExecutionView | null>(null);
+  const [prompt, setPrompt] = useState(
+    "Review the launch announcement, and if I approve it, send it to Sam.",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authoringError, setAuthoringError] = useState(false);
   const [tab, setTab] = useState<"state" | "source">("state");
-  async function request(action?: string, choice?: string) {
+  async function request(action?: string, choice?: string, author = false) {
     setBusy(true);
     setError(null);
+    setAuthoringError(false);
     try {
       const id = view?.id ?? new URL(location.href).searchParams.get("run");
       const response = await fetch(
@@ -19,7 +24,13 @@ export function ExecutionInspector() {
           ? {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action, choice, id, revision: view?.revision }),
+              body: JSON.stringify({
+                action,
+                choice,
+                id,
+                revision: view?.revision,
+                ...(author ? { prompt } : {}),
+              }),
             }
           : undefined,
       );
@@ -36,6 +47,7 @@ export function ExecutionInspector() {
       url.searchParams.set("run", next.id);
       history.replaceState(null, "", url);
     } catch (cause) {
+      setAuthoringError(author);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
@@ -57,27 +69,64 @@ export function ExecutionInspector() {
           </p>
         </div>
         <button disabled={busy} onClick={() => void request("start")}>
-          {view ? "New run" : "Run confirmation"}
+          {view ? "New confirmation run" : "Run confirmation"}
         </button>
       </header>
       <p className="execution-local">
         Local playground · journal retained in server memory · each park releases compute · no email
         is sent
       </p>
+      <section className="execution-author">
+        <label htmlFor="caller-prompt">Model-authored caller</label>
+        <textarea
+          id="caller-prompt"
+          value={prompt}
+          maxLength={4000}
+          onChange={(event) => setPrompt(event.target.value)}
+          disabled={busy}
+        />
+        <button
+          disabled={busy || !prompt.trim()}
+          onClick={() => void request("start", undefined, true)}
+        >
+          {busy ? "Working…" : "Author and run"}
+        </button>
+        <p className="execution-muted">
+          The model composes two registered tools. Only the compiled tool expands into evaluator
+          frames.
+        </p>
+      </section>
+      <div className="execution-tool-catalog">
+        <div>
+          <span className="execution-status">Compiled workflow</span>
+          <h3>review_draft</h3>
+          <p>Approval and scoped cleanup. The evaluator can step inside.</p>
+        </div>
+        <div>
+          <span className="execution-status waiting">Host tool</span>
+          <h3>send_announcement</h3>
+          <p>
+            Queues a local announcement. Only its request and recorded receipt enter the workflow.
+          </p>
+        </div>
+      </div>
       {error && (
         <div role="alert" className="execution-error">
           {error}
-          <button disabled={busy} onClick={() => void request()}>
-            Reload state
+          <button
+            disabled={busy}
+            onClick={() => void (authoringError ? request("start", undefined, true) : request())}
+          >
+            {authoringError ? "Retry authoring" : "Reload state"}
           </button>
         </div>
       )}
       {!view ? (
         <section className="execution-empty">
-          <h2>One workflow. Two languages.</h2>
+          <h2>One program. Two kinds of tool.</h2>
           <p>
-            A Scheme caller invokes a compiled developer generator. It asks for approval, then
-            suspends again during cleanup.
+            Review a draft, finish its cleanup, then queue the approved announcement through the
+            host.
           </p>
           <ol>
             <li>Inspect the captured caller and helper.</li>
@@ -251,6 +300,27 @@ export function ExecutionInspector() {
               )}
             </section>
           </div>
+          <section className="execution-panel execution-timeline">
+            <header>
+              <h2>Announcement outbox</h2>
+              <span className="execution-muted">Host tool · local only</span>
+            </header>
+            <p className="execution-muted">
+              Approved path: review → tool cleanup → send_announcement → recorded receipt
+            </p>
+            {view.outbox.length === 0 ? (
+              <p>No announcements queued.</p>
+            ) : (
+              view.outbox.map((item) => (
+                <div className="execution-pending" key={item.announcementId}>
+                  <span className="execution-status">{item.status}</span>
+                  <h3>{item.title}</h3>
+                  <p>To: {item.recipient}</p>
+                  <code>{item.announcementId}</code>
+                </div>
+              ))
+            )}
+          </section>
           <section className="execution-panel execution-timeline">
             <header>
               <h2>Boundary timeline</h2>

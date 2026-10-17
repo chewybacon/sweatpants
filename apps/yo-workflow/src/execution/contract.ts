@@ -32,12 +32,17 @@ export const executionViewSchema = z.object({
       ),
     })
     .nullable(),
-  checkpoint: z.json().nullable().default(null),
-  restoration: z
-    .object({ stepsBefore: z.number(), stepsAfter: z.number() })
-    .nullable()
-    .default(null),
+  checkpoint: z.json().nullable(),
+  restoration: z.object({ stepsBefore: z.number(), stepsAfter: z.number() }).nullable(),
   pending: z.object({ key: z.string(), message: z.string(), pullId: z.string() }).nullable(),
+  outbox: z.array(
+    z.object({
+      announcementId: z.string(),
+      status: z.string(),
+      title: z.string(),
+      recipient: z.string(),
+    }),
+  ),
   trace: z.array(
     z.object({
       sequence: z.number(),

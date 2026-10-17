@@ -19,6 +19,7 @@ export default defineConfig({
       process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
       process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5",
       process.env.WORKFLOW_LOCAL_STATE_PATH ?? "default",
+      process.env.WORKFLOW_DEV_PORT ?? "direct",
     ]
       .map((value) => value.replace(/[^a-zA-Z0-9_-]/g, "_"))
       .join("-")}`,

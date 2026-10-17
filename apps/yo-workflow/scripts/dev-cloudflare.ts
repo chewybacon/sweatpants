@@ -82,6 +82,7 @@ const env = {
   DEFAULT_CHAT_MODEL_ID: model,
   DEFAULT_CHAT_MODEL_THINKING: thinking,
   CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
+  WORKFLOW_DEV_PORT: options.port,
 };
 command(["exec", "tsx", "scripts/prepare-cloudflare.ts"], env);
 console.log(`Starting yo-workflow with ${provider} / ${model}; reasoning: ${thinking}.`);

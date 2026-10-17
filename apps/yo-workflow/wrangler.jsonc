@@ -62,6 +62,7 @@
             "PROGRAM_DRIVER_CAPABILITY_SECRET",
             "DEFAULT_CHAT_MODEL_PROVIDER",
             "DEFAULT_CHAT_MODEL_ID",
+            "DEFAULT_CHAT_MODEL_THINKING",
         ],
     },
 }

@@ -18,7 +18,7 @@ pnpm --filter '@sweatpants/program-backend-kernel...' build
 # Uses the scheme-runtime pinned Docker toolchain image (build it via scheme:build if absent).
 pnpm --filter yo-workflow execution:build
 pnpm --filter yo-workflow execution:test
-pnpm --filter yo-workflow dev
+pnpm --filter yo-workflow execution:dev
 ```
 
 Open `/execution` on the local URL reported by Astro. Run confirmation, inspect
@@ -92,16 +92,18 @@ From `sweatpants/` (no sibling checkout is needed):
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter 'yo-workflow^...' -r build
-pnpm --dir apps/yo-workflow dev:server
-# In another terminal:
 pnpm --dir apps/yo-workflow dev
 ```
 
-Open http://127.0.0.1:8101. The API listens on loopback port 8102.
+Open the local URL reported by the launcher (port 8103 by default). Playground,
+Threads, and the walkthrough share the same origin as the Cloudflare chat API.
+The launcher prepares D1 and real model credentials before starting Astro.
+Use `execution:dev` to compile the developer workflow before launching all pages,
+including the local execution inspector.
 
-The server uses the existing Sweatpants credential store, normally `.sweatpants/auth.json`. `YO_CHAT_MODEL_AUTH_FILE` selects another compatible file; pi's agent auth file has a different shape. The default model is `github-copilot/claude-sonnet-5.5`. Override it with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID`. Reasoning defaults to `medium`; override it with `DEFAULT_CHAT_MODEL_THINKING`.
-
-SQLite state lives in `apps/yo-workflow/.data/chat.sqlite`. Stream buffers are in memory. Server restart recovery through HTTP is **not certified** by this spike.
+`dev:server` remains a standalone Node API on port 8102 for Node runtime work; it
+is not needed by the Cloudflare-backed UI. Running `astro dev` directly skips
+credential and database preparation and is not the full-app launch command.
 
 ## Local Cloudflare
 
@@ -129,7 +131,8 @@ Local state and the generated signing secret live in `.wrangler/`; credentials a
 For simultaneous model comparisons, give each server a separate local state path
 and port. The path is relative to `apps/yo-workflow` and is used by both D1
 initialization and Astro. Do not point two running servers at the same directory.
-Vite dependency caches are already separated by sampling mode, provider, and model.
+Vite dependency caches are separated by provider, model, local state path, and
+launcher port so concurrent servers cannot replace one another’s optimized modules.
 
 ```sh
 WORKFLOW_LOCAL_STATE_PATH=.wrangler/opus-state pnpm --dir apps/yo-workflow dev:cloudflare --provider github-copilot --model claude-opus-5.5 --port 8107
@@ -1158,3 +1161,42 @@ accepted value never changes. This is deterministic replay, not a user-seeded
 PRNG or a guarantee that separate program invocations produce identical values.
 Validation-only calls do not draw. The canvas identifies Random as a built-in,
 and the activity stream uses the same start/completion events as other effects.
+
+### Model-authored composition experiment
+
+The local `/execution` inspector also accepts a request through **Author and run**.
+It uses the existing Pi provider adapter and file credential store, defaulting to
+OpenCode Haiku with medium reasoning (the `DEFAULT_CHAT_MODEL_*` environment
+variables override these). The model writes a Scheme caller. The host pins a program envelope containing
+private compiled definitions, registered public tool bindings, and the caller.
+The public `(review_draft input)` binding enters a kernel-owned tool scope; its
+cleanup completes before the caller receives its result. Caller environments have
+no parent link into the private implementation environment. Registered names cannot
+be redefined, assigned, or used as parameters. The narrow caller subset excludes
+quote and private effect/control forms so it cannot forge evaluator records.
+Authoring happens before opening the execution, so restoring a run does not call
+the model again. This is a local experiment, not the chat tool runtime migration.
+
+The boundary timeline includes `kernel.checkpoint-selected` with the snapshot
+passed to restore and `kernel.reply` with the value delivered to the continuation.
+These are observations of the existing driver recovery path, not a second replay
+implementation. Generated callers can fail at runtime; this first slice does not
+provide a static checker or automatic repair loop.
+
+The experiment also registers `send_announcement` as an ordinary host effect.
+It uses the existing durable effect registry and host routing path, with a local
+in-memory outbox keyed by the authorized pull ID. Its receipt is journaled; no
+external message is sent. Outbox durability lasts only as long as this local
+server, just like the experiment's journal. The UI distinguishes the compiled
+review tool from the opaque host tool and displays queued receipts.
+
+Compiled registrations now name their private implementation and injected leading
+arguments directly. Dispatch opens the tool scope and invokes that implementation
+once; it does not add a wrapper closure or hide duplicate frames in the UI.
+
+The review implementation is now built through the tsdown authoring experiment.
+Run `pnpm execution:compile` before loading `/execution`, or use
+`pnpm execution:dev --port 8131` to build and start the lab together. The runtime
+imports a compiled definition rather than compiling the developer source on import.
+See `experiments/workflow-kernel/tsdown-authoring/README.md` for the import contract
+and its current limitations.

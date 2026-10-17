@@ -23,7 +23,14 @@ export function executionPlayground() {
                         const module = require(
                             resolve(server.config.root, "execution/service.mjs"),
                         );
-                        service = module.createExecutionService();
+                        service = module.createExecutionService({
+                            async author(prompt) {
+                                const { authorCaller } = require(
+                                    resolve(server.config.root, "src/execution/author.ts"),
+                                );
+                                return authorCaller(prompt);
+                            },
+                        });
                     }
                     let result;
                     if (request.method === "GET") result = service.get(url.searchParams.get("id"));

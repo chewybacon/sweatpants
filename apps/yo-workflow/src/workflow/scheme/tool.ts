@@ -15,12 +15,13 @@ import {
 } from "../sampling.ts";
 import {
   createSchemeEvaluation,
-  SchemeEvaluationPort,
+  checkSchemeProgram,
+  schemeDiagnostic,
   SchemeEvaluationError,
   limits,
 } from "@sweatpants/scheme-runtime";
 import manifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
-import { schemeReference } from "./reference.ts";
+import { createSchemeReference } from "./reference.ts";
 import { createRecoveryHistory } from "./recovery.ts";
 import { schemeSourceHint } from "./diagnostics.ts";
 
@@ -54,7 +55,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
     decisionContract,
   ];
   const tool: BoundTool = createDurableTool("scheme")
-    .description(schemeReference + "\nBound capabilities:\n" + JSON.stringify(contracts))
+    .description(createSchemeReference(contracts))
     .identity({
       version: "0.0.1",
       digest: sha256(
@@ -83,20 +84,29 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
     .samples()
     .decisions(decisionBinding)
     .execute(function* ({ program, input, validateOnly }, context): Operation<Json> {
-      const validation = yield* SchemeEvaluationPort.api.operations.validate(program);
+      const validation = yield* checkSchemeProgram({
+        source: program,
+        input: assertJson(input ?? null),
+      });
       if (!validation.valid) {
         const sourceHint = schemeSourceHint(program);
         return {
           status: "invalid",
           diagnostic: {
-            phase: "validation",
-            message: validation.message,
+            ...validation.diagnostic,
             ...(sourceHint === undefined ? {} : { sourceHint }),
           },
           completedEffects: 0,
         };
       }
-      if (validateOnly) return { status: "valid" };
+      if (validateOnly)
+        return {
+          status: "valid",
+          checks: {
+            checked: [...validation.checks.checked],
+            unchecked: [...validation.checks.unchecked],
+          },
+        };
       const evaluation = yield* createSchemeEvaluation({
         source: program,
         capabilities,
@@ -173,7 +183,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
         if (!(error instanceof SchemeEvaluationError)) throw error;
         return {
           status: "failed",
-          diagnostic: { phase: "execution", message: error.message },
+          diagnostic: { ...schemeDiagnostic(error.message, "execution") },
           completedEffects: count,
           recovery: recovery.snapshot(),
         };

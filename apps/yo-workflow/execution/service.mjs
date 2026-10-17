@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createHootProgram } from "../../../experiments/workflow-kernel/hoot-composition/driver.mjs";
-import { emitWorkflowScheme } from "../../../experiments/workflow-kernel/scheme-compiler/emit.mjs";
+import { reviewDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.mjs";
 import {
     createJournal,
     createMemoryExecutionStore,
@@ -12,58 +12,77 @@ import {
     ANY_JSON_SCHEMA_DESCRIPTOR as schema,
     ProgramDriverRegistryContext,
 } from "../../../packages/durable-execution/dist/index.js";
+import {
+    defineDurableEffect,
+    createDurableEffectRegistration,
+} from "../../../packages/durable-effects/dist/authoring.js";
+import {
+    DurableEffectRegistryContext,
+    createDurableEffectRegistry,
+    DurableEffects,
+    ProgramPlacementContext,
+} from "../../../packages/durable-effects/dist/index.js";
+const sendDefinition = defineDurableEffect({
+    name: "send_announcement",
+    version: "1",
+    inputSchema: schema,
+    outputSchema: schema,
+    retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+});
 const { run } = createRequire(new URL("../../../package.json", import.meta.url))("effection");
 
-export const developerSource = `import { ensure } from "effection";
-function* review_draft(ctx, input) {
-  "use workflow";
-  yield* ensure(function* () {
-    yield* ctx.elicit("cleanup", "Release the draft reservation?");
-  });
-  const answer = yield* ctx.elicit("approval", input.title);
-  if (answer.content.approved) {
-    return "Draft approved";
-  }
-  return "Draft declined";
-}`;
-const emitted = emitWorkflowScheme(developerSource, {
-    entryPoint: null,
-    entryInput: true,
-    allowEnsure: true,
-    allowFinally: true,
-});
-const caller = `(define (workflow input) (review_draft #f input))\n(workflow %input)`;
-const program = createHootProgram({
-    source: emitted.scheme + caller,
-    contract: {
-        programId: "inspect-confirmation",
-        version: "1",
-        inputSchema: schema,
-        outputSchema: schema,
-        effects: {},
-        elicits: { approval: { response: schema }, cleanup: { response: schema } },
-        capabilities: { durableEmissions: false, structuredChildren: false, replay: "strict" },
-    },
-    bindOperation(request, site) {
-        if (
-            !Array.isArray(request) ||
-            request[0] !== "elicit" ||
-            !["approval", "cleanup"].includes(request[1])
-        )
-            throw Error("Unsupported inspection workflow effect");
-        return {
-            kind: "elicit",
-            key: request[1],
-            message: request[2],
-            response: schema,
-            binding: { id: site },
-        };
-    },
-});
+export const developerSource = reviewDraft.source;
+const caller = `(define (workflow input) (review_draft input))\n(workflow %input)`;
+function buildProgram(callerSource) {
+    return createHootProgram({
+        source: `(registered-program
+          (${reviewDraft.scheme})
+          ((review_draft compiled ${reviewDraft.entry} (#f)) (send_announcement host))
+          (${callerSource}))`,
+        contract: {
+            programId: "inspect-confirmation",
+            version: "1",
+            inputSchema: schema,
+            outputSchema: schema,
+            effects: { send_announcement: sendDefinition },
+            elicits: { approval: { response: schema }, cleanup: { response: schema } },
+            capabilities: { durableEmissions: false, structuredChildren: false, replay: "strict" },
+        },
+        bindOperation(request, site) {
+            if (
+                Array.isArray(request) &&
+                request[0] === "effect" &&
+                request[1] === sendDefinition.name &&
+                request[2] === "1"
+            ) {
+                return {
+                    kind: "effect",
+                    name: sendDefinition.name,
+                    version: "1",
+                    input: request[3],
+                    resolver: { audience: "host:announcements" },
+                };
+            }
+            if (
+                !Array.isArray(request) ||
+                request[0] !== "elicit" ||
+                !["approval", "cleanup"].includes(request[1])
+            )
+                throw Error("Unsupported inspection workflow effect");
+            return {
+                kind: "elicit",
+                key: request[1],
+                message: request[2],
+                response: schema,
+                binding: { id: site },
+            };
+        },
+    });
+}
 
 // Local playground composition over production journal/driver APIs. No test transport
 // or model simulator: the developer fixture is run directly and the UI supplies replies.
-export function createExecutionService() {
+export function createExecutionService({ author } = {}) {
     const sessions = new Map();
     const keyring = createCapabilityKeyring("execution-playground", [
         { keyId: "local", secret: randomUUID().repeat(2) },
@@ -82,6 +101,8 @@ export function createExecutionService() {
         trace(session, `kernel.${kind}`, {
             ...(data?.durationMs === undefined ? {} : { durationMs: data.durationMs }),
             ...(data?.boundary ? { data: data.boundary } : {}),
+            ...(data?.snapshot ? { data: data.snapshot } : {}),
+            ...(data?.reply ? { data: data.reply } : {}),
         });
     }
     function view(session) {
@@ -95,9 +116,10 @@ export function createExecutionService() {
             restoration: session.restoration ?? null,
             pending: session.pending ?? null,
             trace: session.trace,
+            outbox: [...session.outbox.values()],
             developerSource,
-            schemeSource: emitted.scheme + caller,
-            compiledSites: emitted.debug.sites,
+            schemeSource: session.program.artifact.code,
+            compiledSites: reviewDraft.debug.sites,
         });
     }
     return {
@@ -114,7 +136,13 @@ export function createExecutionService() {
                     throw Error(
                         "Local execution limit reached. Restart the dev server to clear runs.",
                     );
+                const authored = command.prompt ? await author?.(command.prompt) : caller;
+                if (typeof authored !== "string" || !authored.trim())
+                    throw Error("Model authoring is unavailable or returned no Scheme");
+                const program = buildProgram(authored);
                 session = {
+                    program,
+                    outbox: new Map(),
                     id: randomUUID(),
                     store: createMemoryExecutionStore(),
                     revision: 0,
@@ -129,6 +157,7 @@ export function createExecutionService() {
                 if (command.revision !== session.revision)
                     throw Error("Execution changed. Reload before continuing.");
             }
+            const program = session.program;
             if (session.busy) throw Error("Execution is busy");
             session.busy = true;
             try {
@@ -271,10 +300,61 @@ export function createExecutionService() {
                                 advancement: {
                                     effects: {
                                         *route() {
-                                            throw Error("This workflow has no installed effects");
+                                            return "host";
                                         },
-                                        *executeHost() {
-                                            throw Error("This workflow has no installed effects");
+                                        *executeHost(authorization, placement) {
+                                            const registry = createDurableEffectRegistry([
+                                                createDurableEffectRegistration(
+                                                    sendDefinition,
+                                                    sendDefinition.retrySafety,
+                                                    function* (input, ctx) {
+                                                        if (
+                                                            !input ||
+                                                            typeof input !== "object" ||
+                                                            typeof input.title !== "string" ||
+                                                            typeof input.recipient !== "string"
+                                                        ) {
+                                                            return {
+                                                                status: "error",
+                                                                error: {
+                                                                    code: "invalid_announcement",
+                                                                    message:
+                                                                        "Expected title and recipient strings",
+                                                                },
+                                                            };
+                                                        }
+                                                        let item = session.outbox.get(ctx.pullId);
+                                                        if (!item) {
+                                                            item = {
+                                                                announcementId: randomUUID(),
+                                                                status: "queued",
+                                                                title: input.title,
+                                                                recipient: input.recipient,
+                                                            };
+                                                            session.outbox.set(ctx.pullId, item);
+                                                            trace(
+                                                                session,
+                                                                "host.announcement-queued",
+                                                                { data: item },
+                                                            );
+                                                        }
+                                                        return { status: "ok", value: item };
+                                                    },
+                                                ),
+                                            ]);
+                                            return yield* DurableEffectRegistryContext.with(
+                                                registry,
+                                                function* () {
+                                                    return yield* ProgramPlacementContext.with(
+                                                        placement,
+                                                        function* () {
+                                                            return yield* DurableEffects.operations.execute(
+                                                                authorization,
+                                                            );
+                                                        },
+                                                    );
+                                                },
+                                            );
                                         },
                                     },
                                 },
