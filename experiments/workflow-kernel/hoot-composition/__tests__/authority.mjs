@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { createHootDriver, manifest } from "../driver.mjs";
+import { createHootDriver, manifest } from "../fixture-driver.mjs";
 import {
     createStoredScenarioDriver,
     driveTestProgramTree,

@@ -1,0 +1,136 @@
+import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
+import { assertKernelCompatibility } from "../../../packages/workflow-kernel/dist/index.js";
+import { canonicalDigest } from "../../../packages/foundation/dist/index.js";
+import { CrankError } from "../../../packages/durable-execution/dist/index.js";
+import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
+import { call } from "effection";
+function kernel(observe, source, digest, loadMachine, identity) {
+    let machine = null,
+        closed = false;
+    function check() {
+        if (!machine || closed) {
+            throw Error("Hoot instance disposed");
+        }
+    }
+    function boundary(step) {
+        if (step.kind === "effect") {
+            return { kind: "effect", site: step.site, request: step.value };
+        }
+        if (step.kind === "returned" || step.kind === "thrown") {
+            return { kind: "terminal", outcome: { kind: step.kind, value: step.value } };
+        }
+        if (step.kind === "cancelled") {
+            return { kind: "terminal", outcome: { kind: "cancelled" } };
+        }
+        throw Error("Unknown Hoot boundary");
+    }
+    function transition(event, action) {
+        const started = performance.now();
+        let result;
+        try {
+            result = boundary(action());
+        } catch (error) {
+            throw new CrankError("workflow_failed", error.message);
+        }
+        observe(event, {
+            boundary: result,
+            inspection: machine.inspect(),
+            durationMs: performance.now() - started,
+        });
+        return result;
+    }
+    const execution = {
+        *resume(reply) {
+            check();
+            observe("reply", { reply });
+            return transition("resume", () =>
+                reply.kind === "throw" ? machine.reject(reply.value) : machine.resume(reply.value),
+            );
+        },
+        *cancel() {
+            check();
+            return transition("cancel", () => machine.cancel());
+        },
+        *capture() {
+            check();
+            const state = machine.capture();
+            observe("capture", { bytes: new TextEncoder().encode(state).length });
+            return { kernel: identity, programDigest: digest, state };
+        },
+        *dispose() {
+            if (machine) {
+                machine = null;
+                observe("dispose");
+            }
+        },
+    };
+    function validate(program, snapshot) {
+        if (closed || machine) {
+            throw Error("Kernel already used");
+        }
+        assertKernelCompatibility(identity, program, snapshot);
+        if (program.digest !== digest || program.code !== source) {
+            throw Error("Wrong program");
+        }
+    }
+    return {
+        identity,
+        *start(program, input) {
+            validate(program);
+            machine = yield* call(loadMachine);
+            return { execution, boundary: transition("start", () => machine.start(source, input)) };
+        },
+        *restore(program, snapshot) {
+            validate(program, snapshot);
+            if (typeof snapshot.state !== "string") {
+                throw Error("Invalid snapshot");
+            }
+            observe("checkpoint-selected", { snapshot });
+            machine = yield* call(loadMachine);
+            return {
+                execution,
+                boundary: transition("restore", () => machine.restore(source, snapshot.state)),
+            };
+        },
+        *close() {
+            yield* execution.dispose();
+            closed = true;
+        },
+    };
+}
+export function createPortableHootProgram(
+    { source, contract, bindOperation },
+    { loadMachine, identity },
+) {
+    const digest = canonicalDigest({ source, identity, contract });
+    const manifest = { ...contract, digest };
+    return {
+        manifest,
+        artifact: { digest, code: source, kernel: identity },
+        createKernel(observe = () => {}) {
+            return kernel(observe, source, digest, loadMachine, identity);
+        },
+        createDriver(observe = () => {}) {
+            const driver = createWorkflowProgramDriver(
+                createKernelProgramBackend({
+                    *manifest(program) {
+                        if (program.digest !== digest) throw Error("Manifest unavailable");
+                        return manifest;
+                    },
+                    kernelIdentity: identity,
+                    *createKernel() {
+                        return kernel(observe, source, digest, loadMachine, identity);
+                    },
+                    *loadProgram(requested) {
+                        if (requested !== digest) {
+                            throw Error("Program unavailable");
+                        }
+                        return { digest, code: source, kernel: identity };
+                    },
+                    bindOperation,
+                }),
+            );
+            return driver;
+        },
+    };
+}

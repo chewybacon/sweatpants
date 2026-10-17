@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ["kernel.wasm", "reflect.wasm", "wtf8.wasm", "reflect.cjs",
-             "reflect-worker.mjs", "reflect-worker.d.mts", "metering.json"]
+             "reflect-worker.mjs", "reflect-worker.d.mts", "metering.json", "language.json"]
 SOURCES = ["toolchain.json", "package.json"] + [
     str(path.relative_to(ROOT))
     for directory in ["scripts", "src", "licenses"]

@@ -1,0 +1,66 @@
+Bulls and Cows authoring case study
+Conversation: da5a8ab8-1f35-402d-8bf8-cafe9f1dae76
+Provider/model: opencode/glm-5.3-flash; app configured low reasoning.
+
+Evidence
+- Raw export: .artifacts/yo-workflow/authoring-da5a8ab8/journal-export.json
+- SHA-256: adjacent sha256.txt. Export made in one read-only SQLite transaction.
+- Preserved conversation head, checkpoints, public/archive segments, command receipts,
+  execution control and scoped execution objects (including prepared model contexts).
+- The conversation was idle at capture. Raw execution/replay segment tables contained
+  no rows for this completed execution. This is the retained journal/archive data,
+  not a claim to recover discarded low-level execution events.
+- bulls-and-cows.json retains all 28 submitted programs, their hashes, inputs and
+  available public tool results. Final execution output is in the raw terminal
+  archive; its public tool-message result was absent, so that corpus result is null.
+
+Observed authoring sequence
+28 Scheme submissions: 25 validateOnly calls and 3 execution attempts.
+8 validation successes, 19 rejections, followed by the final executing program.
+Rejections: 11 compiler fuel limits; 4 extra-expression/delimiter errors;
+1 incomplete reader form; 2 unbound identifiers; 1 known-call arity error.
+Repeated exact-source retries: attempt 6 repeats 4; attempt 19 executes source
+rejected at 16. The final execution (28) correctly matches validated attempt 27.
+Several successful validations were helper fragments, not the assembled program.
+29 retained model contexts grew from 45,106 to 272,225 serialized bytes. These are
+context byte counts, not token usage. The journal does not justify attributing
+all elapsed time to the compiler or model from these counts alone.
+
+Compiler measurement
+Recompiled all 28 submissions without executing any effects, initially with a
+20M diagnostic ceiling to expose outcomes beyond the old 2M limit. Maximum
+observed compilation consumption was 2,205,998 fuel; local measured compilation
+was approximately 3–30ms (not provider latency or a cross-platform guarantee).
+The 11 fuel rejections hid:
+- 6 valid submissions (16, 19, 22, 23, 24, 25; 5 unique sources)
+- 2 decision arity errors (4, 6)
+- 3 unavailable eq? references (9, 13, 14)
+Thus shrinking/reformatting the source was often treating a host budget issue
+as a language issue. No evidence here warrants rewriting the evaluator.
+
+Changes
+- Bounded validation fuel increased from 2M to 4M, based on measured compiler
+  consumption with headroom. Runtime/effect budgets are unchanged.
+- Dedicated E_VALIDATION_FUEL code and repair guidance distinguish compiler
+  resource limits from syntax errors; unchanged retries/bypass execution are discouraged.
+- Unbound identifier diagnostics expose the identifier in message and structured data.
+- App diagnostics explain registered-tool invocation via (effect "name" request),
+  and suggest equal? for unsupported eq?.
+- Authoring reference explicitly distinguishes a single request object from
+  positional procedure arguments and requires validating the assembled source.
+
+After-change corpus run
+Using the actual driver and new 4M bound: 15 valid submissions, 13 concrete compiler
+errors, zero fuel exhaustion. This includes the successful final source twice
+(validation/execution). Errors remain rejected; no source is automatically rewritten.
+Run from repository root:
+NODE_OPTIONS=--conditions=development pnpm exec tsx apps/yo-workflow/scripts/analyze-scheme-corpus.ts output.json
+The script validates only; it never runs game logic or external effects.
+
+Limits / next iteration
+This is an offline authoring-corpus improvement, not evidence that a new model
+session now succeeds in fewer attempts. A fresh run should measure first complete
+valid program, total attempts, repeated diagnostics, source hashes and elapsed time.
+The existing game also received inconsistent human feedback (9876 scored 0,1;
+for secret 4269 it is 0,2). Its eventual empty candidate set is a separate
+interaction/correction problem, not evidence of compiler failure.

@@ -11,7 +11,9 @@ export const limits = {
   depth: 32,
   nodes: 4096,
   // Metering includes evaluator dispatch, not just authored operations.
-  validationFuel: 2_000_000n,
+  // Captured ~6 KB authoring programs need up to 2.21M metered calls merely
+  // to compile. Keep bounded headroom so useful compiler diagnostics can emerge.
+  validationFuel: 4_000_000n,
   stepFuel: 100_000_000n,
   totalFuel: 1_000_000_000n,
   effects: 256,
@@ -267,3 +269,6 @@ export function createSchemeEvaluation(program: SchemeProgram) {
     }
   });
 }
+
+export { checkSchemeProgram, schemeChecks, type SchemeCheck } from "./check.ts";
+export { schemeDiagnostic, type SchemeDiagnostic } from "./diagnostics.ts";

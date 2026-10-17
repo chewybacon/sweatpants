@@ -1,4 +1,4 @@
-.quickjs-explainer {
+.runtime-explainer {
     color-scheme: dark;
     --bg: #191724;
     --panel: #242132;
@@ -12,7 +12,7 @@
     --red: #eb6f92;
 }
 
-.quickjs-explainer {
+.runtime-explainer {
     * {
         box-sizing: border-box;
     }
@@ -536,7 +536,7 @@
         marker-end: url(#arrow-active);
         stroke-width: 3;
         stroke-dasharray: 8 7;
-        animation: quickjs-dash 1.2s linear infinite;
+        animation: runtime-dash 1.2s linear infinite;
     }
     svg .flow.active .packet {
         display: block;
@@ -556,7 +556,7 @@
     }
     svg .computing .vm-ring {
         opacity: 1;
-        animation: quickjs-spin 5s linear infinite;
+        animation: runtime-spin 5s linear infinite;
     }
     svg .failed .vm-ring {
         stroke: var(--red);
@@ -695,7 +695,7 @@
     .diagram-scroll {
         overflow: auto;
     }
-    .quickjs-title-link {
+    .runtime-title-link {
         color: var(--teal);
         text-decoration: none;
         font-size: 13px;
@@ -717,17 +717,17 @@
     }
     @media (max-width: 830px) {
         .diagram-scroll svg {
-            min-width: 760px;
+            min-width: 0;
         }
     }
 }
 
-@keyframes quickjs-dash {
+@keyframes runtime-dash {
     to {
         stroke-dashoffset: -30;
     }
 }
-@keyframes quickjs-spin {
+@keyframes runtime-spin {
     to {
         transform: rotate(360deg);
     }

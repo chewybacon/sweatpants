@@ -4,7 +4,7 @@ Author, run, and inspect durable workflows. This app was renamed from yo-tisyn;
 its deployed Cloudflare worker, D1 databases, signing-secret file, and existing
 workers.dev hostname deliberately retain their resource identities.
 
-## Local execution inspector
+## Execution inspector
 
 The **Execution** navigation opens `/execution`. A Scheme caller invokes a compiled
 developer confirmation generator through the experimental Hoot backend, the shared
@@ -35,10 +35,18 @@ restart the dev server to clear it. State inspection is private to this local
 playground and is never fed into model history. This is boundary inspection, not
 single-expression stepping or historical state time travel.
 
-The Node Vite middleware lazily loads the experimental evaluator. Production
-`/api/execution` explicitly reports that the inspector is local-only. The new
-Hoot evaluator still needs distribution packaging and workerd validation before
-this execution path can be deployed. The ordinary chat deployment remains usable.
+The local Node Vite middleware and Cloudflare ExecutionLab Durable Object share
+one service and evaluator protocol. Cloudflare bundles static WASM modules,
+stores the authoritative execution journal in D1, and persists source, inspection
+metadata, and idempotent announcement receipts in Durable Object storage. Each
+request reconstructs the service from storage; each park releases the evaluator.
+Authoring uses the configured real provider, validates in an isolated evaluator
+without dispatching effects, and retries invalid source with diagnostics.
+The outbox records demo receipts only; it does not send email.
+
+Run `execution:compile` and `execution:build` after changing the developer
+workflow or checkpoint kernel, before `build:deploy` produces the Cloudflare bundle. The `EXECUTION_LABS` binding
+uses one Durable Object per run; the `v2-execution-lab` migration adds its class.
 
 # yo-workflow: durable workflow engines
 

@@ -22,6 +22,17 @@ export function* runWithRenewedActivationLease(
       throw new CrankError("activation_busy", "Durable activation is owned by another host");
     }
     if (claim.status === "not_runnable") {
+      // Recovery may need to publish an already parked input after its writer
+      // disappeared. Read the authority frontier; no executor or lease is needed.
+      const plan = yield* authority.query({ type: "forest.replay-plan", sessionId });
+      const slots = plan.rows.flatMap((row) =>
+        row.classification !== "terminal" && row.parked?.reason === "elicit"
+          ? [{ taskId: row.address.taskId, pullId: row.parked.pullId, reason: "elicit" }]
+          : [],
+      );
+      if (slots.length > 0) {
+        return { state: "parked", pullId: slots[0]!.pullId, reason: "elicit", slots };
+      }
       throw new CrankError("activation_busy", "Durable task has no runnable command");
     }
     let reason: "parked" | "terminal" | "failed" | "lease_lost" = "failed";

@@ -1,8 +1,9 @@
-import { useId, useRef, useState } from "react";
+import { useContext, useId, useRef, useState } from "react";
 import { makePlugin, type ReactRenderableProps } from "@sweatpants/react-chat";
 import { Badge, Button, Card, Stack, TextArea } from "../design-system/primitives.tsx";
 import { ask, replyLimit, type AskPresentation } from "../workflow/tools/ask.ts";
-import { ReplyOutcome, type Reply } from "./reply.tsx";
+import { PendingToolReply, ReplyOutcome, type Reply } from "./reply.tsx";
+import { useReplyFocus } from "./reply-focus.tsx";
 
 export function ReplyForm({
   prompt,
@@ -14,13 +15,19 @@ export function ReplyForm({
   disabled,
   response,
 }: ReactRenderableProps<Reply> & AskPresentation & { prompt: string }) {
+  const pendingTool = useContext(PendingToolReply);
+  const settling = !!response && pendingTool;
   const [reply, setReply] = useState("");
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const blocked = disabled || !!response;
+  const followReply = useReplyFocus(input, blocked);
   const valid = reply.trim().length > 0 && reply.length <= replyLimit;
   function send() {
-    if (!blocked && valid) onRespond({ action: "accept", content: { reply } });
+    if (!blocked && valid) {
+      followReply();
+      onRespond({ action: "accept", content: { reply } });
+    }
   }
   return (
     <Card.Root className={`reply ask-card ${response ? "ask-settled" : "ask-pending"}`} padding={4}>
@@ -28,22 +35,24 @@ export function ReplyForm({
         <Stack direction="horizontal" gap={2} align="center" justify="between" wrap>
           <span className="ask-title">{title ?? "Over to you"}</span>
           <Badge tone={response ? "neutral" : "warning"}>
-            {response
-              ? response.action === "accept"
-                ? "Answered"
-                : response.action === "decline"
-                  ? "Declined"
-                  : "Cancelled"
-              : disabled
-                ? "Waiting…"
-                : "Your turn"}
+            {settling
+              ? "Submitting…"
+              : response
+                ? response.action === "accept"
+                  ? "Answered"
+                  : response.action === "decline"
+                    ? "Declined"
+                    : "Cancelled"
+                : disabled
+                  ? "Waiting…"
+                  : "Your turn"}
           </Badge>
         </Stack>
         <p className="ask-question" id={`${id}-question`}>
           {prompt}
         </p>
         {detail && <p className="ask-detail">{detail}</p>}
-        {response ? (
+        {response && !settling ? (
           <ReplyOutcome response={response} />
         ) : (
           <form
@@ -61,7 +70,7 @@ export function ReplyForm({
                       key={suggestion}
                       type="button"
                       variant="outline"
-                      disabled={disabled}
+                      disabled={blocked}
                       onClick={() => {
                         setReply(suggestion);
                         input.current?.focus();
@@ -77,10 +86,10 @@ export function ReplyForm({
                 id={`${id}-reply`}
                 label="Your reply"
                 rows={3}
-                value={reply}
+                value={response?.action === "accept" ? response.content.reply : reply}
                 maxLength={replyLimit}
                 placeholder={placeholder ?? "Answer, ask a question, or correct something…"}
-                disabled={disabled}
+                disabled={blocked}
                 onValueChange={setReply}
                 aria-describedby={`${id}-hint`}
                 onKeyDown={(event) => {
@@ -101,34 +110,31 @@ export function ReplyForm({
                 </span>
               </div>
               <div className="ask-actions">
-                <Button type="submit" disabled={disabled || !valid}>
+                <Button type="submit" disabled={blocked || !valid}>
                   Reply
                 </Button>
-                <details className="ask-other-actions">
-                  <summary>Other options</summary>
-                  <Stack direction="horizontal" gap={2} wrap>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={disabled}
-                      onClick={() => {
-                        if (!blocked) onRespond({ action: "decline" });
-                      }}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={disabled}
-                      onClick={() => {
-                        if (!blocked) onRespond({ action: "cancel" });
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </Stack>
-                </details>
+                <Stack direction="horizontal" gap={2} wrap>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={blocked}
+                    onClick={() => {
+                      if (!blocked) onRespond({ action: "decline" });
+                    }}
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={blocked}
+                    onClick={() => {
+                      if (!blocked) onRespond({ action: "cancel" });
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
               </div>
             </Stack>
           </form>

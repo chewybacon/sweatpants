@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "../App.tsx";
 import type { ReactChatUIMessage } from "@sweatpants/react-chat";
 import { emptyFrame } from "@sweatpants/frame-renderer";
@@ -9,7 +9,9 @@ const chat = vi.hoisted(() => ({
   status: "ready",
   sendMessage: vi.fn(),
   stop: vi.fn(),
-  error: null,
+  reconnect: vi.fn(),
+  clearError: vi.fn(),
+  error: null as Error | null,
   renderStatus: "ready",
   canSendMessage: false,
   authority: undefined as undefined | { state: "parked" },
@@ -28,6 +30,8 @@ afterEach(() => {
   chat.history.error = null;
   chat.messages = [];
   chat.authority = undefined;
+  chat.error = null;
+  chat.canSendMessage = false;
 });
 
 it("shows a parked question while its response stream is normally disconnected", () => {
@@ -142,4 +146,28 @@ it("disables duplicate history loads and surfaces paging errors", () => {
     screen.getByRole<HTMLButtonElement>("button", { name: "Loading earlier activity…" }).disabled,
   ).toBe(true);
   expect(screen.getByRole("alert").textContent).toBe("History could not be loaded");
+});
+
+it("offers reconnect without resubmitting a failed task", async () => {
+  chat.error = new Error("Chat request failed");
+  chat.reconnect.mockResolvedValue(undefined);
+  render(<App initialThreadId="reconnect-test" />);
+  fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+  await waitFor(() => expect(chat.reconnect).toHaveBeenCalledOnce());
+  expect(chat.clearError).toHaveBeenCalledOnce();
+  expect(chat.sendMessage).not.toHaveBeenCalled();
+});
+
+it("keeps the draft when sending fails", async () => {
+  chat.canSendMessage = true;
+  chat.sendMessage.mockRejectedValueOnce(new Error("Connection lost"));
+  render(<App initialThreadId="draft-test" />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Describe a workflow" }), {
+    target: { value: "Play a game" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send task" }));
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Describe a workflow" }).value,
+  ).toBe("Play a game");
 });

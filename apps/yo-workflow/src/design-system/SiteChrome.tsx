@@ -7,7 +7,7 @@ const nav = [
   { href: "/playground", label: "Playground" },
   { href: "/threads", label: "Threads" },
   { href: "/execution", label: "Execution" },
-  { href: "/explain/quickjs", label: "QuickJS" },
+  { href: "/explain/runtime", label: "Runtime" },
 ];
 
 const styles = stylex.create({
@@ -187,7 +187,7 @@ export function SiteChrome({
   children: ReactNode;
   modelLabel?: string;
 }) {
-  const diagramContainer = pathname === "/explain/quickjs" && styles.diagramContainer;
+  const diagramContainer = pathname === "/explain/runtime" && styles.diagramContainer;
   return (
     <DesignSystemRoot>
       <div {...stylex.props(styles.shell)}>
@@ -220,7 +220,7 @@ export function SiteChrome({
             styles.container,
             diagramContainer,
             styles.main,
-            pathname === "/explain/quickjs" && styles.diagramMain,
+            pathname === "/explain/runtime" && styles.diagramMain,
           )}
         >
           {children}

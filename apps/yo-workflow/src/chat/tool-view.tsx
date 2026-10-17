@@ -1,16 +1,18 @@
-import { toolLabel, toolStatus } from "./activity.ts";
+import { toolLabel, toolStatus, workflowFailure } from "./activity.ts";
 import { SettledDocument } from "./choices-plugin.tsx";
 import type { ReactChatUIPart } from "@sweatpants/react-chat";
+import { WorkflowActivity } from "./workflow-activity.tsx";
 import { ProgramPreview } from "./program-preview.tsx";
 import { ReplyForm } from "./ask-plugin.tsx";
 import { askParameters } from "../workflow/tools/ask.ts";
-import { readReply, stringField } from "./reply.tsx";
+import { PendingToolReply, readReply, stringField } from "./reply.tsx";
 
 type ToolPart = Extract<ReactChatUIPart, { type: "tool-call" }>;
 
 function ToolCard({ part }: { part: ToolPart }) {
   const complete = part.state === "output-available";
   const status = toolStatus(part);
+  const failure = workflowFailure(part);
   const source = ["tisyn", "scheme"].includes(part.name)
     ? stringField(part.input, "program")
     : undefined;
@@ -26,95 +28,104 @@ function ToolCard({ part }: { part: ToolPart }) {
     ? part.parts.filter((child) => child.type !== "elicit" || child.key !== "reply")
     : part.parts;
   return (
-    <section
-      className="tool"
-      data-tool-name={part.name}
-      data-tool-state={part.state}
-      data-call-id={part.callId}
-    >
-      <div className="tool-heading">
-        <strong>{toolLabel(part.name)}</strong>
-        <span className={`tool-status ${part.state}`} role="status">
-          {status}
-        </span>
-      </div>
-      {source !== undefined && part.state !== "input-streaming" && (
-        <ProgramPreview source={source} language={part.name === "scheme" ? "scheme" : "tisyn"} />
-      )}
-      {echo !== undefined && (
-        <div className="tool-result">
-          <span className="field-label">Echoed</span>
-          <blockquote>{echo || "(empty message)"}</blockquote>
+    <PendingToolReply.Provider value={!complete && part.state !== "output-error"}>
+      <section
+        className="tool"
+        data-tool-name={part.name}
+        data-tool-state={part.state}
+        data-call-id={part.callId}
+      >
+        <div className="tool-heading">
+          <strong>
+            {part.name === "scheme"
+              ? stringField(part.input, "title") || toolLabel(part.name)
+              : toolLabel(part.name)}
+          </strong>
+          <span className={`tool-status ${failure ? "output-error" : part.state}`} role="status">
+            {status}
+          </span>
         </div>
-      )}
-      {reply && (
-        <ReplyForm
-          {...(askInput?.success ? askInput.data : {})}
-          prompt={stringField(part.input, "message") ?? "Your reply"}
-          response={reply}
-          disabled
-          onRespond={() => {}}
-        />
-      )}
-      {part.name === "ask" && !reply && !hasReplyRenderer && (
-        <p>{stringField(part.input, "message")}</p>
-      )}
-      {complete && !["tisyn", "scheme"].includes(part.name) && echo === undefined && !reply && (
-        <div className="tool-result">
-          <span className="field-label">Result</span>
-          <pre>{JSON.stringify(part.output, null, 2)}</pre>
-        </div>
-      )}
-      {part.errorText && (
-        <p className="error" role="alert">
-          {part.errorText}
-        </p>
-      )}
-      {children.length > 0 && (
-        <div className="tool-children">
-          {children.map((child) =>
-            child.type === "elicit" &&
-            child.state !== "pending" &&
-            ((part.name === "present_choices" && child.key === "choose") ||
-              (part.name === "display_document" && child.key === "display")) ? (
-              <SettledDocument
-                key={child.id}
-                context={child.context}
-                fallback={<Part part={child} />}
-              />
-            ) : (
-              <Part key={child.id} part={child} />
-            ),
-          )}
-        </div>
-      )}
-      {["tisyn", "scheme"].includes(part.name) && complete && (
-        <details className="tool-data">
-          <summary>Workflow result</summary>
-          <pre>{JSON.stringify(part.output, null, 2)}</pre>
-        </details>
-      )}
-      {source === undefined && (
-        <details className="tool-data">
-          <summary>Input</summary>
-          <pre>
-            {JSON.stringify(
-              part.input ??
-                part.rawInput ??
-                (part.state === "input-streaming" ? "Receiving input…" : null),
-              null,
-              2,
+        {source === undefined && (
+          <details className="tool-data">
+            <summary>Input</summary>
+            <pre>
+              {JSON.stringify(
+                part.input ??
+                  part.rawInput ??
+                  (part.state === "input-streaming" ? "Receiving input…" : null),
+                null,
+                2,
+              )}
+            </pre>
+          </details>
+        )}
+        {source !== undefined && part.name !== "scheme" && part.state !== "input-streaming" && (
+          <ProgramPreview source={source} language={part.name === "scheme" ? "scheme" : "tisyn"} />
+        )}
+        {echo !== undefined && (
+          <div className="tool-result">
+            <span className="field-label">Echoed</span>
+            <blockquote>{echo || "(empty message)"}</blockquote>
+          </div>
+        )}
+        {reply && (
+          <ReplyForm
+            {...(askInput?.success ? askInput.data : {})}
+            prompt={stringField(part.input, "message") ?? "Your reply"}
+            response={reply}
+            disabled
+            onRespond={() => {}}
+          />
+        )}
+        {part.name === "ask" && !reply && !hasReplyRenderer && (
+          <p>{stringField(part.input, "message")}</p>
+        )}
+        {part.errorText && (
+          <p className="error" role="alert">
+            {part.errorText}
+          </p>
+        )}
+        {part.name === "scheme" && source !== undefined && part.state !== "input-streaming" && (
+          <section className="workflow-program" aria-label="Workflow program">
+            <h3>Program</h3>
+            <ProgramPreview source={source} language="scheme" />
+          </section>
+        )}
+        {part.name === "scheme" && (
+          <WorkflowActivity part={part} render={(child) => <Part key={child.id} part={child} />} />
+        )}
+        {part.name !== "scheme" && children.length > 0 && (
+          <div className="tool-children">
+            {children.map((child) =>
+              child.type === "elicit" &&
+              child.state !== "pending" &&
+              ((part.name === "present_choices" && child.key === "choose") ||
+                (part.name === "display_document" && child.key === "display")) ? (
+                <SettledDocument
+                  key={child.id}
+                  context={child.context}
+                  fallback={<Part part={child} />}
+                />
+              ) : (
+                <Part key={child.id} part={child} />
+              ),
             )}
-          </pre>
-        </details>
-      )}
-      {(reply || echo !== undefined) && (
-        <details className="tool-data">
-          <summary>Result data</summary>
-          <pre>{JSON.stringify(part.output, null, 2)}</pre>
-        </details>
-      )}
-    </section>
+          </div>
+        )}
+        {["tisyn", "scheme"].includes(part.name) && complete && (
+          <details className="tool-data">
+            <summary>Workflow result</summary>
+            <pre>{JSON.stringify(part.output, null, 2)}</pre>
+          </details>
+        )}
+        {complete && !["tisyn", "scheme"].includes(part.name) && (
+          <details className="tool-data">
+            <summary>Result</summary>
+            <pre>{JSON.stringify(part.output, null, 2)}</pre>
+          </details>
+        )}
+      </section>
+    </PendingToolReply.Provider>
   );
 }
 

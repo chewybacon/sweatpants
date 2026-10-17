@@ -1,3 +1,5 @@
+import { executionFetch } from "../../execution/worker.mjs";
+export { ExecutionLab } from "../../execution/worker.mjs";
 import schemeManifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
 import kernelBundle from "../workflow/evaluation/generated/kernel-source.json" with { type: "json" };
 import { DurableObject } from "cloudflare:workers";
@@ -14,6 +16,7 @@ export { ResponseStream } from "@sweatpants/durable-streams-cloudflare/worker";
 export { ToolExecutors } from "./cloudflare/tool-executors.ts";
 
 interface Env extends CloudflareBindings {
+  EXECUTION_LABS: DurableObjectNamespace;
   CONVERSATIONS: ConversationNamespace;
   ASSETS: { fetch(request: Request): Promise<Response> };
   MODEL_CREDENTIALS: string;
@@ -51,6 +54,7 @@ export class Conversations extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/execution") return executionFetch(request, env);
     if (path === "/health") {
       return Response.json({
         app: "yo-workflow",

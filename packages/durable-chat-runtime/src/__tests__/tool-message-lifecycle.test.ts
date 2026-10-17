@@ -208,3 +208,71 @@ it("creates and closes the owner when only a completion emission exists", () => 
   expect(state.nodes.get("message:root:call")?.node.state).toBe("done");
   expect(materializeChatMessages(state)).toHaveLength(1);
 });
+
+it("recovers accepted tool starts and results that never reached a checkpoint", async () => {
+  const { recordsForPublication } =
+    await import("../durable-handler/program-driver/program-driver-chat-publication.ts");
+  const before = [
+    emission("tool_started", { callId: "validate", tool: "validate_program", input: {} }, 0),
+    terminal("completed", "validate", 1),
+    emission("tool_started", { callId: "game", tool: "scheme_workflow", input: {} }, 2),
+  ];
+  // Reattachment can park without producing any new journal records.
+  const recovered = recordsForPublication(before, before, new Set(), new Set());
+  const state = foldAGUIEvents(
+    createChatProjection(),
+    projectRecords(recovered, indexChatJournal(before)),
+  );
+  expect(state.nodes.get("message:root:validate")?.node.state).toBe("done");
+  expect(state.nodes.get("message:root:game")?.node.state).toBe("streaming");
+  expect(materializeChatMessages(state)).toHaveLength(2);
+});
+
+it("recovers an unpublished completion without replaying its published start", async () => {
+  const { recordsForPublication } =
+    await import("../durable-handler/program-driver/program-driver-chat-publication.ts");
+  const start = emission("tool_started", { callId: "call", tool: "ask", input: {} }, 0);
+  const before = [start, terminal("completed", "call", 1)];
+  const ids = new Set(["message:root:call"]);
+  const recovered = recordsForPublication(before, before, ids, ids);
+  expect(recovered).toEqual([before[1]]);
+  const initial = foldAGUIEvents(
+    createChatProjection(),
+    projectRecords([start], indexChatJournal([start])),
+  );
+  const state = foldAGUIEvents(initial, projectRecords(recovered, indexChatJournal(before)));
+  expect(state.nodes.get("message:root:call")?.node.state).toBe("done");
+});
+
+it("does not resurrect archived tool owners during recovery", async () => {
+  const { recordsForPublication, publishedJournalOwners } =
+    await import("../durable-handler/program-driver/program-driver-chat-publication.ts");
+  const store = createMemoryConversationStore();
+  const records: DurableSemanticRecord[] = [];
+  await run(function* () {
+    yield* store.compareAndSwapHead("recovery", null, null, idle);
+    let checkpoint;
+    for (let i = 0; i < 20; i++) {
+      const batch = [
+        emission("tool_started", { callId: `call-${i}`, tool: "ask", input: {} }, i * 2),
+        terminal("completed", `call-${i}`, i * 2 + 1),
+      ];
+      records.push(...batch);
+      checkpoint = (yield* withConversationStore(store, () =>
+        persistConversationCheckpoint({
+          conversationId: "recovery",
+          causeKey: String(i),
+          cause: { kind: "test" },
+          roots: projectRecords(batch, indexChatJournal(records)).map((event) => assertJson(event)),
+          proposal: idle,
+          createdAt: i,
+          targets: LOW_CHECKPOINT_TARGETS,
+        }),
+      )).checkpoint;
+    }
+    expect(checkpoint!.archiveFrontierOrdinal).not.toBe("0");
+    const published = yield* publishedJournalOwners(store, "recovery", checkpoint!, records);
+    expect(published.size).toBe(20);
+    expect(recordsForPublication(records, records, published, new Set())).toEqual([]);
+  });
+});

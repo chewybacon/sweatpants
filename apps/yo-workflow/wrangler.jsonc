@@ -11,6 +11,7 @@
     },
     "durable_objects": {
         "bindings": [
+            { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
             { "name": "CONVERSATIONS", "class_name": "Conversations" },
             { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
             { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },
@@ -18,6 +19,7 @@
     },
     "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["Conversations", "ToolExecutors", "ResponseStream"] },
+        { "tag": "v2-execution-lab", "new_sqlite_classes": ["ExecutionLab"] },
     ],
     "d1_databases": [
         {
@@ -42,6 +44,7 @@
             },
             "durable_objects": {
                 "bindings": [
+                    { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
                     { "name": "CONVERSATIONS", "class_name": "Conversations" },
                     { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
                     { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },

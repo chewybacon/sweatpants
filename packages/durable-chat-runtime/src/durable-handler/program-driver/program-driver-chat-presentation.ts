@@ -12,6 +12,7 @@ import type { ToolInventoryEntry } from "@sweatpants/tool-runtime";
 import { publicActivityElicitSnapshots } from "./program-driver-chat-activity-projection.ts";
 import { pendingToolCallId, projectInterrupt } from "./program-driver-chat-interrupt-projection.ts";
 import { indexChatJournal, pendingElicit } from "./program-driver-chat-journal-index.ts";
+import { recordsForPublication } from "./program-driver-chat-publication.ts";
 import { projectRecords } from "./program-driver-chat-record-projection.ts";
 import type { ChatActivationReport, StreamEvent } from "./program-driver-chat-types.ts";
 
@@ -21,6 +22,7 @@ export interface ChatPresentationContext {
   readonly toolInventory: readonly ToolInventoryEntry[];
   readonly continueAfterCancellation: boolean;
   readonly cancellationMessage: string;
+  readonly publishedOwners: ReadonlySet<string>;
   readonly retainedActivityIds: ReadonlySet<string>;
   readonly publishCheckpoint?: (request: { events: readonly StreamEvent[] }) => Operation<{
     readonly authority: ConversationAuthority;
@@ -49,16 +51,10 @@ export function* presentProgramDriverChatActivation(
     report;
   const events: StreamEvent[] = [];
   const projection = indexChatJournal(after);
-  // A previous host may have accepted a response without publishing it. These
-  // state-replacement deltas are idempotent; replay them so the checkpoint and
-  // client retire answered controls even when acceptance predates this host.
-  const acceptedElicits = before.filter(
-    ({ payload }) =>
-      payload.type === "PullResolved" &&
-      context.retainedActivityIds.has(`elicit:${payload.pullId}`) &&
-      projection.pullRequests.get(payload.pullId)?.descriptor.kind === "elicit",
+  const projected = projectRecords(
+    recordsForPublication(before, after, context.publishedOwners, context.retainedActivityIds),
+    projection,
   );
-  const projected = projectRecords([...acceptedElicits, ...after.slice(before.length)], projection);
   events.push(
     ...projected.filter((event) => {
       if (

@@ -27,6 +27,15 @@ import { schemeSourceHint } from "./diagnostics.ts";
 
 const parameters = z
   .object({
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .optional()
+      .describe(
+        "A short human-readable title describing this workflow, e.g. Play paper rock scissors. Supply the same title for validation and execution.",
+      ),
     program: z.string().min(1).max(limits.source),
     input: z.json().optional(),
     validateOnly: z.boolean().optional(),
@@ -90,11 +99,21 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
       });
       if (!validation.valid) {
         const sourceHint = schemeSourceHint(program);
+        const identifier = validation.diagnostic.identifier;
+        const repairHint =
+          validation.diagnostic.code === "E_VALIDATION_FUEL"
+            ? "Validation reached its compiler resource limit; this is not evidence of a syntax error. Do not retry unchanged source or execute it to bypass validation. Split large helpers and move static data into input, then validate the complete program again."
+            : identifier && registry.has(identifier)
+              ? `${identifier} is a registered tool, not a Scheme procedure. Call (effect ${JSON.stringify(identifier)} request) with one request object matching its contract.`
+              : identifier === "eq?"
+                ? "Use equal? for value comparison; eq? is not in this evaluator's language reference."
+                : undefined;
         return {
           status: "invalid",
           diagnostic: {
             ...validation.diagnostic,
             ...(sourceHint === undefined ? {} : { sourceHint }),
+            ...(repairHint === undefined ? {} : { repairHint }),
           },
           completedEffects: 0,
         };

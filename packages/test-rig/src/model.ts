@@ -608,7 +608,9 @@ export async function startModelSimulator(
       });
     },
   });
-  const listening = await createSimulation().listen(0);
+  // Bind the same address we advertise. A wildcard IPv6 socket can overlap
+  // an IPv4 listener on macOS and route our requests to another local service.
+  const listening = await createSimulation().listen({ port: 0, host: "127.0.0.1" });
   if (listening.port === undefined) {
     await listening.ensureClose();
     throw new Error("Simulator did not expose a port");

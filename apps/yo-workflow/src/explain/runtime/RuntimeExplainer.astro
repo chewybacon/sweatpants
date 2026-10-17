@@ -1,31 +1,32 @@
 ---
-import "./quickjs-explainer.css";
+import "./runtime-explainer.css";
+import { limits } from "@sweatpants/scheme-runtime";
 // Native SVG keeps the original walkthrough inspectable; StyleX owns the site shell.
 ---
-<div class="quickjs-explainer">
+<div class="runtime-explainer">
 
 <header class="explainer-header">
   <div class="eyebrow">Inside the runtime / interactive walkthrough</div>
-  <div class="topline"><h1>Durable work. <br><span>Disposable computation.</span></h1><a class="quickjs-title-link" href="/playground">Try a workflow ↗</a></div>
-  <p class="intro">A Durable Object decides <strong>where code runs</strong>. QuickJS lets us <strong>bound the computation inside it</strong>. Sweatpants remembers the work when that computation disappears.</p>
+  <div class="topline"><h1>Durable work. <br><span>Disposable computation.</span></h1><a class="runtime-title-link" href="/playground">Try a workflow ↗</a></div>
+  <p class="intro">The model authors <strong>Scheme</strong>. A metered Hoot evaluator computes and yields effects. Sweatpants owns <strong>accepted work, tool execution, and recovery</strong>. Explore the deployed Playground below.</p>
 </header>
 <div class="explainer-main">
   <div class="scenarios" role="group" aria-label="Choose a walkthrough">
-    <button data-scenario="round" aria-pressed="true">One round of the loop</button>
-    <button data-scenario="replay" aria-pressed="false">Park & recover</button>
-    <button data-scenario="guard" aria-pressed="false">Stop runaway code</button>
+    <button data-scenario="round" aria-pressed="true">Author & run</button>
+    <button data-scenario="replay" aria-pressed="false">Park & replay</button>
+    <button data-scenario="guard" aria-pressed="false">Bound computation</button>
   </div>
   <div class="workspace">
     <section class="visual" aria-label="Animated architecture diagram">
       <div class="visual-top"><span>Follow the highlighted route. Select a box to inspect it.</span><div class="zoom" role="group" aria-label="Diagram zoom"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-fit">Fit</button><button id="zoom-in" aria-label="Zoom in">+</button></div></div>
       <div class="controls">
         <button class="primary" id="play" aria-label="Play walkthrough">▶ Play</button><button id="back" aria-label="Previous step">← Back</button><button id="next" aria-label="Next step">Next →</button><button id="reset" aria-label="Restart walkthrough">↺</button>
-        <span class="count" id="step-count">1 / 14</span>
+        <span class="count" id="step-count">1 / 10</span>
         <label class="sr-only" for="speed">Playback speed</label><select id="speed"><option value="6500">Slow</option><option value="4200" selected>Normal</option><option value="2200">Fast</option></select>
       </div>
-      <div class="progress"><input id="scrub" type="range" min="0" max="13" value="0" aria-label="Walkthrough step"><span>← → to step</span></div>
+      <div class="progress"><input id="scrub" type="range" min="0" max="9" value="0" aria-label="Walkthrough step"><span>← → to step</span></div>
       <div class="diagram-scroll" id="diagram-scroll">
-      <svg id="map" viewBox="0 0 1220 745" role="group" aria-label="Browser to ingress Worker to Conversations Durable Object. Sweatpants dispatches to tool-executor Durable Objects, records outcomes in D1, and sends UI updates through a response-stream Durable Object. QuickJS runs only the Tisyn kernel, not the tools.">
+      <svg id="map" viewBox="0 0 1220 745" role="group" aria-label="Browser to ingress Worker to Conversations Durable Object. Sweatpants dispatches to tool-executor Durable Objects, records outcomes in D1, and sends UI updates through a response-stream Durable Object. Hoot evaluates Scheme and yields effects; native tools run outside the evaluator.">
         <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#514c65"/></marker><marker id="arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#9ccfd8"/></marker><marker id="arrow-blue" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#9ccfd8"/></marker><marker id="arrow-gold" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#f6c177"/></marker><marker id="arrow-purple" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#c4a7e7"/></marker></defs>
         <rect class="group-box" x="725" y="250" width="470" height="265" rx="15"/>
         <text class="group-label" x="750" y="277">TOOL EXECUTOR DOs</text>
@@ -43,7 +44,7 @@ import "./quickjs-explainer.css";
         <g class="flow blue" data-flow="publish"><path id="edge-publish" d="M250 462 H220 V655 H202"/></g>
         <g class="flow blue" data-flow="deliver"><path id="edge-deliver" d="M110 605 V417"/></g>
         <text class="route-label" x="32" y="233">request / reply</text>
-        <text class="route-label" x="681" y="330">JSON data</text>
+        <text class="route-label" x="681" y="330">source / values</text>
         <text class="route-label" x="680" y="440">descriptor</text>
         <text class="route-label" x="778" y="214">child result → host → evaluator</text>
         <text class="route-label" x="758" y="583">Sweatpants dispatches; the VM does not call tools</text>
@@ -59,9 +60,9 @@ import "./quickjs-explainer.css";
         </g>
         <g data-node="model" class="node-purple" role="button" tabindex="0" aria-label="Inspect model provider">
           <rect class="card" x="480" y="49" width="190" height="121" rx="12"/>
-          <text class="tiny" x="497" y="76">EXTERNAL MODEL</text><text class="title" x="497" y="106">Author a program</text><text class="sub" x="497" y="135">OpenCode · Haiku 5.5</text><text class="tiny" x="497" y="155">Tisyn, not JavaScript</text>
+          <text class="tiny" x="497" y="76">EXTERNAL MODEL</text><text class="title" x="497" y="106">Author a program</text><text class="sub" x="497" y="135">Configured provider</text><text class="tiny" x="497" y="155">Scheme + title + input</text>
         </g>
-        <text class="tiny" x="483" y="196">No model call between loop rounds</text>
+        <text class="tiny" x="483" y="196">Models run for authoring or explicit effects</text>
         <g data-node="host" class="node-blue" role="button" tabindex="0" aria-label="Inspect Sweatpants Agent Host in the Conversations Durable Object">
           <rect class="card" x="250" y="260" width="420" height="255" rx="15"/>
           <text class="group-label" x="274" y="290">CONVERSATIONS DO</text>
@@ -73,11 +74,11 @@ import "./quickjs-explainer.css";
           <text class="tiny" id="packet-label" x="287" y="442">AT THIS STEP</text>
           <text class="mono" id="packet-value" x="287" y="469">receive the task</text>
         </g>
-        <g data-node="vm" class="node-teal" role="button" tabindex="0" aria-label="Inspect the QuickJS WebAssembly virtual machine">
+        <g data-node="vm" class="node-teal" role="button" tabindex="0" aria-label="Inspect the Hoot Scheme evaluator">
           <rect class="card" x="755" y="296" width="201" height="169" rx="12"/>
-          <text class="title" x="772" y="324" style="font-size:18px">QuickJS / WASM</text>
+          <text class="title" x="772" y="324" style="font-size:18px">Hoot / WASM</text>
           <rect x="772" y="337" width="167" height="72" rx="7" fill="#243f4e"/>
-          <text class="title" x="783" y="364" style="font-size:17px">Tisyn kernel</text><text class="tiny" x="783" y="387">Unchanged npm code</text>
+          <text class="title" x="783" y="364" style="font-size:17px">Scheme evaluator</text><text class="tiny" x="783" y="387">Metered Wasm calls</text>
           <circle class="vm-ring" cx="923" cy="354" r="8"/>
           <text class="tiny" id="vm-state" x="772" y="431">NOT CREATED</text>
           <rect class="guard-bar-bg" x="772" y="443" width="167" height="4" rx="2"/><rect class="guard-bar" id="guard-bar" x="772" y="443" width="0" height="4" rx="2"/>
@@ -102,17 +103,23 @@ import "./quickjs-explainer.css";
     <aside class="sidebar">
       <section class="story" aria-label="Current explanation">
         <div class="story-head" aria-live="polite" aria-atomic="true"><div class="phase" id="phase"></div><h2 id="step-title"></h2><p id="step-copy"></p><pre class="snippet"><code id="step-code"></code></pre></div>
-        <div class="metrics"><div><span class="metric-label">Model calls in this workflow</span><div class="metric-value model" id="model-count">0</div></div><div><span class="metric-label">Temporary evaluator</span><div class="metric-value vm" id="vm-metric">Not created</div></div></div>
+        <div class="metrics"><div><span class="metric-label">Model usage</span><div class="metric-value model" id="model-count">See step</div></div><div><span class="metric-label">Temporary evaluator</span><div class="metric-value vm" id="vm-metric">Not created</div></div></div>
         <div class="ledger"><h3>What the journal remembers</h3><p>Conceptual entries, not literal event names.</p><ol id="journal-list"></ol><div class="empty" id="journal-empty">No program accepted yet.</div></div>
       </section>
-      <section class="inspector" aria-label="Selected component"><h3 id="inspect-title">QuickJS is not a second durable runtime</h3><p id="inspect-copy">It is a JavaScript engine running the Tisyn kernel. Sweatpants still owns tools, journal authority, scheduling, parking, and recovery. Select any box to explore its job.</p></section>
+      <section class="inspector" aria-label="Selected component"><h3 id="inspect-title">Select a component</h3><p id="inspect-copy">Inspect each role in the deployed Cloudflare Playground. The execution journal is authoritative; the evaluator and UI delivery are replaceable.</p></section>
     </aside>
   </div>
-  <div class="limits" aria-label="Actual configured limits"><div class="limit"><strong>256 checks</strong><span>QuickJS interrupt budget per advance. Not 256 DSL instructions.</span></div><div class="limit"><strong>32 MiB</strong><span>VM allocation limit. Not a memory quota for the entire DO.</span></div><div class="limit"><strong>64 KiB</strong><span>VM stack limit. Bounds recursion before it overruns the host stack.</span></div><div class="limit"><strong>256 calls</strong><span>Shared adapter limit for tool calls across one authored program.</span></div></div>
-  <div class="takeaway"><b>QuickJS evaluates. Sweatpants remembers and acts.</b><small>Human waiting consumes no evaluation budget. Limits fail explicitly; they do not turn failure into successful completion.</small></div>
+  <div class="limits" aria-label="Configured Scheme limits">
+    <div class="limit"><strong>{Number(limits.validationFuel).toLocaleString()} fuel</strong><span>Compile and validate without running effects.</span></div>
+    <div class="limit"><strong>{Number(limits.stepFuel).toLocaleString()} fuel</strong><span>Maximum per evaluator advance, including compilation on start.</span></div>
+    <div class="limit"><strong>{Number(limits.totalFuel).toLocaleString()} fuel</strong><span>Total budget for one evaluator instance.</span></div>
+    <div class="limit"><strong>{limits.effects} effects</strong><span>Maximum yielded effects per evaluation. Source limit: {limits.source.toLocaleString()} characters.</span></div>
+  </div>
+  <section class="takeaway"><b>Two recovery paths, one authority.</b><p><strong>Playground:</strong> a fresh Scheme evaluator reconstructs computation from accepted source and recorded effect results. Completed external effects are not invoked again.</p><p><strong>Execution lab:</strong> the experimental WorkflowKernel backend serializes environments, continuation frames, and pending scope cleanup. The shared driver adds protocol identity and the journal accepts the checkpoint. Restore validates that envelope, reconstructs the evaluator, applies accepted entries after the checkpoint, and continues at the saved boundary.</p><small>A conversation/UI checkpoint is not an evaluator heap snapshot. The Playground does not yet use the lab’s evaluator checkpoint backend.</small><p><a class="runtime-title-link" href="/execution">Inspect a real evaluator checkpoint ↗</a></p></section>
+  <section class="takeaway"><b>The backend seam</b><p>ProgramDriver handles attachment and transport. ProgramBackend supplies computation inside the shared driver. The WorkflowKernel adapter lets the lab run compiled developer workflows and model-authored callers together, with scoped cleanup before a result returns to its caller.</p></section>
 </div>
 <footer><div class="legend"><span style="--dot:var(--blue)">Sweatpants / execution & delivery</span><span style="--dot:var(--teal)">Bounded temporary computation</span><span style="--dot:var(--gold)">Durable authority</span><span style="--dot:var(--purple)">Model authoring & summary</span></div>Illustration, not a live trace. Animation timing and the compute bar explain the sequence; they are not performance measurements.</footer>
 
 </div>
 
-<script src="./quickjs-walkthrough.js"></script>
+<script src="./runtime-walkthrough.js"></script>

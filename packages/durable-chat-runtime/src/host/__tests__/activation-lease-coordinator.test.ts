@@ -120,3 +120,47 @@ describe("activation lease coordinator", () => {
     expect(releasedReason).toBe("lease_lost");
   });
 });
+
+it("republishes parked input after host loss without executing or releasing an unclaimed lease", async () => {
+  const commands: string[] = [];
+  const authority = {
+    *command(command: { type: string }) {
+      commands.push(command.type);
+      return { status: "not_runnable" };
+    },
+    *query(query: { type: string }) {
+      expect(query.type).toBe("forest.replay-plan");
+      return {
+        rows: [
+          {
+            classification: "terminal",
+            address: { taskId: "old" },
+            parked: { pullId: "old", reason: "elicit" },
+          },
+          {
+            classification: "structurally_blocked",
+            address: { taskId: "root" },
+            parked: { pullId: "child", reason: "child" },
+          },
+          {
+            classification: "replayable",
+            address: { taskId: "root.0" },
+            parked: { pullId: "reply", reason: "elicit" },
+          },
+        ],
+      };
+    },
+  } as unknown as JournalAuthorityContract;
+  const result = await run(() =>
+    runWithRenewedActivationLease(authority, "session", "owner", function* () {
+      throw new Error("A parked input must not execute");
+    }),
+  );
+  expect(result).toEqual({
+    state: "parked",
+    pullId: "reply",
+    reason: "elicit",
+    slots: [{ taskId: "root.0", pullId: "reply", reason: "elicit" }],
+  });
+  expect(commands).toEqual(["control.claim-activation"]);
+});

@@ -58,3 +58,22 @@ The runtime does not own a journal or model provider.
 
 Upstream runtime licenses and notices are in `licenses/`; they apply to the
 bundled Hoot assets independently of the package's TypeScript wrapper license.
+
+## Authoring reference and checks
+
+`@sweatpants/scheme-runtime/language` exports build-generated JSON: the explicit
+Scheme imports, injected procedure signatures, macro patterns, and input binding.
+`scripts/language.scm` reads the evaluator source as Scheme data during the pinned
+build; it does not execute the evaluator or parse authored programs. The artifact
+is published and hash-checked with the Wasm. Yo-workflow renders its authoring
+reference from this metadata, runtime limits, executable examples, and installed
+capability schemas. Semantic guidance is prose; names and signatures are extracted.
+
+`checkSchemeProgram({ source, input })` is an Effection operation using the installed
+evaluation port. It checks JSON serialization and Hoot syntax, macro expansion,
+bindings, and statically known lexical call arities without executing effects. Its result explicitly lists unchecked
+runtime shapes, effect requests, and termination. This is not a static type checker.
+`schemeDiagnostic` normalizes error messages while retaining the original detail.
+Only reader input locations are presented as authored locations; runtime errors do
+not yet have source maps or authored call stacks. Field errors identify the key and
+value kind without exposing the value's contents.

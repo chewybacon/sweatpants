@@ -54,7 +54,8 @@
         "./kernel.wasm": "./generated/kernel.wasm",
         "./reflect.wasm": "./generated/reflect.wasm",
         "./wtf8.wasm": "./generated/wtf8.wasm",
-        "./manifest": "./generated/manifest.json"
+        "./manifest": "./generated/manifest.json",
+        "./language": "./generated/language.json"
     },
     "scripts": {
         "build": "pnpm wasm:check && tsup",

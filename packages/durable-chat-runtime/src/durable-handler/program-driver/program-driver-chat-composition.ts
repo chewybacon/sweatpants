@@ -16,7 +16,7 @@ import type { ProgramDriverChatEngineParams } from "./program-driver-chat-types.
 
 export interface ProgramDriverChatComposition {
   readonly activation: ChatActivationContext;
-  readonly presentation: Omit<ChatPresentationContext, "retainedActivityIds">;
+  readonly presentation: Omit<ChatPresentationContext, "retainedActivityIds" | "publishedOwners">;
 }
 
 /** The sole translation from the product parameter bag into domain capabilities. */

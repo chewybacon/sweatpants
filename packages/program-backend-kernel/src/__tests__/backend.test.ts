@@ -3,6 +3,7 @@ import { run, type Operation } from "effection";
 import { canonicalDigest } from "@sweatpants/foundation";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
+  CrankError,
   type AttachProgramRequest,
   type EffectDescriptor,
   type ProgramRestoreRequest,
@@ -24,7 +25,11 @@ const attach: AttachProgramRequest = {
   executionEpoch: 1,
 };
 // Interface double for adapter protocol checks. Real evaluator proofs live in artifact-build.
-function fixture(effect?: EffectDescriptor, options?: WorkflowProgramDriverOptions) {
+function fixture(
+  effect?: EffectDescriptor,
+  options?: WorkflowProgramDriverOptions,
+  startError?: Error,
+) {
   const events: string[] = [];
   const boundary: KernelBoundary = { kind: "effect", site: "approval", request: null };
   function activation(): KernelActivation {
@@ -63,6 +68,7 @@ function fixture(effect?: EffectDescriptor, options?: WorkflowProgramDriverOptio
           identity,
           *start() {
             events.push("start");
+            if (startError) throw startError;
             return activation();
           },
           *restore() {
@@ -95,6 +101,21 @@ function fixture(effect?: EffectDescriptor, options?: WorkflowProgramDriverOptio
 }
 
 describe("kernel program backend", () => {
+  it("preserves a failed start frontier without capturing unavailable computation", async () => {
+    const { driver } = fixture(
+      undefined,
+      undefined,
+      new CrankError("workflow_failed", "Unknown caller form: missing"),
+    );
+    await run(function* () {
+      const attachment = yield* driver.attach(attach);
+      const boundary = yield* driver.step(attachment, { type: "start", input: null });
+      expect(boundary.type).toBe("failed");
+      expect(JSON.stringify(boundary)).toContain("Unknown caller form: missing");
+      expect(yield* driver.checkpoint(attachment)).toEqual({ kind: "replay" });
+      yield* driver.shutdown(attachment, "failed");
+    });
+  });
   it.each([
     undefined,
     {

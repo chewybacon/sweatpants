@@ -4,6 +4,7 @@ import { parse } from "../scheme-data/read.mjs";
 function display(value) {
     if (Array.isArray(value)) {
         if (value[0]?.sym === "closure") return `λ ${value[4]?.sym} → environment ${value[3]}`;
+        if (value[0]?.sym === "tool") return `registered tool ${value[1]?.sym}`;
         if (value[0]?.sym === "primitive") return `built-in ${value[1]?.sym}`;
         return `(${value.map(display).join(" ")})`;
     }

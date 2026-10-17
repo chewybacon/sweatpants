@@ -21,7 +21,7 @@ export function ProgramPreview({
   }, [source, language]);
   return (
     <section className="program-preview">
-      <details open={!plan.error} className="logic-plan">
+      <details className="logic-plan">
         <summary>{plan.error ? "Source preview" : "Program map"}</summary>
         {plan.error ? (
           <p className="preview-error" role="status">

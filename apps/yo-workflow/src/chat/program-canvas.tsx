@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -6,6 +6,7 @@ import {
   Handle,
   Position,
   BaseEdge,
+  type ReactFlowInstance,
   type EdgeProps,
   type NodeProps,
 } from "@xyflow/react";
@@ -153,8 +154,29 @@ const edgeTypes = { routed: ProgramEdge };
 
 export function ProgramCanvas({ flow }: { flow: Flow }) {
   const graph = useMemo(() => layoutFlow(flow), [flow]);
+  const container = useRef<HTMLDivElement>(null);
+  const [instance, setInstance] = useState<ReactFlowInstance<CanvasNode> | null>(null);
+  useEffect(() => {
+    const element = container.current;
+    if (!element || !instance) return;
+    let frame = 0;
+    // A canvas mounted inside closed details has no viewport. Fit after it
+    // becomes measurable, including when an outer disclosure opens again.
+    const observer = new ResizeObserver(([entry]) => {
+      cancelAnimationFrame(frame);
+      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      frame = requestAnimationFrame(() => {
+        void instance.fitView({ padding: 0.15, maxZoom: 0.85 });
+      });
+    });
+    observer.observe(element);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [instance, graph]);
   return (
-    <div className="program-canvas" aria-label="Expanded program canvas">
+    <div ref={container} className="program-canvas" aria-label="Expanded program canvas">
       <div className="canvas-legend" aria-label="Node types">
         <span className="canvas-tone-builtin">
           <i />
@@ -170,6 +192,7 @@ export function ProgramCanvas({ flow }: { flow: Flow }) {
         </span>
       </div>
       <ReactFlow<CanvasNode>
+        onInit={setInstance}
         nodes={graph.nodes}
         edges={graph.edges}
         nodeTypes={nodeTypes}

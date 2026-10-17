@@ -33,3 +33,6 @@ inputs = {
 record = {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in inputs.items()}
 record["wasm"] = hashlib.sha256((output / "kernel.wasm").read_bytes()).hexdigest()
 (output / "manifest.json").write_text(json.dumps(record, indent=2) + "\n")
+
+bridge = (runtime / "generated/reflect-worker.mjs").read_text().replace("#scheme-kernel-wasm", "#execution-kernel-wasm")
+(output / "reflect-worker.mjs").write_text(bridge)

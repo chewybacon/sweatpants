@@ -16,7 +16,10 @@ async function main(): Promise<void> {
   await mkdir(artifactDir, { recursive: true });
 
   const livePlaywrightPort = Number(process.env["LAND_LIVE_PLAYWRIGHT_PORT"] ?? "18111");
-  const packageTestConcurrency = Number(process.env["LAND_PACKAGE_TEST_CONCURRENCY"] ?? "3");
+  const packageTestConcurrency = Number(process.env["LAND_PACKAGE_TEST_CONCURRENCY"] ?? "1");
+  if (!Number.isSafeInteger(packageTestConcurrency) || packageTestConcurrency < 1) {
+    throw new Error("LAND_PACKAGE_TEST_CONCURRENCY must be a positive integer");
+  }
   const summary: RunSummary = { mode, startedAt: new Date().toISOString(), stages: [] };
 
   interface Stage {
@@ -266,10 +269,27 @@ async function main(): Promise<void> {
     let timedOut = false;
     const child = spawn(stage.command, stage.args, {
       cwd: root,
-      env: { ...process.env, ...stage.env, CI: "" },
+      env: {
+        ...process.env,
+        ...stage.env,
+        // Package concurrency alone does not bound each Vitest worker pool.
+        VITEST_MAX_THREADS: "1",
+        VITEST_MIN_THREADS: "1",
+        VITEST_MAX_FORKS: "1",
+        VITEST_MIN_FORKS: "1",
+        CI: "",
+      },
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // Stages have their own process group; forward interruption to descendants.
+    let interrupted = false;
+    const interrupt = () => {
+      interrupted = true;
+      terminate(child.pid);
+    };
+    process.once("SIGINT", interrupt);
+    process.once("SIGTERM", interrupt);
     const consume = (chunk: Buffer) => {
       void log.write(chunk);
       pending += chunk.toString("utf8");
@@ -299,12 +319,18 @@ async function main(): Promise<void> {
         child.once("error", () => resolveExit({ code: 1, signal: null }));
       },
     );
+    process.removeListener("SIGINT", interrupt);
+    process.removeListener("SIGTERM", interrupt);
     clearInterval(heartbeat);
     clearTimeout(timeout);
     if (pending) {
       tail.push(pending);
     }
     await log.close();
+    if (interrupted) {
+      console.error("Landing interrupted; terminated the active stage process group.");
+      process.exit(130);
+    }
 
     const fullLog = await readFile(logPath, "utf8");
     const skipped = stage.forbidSkips && hasSkippedTests(fullLog);

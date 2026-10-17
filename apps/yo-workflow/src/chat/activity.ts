@@ -70,7 +70,29 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
   }
 }
 
+/** Workflow failures are successful tool deliveries carrying a diagnostic outcome. */
+export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-call" }>) {
+  if (part.state !== "output-available" || !["scheme", "tisyn"].includes(part.name)) return;
+  const output = part.output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return;
+  if (output.status !== "invalid" && output.status !== "failed") return;
+  const diagnostic = output.diagnostic;
+  const message =
+    typeof diagnostic === "string"
+      ? diagnostic
+      : diagnostic &&
+          typeof diagnostic === "object" &&
+          !Array.isArray(diagnostic) &&
+          typeof diagnostic.message === "string"
+        ? diagnostic.message
+        : undefined;
+  if (message === undefined) return;
+  return { label: output.status === "invalid" ? "Invalid program" : "Program failed", message };
+}
+
 export function toolStatus(part: Extract<ReactChatUIPart, { type: "tool-call" }>): string {
+  const failure = workflowFailure(part);
+  if (failure) return failure.label;
   if (part.state === "output-available") return "Completed";
   if (part.state === "output-error") return "Failed";
   if (part.state === "input-streaming") return "Preparing call";

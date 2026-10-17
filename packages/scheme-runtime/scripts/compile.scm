@@ -1,10 +1,12 @@
 (use-modules (hoot compile) (hoot config) (wasm assemble)
              (ice-9 binary-ports))
 (load "meter.scm")
+(load "language.scm")
 
 ;; compile-file returns the structured module when no output file is supplied.
 ;; Meter after optimization, then assemble exactly once.
 (let ((output (cadr (command-line))))
+  (write-language output)
   (call-with-values
       (lambda ()
         (meter-module (compile-file "scripts/kernel.scm"

@@ -1,3 +1,7 @@
+import { createContext } from "react";
+
+export const PendingToolReply = createContext(false);
+
 export type Reply =
   | { action: "accept"; content: { reply: string } }
   | { action: "decline" }

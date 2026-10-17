@@ -28,12 +28,27 @@ export function executionPlayground() {
                                 const { authorCaller } = require(
                                     resolve(server.config.root, "src/execution/author.ts"),
                                 );
-                                return authorCaller(prompt);
+                                const {
+                                    FileCredentialStore,
+                                } = require("@sweatpants/model-provider-pi-ai");
+                                const { createTisynModels } = require(
+                                    resolve(
+                                        server.config.root,
+                                        "src/server/cloudflare/model-catalog.ts",
+                                    ),
+                                );
+                                return authorCaller(prompt, module.validateCaller, {
+                                    models: createTisynModels(new FileCredentialStore()),
+                                    provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
+                                    model: process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5",
+                                    thinking: process.env.DEFAULT_CHAT_MODEL_THINKING,
+                                });
                             },
                         });
                     }
                     let result;
-                    if (request.method === "GET") result = service.get(url.searchParams.get("id"));
+                    if (request.method === "GET")
+                        result = await service.get(url.searchParams.get("id"));
                     else if (request.method === "POST") {
                         if (!request.headers["content-type"]?.startsWith("application/json"))
                             throw Error("Expected JSON request");

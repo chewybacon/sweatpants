@@ -1,7 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { Server } from "node:net";
+import { describe, expect, it, vi } from "vitest";
 import { startModelSimulator } from "../model.ts";
 
 describe("model semantic barriers", () => {
+  it("binds the advertised IPv4 loopback address instead of a wildcard socket", async () => {
+    const listen = vi.spyOn(Server.prototype, "listen");
+    try {
+      const simulator = await startModelSimulator();
+      try {
+        const result = listen.mock.results[0];
+        if (!result || result.type !== "return") throw new Error("Simulator did not listen");
+        // On macOS a wildcard IPv6 listener can overlap another IPv4 service's
+        // port. Checking the real bound address catches that before HTTP routing.
+        expect(result.value.address()).toEqual({
+          address: new URL(simulator.baseUrl).hostname,
+          family: "IPv4",
+          port: Number(new URL(simulator.baseUrl).port),
+        });
+      } finally {
+        await simulator.close();
+      }
+    } finally {
+      listen.mockRestore();
+    }
+  });
+
   it("matches before responding and manually releases text chunks", async () => {
     const simulator = await startModelSimulator();
     try {

@@ -2,6 +2,7 @@ import { resource, type Operation, type Stream } from "effection";
 import { checkpointHotRoots } from "@sweatpants/history-store";
 import { decodePublicProjectionRoot } from "@sweatpants/chat-core";
 
+import { publishedJournalOwners } from "./program-driver-chat-publication.ts";
 import { runWithTurnEventWriter } from "../model-sampling/turn-event-api.ts";
 import { runProgramDriverChatActivation } from "./program-driver-chat-activation.ts";
 import { composeProgramDriverChat } from "./program-driver-chat-composition.ts";
@@ -51,23 +52,29 @@ function* activateAndPresent(params: ProgramDriverChatEngineParams): Operation<S
     const checkpoint = head?.checkpoint
       ? yield* params.conversationStore.getCheckpoint(head.checkpoint)
       : null;
-    // Only retained activities can receive replayed deltas. Completed activities
-    // may have spilled to immutable history; replay must not resurrect them.
+    // Only mutable retained activities need replayed completion deltas. Sealed
+    // activities may have spilled to immutable history; do not resurrect them.
     const retainedActivityIds = new Set(
       (checkpoint ? checkpointHotRoots(checkpoint.payload) : []).flatMap((value) => {
         const root = decodePublicProjectionRoot(value);
-        return root.kind === "activity-subtree"
+        return root.kind === "activity-subtree" && root.state === "mutable"
           ? root.nodes.map((node) => node.activityRecordId)
           : [];
       }),
     );
     const activation = yield* runProgramDriverChatActivation(composition.activation);
+    const publishedOwners = yield* publishedJournalOwners(
+      params.conversationStore,
+      params.conversationId,
+      checkpoint,
+      activation.report.before,
+    );
     const presentationContext =
       activation.disposition.kind === "restart"
         ? { ...composition.presentation, continueAfterCancellation: true }
         : composition.presentation;
     const presented = yield* presentProgramDriverChatActivation(
-      { ...presentationContext, retainedActivityIds },
+      { ...presentationContext, retainedActivityIds, publishedOwners },
       activation.report,
     );
     if (activation.disposition.kind === "present" && !presented.continueActivation) {

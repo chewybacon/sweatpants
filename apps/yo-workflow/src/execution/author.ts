@@ -1,22 +1,32 @@
 import { run } from "effection";
-import { FileCredentialStore, createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
+import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import { createTisynModels } from "../server/cloudflare/model-catalog.ts";
 import { reasoningLevel } from "../server/model-settings.ts";
 
 /** Authoring is host work; the generated caller is pinned before execution opens. */
-export async function authorCaller(prompt: string): Promise<string> {
+export async function authorCaller(
+  prompt: string,
+  validate: (source: string) => Promise<string>,
+  config: {
+    models: ReturnType<typeof createTisynModels>;
+    provider: string;
+    model: string;
+    thinking?: string;
+  },
+): Promise<string> {
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 4000) {
     throw Error("Describe a workflow in 1–4000 characters");
   }
   const provider = createPiAiModelProvider({
-    models: createTisynModels(new FileCredentialStore()),
+    models: config.models,
   });
   const model = provider.resolveModel({
-    provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "opencode",
-    id: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-haiku-5-5",
+    provider: config.provider,
+    id: config.model,
   });
   const signal = AbortSignal.timeout(180_000);
-  for (const maxTokens of [16_384, 32_768]) {
+  let feedback = "";
+  for (const maxTokens of [16_384, 32_768, 32_768]) {
     const response = await run(function* () {
       const stream = yield* provider.runtime.stream(
         model,
@@ -31,7 +41,9 @@ export async function authorCaller(prompt: string): Promise<string> {
 Available compiled developer function: (review_draft input). input is a JSON object with title (string), recipient (string), metadata (JSON value). It asks the human for approval, registers cleanup that asks the human to release the reservation, and returns the string "Draft approved" or "Draft declined". Call it; do not redefine it or simulate its effects.
 The caller must define (workflow input) and end with (workflow %input). %input is provided by the host. Available host tool: (send_announcement input). It queues an announcement in the local outbox and returns a JSON object with announcementId, status, title, recipient. Call it only after review_draft returns "Draft approved". Return its receipt or a string explaining the decline. The host owns execution; do not implement this tool.
 Use define, let, let*, if, equal?, json-field, string-append and ordinary function calls. No imports, eval, external APIs, or direct effects. Preserve the tool result. This experiment has no email-sending capability.
-User request: ${prompt}`,
+The host supplies title, recipient, and metadata in input; pass input directly to both tools. Do not invent JSON literal syntax.
+User request: ${prompt}
+${feedback}`,
                 },
               ],
             },
@@ -39,7 +51,7 @@ User request: ${prompt}`,
           tools: [],
         },
         {
-          thinking: reasoningLevel(process.env["DEFAULT_CHAT_MODEL_THINKING"]),
+          thinking: reasoningLevel(config.thinking),
           maxTokens,
           signal,
         },
@@ -70,8 +82,13 @@ User request: ${prompt}`,
       .map((part) => part.text)
       .join("\n")
       .trim();
-    if (!source || source.includes("```")) throw Error("Expected bare Scheme source from author");
-    return source;
+    const diagnostic =
+      !source || source.includes("```")
+        ? "Expected bare Scheme source, without Markdown or explanation"
+        : await validate(source);
+    if (!diagnostic) return source;
+    feedback = `Your previous response was rejected before execution. Rewrite the complete caller as bare Scheme only. Validator feedback: ${diagnostic.slice(0, 2000)}`;
+    console.warn("Workflow authoring validation rejected source", { diagnostic });
   }
-  throw Error("Workflow authoring did not finish");
+  throw Error(`Workflow authoring failed validation after three attempts. ${feedback}`);
 }

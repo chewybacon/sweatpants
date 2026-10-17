@@ -73,7 +73,7 @@ export function ExecutionInspector() {
         </button>
       </header>
       <p className="execution-local">
-        Local playground · journal retained in server memory · each park releases compute · no email
+        Workflow lab · journal-backed execution · each park releases compute · no email
         is sent
       </p>
       <section className="execution-author">

@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, Heading, Link, Stack } from "../design-system/primitives.tsx";
 
 import { readThreadIds } from "./thread-index.ts";
+import { readThreadSummary, type ThreadSummary } from "./thread-summary.ts";
 
 export function ThreadList() {
   const [threads, setThreads] = useState<string[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, ThreadSummary | undefined>>({});
   useEffect(() => {
-    setThreads(readThreadIds());
+    const ids = readThreadIds();
+    setThreads(ids);
+    setSummaries(Object.fromEntries(ids.map((id) => [id, readThreadSummary(id)])));
   }, []);
   return (
     <Stack gap={5} className="thread-list-island">
@@ -40,7 +44,11 @@ export function ThreadList() {
                 <Badge tone={index === 0 ? "success" : "neutral"}>
                   {index === 0 ? "Current" : "Recent"}
                 </Badge>
-                <code>{id}</code>
+                <Heading level={2} size="section">
+                  {summaries[id]?.title ?? "Untitled thread"}
+                </Heading>
+                {summaries[id] && <p>{summaries[id]?.status} · Last opened state</p>}
+                <small className="hint">{id}</small>
                 <Link href={`/threads/${id}`}>Open thread →</Link>
               </Stack>
             </Card.Root>

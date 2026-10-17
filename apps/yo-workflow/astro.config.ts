@@ -14,6 +14,22 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
+    resolve: {
+      alias: {
+        "#scheme-reflect-wasm": new URL(
+          "../../packages/scheme-runtime/generated/reflect.wasm",
+          import.meta.url,
+        ).pathname,
+        "#scheme-wtf8-wasm": new URL(
+          "../../packages/scheme-runtime/generated/wtf8.wasm",
+          import.meta.url,
+        ).pathname,
+        "#execution-kernel-wasm": new URL(
+          "../../.artifacts/hoot-composition/kernel.wasm",
+          import.meta.url,
+        ).pathname,
+      },
+    },
     // Concurrent provider experiments must not invalidate each other's modules.
     cacheDir: `node_modules/.vite-${[
       process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
