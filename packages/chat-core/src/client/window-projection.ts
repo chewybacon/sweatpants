@@ -237,7 +237,33 @@ export function* publicRootProjection(
   const anchors = yield* orderAnchors(indexed.anchors);
   const seeded = yield* seedMessages(indexed);
   const attached = yield* attachAnchors(seeded, anchors);
-  return yield* applyActivities(attached, indexed);
+  const applied = yield* applyActivities(attached, indexed);
+  // Context-only parents must share the same durable ordering as loaded bodies.
+  const positions = new Map<string, string>();
+  for (const anchor of anchors) {
+    if (anchor.publicData.kind === "message" && anchor.messagePosition !== undefined) {
+      positions.set(anchor.publicData.messageId, anchor.messagePosition);
+    }
+  }
+  for (const root of indexed.ordered) {
+    if (root.kind !== "message") continue;
+    const position = positions.get(root.message.id);
+    if (position !== undefined && position !== root.position) {
+      throw new PublicRootConflictError(
+        `Message ${root.message.id} has conflicting placement positions`,
+      );
+    }
+    positions.set(root.message.id, root.position);
+  }
+  return {
+    ...applied,
+    messageOrder: [...applied.messageOrder].sort((a, b) => {
+      const left = positions.get(a);
+      const right = positions.get(b);
+      // Legacy callers retain insertion order until the server enriches anchors.
+      return left === undefined || right === undefined ? 0 : compareDurablePositions(left, right);
+    }),
+  };
 }
 
 /** Build one deterministic projection from complete positioned roots. */

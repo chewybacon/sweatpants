@@ -1,3 +1,4 @@
+import { enrichPlacementAnchors } from "./placement-anchors.ts";
 import { EventType, type AGUIEvent, type Message } from "@ag-ui/core";
 import {
   CONVERSATION_WINDOW_FRAME_TYPE,
@@ -241,6 +242,7 @@ export function* buildConversationWindow(params: {
       }
     }
   }
+  const store = yield* useConversationStore();
   const windowToken = yield* call(() => mintWindowToken(basis, params.keyring));
   // Accepted archive membership is explicit in the checkpoint frontier. Do
   // not probe an archive body during hydration merely to decide whether the
@@ -263,8 +265,13 @@ export function* buildConversationWindow(params: {
     windowMode: catchup === null ? "reset" : "continue",
     archiveFrontierOrdinal: params.checkpoint.archiveFrontierOrdinal,
     nextPublicPosition: params.checkpoint.nextPublicPosition,
-    hotRoots,
-    sealedCatchupRoots: catchup ?? [],
+    hotRoots: yield* enrichPlacementAnchors(store, params.conversationId, basis, hotRoots),
+    sealedCatchupRoots: yield* enrichPlacementAnchors(
+      store,
+      params.conversationId,
+      basis,
+      catchup ?? [],
+    ),
     applicationState: checkpointPublicApplicationState(params.checkpoint.payload),
     olderHistoryCursor,
   };
@@ -430,7 +437,8 @@ function ancestorAnchors(
     }
     seen.add(parentId);
     const parentEvent = byNodeId.get(parentId);
-    const parent = parentEvent ? activityAnchor(parentEvent) : retainedAnchors.get(parentId);
+    const retained = retainedAnchors.get(parentId);
+    const parent = parentEvent ? { ...retained, ...activityAnchor(parentEvent) } : retained;
     if (!parent) {
       throw new Error(`Public activity node ${parentId} is missing its placement anchor`);
     }
@@ -463,7 +471,26 @@ function assignPositions(
     const b = counter(right.position);
     return a === b ? 0 : a < b ? -1 : 1;
   });
-  return { roots: result, nextPosition: next };
+  const positions = new Map(
+    result.flatMap((root) =>
+      root.kind === "message" ? [[root.message.id, root.position] as const] : [],
+    ),
+  );
+  const rootsWithPositions = result.map((root) =>
+    root.kind === "activity-subtree"
+      ? {
+          ...root,
+          anchors: root.anchors.map((anchor) => {
+            const position =
+              anchor.publicData.kind === "message"
+                ? positions.get(anchor.publicData.messageId)
+                : undefined;
+            return position === undefined ? anchor : { ...anchor, messagePosition: position };
+          }),
+        }
+      : root,
+  );
+  return { roots: rootsWithPositions, nextPosition: next };
 }
 
 function* compactPublicRoots(params: {

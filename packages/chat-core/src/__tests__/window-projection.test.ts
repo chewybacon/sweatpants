@@ -162,3 +162,77 @@ it("uses a loaded parent result instead of stale data in archived descendant anc
     ]),
   ).toThrow("conflicts");
 });
+
+it("keeps an unloaded owner before later messages as history pages arrive", () => {
+  const owner = decodePublicProjectionRoot({
+    rootId: "message:owner",
+    position: "11",
+    kind: "message",
+    state: "sealed",
+    attribution: {},
+    message: { id: "owner", role: "assistant", content: "Starting" },
+    placement: { type: "root", sequence: 0 },
+  });
+  const summary = decodePublicProjectionRoot({
+    rootId: "message:summary",
+    position: "20",
+    kind: "message",
+    state: "sealed",
+    attribution: {},
+    message: { id: "summary", role: "assistant", content: "Finished" },
+    placement: { type: "root", sequence: 1 },
+  });
+  const activity = decodePublicProjectionRoot({
+    rootId: "activity:child",
+    position: "19",
+    kind: "activity-subtree",
+    state: "sealed",
+    attribution: {},
+    rootNodeId: "child",
+    producerSequence: 0,
+    unloadedDescendantCount: 0,
+    anchors: [
+      {
+        nodeId: "owner-node",
+        parentNodeId: null,
+        sequence: 0,
+        kind: "message",
+        presentation: "public",
+        messagePosition: "11",
+        publicData: { kind: "message", messageId: "owner", role: "assistant" },
+      },
+    ],
+    nodes: [
+      {
+        activityRecordId: "child",
+        producerSequence: 0,
+        event: {
+          type: EventType.ACTIVITY_SNAPSHOT,
+          messageId: "child",
+          activityType: "sweatpants:public-execution",
+          replace: true,
+          content: {
+            version: 1,
+            node: {
+              nodeId: "child",
+              parentNodeId: "owner-node",
+              sequence: 0,
+              kind: "activity",
+              state: "complete",
+              presentation: "public",
+              publicData: { kind: "activity", activityType: "step" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  expect(projectionFromPublicRoots([summary, activity]).messageOrder).toEqual(["owner", "summary"]);
+  expect(projectionFromPublicRoots([summary, activity, owner]).messageOrder).toEqual([
+    "owner",
+    "summary",
+  ]);
+  expect(() =>
+    projectionFromPublicRoots([summary, activity, { ...owner, position: "12" }]),
+  ).toThrow("conflicting placement positions");
+});

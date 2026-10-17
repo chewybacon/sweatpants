@@ -1,3 +1,4 @@
+import { enrichPlacementAnchors } from "../placement-anchors.ts";
 import { run, type Operation, type Scope } from "effection";
 import { decodePublicProjectionRoot } from "@sweatpants/chat-core";
 import type { ConversationStore } from "@sweatpants/history-store/contract";
@@ -126,7 +127,14 @@ async function createHistoryPageResponse(params: {
         maxBytes: DEFAULT_HISTORY_PAGE_BYTE_LIMIT,
       }),
     );
-    const roots = page.roots.map((root) => decodePublicProjectionRoot(root));
+    const roots = await execute(() =>
+      enrichPlacementAnchors(
+        params.store,
+        params.conversationId,
+        cursor,
+        page.roots.map((root) => decodePublicProjectionRoot(root)),
+      ),
+    );
     const nextOlderCursor = page.nextBeforePosition
       ? await mintPublicHistoryCursor(
           {

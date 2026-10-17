@@ -108,6 +108,14 @@ describe("synthetic tool message lifecycle", () => {
           );
           if (i === 0) expect(hot.some((r) => r.state === "mutable")).toBe(true);
           else {
+            for (const root of hot) {
+              if (root.kind !== "activity-subtree") continue;
+              for (const anchor of root.anchors) {
+                if (anchor.publicData.kind === "message") {
+                  expect(anchor.messagePosition).toMatch(/^\d+$/);
+                }
+              }
+            }
             expect(hot.filter((r) => r.state === "mutable")).toEqual([]);
             const roots = yield* withConversationStore(store, () =>
               readAllPublicRootsForModel("conversation", result.checkpoint, 64 * 1024 * 1024),
@@ -151,6 +159,14 @@ it("archives completed owners under pressure and restores every tool without emp
       const hot = hydratePublicRoots(result.checkpoint).map((root) =>
         decodePublicProjectionRoot(root),
       );
+      for (const root of hot) {
+        if (root.kind !== "activity-subtree") continue;
+        for (const anchor of root.anchors) {
+          if (anchor.publicData.kind === "message") {
+            expect(anchor.messagePosition).toMatch(/^\d+$/);
+          }
+        }
+      }
       expect(hot.filter((r) => r.state === "mutable")).toEqual([]);
       expect(hot.length).toBeLessThanOrEqual(LOW_CHECKPOINT_TARGETS.spill.maxRoots);
       const visible = materializeChatMessages(projectionFromPublicRoots(hot));

@@ -35,6 +35,8 @@ export interface PublicAttribution {
 }
 
 export interface PublicPlacementAnchor {
+  /** Original message-root position; absent only in legacy stored anchors. */
+  readonly messagePosition?: DurablePosition;
   readonly nodeId: string;
   readonly parentNodeId: string | null;
   readonly sequence: number;
@@ -284,7 +286,7 @@ function decodeAnchor(value: unknown, path: string): PublicPlacementAnchor {
   exactKeys(
     input,
     ["nodeId", "parentNodeId", "sequence", "kind", "presentation", "publicData"],
-    [],
+    ["messagePosition"],
     path,
   );
   const parent = input["parentNodeId"];
@@ -301,6 +303,14 @@ function decodeAnchor(value: unknown, path: string): PublicPlacementAnchor {
     return invalid(`${path}.publicData.kind does not match anchor kind`);
   }
   return {
+    ...(input["messagePosition"] === undefined
+      ? {}
+      : {
+          messagePosition: decodeDurablePosition(
+            input["messagePosition"],
+            `${path}.messagePosition`,
+          ),
+        }),
     nodeId: identity(input["nodeId"], `${path}.nodeId`),
     parentNodeId: parent === null ? null : identity(parent, `${path}.parentNodeId`),
     sequence: natural(input["sequence"], `${path}.sequence`),
