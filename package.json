@@ -60,7 +60,8 @@
         "dev:yo-chat:d1": "pnpm dev:yo-chat --mode d1-local",
         "dev:yo-mcp": "pnpm -C apps/yo-mcp dev",
         "dev:yo-agent": "pnpm -C apps/yo-agent dev",
-        "dev:yo-studio": "pnpm -C apps/yo-studio dev"
+        "dev:yo-studio": "pnpm -C apps/yo-studio dev",
+        "test:execution-recovery": "NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/recovery-middleware/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/host.mjs"
     },
     "dependencies": {
         "@effectionx/context-api": "catalog:",
@@ -93,6 +94,9 @@
             "@effectionx/timebox": "^0.4.3",
             "effection": "4.2.0",
             "@babel/types": "7.29.8"
+        },
+        "patchedDependencies": {
+            "@effectionx/worker@0.5.2": "patches/@effectionx__worker@0.5.2.patch"
         }
     }
 }

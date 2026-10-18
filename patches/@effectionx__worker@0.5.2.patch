@@ -1,0 +1,69 @@
+diff --git a/dist/worker.js b/dist/worker.js
+index 1f01b9f143cec29a1372e32e5b97ec1ce2454817..dc812e712eabd504550b3284770ead155e244fd1 100644
+--- a/dist/worker.js
++++ b/dist/worker.js
+@@ -1,4 +1,4 @@
+-import { Err, Ok, createChannel, on, once, resource, spawn, withResolvers, } from "effection";
++import { Err, Ok, race, createChannel, on, once, resource, spawn, withResolvers, } from "effection";
+ import Worker from "web-worker";
+ import { useChannelRequest, useChannelResponse } from "./channel.js";
+ import { errorFromSerialized, } from "./types.js";
+@@ -80,6 +80,17 @@ export function useWorker(url, options) {
+         let opened = false;
+         // Signal for when worker is ready (received "open" message)
+         const ready = withResolvers();
++        let exited = false;
++        const onExit = () => {
++            exited = true;
++            if (!outcomeSettled) {
++                const error = new Error("Worker exited before returning a result; operation outcome is unknown");
++                error.name = "WorkerOutcomeUnknown";
++                rejectOutcome(error);
++                if (!opened) ready.reject(error);
++            }
++        };
++        worker.addEventListener("close", onExit);
+         // Spawned message loop - handles incoming messages using each pattern
+         yield* spawn(function* () {
+             while (true) {
+@@ -119,6 +130,7 @@ export function useWorker(url, options) {
+                 throw error;
+             }
+         });
++        try {
+         // Wait for "open" message before proceeding
+         yield* ready.operation;
+         // Handle worker errors
+@@ -127,7 +139,6 @@ export function useWorker(url, options) {
+             event.preventDefault();
+             throw event.error;
+         });
+-        try {
+             worker.postMessage({
+                 type: "init",
+                 data: options?.data,
+@@ -200,10 +211,14 @@ export function useWorker(url, options) {
+             });
+         }
+         finally {
+-            worker.postMessage({ type: "close" });
++            if (!exited) worker.postMessage({ type: "close" });
+             if (!outcomeSettled) {
+                 while (!outcomeSettled) {
+-                    const event = yield* once(worker, "message");
++                    const event = yield* race([once(worker, "message"), once(worker, "close")]);
++                    if (event.type === "close") {
++                        onExit();
++                        break;
++                    }
+                     const msg = event.data;
+                     if (msg.type === "close") {
+                         const { result } = msg;
+@@ -218,6 +233,7 @@ export function useWorker(url, options) {
+                 }
+             }
+             yield* settled(outcome.operation);
++            worker.removeEventListener("close", onExit);
+         }
+     });
+ }

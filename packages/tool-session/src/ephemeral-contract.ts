@@ -16,8 +16,8 @@ import { z } from "zod";
 /** Pinned identity of the built-in ephemeral adapter program. */
 export const EPHEMERAL_TOOL_ADAPTER_PROGRAM = Object.freeze({
   id: "sweatpants.ephemeral-tool-adapter",
-  version: "2.0.0",
-  digest: sha256("sweatpants.ephemeral-tool-adapter@2.0.0:workflow-pulls"),
+  version: "2.1.0",
+  digest: sha256("sweatpants.ephemeral-tool-adapter@2.1.0:cancel-parked-invocation"),
 });
 
 const EPHEMERAL_DURABILITIES = ["opaque", "ephemeral_handle", "crank_native"] as const;

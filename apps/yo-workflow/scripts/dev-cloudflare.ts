@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { decisionBinding } from "../src/workflow/decisions.ts";
 import { modelOptions } from "./model-options.ts";
-import { createTisynModels } from "../src/server/cloudflare/model-catalog.ts";
+import { createWorkflowModels } from "../src/server/cloudflare/model-catalog.ts";
 
 const options = modelOptions(process.argv.slice(2));
 if (options.help) {
@@ -28,7 +28,6 @@ function command(args: string[], env = process.env, cwd?: string) {
   }
 }
 if (!options.listModels) {
-  command(["kernel:check"]);
   command(["scheme:check"]);
   command([
     "--filter",
@@ -47,7 +46,7 @@ const credential = await credentials.read(provider);
 if (!credential) {
   throw new Error(`No credential for ${provider}`);
 }
-const models = createTisynModels(credentials);
+const models = createWorkflowModels(credentials);
 const available = await models.getAvailable(provider);
 const selectedModels = available.filter((item) => item.provider === provider);
 if (options.listModels) {

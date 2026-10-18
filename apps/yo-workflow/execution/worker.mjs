@@ -6,7 +6,7 @@ import { createPortableHootProgram } from "../../../experiments/workflow-kernel/
 import { executionServiceFactory } from "./service-core.mjs";
 import { createD1Storage } from "@sweatpants/storage-d1";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { createTisynModels } from "../src/server/cloudflare/model-catalog.ts";
+import { createWorkflowModels } from "../src/server/cloudflare/model-catalog.ts";
 import { authorCaller } from "../src/execution/author.ts";
 
 const loadMachine = async () => machineApi(await Scheme.load_main("kernel.wasm"));
@@ -45,7 +45,7 @@ export class ExecutionLab extends DurableObject {
                     ))
                         await credentials.modify(id, async () => credential);
                     return authorCaller(prompt, validateCaller, {
-                        models: createTisynModels(credentials),
+                        models: createWorkflowModels(credentials),
                         provider: this.env.DEFAULT_CHAT_MODEL_PROVIDER,
                         model: this.env.DEFAULT_CHAT_MODEL_ID,
                         thinking: this.env.DEFAULT_CHAT_MODEL_THINKING,
@@ -90,7 +90,10 @@ export async function executionFetch(request, env) {
         if (!command || !["start", "reply", "restore", "cancel"].includes(command.action))
             return Response.json({ error: "Invalid command" }, { status: 400 });
         id = command.action === "start" ? crypto.randomUUID() : command.id;
-        request = new Request(request, { body: JSON.stringify({ ...command, id }) });
+        request = new Request(request, {
+            method: "POST",
+            body: JSON.stringify({ ...command, id }),
+        });
     } else if (request.method !== "GET") return new Response(null, { status: 405 });
     if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id))
         return Response.json({ error: "Invalid run ID" }, { status: 400 });

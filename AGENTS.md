@@ -43,11 +43,12 @@ is the computation implementation inside the shared in-process driver. Do not
 add a parallel driver solely to run another language.
 
 - `journal-authority/src/workflow/program-backend.ts` declares `ProgramBackend`
-  and `ProgramComputation`, and implements the ordinary Effection backend.
+  and `ProgramComputation`, and prepares the ordinary Effection kernel.
 - `createWorkflowProgramDriver` accepts a durable-tool registry (Effection) or an
   explicit backend. `openProgramAttachment` owns pending operations, receipt
   checks, authorization, and command ordering for both.
 - `program-backend-kernel` adapts `WorkflowKernel` to that computation contract.
+  It translates evaluator requests; the attachment owns the shared execution loop.
   Experimental Hoot and reference evaluators consume it; production yo-workflow's
   existing Scheme runtime has not been replaced by these experiments.
 - `durable-execution/src/program-recovery-policy.ts` supplies replay defaults and

@@ -4,7 +4,10 @@ import { createWorkflowProgramDriver } from "../../../packages/journal-authority
 import { createPullMachine, createCompiledPullTool } from "./pull-adapter.mjs";
 import { hash, copy } from "../compiled-finally/journal.mjs";
 import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
-import { assertKernelCompatibility } from "../../../packages/workflow-kernel/dist/index.js";
+import {
+    assertKernelCompatibility,
+    createKernelExecution,
+} from "../../../packages/workflow-kernel/dist/index.js";
 
 export const referenceIdentity = {
     kind: "js-reference",
@@ -30,14 +33,30 @@ export function createReferenceKernel(bundle, observe = () => {}) {
         function check() {
             if (disposed || closed) throw Error("Execution disposed");
         }
+        let suspension = 0;
         function boundary() {
             const next = machine.frontier();
             return next.type === "pull"
-                ? { kind: "effect", site: next.descriptor.binding.id, request: next.descriptor }
-                : { kind: "terminal", outcome: next.outcome };
+                ? {
+                      kind: "suspended",
+                      suspensionId: String(++suspension),
+                      request: { site: next.descriptor.binding.id, request: next.descriptor },
+                  }
+                : next.outcome.kind === "returned"
+                  ? { kind: "completed", value: next.outcome.value }
+                  : next.outcome.kind === "thrown"
+                    ? { kind: "failed", error: next.outcome.value }
+                    : { kind: "cancelled" };
         }
-        const execution = {
-            *resume(reply) {
+        const driver = {
+            *turn(command) {
+                if (command.kind === "cancel") {
+                    check();
+                    observe("cancel");
+                    machine.cancel();
+                    return boundary();
+                }
+                const reply = command.reply;
                 check();
                 if (reply.kind === "value") machine.resume(reply.value);
                 else
@@ -46,12 +65,6 @@ export function createReferenceKernel(bundle, observe = () => {}) {
                             ? reply.value.message
                             : reply.value,
                     );
-                return boundary();
-            },
-            *cancel() {
-                check();
-                observe("cancel");
-                machine.cancel();
                 return boundary();
             },
             *capture() {
@@ -70,8 +83,10 @@ export function createReferenceKernel(bundle, observe = () => {}) {
                 }
             },
         };
+        const executionState = createKernelExecution(boundary(), driver);
+        const execution = executionState.execution;
         executions.add(execution);
-        return { execution, boundary: boundary() };
+        return executionState;
     }
     return {
         identity: referenceIdentity,

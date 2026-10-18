@@ -32,6 +32,30 @@ A Host may be destroyed at any time. Host-local state is not durable truth. A Ho
 
 See [ADR-001](./adr/001-one-crank-turner.md).
 
+### Activation
+
+**Status:** Agreed
+
+One host episode of advancing durable work under journal authority. A task can
+span multiple activations, and an activation can drive multiple live executions.
+Ending an activation does not itself complete or cancel the task.
+
+### Live Execution
+
+**Status:** Agreed
+
+One live computation, represented by the shared `Execution` capability. It can
+resume at a suspension, cancel through logical unwinding, and dispose its compute.
+Kernel executions also capture evaluator state. Recovery creates fresh execution
+handles; disposed handles remain disposed.
+
+`ExecutionState` pairs the handle with the boundary it reached. It is not a
+persisted snapshot. The qualified term **Durable Execution** elsewhere in this
+glossary names durable work, not this live capability.
+
+See [Execution vocabulary and the episode analogy](./execution-vocabulary.md)
+for collaborator responsibilities, verbs, and the design conversation.
+
 ### Worker
 
 **Status:** Agreed

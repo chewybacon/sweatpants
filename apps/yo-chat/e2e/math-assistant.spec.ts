@@ -82,7 +82,9 @@ test.describe("Math Assistant", () => {
 
   test("loads correctly with the shared demo layout", async ({ page }) => {
     await expect(page.getByText("Thread ready")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Work through it, one step at a time." }),
+    ).toBeVisible();
   });
 
   test("quick action buttons populate input", async ({ page }) => {
@@ -395,7 +397,9 @@ test.describe("Math Assistant", () => {
     await page.getByTestId("thread-create").click();
 
     // Should show empty state
-    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Work through it, one step at a time." }),
+    ).toBeVisible();
     await expect(
       page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("0 messages"),
     ).toBeVisible();

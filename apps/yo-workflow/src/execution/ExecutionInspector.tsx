@@ -73,8 +73,7 @@ export function ExecutionInspector() {
         </button>
       </header>
       <p className="execution-local">
-        Workflow lab · journal-backed execution · each park releases compute · no email
-        is sent
+        Workflow lab · journal-backed execution · each park releases compute · no email is sent
       </p>
       <section className="execution-author">
         <label htmlFor="caller-prompt">Model-authored caller</label>

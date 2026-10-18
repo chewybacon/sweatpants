@@ -1,5 +1,8 @@
 import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
-import { assertKernelCompatibility } from "../../../packages/workflow-kernel/dist/index.js";
+import {
+    assertKernelCompatibility,
+    createKernelExecution,
+} from "../../../packages/workflow-kernel/dist/index.js";
 import { canonicalDigest } from "../../../packages/foundation/dist/index.js";
 import { CrankError } from "../../../packages/durable-execution/dist/index.js";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
@@ -12,15 +15,22 @@ function kernel(observe, source, digest, loadMachine, identity) {
             throw Error("Hoot instance disposed");
         }
     }
+    let suspension = 0;
     function boundary(step) {
         if (step.kind === "effect") {
-            return { kind: "effect", site: step.site, request: step.value };
+            return {
+                kind: "suspended",
+                suspensionId: String(++suspension),
+                request: { site: step.site, request: step.value },
+            };
         }
         if (step.kind === "returned" || step.kind === "thrown") {
-            return { kind: "terminal", outcome: { kind: step.kind, value: step.value } };
+            return step.kind === "returned"
+                ? { kind: "completed", value: step.value }
+                : { kind: "failed", error: step.value };
         }
         if (step.kind === "cancelled") {
-            return { kind: "terminal", outcome: { kind: "cancelled" } };
+            return { kind: "cancelled" };
         }
         throw Error("Unknown Hoot boundary");
     }
@@ -39,17 +49,18 @@ function kernel(observe, source, digest, loadMachine, identity) {
         });
         return result;
     }
-    const execution = {
-        *resume(reply) {
+    const driver = {
+        *turn(command) {
+            if (command.kind === "cancel") {
+                check();
+                return transition("cancel", () => machine.cancel());
+            }
+            const reply = command.reply;
             check();
             observe("reply", { reply });
             return transition("resume", () =>
                 reply.kind === "throw" ? machine.reject(reply.value) : machine.resume(reply.value),
             );
-        },
-        *cancel() {
-            check();
-            return transition("cancel", () => machine.cancel());
         },
         *capture() {
             check();
@@ -78,7 +89,10 @@ function kernel(observe, source, digest, loadMachine, identity) {
         *start(program, input) {
             validate(program);
             machine = yield* call(loadMachine);
-            return { execution, boundary: transition("start", () => machine.start(source, input)) };
+            return createKernelExecution(
+                transition("start", () => machine.start(source, input)),
+                driver,
+            );
         },
         *restore(program, snapshot) {
             validate(program, snapshot);
@@ -87,13 +101,13 @@ function kernel(observe, source, digest, loadMachine, identity) {
             }
             observe("checkpoint-selected", { snapshot });
             machine = yield* call(loadMachine);
-            return {
-                execution,
-                boundary: transition("restore", () => machine.restore(source, snapshot.state)),
-            };
+            return createKernelExecution(
+                transition("restore", () => machine.restore(source, snapshot.state)),
+                driver,
+            );
         },
         *close() {
-            yield* execution.dispose();
+            yield* driver.dispose();
             closed = true;
         },
     };

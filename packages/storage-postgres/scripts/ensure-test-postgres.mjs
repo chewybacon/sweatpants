@@ -62,13 +62,16 @@ async function main() {
     }
 
     const { Client } = await import("pg");
-    const admin = new Client({ connectionString: URL });
+    let admin;
     const deadline = Date.now() + 30_000;
     for (;;) {
+        // A pg Client cannot reconnect after a failed attempt during startup.
+        admin = new Client({ connectionString: URL });
         try {
             await admin.connect();
             break;
         } catch (error) {
+            await admin.end();
             if (Date.now() > deadline) {
                 console.error(`Postgres test harness could not reach ${URL}: ${error.message}`);
                 process.exit(2);

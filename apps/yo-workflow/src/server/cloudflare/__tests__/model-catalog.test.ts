@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { createTisynModels } from "../model-catalog.ts";
+import { createWorkflowModels } from "../model-catalog.ts";
 
 it("resolves OpenCode Haiku and Copilot alternatives", () => {
-  const models = createTisynModels(new InMemoryCredentialStore());
+  const models = createWorkflowModels(new InMemoryCredentialStore());
   expect(models.getModel("opencode", "claude-haiku-5-5")).toMatchObject({
     id: "claude-haiku-5-5",
     api: "anthropic-messages",

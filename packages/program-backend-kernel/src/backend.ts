@@ -2,7 +2,6 @@ import { resource, type Operation } from "effection";
 import { assertJson, canonicalDigest, type Json } from "@sweatpants/foundation";
 import {
   CrankError,
-  DurableProgramCancellation,
   type DurableOperationDescriptor,
   type DurableProgramManifest,
   type PinnedProgram,
@@ -10,13 +9,15 @@ import {
 } from "@sweatpants/durable-execution";
 import {
   InstalledEffectPort,
-  ProgramEffectRuntimeContext,
   type ProgramBackend,
   type ProgramComputation,
+  type ProgramExecutionState,
+  type ProgramReply,
 } from "@sweatpants/journal-authority";
 import {
   assertKernelCompatibility,
-  type KernelActivation,
+  KernelExecutor,
+  type KernelExecutionState,
   type KernelSnapshot,
 } from "@sweatpants/workflow-kernel";
 import { prepareWorkflow, type KernelBackendDependencies } from "./prepare.ts";
@@ -59,70 +60,131 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
           saved = value as unknown as KernelSnapshot;
         }
         const prepared = yield* prepareWorkflow(options, request.program.digest, saved);
-        let activation: KernelActivation | undefined;
+        const kernelExecutor = prepared.kernel;
+        let executionState: KernelExecutionState | undefined;
         let disposed = false;
         let failed = false;
         const computation: ProgramComputation = {
-          *run() {
-            try {
-              activation = saved
-                ? yield* prepared.kernel.restore(prepared.program, saved)
-                : yield* prepared.kernel.start(prepared.program, request.input);
-              const runtime = yield* ProgramEffectRuntimeContext.expect();
-              for (;;) {
-                const { execution, boundary }: KernelActivation = activation;
-                if (boundary.kind === "terminal") {
-                  if (boundary.outcome.kind === "returned") {
-                    return boundary.outcome.value;
-                  }
-                  if (boundary.outcome.kind === "cancelled") {
-                    throw new DurableProgramCancellation();
-                  }
-                  throw new CrankError("workflow_failed", JSON.stringify(boundary.outcome.value));
-                }
-                const descriptor = options.bindOperation(boundary.request, boundary.site);
-                try {
-                  const outcome = yield* runtime.perform({
-                    serializable: { type: "operation", descriptor },
-                    *execute(attempt: RecordAttemptContext) {
-                      if (descriptor.kind !== "effect") {
-                        throw new CrankError(
-                          "program_protocol_error",
-                          "Operation settles through the host",
-                        );
-                      }
-                      return yield* InstalledEffectPort.api.operations.run(descriptor, attempt);
+          start() {
+            return resource<ProgramExecutionState>(function* (provideExecution) {
+              yield* KernelExecutor.installDriver(kernelExecutor);
+              // Snapshot selection and identity checks precede this middleware.
+              // Outer observers see the same startup seam for start and restore.
+              if (saved) {
+                const snapshot = saved;
+                yield* KernelExecutor.api.around(
+                  {
+                    *start([program]) {
+                      return yield* kernelExecutor.restore(program, snapshot);
                     },
-                  });
-                  const next =
-                    outcome.status === "cancelled"
-                      ? yield* execution.cancel()
-                      : yield* execution.resume(
+                  },
+                  { at: "min" },
+                );
+              }
+              const executor = yield* KernelExecutor.use();
+              try {
+                executionState = yield* executor.start(prepared.program, request.input);
+              } catch (error) {
+                failed = true;
+                throw error;
+              }
+              const { execution } = executionState;
+              function bind(
+                boundary: KernelExecutionState["boundary"],
+              ): ProgramExecutionState["boundary"] {
+                if (boundary.kind === "failed") {
+                  failed = true;
+                  return {
+                    kind: "failed",
+                    error: new CrankError("workflow_failed", JSON.stringify(boundary.error)),
+                  };
+                }
+                if (boundary.kind !== "suspended") {
+                  return boundary;
+                }
+                const descriptor = options.bindOperation(
+                  boundary.request.request,
+                  boundary.request.site,
+                );
+                return {
+                  kind: "suspended",
+                  suspensionId: boundary.suspensionId,
+                  request: {
+                    kind: "record",
+                    boundary: {
+                      serializable: { type: "operation", descriptor },
+                      *execute(attempt: RecordAttemptContext) {
+                        if (descriptor.kind !== "effect") {
+                          throw new CrankError(
+                            "program_protocol_error",
+                            "Operation settles through the host",
+                          );
+                        }
+                        return yield* InstalledEffectPort.api.operations.run(descriptor, attempt);
+                      },
+                    },
+                  },
+                };
+              }
+              // Translate the evaluator's value/throw vocabulary. The attachment
+              // owns the driving loop; this adapter never performs host requests.
+              let initial: ProgramExecutionState["boundary"];
+              try {
+                initial = bind(executionState.boundary);
+              } catch (error) {
+                failed = true;
+                throw error;
+              }
+              yield* provideExecution({
+                boundary: initial,
+                execution: {
+                  *resume(suspensionId, reply: ProgramReply) {
+                    if (reply.kind !== "record") {
+                      throw new CrankError("program_protocol_error", "Expected record reply");
+                    }
+                    try {
+                      const outcome = reply.outcome;
+                      let next: KernelExecutionState["boundary"];
+                      if (outcome.status === "cancelled") {
+                        next = yield* execution.cancel();
+                      } else {
+                        next = yield* execution.resume(
+                          suspensionId,
                           outcome.status === "ok"
                             ? { kind: "value", value: outcome.value }
                             : { kind: "throw", value: assertJson(outcome.error) },
                         );
-                  activation = { execution, boundary: next };
-                } catch (error) {
-                  if (!(error instanceof DurableProgramCancellation)) {
-                    throw error;
-                  }
-                  activation = { execution, boundary: yield* execution.cancel() };
-                }
-              }
-            } catch (error) {
-              failed = true;
-              throw error;
-            }
+                      }
+                      return bind(next);
+                    } catch (error) {
+                      failed = true;
+                      throw error;
+                    }
+                  },
+                  *cancel(reason) {
+                    try {
+                      const next = yield* execution.cancel(reason);
+                      return bind(next);
+                    } catch (error) {
+                      failed = true;
+                      throw error;
+                    }
+                  },
+                  dispose: () => execution.dispose(),
+                },
+              });
+            });
           },
           *capture() {
             // A thrown evaluator error has no resumable boundary. Preserve the
             // failed frontier with replay rather than masking it with capture errors.
-            if (failed) return { kind: "replay" };
-            if (disposed || !activation) {
+            if (failed) {
+              return { kind: "replay" };
+            }
+            if (disposed || !executionState) {
               throw new CrankError("program_protocol_error", "Computation is unavailable");
             }
-            const snapshot = yield* activation.execution.capture();
+            const snapshot = yield* executionState.execution.capture();
             assertKernelCompatibility(options.kernelIdentity, prepared.program, snapshot);
             return {
               kind: "continuation",
@@ -137,8 +199,8 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
             }
             disposed = true;
             try {
-              if (activation) {
-                yield* activation.execution.dispose();
+              if (executionState) {
+                yield* executionState.execution.dispose();
               }
             } finally {
               yield* prepared.kernel.close();

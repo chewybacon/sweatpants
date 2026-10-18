@@ -124,7 +124,7 @@ export function createCompiledProgramDriver(
             return view(h);
         },
         *shutdown(attachment, reason) {
-            if (active.delete(attachment.handle)) observe({ type: "activation-discarded", reason });
+            if (active.delete(attachment.handle)) observe({ type: "attachment-disposed", reason });
             // No stepping and no cleanup here: cancellation is an explicit command.
         },
     };

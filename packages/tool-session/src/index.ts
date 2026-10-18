@@ -10,3 +10,10 @@ export {
 } from "./event-log.ts";
 
 export * from "./ephemeral.ts";
+export {
+  createToolInvocationExecutor,
+  ToolInvocationExecutor,
+  advanceToolInvocation,
+  type ToolInvocationBoundary,
+  type ToolInvocationRequest,
+} from "./invocation-executor.ts";

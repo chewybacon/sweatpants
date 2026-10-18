@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { run, type Operation } from "effection";
+import { run, scoped, type Operation } from "effection";
 import { canonicalDigest } from "@sweatpants/foundation";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
@@ -8,7 +8,13 @@ import {
   type EffectDescriptor,
   type ProgramRestoreRequest,
 } from "@sweatpants/durable-execution";
-import type { KernelActivation, KernelBoundary, WorkflowKernel } from "@sweatpants/workflow-kernel";
+import {
+  KernelExecutor,
+  createKernelExecution,
+  type KernelExecutionState,
+  type KernelBoundary,
+  type WorkflowKernel,
+} from "@sweatpants/workflow-kernel";
 import { createKernelProgramBackend } from "../index.ts";
 import {
   createWorkflowProgramDriver,
@@ -31,27 +37,29 @@ function fixture(
   startError?: Error,
 ) {
   const events: string[] = [];
-  const boundary: KernelBoundary = { kind: "effect", site: "approval", request: null };
-  function activation(): KernelActivation {
-    return {
-      boundary,
-      execution: {
-        *resume(reply) {
-          events.push("resume");
-          return { kind: "terminal", outcome: { kind: "returned", value: reply.value } };
-        },
-        *cancel() {
+  const boundary: KernelBoundary = {
+    kind: "suspended",
+    suspensionId: "1",
+    request: { site: "approval", request: null },
+  };
+  function executionState(): KernelExecutionState {
+    return createKernelExecution(boundary, {
+      *turn(command) {
+        if (command.kind === "cancel") {
           events.push("cancel");
-          return { kind: "terminal", outcome: { kind: "cancelled" } };
-        },
-        *capture() {
-          return { kernel: identity, programDigest: "digest", state: { waiting: true } };
-        },
-        *dispose() {
-          events.push("dispose");
-        },
+          return { kind: "cancelled" };
+        }
+        const reply = command.reply;
+        events.push("resume");
+        return { kind: "completed", value: reply.value };
       },
-    };
+      *capture() {
+        return { kernel: identity, programDigest: "digest", state: { waiting: true } };
+      },
+      *dispose() {
+        events.push("dispose");
+      },
+    });
   }
   const driver = createWorkflowProgramDriver(
     createKernelProgramBackend({
@@ -69,11 +77,11 @@ function fixture(
           *start() {
             events.push("start");
             if (startError) throw startError;
-            return activation();
+            return executionState();
           },
           *restore() {
             events.push("restore");
-            return activation();
+            return executionState();
           },
           *close() {
             if (!closed) {
@@ -101,6 +109,119 @@ function fixture(
 }
 
 describe("kernel program backend", () => {
+  it("keeps completed compute available for capture until its container is disposed", async () => {
+    const { driver, events } = fixture();
+    await run(function* () {
+      const attachment = yield* driver.attach(attach);
+      yield* driver.step(attachment, { type: "start", input: null });
+      const outcome = { status: "ok" as const, value: true };
+      const completed = yield* driver.step(attachment, {
+        type: "resume",
+        actionIndex: 0,
+        outcome,
+        replayed: true,
+        receipt: {
+          sessionId: "s",
+          taskId: "t",
+          pullId: "p",
+          resolutionOffset: "1",
+          outcomeDigest: canonicalDigest(outcome),
+          status: "accepted",
+        },
+      });
+      expect(completed).toEqual({ type: "completed", actionIndex: 1, value: true });
+      expect(events).toEqual(["start", "resume"]);
+      const checkpoint = yield* driver.checkpoint(attachment);
+      expect(checkpoint.kind).toBe("continuation");
+      expect(events).toEqual(["start", "resume"]);
+      yield* driver.shutdown(attachment, "completed");
+      expect(events).toEqual(["start", "resume", "dispose", "close"]);
+    });
+  });
+
+  it("observes fresh and restored starts through the same scoped executor middleware", async () => {
+    const first = fixture();
+    const second = fixture();
+    const observed: string[] = [];
+    await run(function* () {
+      yield* KernelExecutor.api.around({
+        *start([program, input], next) {
+          observed.push(`before:${program.digest}`);
+          const executionState = yield* next(program, input);
+          observed.push(`after:${executionState.boundary.kind}`);
+          return executionState;
+        },
+      });
+      const checkpoint = yield* scoped(function* () {
+        const attachment = yield* first.driver.attach(attach);
+        yield* first.driver.step(attachment, { type: "start", input: null });
+        const saved = yield* first.driver.checkpoint(attachment);
+        yield* first.driver.shutdown(attachment, "parked");
+        return saved;
+      });
+      if (checkpoint.kind !== "continuation") throw Error("Expected continuation");
+      yield* scoped(function* () {
+        const restored = yield* second.driver.restore({
+          attach,
+          checkpoint: {
+            ...checkpoint,
+            resumeAfter: { actionIndex: -1, replayChainDigest: "seed" },
+          },
+          replay: [],
+          replayChainSeed: "seed",
+          replayChainDigest: "seed",
+          replayedThroughActionIndex: -1,
+        });
+        expect(restored.frontier).toMatchObject({ type: "operation", actionIndex: 0 });
+        yield* second.driver.shutdown(restored.attachment, "parked");
+      });
+    });
+    expect(observed).toEqual([
+      "before:digest",
+      "after:suspended",
+      "before:digest",
+      "after:suspended",
+    ]);
+    expect(first.events).toEqual(["start", "dispose", "close"]);
+    expect(second.events).toEqual(["restore", "dispose", "close"]);
+  });
+
+  it("keeps restored startup scoped while a fresh sibling starts normally", async () => {
+    const first = fixture();
+    const checkpoint = await run(function* () {
+      const attachment = yield* first.driver.attach(attach);
+      yield* first.driver.step(attachment, { type: "start", input: null });
+      const saved = yield* first.driver.checkpoint(attachment);
+      yield* first.driver.shutdown(attachment, "parked");
+      return saved;
+    });
+    if (checkpoint.kind !== "continuation") throw Error("Expected continuation");
+    const restoring = fixture();
+    const fresh = fixture();
+    await run(function* () {
+      const restored = yield* restoring.driver.restore({
+        attach,
+        checkpoint: {
+          ...checkpoint,
+          resumeAfter: { actionIndex: -1, replayChainDigest: "seed" },
+        },
+        replay: [],
+        replayChainSeed: "seed",
+        replayChainDigest: "seed",
+        replayedThroughActionIndex: -1,
+      });
+      const attachment = yield* fresh.driver.attach({ ...attach, taskId: "sibling" });
+      const next = yield* fresh.driver.step(attachment, { type: "start", input: null });
+      expect(next).toMatchObject({ type: "operation", actionIndex: 0 });
+      expect(restoring.events).toEqual(["restore"]);
+      expect(fresh.events).toEqual(["start"]);
+      yield* fresh.driver.shutdown(attachment, "parked");
+      yield* restoring.driver.shutdown(restored.attachment, "parked");
+    });
+    expect(restoring.events).toEqual(["restore", "dispose", "close"]);
+    expect(fresh.events).toEqual(["start", "dispose", "close"]);
+  });
+
   it("preserves a failed start frontier without capturing unavailable computation", async () => {
     const { driver } = fixture(
       undefined,

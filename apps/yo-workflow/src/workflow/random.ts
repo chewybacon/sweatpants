@@ -1,8 +1,6 @@
 import { assertJson, canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { DurableProgramContext } from "@sweatpants/durable-execution";
-import { Eval, type TisynExpr } from "@tisyn/ir";
 import { z } from "zod";
-import { expandConstructors } from "./constructor-syntax.ts";
 
 export const randomParameters = z.union([
   z
@@ -25,25 +23,6 @@ export const randomContract = {
   parameters: assertJson(z.toJSONSchema(randomParameters)),
   output: { anyOf: [{ type: "string" }, { type: "integer" }] },
 };
-
-export function expandRandomSyntax(source: string): string {
-  return expandConstructors(source, { Random: "__tisyn_random" });
-}
-
-export function lowerRandomSyntax(value: TisynExpr): TisynExpr {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(lowerRandomSyntax);
-  const node = value as Record<string, TisynExpr>;
-  if (node.tisyn === "eval" && node.id === "__tisyn_random") {
-    if (!Array.isArray(node.data) || node.data.length !== 1) {
-      throw new Error("Random requires one request expression");
-    }
-    return Eval("random", lowerRandomSyntax(node.data[0])) as TisynExpr;
-  }
-  return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, lowerRandomSyntax(child)]),
-  );
-}
 
 export function* randomValue(
   input: z.infer<typeof randomParameters>,

@@ -374,3 +374,10 @@ export {
   type ProgramBackend,
   type ProgramComputation,
 } from "./workflow/program-backend.ts";
+
+export { EffectionKernel } from "./workflow/effection-kernel.ts";
+export type {
+  ProgramRequest,
+  ProgramReply,
+  ProgramExecutionState,
+} from "./workflow/program-execution.ts";

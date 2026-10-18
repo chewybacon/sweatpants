@@ -137,7 +137,7 @@ export function createWorkflowProgramDriver(
     const attachmentId = stableProgramAttachmentId(request);
     const open = function* () {
       const computation = yield* backend.open(request, checkpoint);
-      const owned = yield* openProgramAttachment(request, () => computation.run(), actionIndex);
+      const owned = yield* openProgramAttachment(request, computation, actionIndex);
       return { owned, computation };
     };
     let handle: WorkflowDriverAttachmentHandle;

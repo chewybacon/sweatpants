@@ -4,7 +4,7 @@ import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { decisionRequestSchema } from "@sweatpants/model-decision";
 import type { Operation } from "effection";
 import { z } from "zod";
-import type { BoundTool } from "../tisyn.ts";
+import type { BoundTool } from "../bound-tool.ts";
 import { decisionBinding, decisionContract } from "../decisions.ts";
 import { randomValue, randomParameters, randomContract } from "../random.ts";
 import {

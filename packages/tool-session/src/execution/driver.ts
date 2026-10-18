@@ -1,3 +1,4 @@
+import { advanceToolInvocation, type ToolInvocationBoundary } from "../invocation-executor.ts";
 import { parseRuntimeToolParameters, requireToolParameterResult } from "../tool-parameters.ts";
 import type { Json } from "@sweatpants/foundation";
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
@@ -18,7 +19,6 @@ import {
   modelSelectionFromMetadata,
   ToolInvocationHostPort,
   type ToolInvocationHost,
-  type ToolInvocationTurn,
   type ToolSessionSamplingProvider,
   type TurnToolInvocation,
 } from "../index.ts";
@@ -44,12 +44,12 @@ function* turnWithActiveAbort(
   host: ToolInvocationHost,
   request: TurnToolInvocation,
   signal: AbortSignal | undefined,
-): Operation<ToolInvocationTurn> {
+): Operation<ToolInvocationBoundary> {
   if (!signal) {
-    return yield* host.turn(request);
+    return yield* advanceToolInvocation(host, request);
   }
   return yield* race([
-    host.turn(request),
+    advanceToolInvocation(host, request),
     (function* abortActiveTurn() {
       yield* waitForAbort(signal);
       yield* host.dispose(request.invocationId);
@@ -79,7 +79,7 @@ function* runInvocationTurnLoop(
   host: ToolInvocationHost,
   runtimeId: string,
   call: ChatToolCall,
-  initialTurn: ToolInvocationTurn,
+  initialTurn: ToolInvocationBoundary,
   samplingProvider: ToolSessionSamplingProvider,
 ): Operation<ToolExecution> {
   let currentTurn = initialTurn;
@@ -90,19 +90,19 @@ function* runInvocationTurnLoop(
       sessionId: call.id,
       callId: call.id,
       toolName: call.name,
-      ...(currentTurn.type === "parked" ? { cursor: currentTurn.cursor } : {}),
+      ...(currentTurn.kind === "suspended" ? { cursor: currentTurn.request.cursor } : {}),
     });
-    if (currentTurn.type === "completed") {
-      return { kind: "completed", ref, result: currentTurn.result };
+    if (currentTurn.kind === "completed") {
+      return { kind: "completed", ref, result: currentTurn.value };
     }
-    if (currentTurn.type === "failed") {
+    if (currentTurn.kind === "failed") {
       return {
         kind: "failed",
         ref,
         error: { code: currentTurn.error.code, message: currentTurn.error.message },
       };
     }
-    if (currentTurn.type === "cancelled") {
+    if (currentTurn.kind === "cancelled") {
       return {
         kind: "failed",
         ref,
@@ -112,9 +112,9 @@ function* runInvocationTurnLoop(
         },
       };
     }
-    if (currentTurn.type === "parked") {
-      if (currentTurn.ask.kind === "elicit") {
-        const ask = currentTurn.ask;
+    if (currentTurn.kind === "suspended") {
+      if (currentTurn.request.kind === "elicit") {
+        const ask = currentTurn.request;
         return {
           kind: "awaiting_elicit",
           ref,
@@ -128,8 +128,8 @@ function* runInvocationTurnLoop(
           },
         };
       }
-      if (currentTurn.ask.kind === "sample") {
-        const ask = currentTurn.ask;
+      if (currentTurn.request.kind === "sample") {
+        const ask = currentTurn.request;
         const result = yield* samplingProvider.sample([...ask.messages], {
           systemPrompt: ask.systemPrompt,
           maxTokens: ask.maxTokens,
@@ -137,10 +137,10 @@ function* runInvocationTurnLoop(
           toolChoice: ask.toolChoice,
           schema: ask.schema,
         });
-        currentTurn = yield* host.turn({
+        currentTurn = yield* advanceToolInvocation(host, {
           invocationId: call.id,
           commandId: `sample:${ask.requestId}`,
-          cursor: currentTurn.cursor,
+          cursor: currentTurn.request.cursor,
           resume: {
             kind: "sample",
             requestId: ask.requestId,

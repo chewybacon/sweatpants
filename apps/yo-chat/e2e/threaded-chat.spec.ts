@@ -7,7 +7,7 @@ async function createNewThread(page: Page) {
   await expect(page.getByRole("heading", { name: "Threaded Chat" })).toBeVisible();
   await page.getByTestId("thread-create").click();
   await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("Active")).toBeVisible();
+  await expect(page.getByText("Current", { exact: true })).toBeVisible();
 }
 
 function threadInput(page: Page) {
@@ -76,11 +76,13 @@ async function completeCardPick(page: Page) {
 }
 
 async function assertCompletedCardPicks(page: Page, labels: string[]) {
-  await expect(toolCallBlocks(page)).toHaveCount(labels.length, { timeout: 30000 });
+  // The model may call other tools; this helper verifies completed card picks.
+  const cardPicks = toolCallBlocks(page).filter({
+    has: page.getByText("pick card", { exact: true }),
+  });
+  await expect(cardPicks).toHaveCount(labels.length, { timeout: 30000 });
   for (const label of labels) {
-    const block = toolCallBlocks(page)
-      .filter({ hasText: `You picked: ${label}` })
-      .first();
+    const block = cardPicks.filter({ hasText: `You picked: ${label}` }).first();
     await expect(block.getByText(`You picked: ${label}`)).toBeVisible({ timeout: 30000 });
     await expect(pickableCardButtons(block).first()).toBeDisabled({ timeout: 10000 });
   }
@@ -154,7 +156,7 @@ test.describe("Threaded Chat Prototype", () => {
     }
 
     const toolAssistant = page.getByTestId("message-assistant").filter({
-      has: page.getByTestId("tool-call-block").filter({ hasText: /Tool · pick_card/ }),
+      has: page.getByTestId("tool-call-block").filter({ hasText: /pick card/ }),
     });
     await expect(toolAssistant.first()).toBeVisible({ timeout: 30000 });
 

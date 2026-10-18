@@ -4,7 +4,6 @@ export function toolLabel(name: string): string {
   return (
     (
       {
-        tisyn: "Tisyn workflow",
         scheme: "Scheme workflow",
         ask: "Ask you",
         sample: "Model sample",
@@ -72,7 +71,7 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
 
 /** Workflow failures are successful tool deliveries carrying a diagnostic outcome. */
 export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-call" }>) {
-  if (part.state !== "output-available" || !["scheme", "tisyn"].includes(part.name)) return;
+  if (part.state !== "output-available" || part.name !== "scheme") return;
   const output = part.output;
   if (!output || typeof output !== "object" || Array.isArray(output)) return;
   if (output.status !== "invalid" && output.status !== "failed") return;

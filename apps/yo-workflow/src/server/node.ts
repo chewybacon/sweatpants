@@ -5,17 +5,13 @@ import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
 import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
 import { createWorkflowApp } from "./application.ts";
-import { TisynEvaluationPort } from "../workflow/evaluation/port.ts";
-import { createNodeEvaluationDriver } from "../workflow/evaluation/node.ts";
 import { reasoningLevel } from "./model-settings.ts";
 
 const app = createWorkflowApp({
-  workflowLanguage: "scheme",
   decisionProvider: createPiAiDecisionProvider(),
   execution: inProcess({
     *setup() {
       yield* SchemeEvaluationPort.installDriver(createNodeSchemeDriver());
-      yield* TisynEvaluationPort.installDriver(createNodeEvaluationDriver());
     },
   }),
   storage: chatStorageFromEnv({ defaultPath: new URL("../../.data/chat.sqlite", import.meta.url) }),

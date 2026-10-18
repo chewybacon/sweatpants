@@ -1,8 +1,9 @@
 import { graphlib, layout as layoutGraph } from "@dagrejs/dagre";
 import { MarkerType, type Node, type Edge } from "@xyflow/react";
-import type { FlowNode, createProgramFlow } from "./program-flow.ts";
+import type { FlowNode } from "./flow.ts";
+import type { createSchemeFlow } from "./scheme-flow.ts";
 
-export type Flow = ReturnType<typeof createProgramFlow>;
+export type Flow = ReturnType<typeof createSchemeFlow>;
 
 export type ProgramNode = Node<{ step: FlowNode }, "program">;
 export type LoopNode = Node<{ label: string }, "loop">;

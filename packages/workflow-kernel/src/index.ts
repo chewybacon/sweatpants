@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
+import type { Execution, ExecutionBoundary, Executor, Json } from "@sweatpants/foundation";
 
 export interface KernelIdentity {
   readonly kind: string;
@@ -15,19 +15,12 @@ export interface WorkflowProgram {
   readonly code: unknown;
 }
 
-export type KernelOutcome =
-  | { readonly kind: "returned"; readonly value: Json }
-  | { readonly kind: "thrown"; readonly value: Json }
-  | { readonly kind: "cancelled" };
+export interface KernelRequest {
+  readonly site: string;
+  readonly request: Json;
+}
 
-export type KernelBoundary =
-  | {
-      readonly kind: "effect";
-      /** Stable source address, not a journal pull ID. */
-      readonly site: string;
-      readonly request: Json;
-    }
-  | { readonly kind: "terminal"; readonly outcome: KernelOutcome };
+export type KernelBoundary = ExecutionBoundary<KernelRequest, Json, Json>;
 
 export type KernelReply =
   | { readonly kind: "value"; readonly value: Json }
@@ -41,19 +34,16 @@ export interface KernelSnapshot {
 }
 
 /**
- * Bound, activation-local execution. Private JS/Wasm handles never leave the
+ * Bound, live execution. Private JS/Wasm handles never leave the
  * implementation. Operations on one execution must be serialized by the host.
  * resume stops at the next effect/terminal boundary; it does not execute effects.
  */
-export interface KernelExecution {
-  resume(reply: KernelReply): Operation<KernelBoundary>;
-  cancel(): Operation<KernelBoundary>;
+export interface KernelExecution extends Execution<KernelRequest, KernelReply, Json, Json> {
   capture(): Operation<KernelSnapshot>;
-  /** Release compute only. Idempotent; never runs logical cleanup. */
-  dispose(): Operation<void>;
 }
 
-export interface KernelActivation {
+/** Execution/boundary pair with capture on the handle; no separate lifecycle. */
+export interface KernelExecutionState {
   readonly execution: KernelExecution;
   readonly boundary: KernelBoundary;
 }
@@ -68,10 +58,17 @@ export interface KernelActivation {
  * yield cleanup effects; repeated cancellation must not interrupt cleanup.
  * Captures must be detached and portable. Closed instances/executions reject use.
  */
-export interface WorkflowKernel {
+export interface WorkflowKernel extends Executor<
+  WorkflowProgram,
+  Json,
+  KernelRequest,
+  KernelReply,
+  Json,
+  Json
+> {
   readonly identity: KernelIdentity;
-  start(program: WorkflowProgram, input: Json): Operation<KernelActivation>;
-  restore(program: WorkflowProgram, snapshot: KernelSnapshot): Operation<KernelActivation>;
+  start(program: WorkflowProgram, input: Json): Operation<KernelExecutionState>;
+  restore(program: WorkflowProgram, snapshot: KernelSnapshot): Operation<KernelExecutionState>;
   /** Idempotently release all instance resources, without logical unwind. */
   close(): Operation<void>;
 }
@@ -98,3 +95,5 @@ export function assertKernelCompatibility(
     throw new KernelCompatibilityError("Snapshot does not match the pinned program and kernel");
   }
 }
+
+export { createKernelExecution, KernelExecutor } from "./execution.ts";

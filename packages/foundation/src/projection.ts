@@ -7,8 +7,7 @@
  * value type from stage to stage, so TypeScript infers the whole chain and the
  * runtime keeps no stage list at all.
  *
- * The program yields instructions; the runner interprets them. That is the
- * same kernel/interpreter split Tisyn uses, minus the durability concerns.
+ * The program yields instructions; the runner interprets them.
  */
 
 /** One instruction a projection program can yield. */

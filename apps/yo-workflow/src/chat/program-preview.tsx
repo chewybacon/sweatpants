@@ -1,24 +1,17 @@
 import { useMemo } from "react";
-import { createProgramFlow } from "./program-flow.ts";
 import { createSchemeFlow } from "./scheme-flow.ts";
 import { ProgramCanvas } from "./program-canvas.tsx";
 
-export function ProgramPreview({
-  source,
-  language = "tisyn",
-}: {
-  source: string;
-  language?: "scheme" | "tisyn";
-}) {
+export function ProgramPreview({ source }: { source: string }) {
   const plan = useMemo(() => {
     try {
       return {
-        value: language === "scheme" ? createSchemeFlow(source) : createProgramFlow(source),
+        value: createSchemeFlow(source),
       };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }
-  }, [source, language]);
+  }, [source]);
   return (
     <section className="program-preview">
       <details className="logic-plan">
@@ -39,19 +32,11 @@ export function ProgramPreview({
         )}
       </details>
       <details className="source">
-        <summary>{language === "scheme" ? "Scheme source" : "Tisyn source"}</summary>
+        <summary>Scheme source</summary>
         <pre>
           <code>{source}</code>
         </pre>
       </details>
-      {plan.value && plan.value.source !== source && (
-        <details className="source">
-          <summary>Expanded Tisyn</summary>
-          <pre>
-            <code>{plan.value.source}</code>
-          </pre>
-        </details>
-      )}
     </section>
   );
 }

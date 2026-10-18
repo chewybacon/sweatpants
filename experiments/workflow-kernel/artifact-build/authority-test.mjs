@@ -124,7 +124,7 @@ for (const mode of ["complete", "complete-uncached", "cancel-acquire", "cancel-c
             });
             if (i === 9) throw Error("Did not settle");
         }
-        check(() => assert.ok(observations.some((x) => x.type === "activation-discarded")));
+        check(() => assert.ok(observations.some((x) => x.type === "attachment-disposed")));
         if (mode.startsWith("complete")) {
             check(() => assert.deepEqual(seen, ["acquire", "release", "acquire", "release"]));
             if (mode === "complete")

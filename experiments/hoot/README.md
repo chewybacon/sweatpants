@@ -1,6 +1,6 @@
 # Hoot pull-based workflow spike
 
-Isolated experiment; no Sweatpants or Tisyn production code was changed.
+Isolated experiment; no production code was changed.
 
 ## Result
 
@@ -188,8 +188,7 @@ continuations to Sweatpants' real durable tool driver and journal authority.
 This is an isolated experiment; yo-workflow's production evaluator is unchanged.
 
 The frontend is explicitly Scheme. `SchemeEvaluationPort` has the same
-open/advance/close lifecycle and `EvaluationStep` result as the Tisyn evaluator,
-but accepts Scheme source. It does **not** compile Tisyn IR or claim equivalent
+open/advance/close lifecycle and `EvaluationStep` result. It accepts Scheme source and does not claim equivalent
 binding semantics. The experiment has its own program identity, fingerprinting
 the WASM, reflection helpers, host bridge, dispatcher and bound tool contract.
 
@@ -267,100 +266,6 @@ this new bridge/journal composition has not been tested on Cloudflare.
 
 This proves a Scheme continuation can sit behind Sweatpants' existing durable
 effect machinery. It does not yet prove model authoring quality, static Scheme
-types, a deployed Worker integration, or a replacement for Tisyn. The next
+types, a deployed Worker integration, or a production runtime. The next
 useful comparison is the same small interactive workflow authored by a model
 in each frontend, with the same host capabilities and recovery expectations.
-
-## Model authoring comparison (2026-10-14)
-
-`comparison/` runs real Haiku 5.5 authoring via the same provider adapter and
-credential store as yo-workflow. It verifies the outgoing reasoning effort is
-`medium`. It does not use a mocked model or manually repair generated source.
-
-The primary run is `comparison/results-2026-10-14T12-07-39.295Z/`. Each language
-received two fresh-conversation trials for three requests: literal greeting,
-three-round rock/paper/scissors with buttons and invalid-input handling, and a
-name-badge review/edit loop. Both received the same Ask/Random contracts and
-completion requirements, with compact frontend-specific language references.
-No task solution or task-specific implementation example was supplied.
-
-The profile is restricted Scheme versus Tisyn with a compact reference, not all
-of Scheme versus the full production Tisyn prompt. In particular the current
-Scheme environment omits standard `and`/`or`; some generated game sources use
-these despite the advertised allowlist. This is a profile/admission issue as
-well as a language-authoring comparison, and deserves a parity follow-up.
-
-| Task (two initial trials each) | Scheme | Tisyn |
-| ------------------------------ | ------ | ----- |
-| Literal greeting               | 2/2    | 2/2   |
-| Three-round game               | 0/2    | 0/2   |
-| Badge review and correction    | 2/2    | 1/2   |
-| Total                          | 4/6    | 3/6   |
-
-A single repair with the durable execution diagnostic rescued none of the five
-initial failures. That diagnostic is usually only `Durable program failed`;
-it obscures parser details. Tisyn failures include wrong constructor arities
-caused by misplaced parentheses; Hoot failures include unexpected closing
-parentheses and unexpected EOF. These trials do not show a failed game strategy:
-the games did not reach successful execution.
-
-All replies in the acceptance harness cross a serialized authority snapshot and
-a fresh evaluator. Checks include exact results, suggested buttons, random
-record outcomes, scores, retained state, stop handling and evaluator cleanup.
-The successful badge programs additionally pass 33 checks covering decline and
-cancel at later questions and an unrecognized review reply. The harness itself
-has a known-good greeting test for both runtimes.
-
-The Scheme badge authored a reusable higher-order `with-reply` function using
-lexical callbacks. The successful Tisyn badge authored an Ask helper returning
-an `{ok,value}` / `{ok,status}` result and used explicit recursive state. Neither
-was instructed to choose that abstraction. No first-attempt source in this run
-used a local syntax macro.
-
-Median first-attempt reported output tokens were 2,459 for Scheme and 6,376.5
-for Tisyn; median source sizes were 1,734 and 1,269.5 characters respectively.
-Provider output usage is not a source-token count. Timing/cost data are retained
-in `metrics.json`; these small, sequential, cached requests are not a runtime
-performance benchmark. Two trials per task are exploratory, not a statistical
-language ranking.
-
-An initial pilot with a 6,500-token ceiling completed both greetings but
-truncated the first Tisyn game. `comparison/pilot.log` and the earlier result
-folder retain that partial run. The primary run used 12,000 tokens for every
-request and the same 120-second request timeout. Primary artifacts include
-full prompts, returned source, provider usage, effort, diagnostics and successful
-interaction traces. `.scm`/`.tisyn` files are untouched extracted model source.
-
-`comparison/repair.ts` is a **separate diagnostic-feedback experiment**: it
-branches from each initial failed source (not from its failed generic repair),
-gives the actual parser/evaluator diagnostic, and permits one new model attempt.
-Its outcomes are recorded separately in `diagnostic-repairs.json`; they do not
-replace the primary scores above.
-
-That experiment rescued one Scheme game and one Tisyn badge. Including successes
-from the initial attempts, totals with one **diagnostic-guided** repair are
-5/6 Scheme and 4/6 Tisyn. One Tisyn diagnostic repair exhausted the 12,000-token
-ceiling; the other remaining game repairs still failed. This is a separate
-repair branch, not two sequential attempts granted to the same conversation.
-
-The repaired Scheme game then passed five additional full games, collectively
-covering all nine player/computer move matchups. Each game also exercises an
-invalid move, the three suggestion buttons, real recorded randomness, scoring,
-snapshot recovery at every reply, and initial decline/cancel. See
-`prs-audit.json`. No generated source was hand-edited to obtain these results.
-
-Reproduce (each comparison/repair command makes real provider requests):
-
-```sh
-pnpm compare
-pnpm compare:repair comparison/results-<timestamp>
-pnpm compare:audit comparison/results-<timestamp>
-NODE_OPTIONS=--conditions=development pnpm exec tsx comparison/audit-prs.ts comparison/results-<timestamp>
-python3 comparison/analyze.py comparison/results-<timestamp>
-pnpm test
-pnpm exec tsc --noEmit
-```
-
-The actionable result so far is to expose precise validation errors and reduce
-nested interaction boilerplate before drawing a conclusion about replacing
-Tisyn. The Scheme frontend remains an isolated spike.

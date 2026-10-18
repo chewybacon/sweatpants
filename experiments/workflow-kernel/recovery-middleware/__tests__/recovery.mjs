@@ -8,7 +8,7 @@ import {
     ProgramDriverRegistryContext,
 } from "../../../../packages/durable-execution/dist/index.js";
 import { canonicalDigest } from "../../../../packages/foundation/dist/index.js";
-import { createHootDriver, manifest } from "../../hoot-composition/driver.mjs";
+import { createHootDriver, manifest } from "../../hoot-composition/fixture-driver.mjs";
 
 const { run, scoped, spawn, suspend, withResolvers } = createRequire(
     new URL("../../../../package.json", import.meta.url),

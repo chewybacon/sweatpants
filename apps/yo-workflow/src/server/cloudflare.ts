@@ -1,14 +1,13 @@
 import { executionFetch } from "../../execution/worker.mjs";
 export { ExecutionLab } from "../../execution/worker.mjs";
 import schemeManifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
-import kernelBundle from "../workflow/evaluation/generated/kernel-source.json" with { type: "json" };
 import { DurableObject } from "cloudflare:workers";
 import { handle as astroHandle } from "@astrojs/cloudflare/handler";
 import { createChatFetchHandler } from "@sweatpants/agent-host/server";
 import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";
 import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai";
-import { createTisynModels } from "./cloudflare/model-catalog.ts";
-import { createCloudflareTisynApp, type CloudflareBindings } from "./cloudflare/application.ts";
+import { createWorkflowModels } from "./cloudflare/model-catalog.ts";
+import { createCloudflareWorkflowApp, type CloudflareBindings } from "./cloudflare/application.ts";
 import { createConversationRouter, type ConversationNamespace } from "./cloudflare/routing.ts";
 import { reasoningLevel } from "./model-settings.ts";
 
@@ -36,8 +35,8 @@ export class Conversations extends DurableObject<Env> {
       for (const [id, credential] of Object.entries(records)) {
         await credentials.modify(id, async () => credential);
       }
-      const models = createTisynModels(credentials);
-      return createCloudflareTisynApp(
+      const models = createWorkflowModels(credentials);
+      return createCloudflareWorkflowApp(
         this.env,
         pi({
           provider: this.env.DEFAULT_CHAT_MODEL_PROVIDER,
@@ -67,7 +66,6 @@ export default {
         tools: "executor-do",
         evaluation: "hoot-scheme-in-tool-executor-do",
         scheme: schemeManifest,
-        kernel: kernelBundle.provenance,
         sampling: "native",
         site: "astro",
       });

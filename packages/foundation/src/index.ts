@@ -33,3 +33,13 @@ export * from "./schema.ts";
 
 export * from "./schema-validation.ts";
 export * from "./parser.ts";
+export type {
+  SuspensionId,
+  ExecutionBoundary,
+  Execution,
+  ExecutionState,
+  Executor,
+} from "./execution.ts";
+
+export { createExecution } from "./execution.ts";
+export type { ExecutionCommand, ExecutionDriver } from "./execution.ts";

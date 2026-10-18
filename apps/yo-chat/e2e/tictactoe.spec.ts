@@ -422,6 +422,13 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
+    // Inspect the shared game component's collapsed move history.
+    for (const history of await page.locator("details.game-history").all()) {
+      if ((await history.getAttribute("open")) === null) {
+        await history.locator("summary").click();
+      }
+    }
+
     // After first round, we should have 2 move cards
     const moveCard1 = page.locator("text=Move #1").first();
     const moveCard2 = page.locator("text=Move #2").first();
@@ -445,6 +452,13 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
         await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
       } catch {
         // Game might have ended quickly
+      }
+
+      // Inspect the shared game component's collapsed move history.
+      for (const history of await page.locator("details.game-history").all()) {
+        if ((await history.getAttribute("open")) === null) {
+          await history.locator("summary").click();
+        }
       }
 
       const moveCard3 = page.locator("text=Move #3");
@@ -495,6 +509,13 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     const thinkingLocator = page.getByRole("button", { name: "Stop" });
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
+
+    // Inspect the shared game component's collapsed move history.
+    for (const history of await page.locator("details.game-history").all()) {
+      if ((await history.getAttribute("open")) === null) {
+        await history.locator("summary").click();
+      }
+    }
 
     // Verify move cards exist
     const moveCard = page.locator("text=Move #1").first();

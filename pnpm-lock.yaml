@@ -15,9 +15,6 @@ catalogs:
     '@effectionx/vitest':
       specifier: ^0.3.1
       version: 0.3.1
-    '@effectionx/websocket':
-      specifier: ^2.3.0
-      version: 2.3.0
     '@effectionx/worker':
       specifier: ^0.5.2
       version: 0.5.2
@@ -162,6 +159,11 @@ overrides:
   '@effectionx/timebox': ^0.4.3
   effection: 4.2.0
   '@babel/types': 7.29.8
+
+patchedDependencies:
+  '@effectionx/worker@0.5.2':
+    hash: 56077b401d0b0e7d8266c943afd84ad8f046b7f20c7d234a148a830de5036d81
+    path: patches/@effectionx__worker@0.5.2.patch
 
 importers:
 
@@ -1030,9 +1032,6 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 1.0.1
         version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.13))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.21.0)(zod@4.1.13)
-      '@jitl/quickjs-wasmfile-release-sync':
-        specifier: 0.32.0
-        version: 0.32.0
       '@stylexjs/stylex':
         specifier: 0.19.1
         version: 0.19.1
@@ -1075,6 +1074,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
+      '@sweatpants/program-backend-kernel':
+        specifier: workspace:*
+        version: link:../../packages/program-backend-kernel
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
@@ -1096,27 +1098,15 @@ importers:
       '@sweatpants/vite-plugin':
         specifier: workspace:*
         version: link:../../packages/vite-plugin
-      '@tisyn/dsl':
-        specifier: 0.4.8
-        version: 0.4.8
-      '@tisyn/ir':
-        specifier: 0.16.0
-        version: 0.16.0
-      '@tisyn/kernel':
-        specifier: 0.16.0
-        version: 0.16.0
-      '@tisyn/validate':
-        specifier: 0.16.0
-        version: 0.16.0
+      '@sweatpants/workflow-kernel':
+        specifier: workspace:*
+        version: link:../../packages/workflow-kernel
       '@xyflow/react':
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(immer@11.1.15)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       effection:
         specifier: 4.2.0
         version: 4.2.0
-      quickjs-emscripten-core:
-        specifier: 0.32.0
-        version: 0.32.0
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -1315,21 +1305,15 @@ importers:
       '@effectionx/vitest':
         specifier: 'catalog:'
         version: 0.3.1(effection@4.2.0)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1))
-      '@effectionx/websocket':
-        specifier: 'catalog:'
-        version: 2.3.0(effection@4.2.0)
       '@effectionx/worker':
         specifier: 'catalog:'
-        version: 0.5.2(effection@4.2.0)
+        version: 0.5.2(patch_hash=56077b401d0b0e7d8266c943afd84ad8f046b7f20c7d234a148a830de5036d81)(effection@4.2.0)
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
-      '@types/ws':
-        specifier: 'catalog:'
-        version: 8.18.1
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
@@ -1339,9 +1323,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      ws:
-        specifier: 'catalog:'
-        version: 8.21.0
 
   packages/chat-client:
     dependencies:
@@ -2101,6 +2082,37 @@ importers:
         specifier: 'catalog:'
         version: 8.21.0
 
+  packages/program-backend-kernel:
+    dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
+      '@sweatpants/workflow-kernel':
+        specifier: workspace:*
+        version: link:../workflow-kernel
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
+
   packages/react-chat:
     dependencies:
       '@sweatpants/chat-client':
@@ -2571,7 +2583,7 @@ importers:
     dependencies:
       '@effectionx/worker':
         specifier: 'catalog:'
-        version: 0.5.2(effection@4.2.0)
+        version: 0.5.2(patch_hash=56077b401d0b0e7d8266c943afd84ad8f046b7f20c7d234a148a830de5036d81)(effection@4.2.0)
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
@@ -2743,37 +2755,6 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
-
-  packages/program-backend-kernel:
-    dependencies:
-      '@sweatpants/durable-execution':
-        specifier: workspace:*
-        version: link:../durable-execution
-      '@sweatpants/foundation':
-        specifier: workspace:*
-        version: link:../foundation
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
-      '@sweatpants/workflow-kernel':
-        specifier: workspace:*
-        version: link:../workflow-kernel
-      effection:
-        specifier: 4.2.0
-        version: 4.2.0
-    devDependencies:
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
 
   packages/workflow-kernel:
     dependencies:
@@ -3864,12 +3845,6 @@ packages:
     peerDependencies:
       effection: 4.2.0
       vitest: ^3 || ^4
-
-  '@effectionx/websocket@2.3.0':
-    resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
-    engines: {node: '>= 22'}
-    peerDependencies:
-      effection: 4.2.0
 
   '@effectionx/worker@0.5.2':
     resolution: {integrity: sha512-a8iXYkDrEwV6uiP7GCO2w/cVDE+yymiT+RNRPtLBqYAyb1BqtTVAkVT4pDHCLgWkjz9SYe3e/dk68gKGlC0ZkA==}
@@ -5233,12 +5208,6 @@ packages:
   '@jest/schemas@29.6.3':
     resolution: {integrity: sha512-mo5j5X+jIZmJQveBKeS/clAueipV7KgiX1vMgCxam1RNYiqE1w62n0/tJJnHtjW8ZHcQco5gY85jA3mi0L+nSA==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
-
-  '@jitl/quickjs-ffi-types@0.32.0':
-    resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
-
-  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
-    resolution: {integrity: sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg==}
 
   '@jrichman/ink@6.4.6':
     resolution: {integrity: sha512-QHl6l1cl3zPCaRMzt9TUbTX6Q5SzvkGEZDDad0DmSf5SPmT1/90k6pGPejEvDCJprkitwObXpPaTWGHItqsy4g==}
@@ -6831,9 +6800,6 @@ packages:
   '@sinclair/typebox@0.27.8':
     resolution: {integrity: sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==}
 
-  '@sinclair/typebox@0.34.52':
-    resolution: {integrity: sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw==}
-
   '@sindresorhus/is@5.6.0':
     resolution: {integrity: sha512-TV7t8GKYaJWsn00tFDqBw8+Uqmr8A0fRU1tvTQhyZzGv0sJCGRQL3JGMI3ucuKo3XIZdUP+Lx7/gh2t3lewy7g==}
     engines: {node: '>=14.16'}
@@ -7388,18 +7354,6 @@ packages:
         optional: true
       '@types/react-dom':
         optional: true
-
-  '@tisyn/dsl@0.4.8':
-    resolution: {integrity: sha512-cDeKrpkExKXd5D6vbnr1GMLsWROkLbkkP1V3wztHHkj2AZ4HSPWYlBktaU7i+6hKD3wWZcr93jiJgzrieVd7OQ==}
-
-  '@tisyn/ir@0.16.0':
-    resolution: {integrity: sha512-WO8JdJm7H3l3NyRwuX1uEjk7O75ptts4oYbHMsTDgelikMSTMBYsKWfzr2UK4PCAlr1wa+AqyD+lgl2pvrNGKA==}
-
-  '@tisyn/kernel@0.16.0':
-    resolution: {integrity: sha512-t3JjJSmVKRDOswjhREdueCAxOLsgv8MCXMuPOaGAxFTEyyQ6BsVE5lVMLttUNqr0qaotNP75YFRkzebYI8us9w==}
-
-  '@tisyn/validate@0.16.0':
-    resolution: {integrity: sha512-9FbqDQIeFHQLStfcDvd5l76pBPGk/tD0ETSe1PPde2GZgbwWQX+bJvl2pKVguZD473s/1CZIvdDnX5Pt8B8tdw==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -11134,9 +11088,6 @@ packages:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
 
-  quickjs-emscripten-core@0.32.0:
-    resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
-
   radix3@1.1.2:
     resolution: {integrity: sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA==}
 
@@ -14446,11 +14397,7 @@ snapshots:
       effection: 4.2.0
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
 
-  '@effectionx/websocket@2.3.0(effection@4.2.0)':
-    dependencies:
-      effection: 4.2.0
-
-  '@effectionx/worker@0.5.2(effection@4.2.0)':
+  '@effectionx/worker@0.5.2(patch_hash=56077b401d0b0e7d8266c943afd84ad8f046b7f20c7d234a148a830de5036d81)(effection@4.2.0)':
     dependencies:
       '@effectionx/signals': 0.5.3(effection@4.2.0)
       '@effectionx/timebox': 0.4.3(effection@4.2.0)
@@ -15316,12 +15263,6 @@ snapshots:
   '@jest/schemas@29.6.3':
     dependencies:
       '@sinclair/typebox': 0.27.8
-
-  '@jitl/quickjs-ffi-types@0.32.0': {}
-
-  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.32.0
 
   '@jrichman/ink@6.4.6(@types/react@19.2.8)(react@19.2.3)':
     dependencies:
@@ -16724,8 +16665,6 @@ snapshots:
 
   '@sinclair/typebox@0.27.8': {}
 
-  '@sinclair/typebox@0.34.52': {}
-
   '@sindresorhus/is@5.6.0': {}
 
   '@sindresorhus/is@7.2.0': {}
@@ -17605,23 +17544,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.8
       '@types/react-dom': 19.2.3(@types/react@19.2.8)
-
-  '@tisyn/dsl@0.4.8':
-    dependencies:
-      '@tisyn/ir': 0.16.0
-      effection: 4.2.0
-
-  '@tisyn/ir@0.16.0': {}
-
-  '@tisyn/kernel@0.16.0':
-    dependencies:
-      '@tisyn/ir': 0.16.0
-      '@tisyn/validate': 0.16.0
-
-  '@tisyn/validate@0.16.0':
-    dependencies:
-      '@sinclair/typebox': 0.34.52
-      '@tisyn/ir': 0.16.0
 
   '@tybys/wasm-util@0.10.1':
     dependencies:
@@ -21907,10 +21829,6 @@ snapshots:
   quick-format-unescaped@4.0.4: {}
 
   quick-lru@5.1.1: {}
-
-  quickjs-emscripten-core@0.32.0:
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.32.0
 
   radix3@1.1.2: {}
 

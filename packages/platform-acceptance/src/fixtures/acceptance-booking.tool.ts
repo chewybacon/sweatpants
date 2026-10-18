@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { isMainThread, threadId } from "node:worker_threads";
 import { z } from "zod";
 import { createTool } from "@sweatpants/agent-sdk";
@@ -23,7 +24,10 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
     z.object({
       from: z.string(),
       destination: z.string(),
-      behavior: z.enum(["complete", "throw_after_resume"]).default("complete"),
+      crashEvidencePath: z.string().optional(),
+      behavior: z
+        .enum(["complete", "throw_after_resume", "crash_after_resume"])
+        .default("complete"),
     }),
   )
   .elicits({
@@ -56,6 +60,14 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
     });
     if (seatResult.action !== "accept") {
       return { success: false, reason: "seat_not_selected" };
+    }
+
+    if (params.behavior === "crash_after_resume") {
+      if (isMainThread || !params.crashEvidencePath)
+        throw new Error("Crash fixture requires a worker and evidence file");
+      // Record a stand-in external effect, then die before returning its result.
+      appendFileSync(params.crashEvidencePath, "booking-attempt\n");
+      process.exit(23);
     }
 
     const messagesBeforeSample = ctx.messages.length;

@@ -10,7 +10,7 @@ import {
   type EdgeProps,
   type NodeProps,
 } from "@xyflow/react";
-import type { FlowNode } from "./program-flow.ts";
+import type { FlowNode } from "./flow.ts";
 import {
   layoutFlow,
   nodeLabels,

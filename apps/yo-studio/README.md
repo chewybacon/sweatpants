@@ -227,7 +227,7 @@ double-filing Jira tickets.
 | Placement-aware `model.sample`                                                                  | placement-transparent-model-sampling spec                                     |
 | Activity stream vs semantic journal                                                             | journal-native-portable-agents design                                         |
 | **Code mode v1** (LLM-composed generator programs, admission pipeline, effect approval)         | _not yet designed — next memo_                                                |
-| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | tisyn research (`protocols/tisyn/`), deliberately deferred                    |
+| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | Compiler research, deliberately deferred                                      |
 | Skill promotion (content-addressed workflow → manifest entrypoint)                              | future — builds on resource identity                                          |
 
 The rows above the code-mode line are approved designs or shipping substrate.
@@ -240,7 +240,7 @@ The rows below are what this app exists to pull into being.
 2. **Phase 1** — code mode v1: `composeWorkflow` as a separately authorized
    tool; rejecting purity gate; isolated driver only; elicit-before-execute.
 3. **Phase 2** — measure divergence, gate failures, and approver comprehension;
-   decide whether tisyn IR earns its slot.
+   decide whether a separate IR earns its slot.
 4. **Phase 3** — skill promotion, cross-org tree exchange.
 
 yo-studio becomes real one phase at a time; this README stays the target.

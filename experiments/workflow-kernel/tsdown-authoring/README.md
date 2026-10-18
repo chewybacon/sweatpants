@@ -9,7 +9,7 @@ pnpm --filter yo-workflow execution:dev --port 8131
 ```
 
 Use Node 24. The build invokes pinned tsdown 0.23.1 and TypeScript 5.9.3 through
-pnpm's tool cache; it does not modify workspace dependencies or local Tisyn links.
+pnpm's tool cache; it does not modify workspace dependencies.
 The first invocation needs registry access. Generated `dist/` is untracked.
 Rebuild after changing the generator; restart the local lab to load the new module.
 Vite watch integration is deliberately the next increment.

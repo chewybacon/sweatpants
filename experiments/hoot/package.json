@@ -3,9 +3,6 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "test": "NODE_OPTIONS=--conditions=development tsx --test __tests__/*.test.ts",
-        "compare": "NODE_OPTIONS=--conditions=development tsx comparison/run.ts",
-        "compare:repair": "NODE_OPTIONS=--conditions=development tsx comparison/repair.ts",
-        "compare:audit": "NODE_OPTIONS=--conditions=development tsx comparison/audit.ts"
+        "test": "NODE_OPTIONS=--conditions=development tsx --test __tests__/*.test.ts"
     }
 }

@@ -24,7 +24,11 @@ import {
   EPHEMERAL_TOOL_START_EFFECT,
 } from "./ephemeral-contract.ts";
 import { projectModelSampleCompletion } from "@sweatpants/agent-sdk";
-import { CrankError, type DurableProgramContext } from "@sweatpants/durable-execution";
+import {
+  CrankError,
+  DurableProgramCancellation,
+  type DurableProgramContext,
+} from "@sweatpants/durable-execution";
 import { assertJson, type Json } from "@sweatpants/foundation";
 import type { EphemeralToolRequest } from "@sweatpants/durable-execution";
 
@@ -109,46 +113,59 @@ const adapterTool = createPinnedDurableProgram(
       ...(request.route ? { route: request.route } : {}),
     });
 
-    while (disposition.type === "input_required") {
-      const response =
-        disposition.request.kind === "sample"
-          ? projectModelSampleCompletion(
-              yield* sampleToolOwnedModel(context, disposition.request.payload),
-            )
-          : yield* context.pull(
-              assertJson({
-                kind: "elicit",
-                key: "ephemeral_input",
-                message: disposition.request.message,
-                response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
-                context: {
-                  ephemeralDriver: request.driver,
-                  ephemeralTool: request.tool,
-                  ephemeralKey: disposition.request.key,
-                  ...(request.route !== undefined ? { ephemeralRoute: request.route } : {}),
-                  responseSchema: disposition.request.responseSchema,
-                  ...(disposition.request.context !== undefined
-                    ? { context: disposition.request.context }
-                    : {}),
-                },
-                contextContract: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
-                ...(disposition.request.binding === undefined
-                  ? {}
-                  : { binding: disposition.request.binding }),
-              }),
-            );
+    try {
+      while (disposition.type === "input_required") {
+        const response =
+          disposition.request.kind === "sample"
+            ? projectModelSampleCompletion(
+                yield* sampleToolOwnedModel(context, disposition.request.payload),
+              )
+            : yield* context.pull(
+                assertJson({
+                  kind: "elicit",
+                  key: "ephemeral_input",
+                  message: disposition.request.message,
+                  response: EPHEMERAL_INPUT_RESPONSE_DESCRIPTOR,
+                  context: {
+                    ephemeralDriver: request.driver,
+                    ephemeralTool: request.tool,
+                    ephemeralKey: disposition.request.key,
+                    ...(request.route !== undefined ? { ephemeralRoute: request.route } : {}),
+                    responseSchema: disposition.request.responseSchema,
+                    ...(disposition.request.context !== undefined
+                      ? { context: disposition.request.context }
+                      : {}),
+                  },
+                  contextContract: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
+                  ...(disposition.request.binding === undefined
+                    ? {}
+                    : { binding: disposition.request.binding }),
+                }),
+              );
 
-      disposition = yield* context.effect(
-        EPHEMERAL_TOOL_CONTINUE_EFFECT,
-        {
-          continuation: disposition.continuation,
-          response: { kind: disposition.request.kind, value: assertJson(response) },
-        },
-        {
-          audience,
-          ...(request.route ? { route: request.route } : {}),
-        },
-      );
+        disposition = yield* context.effect(
+          EPHEMERAL_TOOL_CONTINUE_EFFECT,
+          {
+            continuation: disposition.continuation,
+            response: { kind: disposition.request.kind, value: assertJson(response) },
+          },
+          {
+            audience,
+            ...(request.route ? { route: request.route } : {}),
+          },
+        );
+      }
+    } catch (error) {
+      if (error instanceof DurableProgramCancellation && disposition.type === "input_required") {
+        // The interrupted pull belongs to the principal. The parked operative
+        // still needs its own cancellation command to unwind and release compute.
+        yield* context.effect(
+          EPHEMERAL_TOOL_CONTINUE_EFFECT,
+          { continuation: disposition.continuation, response: { kind: "cancel", value: null } },
+          { audience, ...(request.route ? { route: request.route } : {}) },
+        );
+      }
+      throw error;
     }
 
     if (disposition.type === "completed") {

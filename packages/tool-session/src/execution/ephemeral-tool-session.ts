@@ -1,3 +1,4 @@
+import { advanceToolInvocation, type ToolInvocationBoundary } from "../invocation-executor.ts";
 import { action, race, type Operation } from "effection";
 import { z } from "zod";
 
@@ -28,7 +29,6 @@ import {
   type ToolInvocationAsk,
   type ToolInvocationHost,
   type ToolInvocationResume,
-  type ToolInvocationTurn,
 } from "../index.ts";
 import {
   EPHEMERAL_TOOL_CONTINUE_EFFECT,
@@ -181,7 +181,7 @@ export function createToolInvocationEphemeralEffectRegistrations(
         cursor: continuation.afterLsn,
         resume: resume.value,
       };
-      let turn: ToolInvocationTurn;
+      let turn: ToolInvocationBoundary;
       try {
         turn = yield* turnWithCancellation(host, turnRequest, context);
       } catch (error) {
@@ -209,9 +209,9 @@ function* turnWithCancellation(
   host: ToolInvocationHost,
   request: Parameters<ToolInvocationHost["turn"]>[0],
   context: DurableEffectContext,
-): Operation<ToolInvocationTurn> {
+): Operation<ToolInvocationBoundary> {
   return yield* race([
-    host.turn(request),
+    advanceToolInvocation(host, request),
     (function* () {
       if (!context.cancellation.aborted) {
         yield* action<void>((resolve) => {
@@ -225,9 +225,9 @@ function* turnWithCancellation(
       // replays and supplies `{ kind: "cancel" }` through a separate turn.
       // Do not start a second concurrent crank here.
       return {
-        type: "cancelled",
+        kind: "cancelled",
         reason: "durable program cancelled",
-      } satisfies ToolInvocationTurn;
+      } satisfies ToolInvocationBoundary;
     })(),
   ]);
 }
@@ -296,13 +296,13 @@ function successfulEffect<I extends Json, O extends Json>(
 }
 
 function dispositionFromTurn(
-  turn: ToolInvocationTurn,
+  turn: ToolInvocationBoundary,
   invocationId: string,
   durability: EphemeralDurability,
 ): EphemeralToolDisposition {
-  switch (turn.type) {
+  switch (turn.kind) {
     case "completed":
-      return { type: "completed", result: turn.result };
+      return { type: "completed", result: turn.value };
     case "failed":
       return failure(durability, "ephemeral_tool_error", turn.error.message);
     case "cancelled":
@@ -311,10 +311,10 @@ function dispositionFromTurn(
         "ephemeral_tool_cancelled",
         turn.reason ?? "Ephemeral tool was cancelled",
       );
-    case "parked":
+    case "suspended":
       return {
         type: "input_required",
-        request: inputRequestFromAsk(turn.ask),
+        request: inputRequestFromAsk(turn.request),
         continuation: createContinuation(invocationId, turn, durability),
       };
   }
@@ -358,7 +358,7 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
 
 function createContinuation(
   invocationId: string,
-  turn: Extract<ToolInvocationTurn, { type: "parked" }>,
+  turn: Extract<ToolInvocationBoundary, { kind: "suspended" }>,
   durability: EphemeralDurability,
 ): EphemeralContinuation {
   return {
@@ -366,8 +366,8 @@ function createContinuation(
     state: {
       scheme: CONTINUATION_SCHEME,
       sessionId: invocationId,
-      afterLsn: turn.cursor,
-      pending: { kind: turn.ask.kind, requestId: turn.ask.requestId },
+      afterLsn: turn.request.cursor,
+      pending: { kind: turn.request.kind, requestId: turn.request.requestId },
       durability,
     },
   };
@@ -465,7 +465,7 @@ function* turnOnce(
   cursor: number,
   commandId: string,
   resume: ToolInvocationResume | undefined,
-): Operation<ToolInvocationTurn> {
+): Operation<ToolInvocationBoundary> {
   const turnRequest: {
     invocationId: string;
     commandId: string;
@@ -549,7 +549,7 @@ export function* executeEphemeralToolCall(
 
   let cursor = 0;
   let commandIndex = 0;
-  let event: ToolInvocationTurn = yield* turnOnce(
+  let event: ToolInvocationBoundary = yield* turnOnce(
     host,
     invocationId,
     cursor,
@@ -558,22 +558,22 @@ export function* executeEphemeralToolCall(
   );
 
   for (;;) {
-    cursor = "cursor" in event ? event.cursor : cursor;
+    cursor = event.kind === "suspended" ? event.request.cursor : cursor;
 
-    if (event.type === "completed") {
-      return { status: "ok", value: assertJson(event.result) };
+    if (event.kind === "completed") {
+      return { status: "ok", value: assertJson(event.value) };
     }
-    if (event.type === "failed") {
+    if (event.kind === "failed") {
       return {
         status: "error",
         error: { code: "ephemeral_tool_error", message: event.error.message },
       };
     }
-    if (event.type === "cancelled") {
+    if (event.kind === "cancelled") {
       return { status: "cancelled" };
     }
 
-    const ask = event.ask as {
+    const ask = event.request as {
       kind: "sample" | "elicit";
       requestId: string;
       messages?: readonly { type?: string; text?: string }[];

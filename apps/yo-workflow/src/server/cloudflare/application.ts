@@ -14,11 +14,10 @@ import {
 import { setupDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { cloudflare, type ToolExecutorNamespace } from "@sweatpants/tool-runtime-cloudflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { workflowExposureFor } from "../../workflow/agent.ts";
-import { programs } from "./agent.ts";
+import { workflowExposure } from "../../workflow/agent.ts";
+import { programs } from "../../workflow/agent.ts";
 
 export interface CloudflareBindings {
-  WORKFLOW_LANGUAGE?: "scheme" | "tisyn";
   JOURNAL: D1Database;
   RESPONSE_STREAMS: ResponseStreamNamespace;
   TOOL_EXECUTORS: ToolExecutorNamespace;
@@ -26,7 +25,7 @@ export interface CloudflareBindings {
 }
 
 /** Same Agent Host composition as yo-chat: D1 authority, DO tools, DO delivery. */
-export function createCloudflareTisynApp(
+export function createCloudflareWorkflowApp(
   bindings: CloudflareBindings,
   model: ChatModel,
   decisionProvider?: DecisionProviderDriver,
@@ -54,9 +53,7 @@ export function createCloudflareTisynApp(
         });
       },
       chat: function* () {
-        yield* ToolExposurePolicyContext.set(
-          workflowExposureFor(bindings.WORKFLOW_LANGUAGE ?? "scheme"),
-        );
+        yield* ToolExposurePolicyContext.set(workflowExposure);
       },
     },
   });

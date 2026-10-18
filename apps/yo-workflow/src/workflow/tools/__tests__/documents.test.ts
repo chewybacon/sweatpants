@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { createTisynTool } from "../../tisyn.ts";
+import { createSchemeTool } from "../../scheme/tool.ts";
 import { presentChoices } from "../documents.ts";
 
 it("publishes the choice completion envelope to workflow authors", () => {
@@ -18,6 +18,6 @@ it("publishes the choice completion envelope to workflow authors", () => {
       { properties: { action: { const: "error" } }, required: ["action", "diagnostic"] },
     ],
   });
-  const workflow = createTisynTool([presentChoices]).build();
+  const workflow = createSchemeTool([presentChoices]);
   expect(workflow.description).toContain(`"output":${JSON.stringify(output)}`);
 });

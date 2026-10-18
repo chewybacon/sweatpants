@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import { createTisynModels } from "../server/cloudflare/model-catalog.ts";
+import { createWorkflowModels } from "../server/cloudflare/model-catalog.ts";
 import { reasoningLevel } from "../server/model-settings.ts";
 
 /** Authoring is host work; the generated caller is pinned before execution opens. */
@@ -8,7 +8,7 @@ export async function authorCaller(
   prompt: string,
   validate: (source: string) => Promise<string>,
   config: {
-    models: ReturnType<typeof createTisynModels>;
+    models: ReturnType<typeof createWorkflowModels>;
     provider: string;
     model: string;
     thinking?: string;

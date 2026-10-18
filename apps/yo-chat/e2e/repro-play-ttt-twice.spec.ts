@@ -127,8 +127,8 @@ test.describe("play_ttt Multiple Games", () => {
 
     // Verify we can interact with the new board (click a cell)
     // We need to make sure we are clicking a cell from the NEW game.
-    // The "last" grid-cols-3 is probably the new one.
-    const boards = page.locator(".grid-cols-3");
+    // Select the current board, excluding miniature boards in move history.
+    const boards = page.locator(".game-current .game-board");
     const lastBoard = boards.last();
 
     const newGameCell = lastBoard

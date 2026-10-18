@@ -7,11 +7,7 @@ import { Miniflare, type MiniflareOptions } from "miniflare";
 import { initializeD1Storage } from "@sweatpants/storage-d1";
 import type { TestModelInstallation } from "@sweatpants/test-rig";
 
-export async function startCloudflareHost(
-  model: TestModelInstallation,
-  installEvaluation = true,
-  language: "tisyn" | "scheme" = "tisyn",
-) {
+export async function startCloudflareHost(model: TestModelInstallation, installEvaluation = true) {
   const directory = await mkdtemp(join(tmpdir(), "yo-workflow-cloudflare-"));
   const bundle = await build({
     entryPoints: [new URL("./cloudflare-worker.ts", import.meta.url).pathname],
@@ -23,7 +19,6 @@ export async function startCloudflareHost(
     external: [
       "cloudflare:workers",
       "node:*",
-      "quickjs.wasm",
       "scheme-kernel.wasm",
       "scheme-reflect.wasm",
       "scheme-wtf8.wasm",
@@ -38,7 +33,6 @@ export async function startCloudflareHost(
           .filter((name) => !name.startsWith("node:"))
           .map((name) => [name, `node:${name}`]),
       ),
-      "#quickjs-wasm": "quickjs.wasm",
       "#scheme-kernel-wasm": "scheme-kernel.wasm",
       "#scheme-reflect-wasm": "scheme-reflect.wasm",
       "#scheme-wtf8-wasm": "scheme-wtf8.wasm",
@@ -69,10 +63,6 @@ export async function startCloudflareHost(
                   ]),
                 ),
               ),
-              "quickjs.wasm": {
-                type: "wasm",
-                contents: await readFile(createRequire(import.meta.url).resolve("#quickjs-wasm")),
-              },
             },
           },
           exports: {
@@ -82,7 +72,6 @@ export async function startCloudflareHost(
             ResponseStream: { type: "durable-object", storage: "sqlite" },
           },
           env: {
-            WORKFLOW_LANGUAGE: { type: "text", value: language },
             CONVERSATIONS: {
               type: "durable-object",
               worker: "yo-workflow-test",

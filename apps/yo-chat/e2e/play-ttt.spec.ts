@@ -364,6 +364,13 @@ test.describe("play_ttt Agentic Tool", () => {
     await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
+    // Inspect move cards through the history disclosure exposed by the UI.
+    for (const history of await page.locator("details.game-history").all()) {
+      if ((await history.getAttribute("open")) === null) {
+        await history.locator("summary").click();
+      }
+    }
+
     // After first round (user move + model response), we should have 2 move cards
     // Look for "Move #1" and "Move #2" in the history
     const moveCard1 = page.locator("text=Move #1").first();
@@ -385,6 +392,13 @@ test.describe("play_ttt Agentic Tool", () => {
         await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
       } catch {
         // Game might have ended quickly
+      }
+
+      // Each new game snapshot has its own history disclosure.
+      for (const history of await page.locator("details.game-history").all()) {
+        if ((await history.getAttribute("open")) === null) {
+          await history.locator("summary").click();
+        }
       }
 
       // After second round, we should have at least 3 move cards

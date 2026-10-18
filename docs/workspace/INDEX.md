@@ -30,7 +30,7 @@ status here. Statuses:
 | `apps/yo-mcp` | product | MCP server product endpoint |
 | `apps/yo-slides` | docs | Presentation artifact — slide decks for audiences, not product code |
 | `apps/yo-studio` | product | Studio product endpoint; its `vite.config.ts` AWS-placement branch is part of the parked lambda experiment thread |
-| `apps/yo-workflow` | parked | Timeboxed Tisyn-to-durable-tool binding spike; re-audit: promote the binding after park/replay evidence or delete the app |
+| `apps/yo-workflow` | parked | Scheme workflow playground and kernel execution inspector; re-audit: promote after product acceptance |
 | `packages/agent-host` | library | |
 | `packages/agent-sdk` | library | |
 | `packages/chat-client` | library | |

@@ -1,5 +1,4 @@
 import type { Operation } from "effection";
-import type { Json } from "@sweatpants/foundation";
 import {
   CrankError,
   exactProgramKey,
@@ -11,11 +10,13 @@ import {
   type ProgramCheckpoint,
   type ProgramDriverCapabilities,
 } from "@sweatpants/durable-execution";
+import { EffectionKernel } from "./effection-kernel.ts";
+import type { ProgramExecutionState } from "./program-execution.ts";
 import { durableToolWorkflow } from "./tool-adapter.ts";
 
 /** One computation, suspended through the shared attachment's effect runtime. */
 export interface ProgramComputation {
-  run(): Operation<Json>;
+  start(): Operation<ProgramExecutionState>;
   /** Captures computation only; the attachment owns protocol position and receipts. */
   capture(): Operation<ProgramCheckpoint>;
   dispose(): Operation<void>;
@@ -24,7 +25,7 @@ export interface ProgramComputation {
 /**
  * Executes pinned code without owning program routing or the attachment protocol.
  * open is resource-owned: its compute is released when the attachment scope ends.
- * A restored computation's run publishes its saved boundary before advancing.
+ * A restored computation's start returns its saved boundary before advancing.
  */
 export interface ProgramBackend {
   readonly capabilities: ProgramDriverCapabilities;
@@ -57,7 +58,11 @@ export function createEffectionProgramBackend(tools: DurableToolRegistry): Progr
         throw new CrankError("program_protocol_error", "Effection backend requires replay");
       }
       return {
-        run: durableToolWorkflow(toolFor(request.program), request.input),
+        start: () =>
+          EffectionKernel.start(
+            durableToolWorkflow(toolFor(request.program), request.input),
+            request.input,
+          ),
         *capture() {
           return { kind: "replay" };
         },

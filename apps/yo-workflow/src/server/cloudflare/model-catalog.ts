@@ -3,7 +3,7 @@ import { opencodeProvider } from "@earendil-works/pi-ai/providers/opencode";
 import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
 
 /** App-owned catalog additions for models newer than the installed Pi catalog. */
-export function createTisynModels(credentials: CredentialStore) {
+export function createWorkflowModels(credentials: CredentialStore) {
   const models = createModels({ credentials });
   models.setProvider(githubCopilotProvider());
   const provider = opencodeProvider();

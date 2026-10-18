@@ -2,8 +2,8 @@
  * Host-Side Worker Transport
  *
  * Implements the host (main thread) side of the web worker transport using
- * @effectionx/worker. This creates a CorrelatedTransport that tools can use
- * unchanged.
+ * @effectionx/worker. Handles worker sample/elicit requests and exposes the
+ * final tool result within the owning Effection scope.
  *
  * ## Architecture
  *

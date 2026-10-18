@@ -126,6 +126,14 @@ async function main(): Promise<void> {
         ],
         timeoutMs: 15 * 60_000,
       },
+      // Real Hoot recovery uses built workspace packages and the Hoot artifact used by yo-workflow.
+      // Run sequentially, after the clean build, alongside the normal regression gates.
+      {
+        name: "test:execution-recovery",
+        command: "pnpm",
+        args: ["test:execution-recovery"],
+        timeoutMs: 5 * 60_000,
+      },
       ...appTests,
     ];
   }

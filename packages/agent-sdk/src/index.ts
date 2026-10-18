@@ -1,5 +1,3 @@
-// Re-export all types
-export * from "./types/index.ts";
 export * from "./schema/roles.ts";
 
 // Content-addressed resources, guidance, readers, and build-time identity generation.
@@ -27,24 +25,6 @@ export {
   type ProgramArtifactIdentityInputV1,
   type ProgramIdentityProvenanceV1,
 } from "@sweatpants/durable-execution";
-
-// Re-export transport utilities and types
-export {
-  createTransportPair,
-  createCorrelation,
-  type Transport,
-  type PrincipalTransport,
-  type OperativeTransport,
-  type TransportRequest,
-  type ProgressMessage,
-  type ResponseMessage,
-  type PrincipalIncoming,
-  type PrincipalOutgoing,
-  type OperativeIncoming,
-  type OperativeOutgoing,
-  type InterruptMessage,
-  type CorrelatedTransport,
-} from "./transport/index.ts";
 
 // Re-export tool utilities and types
 export {
@@ -160,49 +140,6 @@ export {
   type CreateToolBuilderWithParams,
   type PerCallInterruptOptions,
 } from "./tool/index.ts";
-
-// Re-export context utilities
-export { TransportContext } from "./context/index.ts";
-
-// Re-export built-in operations and types
-export {
-  SweatpantsApi,
-  elicit,
-  notify,
-  sample,
-  SweatpantsProtocol,
-  type ElicitOptions,
-  type ElicitResult,
-  type NotifyOptions,
-  type NotifyResult,
-  type SampleOptions,
-  type SampleResult,
-  type SampleMessage,
-  type BuiltinElicitPayload,
-  type BuiltinElicitResult,
-  type BuiltinNotifyPayload,
-  type BuiltinNotifyResult,
-  type BuiltinSampleMessage,
-  type BuiltinSamplePayload,
-  type BuiltinSampleResult,
-} from "./builtins/index.ts";
-
-// Re-export protocol utilities and types
-export {
-  createProtocol,
-  createImplementation,
-  serveProtocol,
-  type Method,
-  type Methods,
-  type Protocol,
-  type InvocationArgs,
-  type InvocationResult,
-  type MethodHandler,
-  type MethodHandlers,
-  type Implementation,
-  type Handle,
-  type Inspector,
-} from "./protocol/index.ts";
 
 // =============================================================================
 // WORKER TRANSPORT

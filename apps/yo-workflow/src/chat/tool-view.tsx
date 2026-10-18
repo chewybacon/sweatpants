@@ -13,9 +13,7 @@ function ToolCard({ part }: { part: ToolPart }) {
   const complete = part.state === "output-available";
   const status = toolStatus(part);
   const failure = workflowFailure(part);
-  const source = ["tisyn", "scheme"].includes(part.name)
-    ? stringField(part.input, "program")
-    : undefined;
+  const source = part.name === "scheme" ? stringField(part.input, "program") : undefined;
   const echo = complete && part.name === "echo" ? stringField(part.output, "message") : undefined;
   const reply = complete && part.name === "ask" ? readReply(part.output) : undefined;
   const askInput = part.name === "ask" ? askParameters.safeParse(part.input) : undefined;
@@ -59,9 +57,6 @@ function ToolCard({ part }: { part: ToolPart }) {
             </pre>
           </details>
         )}
-        {source !== undefined && part.name !== "scheme" && part.state !== "input-streaming" && (
-          <ProgramPreview source={source} language={part.name === "scheme" ? "scheme" : "tisyn"} />
-        )}
         {echo !== undefined && (
           <div className="tool-result">
             <span className="field-label">Echoed</span>
@@ -88,7 +83,7 @@ function ToolCard({ part }: { part: ToolPart }) {
         {part.name === "scheme" && source !== undefined && part.state !== "input-streaming" && (
           <section className="workflow-program" aria-label="Workflow program">
             <h3>Program</h3>
-            <ProgramPreview source={source} language="scheme" />
+            <ProgramPreview source={source} />
           </section>
         )}
         {part.name === "scheme" && (
@@ -112,13 +107,13 @@ function ToolCard({ part }: { part: ToolPart }) {
             )}
           </div>
         )}
-        {["tisyn", "scheme"].includes(part.name) && complete && (
+        {part.name === "scheme" && complete && (
           <details className="tool-data">
             <summary>Workflow result</summary>
             <pre>{JSON.stringify(part.output, null, 2)}</pre>
           </details>
         )}
-        {complete && !["tisyn", "scheme"].includes(part.name) && (
+        {complete && part.name !== "scheme" && (
           <details className="tool-data">
             <summary>Result</summary>
             <pre>{JSON.stringify(part.output, null, 2)}</pre>

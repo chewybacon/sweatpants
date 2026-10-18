@@ -1,0 +1,112 @@
+import type { Operation } from "effection";
+import {
+  createExecution,
+  definePort,
+  type ExecutionBoundary,
+  type Executor,
+  type Json,
+} from "@sweatpants/foundation";
+import type { ToolInvocationResume } from "./invocation-resume.ts";
+import type {
+  StartToolInvocation,
+  ToolInvocationAsk,
+  ToolInvocationError,
+  ToolInvocationHost,
+  ToolInvocationTurn,
+  TurnToolInvocation,
+} from "./invocation.ts";
+
+type Reply = Exclude<ToolInvocationResume, { kind: "cancel" }>;
+type Program = Omit<StartToolInvocation, "input">;
+export type ToolInvocationRequest = ToolInvocationAsk & { readonly cursor: number };
+export type ToolInvocationBoundary = ExecutionBoundary<
+  ToolInvocationRequest,
+  Json,
+  ToolInvocationError
+>;
+
+/** Interpret a host turn without replacing its command identity or replay cursor. */
+export function toolInvocationBoundary(turn: ToolInvocationTurn): ToolInvocationBoundary {
+  switch (turn.type) {
+    case "parked":
+      return {
+        kind: "suspended",
+        suspensionId: `${turn.cursor}:${turn.ask.requestId}`,
+        request: { ...turn.ask, cursor: turn.cursor },
+      };
+    case "completed":
+      return { kind: "completed", value: turn.result };
+    case "failed":
+      return { kind: "failed", error: turn.error };
+    case "cancelled":
+      return {
+        kind: "cancelled",
+        ...(turn.reason === undefined ? {} : { reason: turn.reason }),
+      };
+  }
+}
+
+export function* advanceToolInvocation(
+  host: ToolInvocationHost,
+  command: TurnToolInvocation,
+): Operation<ToolInvocationBoundary> {
+  return toolInvocationBoundary(yield* host.turn(command));
+}
+
+/** Live-only adapter. Reopening a session is not restoring a generator. */
+export function createToolInvocationExecutor(
+  host: ToolInvocationHost,
+): Executor<Program, Json, ToolInvocationRequest, Reply, Json, ToolInvocationError> {
+  return {
+    *start(program, input) {
+      yield* host.start({ ...program, input });
+      // Each adapter lifetime owns a fresh command namespace; IDs are not replay receipts.
+      const commands = crypto.randomUUID();
+      let sequence = 0;
+      let cursor = 0;
+      function* advance(resume?: ToolInvocationResume) {
+        const next = yield* advanceToolInvocation(host, {
+          invocationId: program.invocationId,
+          commandId: `${commands}:${++sequence}`,
+          cursor,
+          ...(resume ? { resume } : {}),
+        });
+        if (next.kind === "suspended") cursor = next.request.cursor;
+        return next;
+      }
+      let boundary: ToolInvocationBoundary;
+      try {
+        boundary = yield* advance();
+      } catch (error) {
+        yield* host.dispose(program.invocationId);
+        throw error;
+      }
+      return createExecution<ToolInvocationRequest, Reply, Json, ToolInvocationError>(boundary, {
+        validateReply(request, reply) {
+          if (request.kind !== reply.kind || request.requestId !== reply.requestId)
+            throw new Error("execution_suspension_mismatch");
+        },
+        turn(command) {
+          return advance(
+            command.kind === "resume"
+              ? command.reply
+              : {
+                  kind: "cancel",
+                  ...(command.reason === undefined ? {} : { reason: command.reason }),
+                },
+          );
+        },
+        dispose: () => host.dispose(program.invocationId),
+      });
+    },
+  };
+}
+
+/** Context resolution returns the API facade, keeping startup middleware in the path. */
+export const ToolInvocationExecutor = definePort<
+  Executor<Program, Json, ToolInvocationRequest, Reply, Json, ToolInvocationError>
+>("tool-invocation-executor", {
+  *start() {
+    throw new Error("No tool invocation executor is installed in this scope");
+  },
+});

@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { FileCredentialStore, createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import { createTisynModels } from "../src/server/cloudflare/model-catalog.ts";
+import { createWorkflowModels } from "../src/server/cloudflare/model-catalog.ts";
 import { modelOptions } from "./model-options.ts";
 
 // Real requests through the same canonical adapter used by the app. Never log
@@ -17,7 +17,7 @@ if (selection.listModels || selection.astroArgs.length > 0) {
     "Use dev:cloudflare --list-models to list models; this probe accepts --provider and --model.",
   );
 }
-const models = createTisynModels(new FileCredentialStore());
+const models = createWorkflowModels(new FileCredentialStore());
 const provider = createPiAiModelProvider({ models });
 const model = provider.resolveModel({ provider: selection.provider, id: selection.model });
 for (const thinking of ["low", "medium", "high"] as const) {

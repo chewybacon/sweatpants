@@ -44,19 +44,7 @@ describe("readable tool cards", () => {
     expect(screen.getByLabelText("Expanded program canvas")).toBeTruthy();
     expect(screen.getByText("Scheme source")).toBeTruthy();
     expect(container.querySelector(".source code")?.textContent).toBe(program);
-    expect(screen.queryByText("Expanded Tisyn")).toBeNull();
-    expect(container.querySelector<HTMLDetailsElement>(".logic-plan")?.open).toBe(true);
-  });
-
-  it("keeps authored macros visible separately from expanded Tisyn", () => {
-    const program =
-      'WithMacros({"Guard":{"params":["condition","action"],"body":If(Hole("condition"),Hole("action"),null)}},Use("Guard",true,"done"))';
-    const { container } = render(<Part part={completed("tisyn", { program }, "done")} />);
-    const sources = container.querySelectorAll(".source code");
-    expect(sources[0]?.textContent).toBe(program);
-    expect(sources[1]?.textContent).toContain("If(");
-    expect(sources[1]?.textContent).not.toContain("WithMacros");
-    expect(screen.getByText("Expanded Tisyn")).toBeTruthy();
+    expect(container.querySelector<HTMLDetailsElement>(".logic-plan")?.open).toBe(false);
   });
 
   it("shows echo text once, with labeled input collapsed and HTML treated as text", () => {
@@ -122,7 +110,7 @@ describe("readable tool cards", () => {
       expect(container.querySelectorAll(".reply-outcome")).toHaveLength(1);
       expect(screen.getByText("Other child content")).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
-      expect(screen.getByText("Result data").closest("details")?.open).toBe(false);
+      expect(screen.getByText("Result").closest("details")?.open).toBe(false);
     },
   );
 
@@ -145,7 +133,8 @@ describe("readable tool cards", () => {
     rerender(
       <ReplyForm prompt="What next?" disabled onRespond={(response) => responses.push(response)} />,
     );
-    fireEvent.click(screen.getByText("Other options"));
+    expect(screen.queryByText("Other options")).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     expect(responses).toHaveLength(1);
     expect(screen.getByLabelText<HTMLInputElement>("Your reply").disabled).toBe(true);
@@ -172,9 +161,9 @@ describe("readable tool cards", () => {
           type: "tool-call",
           id: "tool",
           callId: "call",
-          name: "tisyn",
+          name: "scheme",
           state: "output-error",
-          input: { program: "Let(" },
+          input: { program: "(let" },
           errorText: "Program rejected",
           parts: [],
         }}
@@ -182,7 +171,7 @@ describe("readable tool cards", () => {
     );
     expect(screen.getByRole("alert").textContent).toBe("Program rejected");
     expect(screen.getByText(/Program source cannot be diagrammed/)).toBeTruthy();
-    expect(screen.getByText("Let(")).toBeTruthy();
+    expect(screen.getByText("(let")).toBeTruthy();
     expect(container.querySelector(".source")?.hasAttribute("open")).toBe(false);
   });
 });

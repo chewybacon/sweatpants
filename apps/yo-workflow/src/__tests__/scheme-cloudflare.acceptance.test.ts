@@ -9,7 +9,7 @@ it("returns Scheme validation diagnostics and executes a repaired program inside
       binding: "http",
       modelId: "scheme-validation",
       scenarioTimeoutMs: 20000,
-      createApplication: ({ model }) => startCloudflareHost(model, true, "scheme"),
+      createApplication: ({ model }) => startCloudflareHost(model, true),
     },
     function* (s) {
       const turn = yield* s.conversation().send("Run a program.");
@@ -64,7 +64,7 @@ it("recovers a quoted Scheme child and its pending Ask after workerd replacement
       modelId: "scheme-child",
       scenarioTimeoutMs: 20000,
       async createApplication({ model }) {
-        host = await startCloudflareHost(model, true, "scheme");
+        host = await startCloudflareHost(model, true);
         return host;
       },
     },
@@ -120,7 +120,7 @@ it.each(["present_choices", "display_document"])(
         binding: "http",
         modelId: "scheme-missing-document",
         scenarioTimeoutMs: 20000,
-        createApplication: ({ model }) => startCloudflareHost(model, true, "scheme"),
+        createApplication: ({ model }) => startCloudflareHost(model, true),
       },
       function* (s) {
         const turn = yield* s.conversation().send("Show my document.");

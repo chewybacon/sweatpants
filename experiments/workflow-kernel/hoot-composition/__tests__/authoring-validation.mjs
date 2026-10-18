@@ -3,6 +3,7 @@ import { loadMachine } from "../machine.mjs";
 import { machineApi } from "../machine-api.mjs";
 
 // Production bundling renames Hoot's MutableString class.
+// oxlint-disable-next-line typescript-eslint/no-extraneous-class -- A renamed class instance models the bundled Hoot value being tested.
 class MinifiedString {
     constructor(text) {
         this.text = text;

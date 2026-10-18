@@ -1,11 +1,10 @@
 {
     "name": "@sweatpants/agent-sdk",
     "version": "0.1.0",
-    "description": "Core primitives for Sweatpants agent framework - transport, protocol, and data model",
+    "description": "Tool authoring, agent contracts, resources, and worker transport for Sweatpants",
     "keywords": [
         "agent",
         "effection",
-        "protocol",
         "transport"
     ],
     "license": "MIT",
@@ -46,36 +45,6 @@
                 "default": "./dist/tool/index.js"
             }
         },
-        "./transport": {
-            "development": {
-                "import": "./src/transport/index.ts",
-                "types": "./src/transport/index.ts"
-            },
-            "import": {
-                "types": "./dist/transport.d.ts",
-                "default": "./dist/transport.js"
-            }
-        },
-        "./transport/sse": {
-            "development": {
-                "import": "./src/transport/sse/index.ts",
-                "types": "./src/transport/sse/index.ts"
-            },
-            "import": {
-                "types": "./dist/transport/sse.d.ts",
-                "default": "./dist/transport/sse.js"
-            }
-        },
-        "./transport/websocket": {
-            "development": {
-                "import": "./src/transport/websocket/index.ts",
-                "types": "./src/transport/websocket/index.ts"
-            },
-            "import": {
-                "types": "./dist/transport/websocket.d.ts",
-                "default": "./dist/transport/websocket.js"
-            }
-        },
         "./transport/worker": {
             "development": {
                 "import": "./src/transport/worker/index.ts",
@@ -109,20 +78,16 @@
     },
     "devDependencies": {
         "@effectionx/vitest": "catalog:",
-        "@effectionx/websocket": "catalog:",
         "@effectionx/worker": "catalog:",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
-        "@types/ws": "catalog:",
         "effection": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:",
-        "ws": "catalog:",
         "zod": "catalog:"
     },
     "peerDependencies": {
-        "@effectionx/websocket": "^2.3.0",
         "@effectionx/worker": "^0.5.2"
     }
 }

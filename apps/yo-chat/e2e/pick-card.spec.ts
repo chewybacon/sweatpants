@@ -32,7 +32,7 @@ test.describe("chat page basics", () => {
     await page.goto("/chat/cards/");
 
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Draw a hand. Make your pick." })).toBeVisible();
   });
 
   test("shows shared thread ready indicator", async ({ page }) => {

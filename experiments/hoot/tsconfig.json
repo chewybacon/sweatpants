@@ -4,6 +4,6 @@
         "customConditions": ["development"],
         "types": ["node"]
     },
-    "include": ["evaluation.ts", "runner.ts", "__tests__/*.ts", "comparison/*.ts"],
+    "include": ["evaluation.ts", "runner.ts", "__tests__/*.ts"],
     "exclude": ["node_modules", "runtime"]
 }

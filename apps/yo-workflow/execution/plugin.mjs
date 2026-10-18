@@ -31,14 +31,14 @@ export function executionPlayground() {
                                 const {
                                     FileCredentialStore,
                                 } = require("@sweatpants/model-provider-pi-ai");
-                                const { createTisynModels } = require(
+                                const { createWorkflowModels } = require(
                                     resolve(
                                         server.config.root,
                                         "src/server/cloudflare/model-catalog.ts",
                                     ),
                                 );
                                 return authorCaller(prompt, module.validateCaller, {
-                                    models: createTisynModels(new FileCredentialStore()),
+                                    models: createWorkflowModels(new FileCredentialStore()),
                                     provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
                                     model: process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5",
                                     thinking: process.env.DEFAULT_CHAT_MODEL_THINKING,

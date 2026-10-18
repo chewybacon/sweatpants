@@ -165,7 +165,9 @@ test.describe("Durable Chat - Feature Parity", () => {
     await page.getByTestId("thread-create").click();
 
     // Should show empty state
-    await expect(page.getByRole("heading", { name: "Start a durable conversation" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "A little space to think out loud." }),
+    ).toBeVisible();
     await expect(
       page.locator('[data-testid="thread-item"][aria-pressed="true"]').getByText("0 messages"),
     ).toBeVisible();
@@ -342,7 +344,7 @@ test.describe("Durable Chat - Reconnection", () => {
     await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10000 });
 
     // Get the namespaced active thread ID from the shared sidebar.
-    const activeThread = page.getByTestId("thread-item").filter({ hasText: "Active" });
+    const activeThread = page.locator('[data-testid="thread-item"][aria-pressed="true"]');
     const conversationId1 = await activeThread.getAttribute("data-thread-id");
     expect(conversationId1).toBeTruthy();
     expect(conversationId1!.startsWith("basic:")).toBe(true);
@@ -353,8 +355,7 @@ test.describe("Durable Chat - Reconnection", () => {
 
     // Verify the same namespaced conversation persists.
     const conversationId2 = await page
-      .getByTestId("thread-item")
-      .filter({ hasText: "Active" })
+      .locator('[data-testid="thread-item"][aria-pressed="true"]')
       .getAttribute("data-thread-id");
     expect(conversationId2).toBe(conversationId1);
 
@@ -369,8 +370,7 @@ test.describe("Durable Chat - Reconnection", () => {
 
     // Get the initial namespaced conversation ID.
     const conversationId1 = await page
-      .getByTestId("thread-item")
-      .filter({ hasText: "Active" })
+      .locator('[data-testid="thread-item"][aria-pressed="true"]')
       .getAttribute("data-thread-id");
     expect(conversationId1).toBeTruthy();
 
@@ -393,8 +393,7 @@ test.describe("Durable Chat - Reconnection", () => {
 
     // Verify a new namespaced conversation ID was generated.
     const conversationId2 = await page
-      .getByTestId("thread-item")
-      .filter({ hasText: "Active" })
+      .locator('[data-testid="thread-item"][aria-pressed="true"]')
       .getAttribute("data-thread-id");
     expect(conversationId2).toBeTruthy();
     expect(conversationId2).not.toBe(conversationId1);

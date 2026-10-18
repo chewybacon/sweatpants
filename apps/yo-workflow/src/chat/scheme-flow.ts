@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode } from "./program-flow.ts";
+import type { FlowEdge, FlowNode } from "./flow.ts";
 
 type Expr = { text: string; string?: string } | Expr[];
 const atom = (x: Expr | undefined) => (x && !Array.isArray(x) ? x.text : undefined);

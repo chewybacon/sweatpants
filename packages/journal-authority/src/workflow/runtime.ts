@@ -65,17 +65,20 @@ import { completedForkGroupTerminal, type ForkGroupTerminal } from "../forest/fo
 import type { DurableChildDurability, DurableForkExpiry } from "@sweatpants/durable-execution";
 import { definePort } from "@sweatpants/foundation/port";
 
-/** A closed marker carried by durable boundaries. Ephemeral markers never leave the attachment. */
-export type SerializableProgramProposal =
-  | {
-      readonly type: "operation";
-      readonly descriptor: DurableOperationDescriptor;
-    }
-  | {
-      readonly type: "emission";
-      readonly descriptor: EmissionDescriptor;
-    }
-  | { readonly type: "ephemeral" };
+import {
+  ProgramEffectRuntimeContext,
+  type ProgramEffectRuntime,
+  type RuntimeRecordBoundary,
+  type SerializableProgramProposal,
+} from "./program-effect-runtime.ts";
+export {
+  ProgramEffectRuntimeContext,
+  type ProgramEffectRuntime,
+  type RuntimeRecordBoundary,
+  type SerializableProgramProposal,
+} from "./program-effect-runtime.ts";
+import { EffectionKernel } from "./effection-kernel.ts";
+import { driveProgramExecution, type ProgramExecutionState } from "./program-execution.ts";
 
 /** An Effection Effect that can be yielded by a constrained Workflow. */
 export type DurableProgramEffect<T> = Effect<T> & {
@@ -112,21 +115,6 @@ function durable<T>(
     },
   };
 }
-
-export interface RuntimeRecordBoundary<T extends Json> {
-  readonly serializable: Extract<SerializableProgramProposal, { readonly type: "operation" }>;
-  readonly execute: (attempt: RecordAttemptContext) => Operation<T>;
-}
-
-export interface ProgramEffectRuntime {
-  perform<T extends Json>(boundary: RuntimeRecordBoundary<T>): Operation<OperationOutcome>;
-  requestEmission(descriptor: EmissionDescriptor): Operation<Json>;
-}
-
-/** Set only in the attachment resource and inherited by its Workflow descendants. */
-export const ProgramEffectRuntimeContext = createContext<ProgramEffectRuntime>(
-  "journal-authority:program-effect-runtime",
-);
 
 const RecordAttemptGuardContext = createContext<boolean>("journal-authority:record-attempt", false);
 
@@ -1518,7 +1506,7 @@ function* superviseCommands(state: AttachmentState): Operation<void> {
 /** Opens one resource-owned program attachment. */
 export function openProgramAttachment(
   request: AttachProgramRequest,
-  workflow: () => Operation<Json>,
+  workflow: (() => Operation<Json>) | { start(): Operation<ProgramExecutionState> },
   actionIndex = 0,
 ): Operation<ProgramAttachmentHandle> {
   return resource(function* (provide) {
@@ -1573,7 +1561,11 @@ export function openProgramAttachment(
     yield* ProgramEffectRuntimeContext.set(runtime);
     const workflowTask = yield* spawn(function* () {
       try {
-        const result = yield* workflow();
+        const result = yield* driveProgramExecution(
+          typeof workflow === "function"
+            ? () => EffectionKernel.start(workflow, request.input)
+            : () => workflow.start(),
+        );
         const value = assertReplayedCanonicalValue(result, "schema_validation_failed");
         assertInlineSize(value);
         state.events.add({
