@@ -33,3 +33,13 @@ apps/yo-agent/packages/gemini-cli/
 
 # Local Wrangler binding state
 .wrangler/
+
+# Local agent workspace files
+/.opencode/
+/.pi/
+/.tasuku/
+
+# Local deployment records and captured output
+**/*deploy-output.json
+**/live-evidence/
+/apps/yo-chat/confirmation
