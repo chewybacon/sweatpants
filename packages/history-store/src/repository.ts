@@ -370,17 +370,13 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       }
       return {
         ...committed,
-        /* CONDITIONAL-SPREAD: Omit absent checkpoint from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-        ...(request.checkpoint ? { checkpoint: committed.head.checkpoint! } : {}),
-        /* CONDITIONAL-SPREAD: Omit absent terminalHistory from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-        ...(request.terminalHistorySegment
+        checkpoint: request.checkpoint ? committed.head.checkpoint! : undefined,
+        terminalHistory: request.terminalHistorySegment
           ? {
-              terminalHistory: {
-                segmentId: request.terminalHistorySegment.segmentId,
-                lastPosition: request.terminalHistorySegment.lastPosition,
-              },
+              segmentId: request.terminalHistorySegment.segmentId,
+              lastPosition: request.terminalHistorySegment.lastPosition,
             }
-          : {}),
+          : undefined,
       };
     },
     *admitCommand(request): Operation<CommandAdmissionResult> {

@@ -13,7 +13,7 @@ import type {
   StoredPublicArchiveSegment,
   StoredTerminalSegment,
 } from "./contract.ts";
-import { readConversationHead } from "./persistence.ts";
+import { readCommandReceipt, readConversationHead } from "./persistence.ts";
 type HeadRow = SqlNumbers<
   Omit<
     ConversationHead,
@@ -73,7 +73,7 @@ export function headFromRow(
   });
 }
 export function receiptFromRow(row: ReceiptRow): CommandReceipt {
-  return {
+  return readCommandReceipt({
     conversationId: row.conversationId,
     commandId: row.commandId,
     commandDigest: row.commandDigest,
@@ -82,11 +82,9 @@ export function receiptFromRow(row: ReceiptRow): CommandReceipt {
     retainUntil: numberValue(row.retainUntil, "retain_until"),
     admittedRevision: row.admittedRevision,
     resultingRevision: row.resultingRevision,
-    /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-    ...(row.logicalTurnId === null ? {} : { logicalTurnId: row.logicalTurnId }),
-    /* CONDITIONAL-SPREAD: Omit absent executionId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-    ...(row.executionId === null ? {} : { executionId: row.executionId }),
-  };
+    logicalTurnId: row.logicalTurnId ?? undefined,
+    executionId: row.executionId ?? undefined,
+  });
 }
 export function checkpointFromRow(row: CheckpointRow): StoredCheckpoint {
   const value: StoredCheckpoint = {

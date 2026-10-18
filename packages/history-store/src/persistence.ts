@@ -4,7 +4,7 @@ import {
   type StoredAuthorityRecord,
   type StoredImmutableRecord,
 } from "@sweatpants/durable-storage-kernel";
-import { assertJson, type Json, canonicalJson, sha256 } from "@sweatpants/foundation";
+import { assertJson, type Json, canonicalJson, cloneJson, sha256 } from "@sweatpants/foundation";
 import { assertCheckpointBounds, CHECKPOINT_BOUNDS } from "./checkpoint-bounds.ts";
 import { assertCheckpointPayload, checkpointHotRoots } from "./checkpoint-payload.ts";
 import { rootPayloadBytes } from "./segmentation.ts";
@@ -138,11 +138,23 @@ export function decodeAuthorityHead(recordValue: StoredAuthorityRecord): Convers
   return head;
 }
 
+/** Encodes receipt optionals once for JSON storage, preserving supplied identifiers. */
+export function serializeCommandReceipt(receipt: CommandReceipt) {
+  const value = { ...receipt };
+  if (value.logicalTurnId === undefined) {
+    delete value.logicalTurnId;
+  }
+  if (value.executionId === undefined) {
+    delete value.executionId;
+  }
+  return cloneJson(value);
+}
+
 export function readCommandReceipt(value: unknown): CommandReceipt {
   const object = record(value, "command receipt");
   const logicalTurnId = object["logicalTurnId"];
   const executionId = object["executionId"];
-  return {
+  return serializeCommandReceipt({
     conversationId: text(object["conversationId"], "receipt.conversationId"),
     commandId: text(object["commandId"], "receipt.commandId"),
     commandDigest: text(object["commandDigest"], "receipt.commandDigest"),
@@ -151,13 +163,10 @@ export function readCommandReceipt(value: unknown): CommandReceipt {
     retainUntil: natural(object["retainUntil"], "receipt.retainUntil"),
     admittedRevision: counter(object["admittedRevision"], "receipt.admittedRevision"),
     resultingRevision: counter(object["resultingRevision"], "receipt.resultingRevision"),
-    /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-    ...(logicalTurnId === undefined
-      ? {}
-      : { logicalTurnId: text(logicalTurnId, "receipt.logicalTurnId") }),
-    /* CONDITIONAL-SPREAD: Omit absent executionId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
-    ...(executionId === undefined ? {} : { executionId: text(executionId, "receipt.executionId") }),
-  };
+    logicalTurnId:
+      logicalTurnId === undefined ? undefined : text(logicalTurnId, "receipt.logicalTurnId"),
+    executionId: executionId === undefined ? undefined : text(executionId, "receipt.executionId"),
+  });
 }
 
 function validateCheckpointBounds(payload: Json, encodedBytes: number): void {
