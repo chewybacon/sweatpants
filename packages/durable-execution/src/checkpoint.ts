@@ -1,3 +1,4 @@
+import { omitUndefinedOptionals } from "./omit-undefined-optionals.ts";
 import { durableReferenceSchema } from "./reference-schema.ts";
 import { parser, cloneJson } from "@sweatpants/foundation";
 import { z } from "zod";
@@ -23,8 +24,8 @@ const checkpointProgramSchema = z.strictObject({
   version: checkpointTextSchema,
   digest: checkpointTextSchema,
 });
-const parkedTaskCheckpointSchema = z
-  .strictObject({
+const parkedTaskCheckpointSchema = omitUndefinedOptionals(
+  z.strictObject({
     taskId: checkpointTextSchema,
     parentTaskId: checkpointTextSchema.optional(),
     program: checkpointProgramSchema,
@@ -33,18 +34,8 @@ const parkedTaskCheckpointSchema = z
     replayHead: z.union([durableReferenceSchema, z.null()]),
     parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
     actionIndex: z.number().int().nonnegative().safe(),
-  })
-  .transform((value) => ({
-    taskId: value.taskId,
-    /* CONDITIONAL-SPREAD: Omit absent parentTaskId from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.parentTaskId !== undefined ? { parentTaskId: value.parentTaskId } : {}),
-    program: value.program,
-    input: value.input,
-    route: value.route,
-    replayHead: value.replayHead,
-    parkedFrontier: value.parkedFrontier,
-    actionIndex: value.actionIndex,
-  }));
+  }),
+);
 const recoveryCheckpointSchema = z.strictObject({
   format: z.literal("sweatpants.recovery-checkpoint.v1"),
   executionId: checkpointTextSchema,

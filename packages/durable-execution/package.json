@@ -118,6 +118,17 @@
                 "default": "./dist/testing.js"
             },
             "default": "./src/testing.ts"
+        },
+        "./optional-fields": {
+            "development": {
+                "import": "./src/omit-undefined-optionals.ts",
+                "types": "./src/omit-undefined-optionals.ts"
+            },
+            "import": {
+                "types": "./dist/optional-fields.d.ts",
+                "default": "./dist/optional-fields.js"
+            },
+            "default": "./src/omit-undefined-optionals.ts"
         }
     },
     "scripts": {

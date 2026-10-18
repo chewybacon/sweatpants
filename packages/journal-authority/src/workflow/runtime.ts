@@ -1,3 +1,4 @@
+import { omitUndefinedOptionals } from "@sweatpants/durable-execution/optional-fields";
 import {
   Err,
   Ok,
@@ -203,20 +204,24 @@ const effectOptionsSchema = z.strictObject({
   name: z.string().min(1),
   version: z.string().min(1),
   input: z.json(),
-  resolver: z.strictObject({
-    audience: z.string().min(1),
-    route: z.string().optional(),
-  }),
+  resolver: omitUndefinedOptionals(
+    z.strictObject({
+      audience: z.string().min(1),
+      route: z.string().optional(),
+    }),
+  ),
 });
 
-const elicitOptionsSchema = z.strictObject({
-  key: recordKeySchema,
-  message: z.string(),
-  response: portableSchemaDescriptorSchema,
-  contextContract: portableSchemaDescriptorSchema.optional(),
-  context: z.json().optional(),
-  binding: z.strictObject({ id: z.string().min(1) }).optional(),
-});
+const elicitOptionsSchema = omitUndefinedOptionals(
+  z.strictObject({
+    key: recordKeySchema,
+    message: z.string(),
+    response: portableSchemaDescriptorSchema,
+    contextContract: portableSchemaDescriptorSchema.optional(),
+    context: z.json().optional(),
+    binding: z.strictObject({ id: z.string().min(1) }).optional(),
+  }),
+);
 
 /** Result-oriented parser for elicitation authoring. */
 export const elicitOptionsParser: Parser<DurableElicitDescriptor> =
@@ -249,11 +254,13 @@ export const invokeOptionsParser: Parser<DurableInvokeDescriptor> = parser(invok
   }),
 );
 
-const waitOptionsSchema = z.strictObject({
-  key: recordKeySchema,
-  notBefore: z.string().optional(),
-  durationMs: z.number().int().positive().optional(),
-});
+const waitOptionsSchema = omitUndefinedOptionals(
+  z.strictObject({
+    key: recordKeySchema,
+    notBefore: z.string().optional(),
+    durationMs: z.number().int().positive().optional(),
+  }),
+);
 
 /** Result-oriented parser for wait authoring. */
 export const waitOptionsParser: Parser<WaitDescriptor> = parser(waitOptionsSchema).map((options) =>
@@ -689,10 +696,12 @@ const effectDescriptorSchema = z.strictObject({
   name: z.string().min(1),
   version: z.string().min(1),
   input: z.json(),
-  resolver: z.strictObject({
-    audience: z.string().min(1),
-    route: z.string().optional(),
-  }),
+  resolver: omitUndefinedOptionals(
+    z.strictObject({
+      audience: z.string().min(1),
+      route: z.string().optional(),
+    }),
+  ),
 });
 
 /**
@@ -779,15 +788,19 @@ export function pullOperation<T extends Json = Json>(descriptor: unknown): Durab
     (settled) => unwrapOutcome<T>(settled as OperationOutcome),
   );
 }
-const serializedApplicationErrorSchema = z.strictObject({
-  code: z.string(),
-  message: z.string(),
-  details: z.json().optional(),
-});
+const serializedApplicationErrorSchema = omitUndefinedOptionals(
+  z.strictObject({
+    code: z.string(),
+    message: z.string(),
+    details: z.json().optional(),
+  }),
+);
 const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: z.json() }),
   z.strictObject({ status: z.literal("error"), error: serializedApplicationErrorSchema }),
-  z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
+  omitUndefinedOptionals(
+    z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
+  ),
 ]);
 const resolutionReceiptSchema = z.strictObject({
   sessionId: z.string().min(1),
@@ -825,7 +838,9 @@ const programCommandSchema = z.discriminatedUnion("type", [
     receipt: resolutionReceiptSchema,
     replayed: z.boolean(),
   }),
-  z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
+  omitUndefinedOptionals(
+    z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
+  ),
   z.strictObject({
     type: z.literal("ack-emission"),
     actionIndex: z.number().int().nonnegative(),
@@ -852,88 +867,16 @@ function asJson(value: z.infer<ReturnType<typeof z.json>>): Json {
   return value as unknown as Json;
 }
 
-function normalizePortableSchema(
-  value: z.infer<typeof portableSchemaDescriptorSchema>,
-): PortableSchemaDescriptor {
-  return {
-    identity: value.identity,
-    role: value.role,
-    version: value.version,
-    vendor: value.vendor,
-    inputProjection: asJson(value.inputProjection),
-    outputProjection: asJson(value.outputProjection),
-    fidelity: value.fidelity,
-    digest: value.digest,
-  };
-}
-
 function normalizeElicitDescriptor(options: z.output<typeof elicitOptionsSchema>) {
-  const descriptor = {
-    kind: "elicit" as const,
-    key: options.key,
-    message: options.message,
-    response: normalizePortableSchema(options.response),
-    contextContract:
-      options.contextContract === undefined
-        ? undefined
-        : normalizePortableSchema(options.contextContract),
-    context: options.context === undefined ? undefined : asJson(options.context),
-    binding: options.binding,
-  };
-  if (descriptor.contextContract === undefined) {
-    delete descriptor.contextContract;
-  }
-  if (descriptor.context === undefined) {
-    delete descriptor.context;
-  }
-  if (descriptor.binding === undefined) {
-    delete descriptor.binding;
-  }
-  return descriptor;
+  return { kind: "elicit" as const, ...options };
 }
 
 function normalizeEffectDescriptor(options: z.output<typeof effectOptionsSchema>) {
-  const resolver = { audience: options.resolver.audience, route: options.resolver.route };
-  if (resolver.route === undefined) {
-    delete resolver.route;
-  }
-  return {
-    kind: "effect" as const,
-    name: options.name,
-    version: options.version,
-    input: asJson(options.input),
-    resolver,
-  };
+  return { kind: "effect" as const, ...options };
 }
 
 function normalizeWaitDescriptor(options: z.output<typeof waitOptionsSchema>) {
-  const descriptor = {
-    kind: "wait" as const,
-    key: options.key,
-    notBefore: options.notBefore,
-    durationMs: options.durationMs,
-  };
-  if (descriptor.notBefore === undefined) {
-    delete descriptor.notBefore;
-  }
-  if (descriptor.durationMs === undefined) {
-    delete descriptor.durationMs;
-  }
-  return descriptor;
-}
-
-function normalizeForkChild(child: z.output<typeof allDescriptorSchema>["children"][number]) {
-  const value = {
-    id: child.id,
-    version: child.version,
-    digest: child.digest,
-    input: asJson(child.input),
-    durability: child.durability,
-  };
-  if (value.durability === undefined) {
-    delete value.durability;
-  }
-  return value;
+  return { kind: "wait" as const, ...options };
 }
 
 function normalizeParsedDescriptor(
@@ -962,14 +905,14 @@ function normalizeParsedDescriptor(
       return {
         kind: "all",
         supervision: descriptor.supervision,
-        children: descriptor.children.map(normalizeForkChild),
+        children: descriptor.children,
         expiry: descriptor.expiry,
       };
     case "race":
       return {
         kind: "race",
         supervision: descriptor.supervision,
-        children: descriptor.children.map(normalizeForkChild),
+        children: descriptor.children,
         expiry: descriptor.expiry,
       };
     case "sample":
@@ -983,26 +926,6 @@ function normalizeParsedDescriptor(
         durability: descriptor.durability,
       };
   }
-}
-
-function normalizeParsedOutcome(value: z.infer<typeof operationOutcomeSchema>): OperationOutcome {
-  if (value.status === "ok") {
-    return { status: "ok", value: value.value };
-  }
-  if (value.status === "cancelled") {
-    return value.partial === undefined
-      ? { status: "cancelled" }
-      : { status: "cancelled", partial: value.partial };
-  }
-  const error = {
-    code: value.error.code,
-    message: value.error.message,
-    details: value.error.details,
-  };
-  if (error.details === undefined) {
-    delete error.details;
-  }
-  return { status: "error", error };
 }
 
 /** Result-oriented parser for host commands entering the attachment. */
@@ -1023,14 +946,12 @@ export const programCommandParser: Parser<ProgramCommand> = programCommandStruct
         return {
           type: "resume-record",
           actionIndex: command.actionIndex,
-          outcome: normalizeParsedOutcome(command.outcome),
+          outcome: command.outcome,
           receipt: command.receipt,
           replayed: command.replayed,
         };
       case "cancel":
-        return command.reason === undefined
-          ? { type: "cancel" }
-          : { type: "cancel", reason: command.reason };
+        return command;
       case "ack-emission":
         return {
           type: "ack-emission",

@@ -1,3 +1,4 @@
+import { omitUndefinedOptionals } from "@sweatpants/durable-execution/optional-fields";
 import { CrankError } from "@sweatpants/durable-execution";
 import { spawn as spawnProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -129,15 +130,17 @@ const workspaceRequestSchema = z.discriminatedUnion("type", [
     fence: workspaceFenceSchema,
     operationId: boundedWorkspaceText,
   }),
-  z.strictObject({
-    protocolVersion: z.literal(1),
-    type: z.literal("read"),
-    fence: workspaceFenceSchema,
-    operationId: boundedWorkspaceText,
-    path: boundedWorkspaceText,
-    startLine: z.number().int().positive().safe().optional(),
-    endLine: z.number().int().positive().safe().optional(),
-  }),
+  omitUndefinedOptionals(
+    z.strictObject({
+      protocolVersion: z.literal(1),
+      type: z.literal("read"),
+      fence: workspaceFenceSchema,
+      operationId: boundedWorkspaceText,
+      path: boundedWorkspaceText,
+      startLine: z.number().int().positive().safe().optional(),
+      endLine: z.number().int().positive().safe().optional(),
+    }),
+  ),
   z.strictObject({
     protocolVersion: z.literal(1),
     type: z.literal("list"),
@@ -892,14 +895,7 @@ function normalizeWorkspaceRequest(
   input: z.infer<typeof workspaceRequestSchema>,
 ): WorkspaceRequest {
   if (input.type === "read") {
-    const value = { ...input, path: safeRelativePath(input.path) };
-    if (value.startLine === undefined) {
-      delete value.startLine;
-    }
-    if (value.endLine === undefined) {
-      delete value.endLine;
-    }
-    return value;
+    return { ...input, path: safeRelativePath(input.path) };
   }
   if (input.type === "list") {
     return { ...input, path: safeRelativePath(input.path) };

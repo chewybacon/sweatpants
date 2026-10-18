@@ -1,3 +1,4 @@
+import { allDescriptorSchema, raceDescriptorSchema } from "../../pull-kinds/children.ts";
 import { canonicalJson } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import {
@@ -139,6 +140,101 @@ describe("descriptor normalization", () => {
         pullId: "pull",
         attemptId: "attempt",
         descriptor: { kind: "elicit", ...options },
+      }).ok,
+    ).toBe(false);
+  });
+});
+
+describe("command optional fields", () => {
+  const receipt = {
+    sessionId: "session",
+    taskId: "task",
+    pullId: "pull",
+    resolutionOffset: "0",
+    outcomeDigest: "a".repeat(64),
+    status: "accepted",
+  };
+
+  it.each([
+    [{ status: "cancelled", partial: undefined }, { status: "cancelled" }],
+    [
+      { status: "cancelled", partial: null },
+      { status: "cancelled", partial: null },
+    ],
+    [
+      { status: "cancelled", partial: false },
+      { status: "cancelled", partial: false },
+    ],
+    [
+      { status: "error", error: { code: "failed", message: "Failed", details: undefined } },
+      { status: "error", error: { code: "failed", message: "Failed" } },
+    ],
+    [
+      { status: "error", error: { code: "failed", message: "Failed", details: 0 } },
+      { status: "error", error: { code: "failed", message: "Failed", details: 0 } },
+    ],
+  ])("normalizes outcome %j", (outcome, expected) => {
+    const input = { type: "resume-record", actionIndex: 0, outcome, receipt, replayed: false };
+    const original = structuredClone(input);
+    const result = programCommandParser.parse(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.type !== "resume-record") {
+      throw new Error("expected a valid resume command");
+    }
+    const parsed = result.value.outcome;
+    expect(parsed).toStrictEqual(expected);
+    expect(() => canonicalJson(parsed)).not.toThrow();
+    expect(input).toStrictEqual(original);
+  });
+
+  it.each([undefined, ""])("preserves cancellation reason semantics: %j", (reason) => {
+    const result = programCommandParser.parse({ type: "cancel", reason });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected a valid cancel command");
+    }
+    expect(result.value).toStrictEqual(
+      reason === undefined ? { type: "cancel" } : { type: "cancel", reason },
+    );
+  });
+
+  it.each(["all", "race"])("normalizes %s child durability without changing input", (kind) => {
+    const base = { id: "child", version: "1", digest: "digest", input: null };
+    const native = { ...base, durability: { kind: "crank_native" } };
+    const input = {
+      type: "authorize-record",
+      actionIndex: 0,
+      pullId: "pull",
+      attemptId: "attempt",
+      descriptor: {
+        kind,
+        supervision: kind === "all" ? "one_for_all" : "first_success",
+        children: [{ ...base, durability: undefined }, native],
+        expiry: { kind: "inherit" },
+      },
+    };
+    const original = structuredClone(input);
+    const schema = kind === "all" ? allDescriptorSchema : raceDescriptorSchema;
+    const result = schema.parse(input.descriptor);
+    expect(result.children).toStrictEqual([base, native]);
+    expect(() => canonicalJson(result)).not.toThrow();
+    expect(input).toStrictEqual(original);
+  });
+
+  it.each([
+    { status: "cancelled", partial: { nested: undefined } },
+    {
+      status: "error",
+      error: { code: "failed", message: "Failed", details: { nested: undefined } },
+    },
+  ])("rejects undefined within outcome JSON: %j", (outcome) => {
+    expect(
+      programCommandParser.parse({
+        type: "resume-record",
+        actionIndex: 0,
+        outcome,
+        receipt,
+        replayed: false,
       }).ok,
     ).toBe(false);
   });
