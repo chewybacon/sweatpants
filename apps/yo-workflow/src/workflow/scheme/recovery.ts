@@ -14,10 +14,13 @@ export function createRecoveryHistory() {
         typeof result !== "object" ||
         Array.isArray(result) ||
         result.action !== "accept"
-      )
+      ) {
         return;
+      }
       const parsed = exchangeSchema.safeParse(result.exchange);
-      if (!parsed.success) return;
+      if (!parsed.success) {
+        return;
+      }
       const size = new TextEncoder().encode(JSON.stringify(parsed.data)).length + 1;
       if (bytes + size > 48 * 1024) {
         omittedExchanges++;

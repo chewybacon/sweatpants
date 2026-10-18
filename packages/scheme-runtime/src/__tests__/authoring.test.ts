@@ -13,7 +13,9 @@ it("rejects unbound identifiers before effects, including macro-generated refere
     ]) {
       const result = yield* driver.validate(source);
       expect(result.valid).toBe(false);
-      if (!result.valid) expect(result.message).toContain("missing-name");
+      if (!result.valid) {
+        expect(result.message).toContain("missing-name");
+      }
     }
     expect(yield* driver.validate("(let ((missing-name 3)) missing-name)")).toEqual({
       valid: true,

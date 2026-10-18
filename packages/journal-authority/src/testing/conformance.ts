@@ -331,7 +331,11 @@ export function adaptAuthorityPortsForConformance(
     beginCancellationUnwind: (sessionId, taskId, restoredFrontier) =>
       command({
         type: "execution.begin-cancellation-unwind",
-        request: { sessionId, taskId, ...(restoredFrontier ? { restoredFrontier } : {}) },
+        request: {
+          sessionId,
+          taskId /* CONDITIONAL-SPREAD: Omit absent restoredFrontier from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+          ...(restoredFrontier ? { restoredFrontier } : {}),
+        },
       }) as never,
     prepareProgramRestore: (request) =>
       command({ type: "recovery.prepare-restore", request }) as never,
@@ -339,7 +343,11 @@ export function adaptAuthorityPortsForConformance(
     complete: (request) => command({ type: "execution.complete-task", request }) as never,
     ensureChildTask: (request) => command({ type: "execution.ensure-child", request }) as never,
     taskRecoveryState: (sessionId, taskId) =>
-      authority.query({ type: "task.recovery-state", sessionId, ...(taskId ? { taskId } : {}) }),
+      authority.query({
+        type: "task.recovery-state",
+        sessionId /* CONDITIONAL-SPREAD: Omit absent taskId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+        ...(taskId ? { taskId } : {}),
+      }),
     rootTaskCount: (sessionId) => authority.query({ type: "session.root-task-count", sessionId }),
     operationState: (sessionId, taskId, pullId) =>
       authority.query({ type: "pull.state", sessionId, taskId, pullId }),
@@ -357,7 +365,12 @@ export function adaptAuthorityPortsForConformance(
     replaceAttachment: (sessionId, taskId, attachmentId, audience) =>
       command({
         type: "execution.replace-attachment",
-        request: { sessionId, taskId, attachmentId, ...(audience ? { audience } : {}) },
+        request: {
+          sessionId,
+          taskId,
+          attachmentId /* CONDITIONAL-SPREAD: Omit absent audience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+          ...(audience ? { audience } : {}),
+        },
       }) as never,
     requestCancellation: (sessionId, taskId, reason, commandId) =>
       command({
@@ -365,7 +378,9 @@ export function adaptAuthorityPortsForConformance(
         request: {
           sessionId,
           taskId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason !== undefined ? { reason } : {}),
+          /* CONDITIONAL-SPREAD: Omit absent commandId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(commandId !== undefined ? { commandId } : {}),
         },
       }) as never,
@@ -379,6 +394,7 @@ export function adaptAuthorityPortsForConformance(
           taskId,
           pullId,
           attemptId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason !== undefined ? { reason } : {}),
         },
       }) as never,

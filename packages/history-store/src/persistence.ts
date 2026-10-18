@@ -151,9 +151,11 @@ export function readCommandReceipt(value: unknown): CommandReceipt {
     retainUntil: natural(object["retainUntil"], "receipt.retainUntil"),
     admittedRevision: counter(object["admittedRevision"], "receipt.admittedRevision"),
     resultingRevision: counter(object["resultingRevision"], "receipt.resultingRevision"),
+    /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
     ...(logicalTurnId === undefined
       ? {}
       : { logicalTurnId: text(logicalTurnId, "receipt.logicalTurnId") }),
+    /* CONDITIONAL-SPREAD: Omit absent executionId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
     ...(executionId === undefined ? {} : { executionId: text(executionId, "receipt.executionId") }),
   };
 }

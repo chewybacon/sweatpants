@@ -237,7 +237,9 @@ type ResumeInput = {
 const commandLifetimes = new Map<string, { issuedAt: number; expiresAt: number }>();
 function commandLifetime(commandId: string): { issuedAt: number; expiresAt: number } {
   const existing = commandLifetimes.get(commandId);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const issuedAt = Date.now();
   const created = { issuedAt, expiresAt: issuedAt + 60_000 };
   commandLifetimes.set(commandId, created);
@@ -260,7 +262,9 @@ function completedStream(message: ModelResponse): Stream<ModelStreamEvent, Model
     let done = false;
     yield* provide({
       *next(): Operation<IteratorResult<ModelStreamEvent, ModelResponse>> {
-        if (done) return { done: true, value: message };
+        if (done) {
+          return { done: true, value: message };
+        }
         done = true;
         return { done: true, value: message };
       },

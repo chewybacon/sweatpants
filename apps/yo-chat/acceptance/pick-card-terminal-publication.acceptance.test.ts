@@ -186,7 +186,9 @@ async function runScenario(binding: Binding, executor?: CloudflareExecutor): Pro
 
       const choice = yield* first.elicit("pickCard");
       // Destroy all evaluator memory while the journal remains with the host.
-      if (executor) yield* call(() => executor.replace());
+      if (executor) {
+        yield* call(() => executor.replace());
+      }
       const reconnected = yield* conversation.reopen();
       expect(JSON.stringify(reconnected.snapshot())).toContain(choice.elicitId);
       const resumed = reconnected.resumePendingElicit("pickCard");

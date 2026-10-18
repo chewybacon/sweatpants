@@ -63,7 +63,9 @@ function* initialize(store: ConversationStore, conversationId: string) {
     deletedAt: null,
     ownerTransition: { kind: "clear" },
   });
-  if (result.status !== "committed") throw new Error("failed to initialize conversation");
+  if (result.status !== "committed") {
+    throw new Error("failed to initialize conversation");
+  }
   return result.head;
 }
 

@@ -17,7 +17,7 @@
                 "null": "ignore"
             }
         ],
-        "curly": "warn",
+        "curly": ["error", "all"],
         "no-shadow": "warn",
         "no-unused-vars": "warn",
         "require-yield": "off",
@@ -75,6 +75,7 @@
         "sweatpants/layered-imports": "error",
         "sweatpants/documented-scope-crossing": "error",
         "sweatpants/no-nested-yield": "error",
+        "sweatpants/no-conditional-spread": "error",
         "typescript/no-deprecated": "warn",
         "typescript/no-unsafe-type-assertion": "off",
         "typescript/no-floating-promises": "off",

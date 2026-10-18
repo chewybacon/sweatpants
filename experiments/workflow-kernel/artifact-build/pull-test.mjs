@@ -31,9 +31,12 @@ async function execute(program, mode) {
                 {
                     pull: function* (request) {
                         trace.push(request);
-                        if (mode === "release-error" && request.key === "release")
+                        if (mode === "release-error" && request.key === "release") {
                             throw "Release failed";
-                        if (mode === "declined") return { action: "decline" };
+                        }
+                        if (mode === "declined") {
+                            return { action: "decline" };
+                        }
                         return request.key === "acquire"
                             ? { action: "accept", content: { id: "hold-" + ++holds } }
                             : { action: "accept", content: "released" };

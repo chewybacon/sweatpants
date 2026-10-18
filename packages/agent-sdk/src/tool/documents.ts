@@ -67,6 +67,7 @@ export function documentElicitContextSchema(
   );
   const contracts = Object.fromEntries(
     Object.entries({
+      /* CONDITIONAL-SPREAD: Omit absent context from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
       ...(context ? { context } : {}),
       ...Object.fromEntries(
         Object.entries(slots).map(([name, schema]) => [`document:${name}`, schema]),

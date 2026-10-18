@@ -136,9 +136,8 @@ export function* createLocalToolInvocationResourceFactory(
           toolName: request.tool.name,
           params,
           workerUrl: resolveWorkerUrl(worker.workerUrl, worker.isDev),
-          ...(worker.execArgv && worker.execArgv.length > 0
-            ? { execArgv: [...worker.execArgv] }
-            : {}),
+          execArgv:
+            worker.execArgv && worker.execArgv.length > 0 ? [...worker.execArgv] : undefined,
         });
       }
       return yield* createToolInvocationExecution(inlineTool!, params, {

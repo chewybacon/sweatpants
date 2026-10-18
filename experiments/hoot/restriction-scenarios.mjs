@@ -36,8 +36,9 @@ export async function restrictionScenarios(load) {
             };
             blocked = error.constructor.name === "SchemeQuitError" && program.fuel.value > 0n;
         }
-        if (!blocked)
+        if (!blocked) {
             throw new Error(`Capability check failed: ${name}: ${JSON.stringify(failure)}`);
+        }
         rejected.push(name);
     }
     const exhausted = [];
@@ -55,14 +56,18 @@ export async function restrictionScenarios(load) {
         } catch (e) {
             trapped = e instanceof WebAssembly.RuntimeError && program.fuel.value < 0n;
         }
-        if (!trapped) throw new Error(`No fuel trap: ${name}`);
+        if (!trapped) {
+            throw new Error(`No fuel trap: ${name}`);
+        }
         exhausted.push({ name, remaining: String(program.fuel.value) });
         // Trapped instances are discarded, never resumed.
     }
     const resumed = await load();
     resumed.fuel.value = 1000000n;
     const pending = resumed[0].call('(begin (effect "ask" "Continue?") (let loop () (loop)))');
-    if (pending[0] !== "effect") throw new Error("Expected suspension before runaway continuation");
+    if (pending[0] !== "effect") {
+        throw new Error("Expected suspension before runaway continuation");
+    }
     resumed.fuel.value = 20000n;
     let resumeTrapped = false;
     try {
@@ -70,12 +75,15 @@ export async function restrictionScenarios(load) {
     } catch (error) {
         resumeTrapped = error instanceof WebAssembly.RuntimeError && resumed.fuel.value < 0n;
     }
-    if (!resumeTrapped) throw new Error("Continuation escaped fuel budget");
+    if (!resumeTrapped) {
+        throw new Error("Continuation escaped fuel budget");
+    }
     exhausted.push({ name: "runaway after resume", remaining: String(resumed.fuel.value) });
     const fresh = await load();
     fresh.fuel.value = 200000n;
     const result = fresh[0].call("(+ 20 22)");
-    if (result[0] !== "done" || Number(result[1]) !== 42)
+    if (result[0] !== "done" || Number(result[1]) !== 42) {
         throw new Error("Fresh instance failed after exhaustion");
+    }
     return { normal, rejected, exhausted, healthyAfterTrap: true };
 }

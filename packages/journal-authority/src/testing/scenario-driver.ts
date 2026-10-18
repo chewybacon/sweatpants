@@ -221,6 +221,7 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
       return yield* query({
         type: "task.recovery-state",
         sessionId,
+        /* CONDITIONAL-SPREAD: Omit absent taskId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(taskId === undefined ? {} : { taskId }),
       });
     },
@@ -272,6 +273,7 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
         request: {
           sessionId,
           taskId,
+          /* CONDITIONAL-SPREAD: Omit absent restoredFrontier from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(restoredFrontier === undefined ? {} : { restoredFrontier }),
         },
       });
@@ -339,6 +341,7 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
           sessionId,
           taskId,
           attachmentId,
+          /* CONDITIONAL-SPREAD: Omit absent audience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(audience === undefined ? {} : { audience }),
         },
       });
@@ -370,7 +373,9 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
         request: {
           sessionId,
           taskId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason === undefined ? {} : { reason }),
+          /* CONDITIONAL-SPREAD: Omit absent commandId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(commandId === undefined ? {} : { commandId }),
         },
       });
@@ -378,7 +383,12 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
     *detachAttempt(sessionId, taskId, pullId, reason) {
       yield* direct({
         type: "execution.detach-attempt",
-        request: { sessionId, taskId, pullId, ...(reason === undefined ? {} : { reason }) },
+        request: {
+          sessionId,
+          taskId,
+          pullId /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+          ...(reason === undefined ? {} : { reason }),
+        },
       });
     },
     *abandonAttempt(sessionId, taskId, pullId, attemptId, reason) {
@@ -389,6 +399,7 @@ export function* createAuthorityScenarioDriver(options: InMemoryJournalAuthority
           taskId,
           pullId,
           attemptId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason === undefined ? {} : { reason }),
         },
       });

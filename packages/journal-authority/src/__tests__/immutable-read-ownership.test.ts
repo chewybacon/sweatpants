@@ -30,10 +30,14 @@ it("retains a bounded working set of immutable reads without retaining misses or
   );
   await run(function* () {
     expect(yield* store.getObject({ objectId: "0" })).toBeNull();
-    for (const object of objects) yield* store.putObject(object);
+    for (const object of objects) {
+      yield* store.putObject(object);
+    }
     const original = yield* store.getObject({ objectId: "0" });
     Object.assign(original!, { body: "caller mutation" });
-    for (let index = 1; index < 4; index++) yield* store.getObject({ objectId: String(index) });
+    for (let index = 1; index < 4; index++) {
+      yield* store.getObject({ objectId: String(index) });
+    }
     const warmReads = reads;
     expect((yield* store.getObject({ objectId: "0" }))?.body).toBe("body-0");
     expect(reads).toBe(warmReads);

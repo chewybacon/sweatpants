@@ -26,7 +26,9 @@ describe("pull stream batches", () => {
       expect(reads).toEqual([]);
       for (let i = 123; i < 10_000; i++) {
         expect(yield* reader.next()).toEqual({ done: false, value: { token: i, lsn: i + 1 } });
-        if (i === 124) expect(reads).toEqual([256]);
+        if (i === 124) {
+          expect(reads).toEqual([256]);
+        }
       }
       expect((yield* reader.next()).done).toBe(true);
       expect(reads.reduce((sum, count) => sum + count, 0)).toBe(9_877);

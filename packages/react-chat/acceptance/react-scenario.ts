@@ -61,7 +61,9 @@ export interface ReactChatHandle {
 const clientsByScenario = new WeakMap<object, Map<string, ReactChatClient>>();
 
 function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactChatClient {
-  if ("client" in options && options.client) return options.client;
+  if ("client" in options && options.client) {
+    return options.client;
+  }
   const threadId = options.threadId;
   let clients = clientsByScenario.get(scenario as object);
   if (!clients) {
@@ -69,17 +71,19 @@ function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactCha
     clientsByScenario.set(scenario as object, clients);
   }
   const existing = clients.get(threadId);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const created = createChatClient({
     threadId,
     transport: { http: { fetch: scenario.transport.fetch } },
     *initialize(control): Operation<void> {
       yield* call(() => control.reconnect());
     },
-    ...(options.pipeline !== undefined ? { pipeline: options.pipeline } : {}),
-    ...(options.scheduler !== undefined ? { scheduler: options.scheduler } : {}),
-    ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
-    ...(options.queue !== undefined ? { queue: options.queue } : {}),
+    pipeline: options.pipeline,
+    scheduler: options.scheduler,
+    plugins: options.plugins,
+    queue: options.queue,
   });
   clients.set(threadId, created);
   return created;
@@ -120,13 +124,18 @@ function allRenderParts(messages: readonly ReactChatUIMessage[]): ReactRenderPar
   const output: ReactRenderPart[] = [];
   const visit = (parts: readonly ReactChatUIMessage["parts"][number][]): void => {
     for (const part of parts) {
-      if (part.type === "render") output.push(part);
-      else if (part.type === "message") visit(part.message.parts);
-      else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit")
+      if (part.type === "render") {
+        output.push(part);
+      } else if (part.type === "message") {
+        visit(part.message.parts);
+      } else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit") {
         visit(part.parts);
+      }
     }
   };
-  for (const message of messages) visit(message.parts);
+  for (const message of messages) {
+    visit(message.parts);
+  }
   return output;
 }
 
@@ -137,13 +146,18 @@ function findElicit(
   let found: Extract<ReactChatUIMessage["parts"][number], { type: "elicit" }> | undefined;
   const visit = (parts: readonly ReactChatUIMessage["parts"][number][]): void => {
     for (const part of parts) {
-      if (part.type === "elicit" && part.elicitId === elicitId) found = part;
-      else if (part.type === "message") visit(part.message.parts);
-      else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit")
+      if (part.type === "elicit" && part.elicitId === elicitId) {
+        found = part;
+      } else if (part.type === "message") {
+        visit(part.message.parts);
+      } else if (part.type === "tool-call" || part.type === "activity" || part.type === "elicit") {
         visit(part.parts);
+      }
     }
   };
-  for (const message of messages) visit(message.parts);
+  for (const message of messages) {
+    visit(message.parts);
+  }
   return found;
 }
 
@@ -163,15 +177,21 @@ export function mountReactChat(
     let rendered: RenderHookResult<UseChatResult, unknown> | undefined;
 
     const close = (): void => {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       const error = new Error("React chat harness is closed");
-      for (const waiter of waiters.splice(0)) waiter.reject(error);
+      for (const waiter of waiters.splice(0)) {
+        waiter.reject(error);
+      }
       rendered?.unmount();
       rendered = undefined;
     };
     const assertOpen = (): void => {
-      if (closed) throw new Error("React chat harness is closed");
+      if (closed) {
+        throw new Error("React chat harness is closed");
+      }
     };
     const timeout = <T>(promise: Promise<T>, label: string): Promise<T> =>
       new Promise<T>((resolve, reject) => {
@@ -195,7 +215,9 @@ export function mountReactChat(
       for (const waiter of [...waiters]) {
         try {
           const selected = waiter.select(chat);
-          if (selected === undefined) continue;
+          if (selected === undefined) {
+            continue;
+          }
           waiters.splice(waiters.indexOf(waiter), 1);
           waiter.resolve(selected);
         } catch (error) {
@@ -212,10 +234,14 @@ export function mountReactChat(
     });
 
     function waitFor<T>(label: string, select: (chat: UseChatResult) => T | undefined): Promise<T> {
-      if (closed) return Promise.reject(new Error("React chat harness is closed"));
+      if (closed) {
+        return Promise.reject(new Error("React chat harness is closed"));
+      }
       for (let index = snapshots.length - 1; index >= 0; index -= 1) {
         const selected = select(snapshots[index]!);
-        if (selected !== undefined) return Promise.resolve(selected);
+        if (selected !== undefined) {
+          return Promise.resolve(selected);
+        }
       }
       return timeout(
         new Promise<T>((resolve, reject) =>
@@ -270,7 +296,9 @@ export function mountReactChat(
         if (latestActiveIndex >= 0) {
           for (let index = snapshots.length - 1; index > latestActiveIndex; index -= 1) {
             const chat = snapshots[index]!;
-            if (complete(chat)) return chat;
+            if (complete(chat)) {
+              return chat;
+            }
           }
         }
         let observedActive = latestActiveIndex >= 0;
@@ -303,12 +331,15 @@ export function mountReactChat(
           waitFor("projected message", (chat) => {
             for (const message of [...chat.messages].reverse()) {
               const projected = projectedMessage(message);
-              if (expectation.role !== undefined && projected.role !== expectation.role) continue;
+              if (expectation.role !== undefined && projected.role !== expectation.role) {
+                continue;
+              }
               if (
                 expectation.containing !== undefined &&
                 !projected.text.includes(expectation.containing)
-              )
+              ) {
                 continue;
+              }
               return projected;
             }
             return undefined;
@@ -329,21 +360,28 @@ export function mountReactChat(
                 | undefined;
               const componentKey = component?.displayName ?? component?.name;
               const status = render.state === "pending" ? "pending" : "complete";
-              if (expectation.status && expectation.status !== status) continue;
-              if (expectation.componentKey && expectation.componentKey !== componentKey) continue;
-              if (expectation.toolName && owner === undefined) continue;
+              if (expectation.status && expectation.status !== status) {
+                continue;
+              }
+              if (expectation.componentKey && expectation.componentKey !== componentKey) {
+                continue;
+              }
+              if (expectation.toolName && owner === undefined) {
+                continue;
+              }
               return {
                 callId: owner?.elicitId ?? "",
                 id: render.id,
                 toolName: owner?.key ?? "",
-                ...(componentKey ? { componentKey } : {}),
-                ...(element.props !== undefined ? { props: element.props } : {}),
+                componentKey: componentKey ? componentKey : undefined,
+                props: element.props,
                 status,
                 *respond(value: unknown) {
                   assertOpen();
                   const respond = element.props?.["onRespond"];
-                  if (typeof respond !== "function")
+                  if (typeof respond !== "function") {
                     throw new Error("Prepared render part has no responder");
+                  }
                   yield* call(() => act(() => (respond as (value: unknown) => void)(value)));
                 },
               } satisfies ReactRenderHandle;

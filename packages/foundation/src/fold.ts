@@ -98,7 +98,9 @@ export function prefilter<In, Narrowed extends In, Out>(
     const stepper = source.start();
     return {
       step(item) {
-        if (admits(item)) stepper.step(item);
+        if (admits(item)) {
+          stepper.step(item);
+        }
       },
       done: () => stepper.done(),
     };

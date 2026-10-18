@@ -79,6 +79,7 @@ export function createAwsCliCommandRunner(options: {
       const commandArgs = [
         service,
         operation,
+
         ...(options.profile ? ["--profile", options.profile] : []),
         "--region",
         options.region,

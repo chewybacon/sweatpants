@@ -59,7 +59,9 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
   let chainRead: { key: string; chunks: readonly (readonly Json[])[] } | undefined;
   function chainValues(chunks: readonly (readonly Json[])[]): AsyncIterable<readonly Json[]> {
     return (async function* () {
-      for (const chunk of chunks) yield structuredClone(chunk);
+      for (const chunk of chunks) {
+        yield structuredClone(chunk);
+      }
     })();
   }
 
@@ -114,7 +116,9 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
         ? DurableCollections.executionJournalSegments
         : DurableCollections.executionReplaySegments;
     const readKey = JSON.stringify([kind, task.executionId, task.taskId, task.head]);
-    if (chainRead?.key === readKey) return chainValues(chainRead.chunks);
+    if (chainRead?.key === readKey) {
+      return chainValues(chainRead.chunks);
+    }
     const chunks: Array<readonly Json[]> = [];
     let readBytes = 0;
     let after: string | null = null;
@@ -259,12 +263,16 @@ export function createKernelExecutionStore(kernel: DurableKernel): ExecutionStor
     },
     *getObject(pointer): Operation<StoredExecutionObject | null> {
       const retained = objectReads.get(pointer.objectId);
-      if (retained) return structuredClone(retained);
+      if (retained) {
+        return structuredClone(retained);
+      }
       const record = yield* kernel.readImmutable(
         DurableCollections.executionObjects,
         executionKeys.object(pointer.objectId),
       );
-      if (record === null) return null;
+      if (record === null) {
+        return null;
+      }
       const object = yield* call(() => readExecutionObject(record.value));
       if (!objectReads.has(object.objectId) && object.byteLength <= retainedReadBytes) {
         while (objectReads.size >= 4 || objectReadBytes + object.byteLength > retainedReadBytes) {

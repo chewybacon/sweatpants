@@ -91,25 +91,35 @@ export function createStreamTransportHandle(
     }
 
     function rejectWaiters(error: unknown): void {
-      for (const waiter of waiters.splice(0)) waiter.reject(error);
+      for (const waiter of waiters.splice(0)) {
+        waiter.reject(error);
+      }
     }
 
     const pump = (async () => {
       try {
         while (!disconnected) {
           const next = await reader.read();
-          if (next.done) break;
+          if (next.done) {
+            break;
+          }
           buffer += decoder.decode(next.value, { stream: true });
           while (true) {
             const newline = buffer.indexOf("\n");
-            if (newline < 0) break;
+            if (newline < 0) {
+              break;
+            }
             const line = buffer.slice(0, newline).trim();
             buffer = buffer.slice(newline + 1);
-            if (line) deliver(parseFrame(line));
+            if (line) {
+              deliver(parseFrame(line));
+            }
           }
         }
       } catch (error) {
-        if (!disconnected) pumpError = error;
+        if (!disconnected) {
+          pumpError = error;
+        }
       } finally {
         ended = true;
         rejectWaiters(
@@ -125,7 +135,9 @@ export function createStreamTransportHandle(
         consumed.push(available);
         return { promise: Promise.resolve(available), cancel() {} };
       }
-      if (pumpError) return { promise: Promise.reject(pumpError), cancel() {} };
+      if (pumpError) {
+        return { promise: Promise.reject(pumpError), cancel() {} };
+      }
       if (ended) {
         return {
           promise: Promise.reject(new Error("stream transport ended before the expected event")),
@@ -141,7 +153,9 @@ export function createStreamTransportHandle(
         promise,
         cancel() {
           const index = waiters.indexOf(waiter);
-          if (index >= 0) waiters.splice(index, 1);
+          if (index >= 0) {
+            waiters.splice(index, 1);
+          }
         },
       };
     }
@@ -160,7 +174,9 @@ export function createStreamTransportHandle(
           }),
         ]);
       } finally {
-        if (timer) clearTimeout(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
       }
     }
 
@@ -181,11 +197,14 @@ export function createStreamTransportHandle(
       checkpoint() {
         return {
           conversationId,
+          /* CONDITIONAL-SPREAD: Omit absent knownWindowToken from chat protocol fixtures; explicit undefined is not a portable JSON value. */
           ...(knownWindowToken === undefined ? {} : { knownWindowToken }),
         };
       },
       async disconnect() {
-        if (disconnected) return;
+        if (disconnected) {
+          return;
+        }
         disconnected = true;
         await reader.cancel("test-rig transport disconnect");
         await pump;
@@ -201,7 +220,9 @@ export function createStreamTransportHandle(
               return Object.freeze([...consumed]);
             }
           } catch (error) {
-            if (!ended || pumpError || disconnected) throw error;
+            if (!ended || pumpError || disconnected) {
+              throw error;
+            }
             validateConversationSegment(consumed.map((frame) => frame.event));
             return Object.freeze([...consumed]);
           }
@@ -248,6 +269,7 @@ export function createStreamTransportHandle(
           body: JSON.stringify({
             clientId: "test-rig-stream",
             conversationId: checkpoint.conversationId,
+            /* CONDITIONAL-SPREAD: Omit absent knownWindowToken from chat protocol fixtures; explicit undefined is not a portable JSON value. */
             ...(checkpoint.knownWindowToken === undefined
               ? {}
               : { knownWindowToken: checkpoint.knownWindowToken }),

@@ -85,7 +85,9 @@ export function agUiMessagesToChatHistoryEntries(
 ): readonly ChatHistoryEntry[] {
   const toolNames = new Map<string, string>();
   for (const [index, message] of messages.entries()) {
-    if (message.role !== "assistant") continue;
+    if (message.role !== "assistant") {
+      continue;
+    }
     for (const call of message.toolCalls ?? []) {
       rejectEncryptedToolCall(call, `$.messages[${index}].toolCalls`);
       toolNames.set(call.id, call.function.name);
@@ -119,9 +121,13 @@ export function chatHistoryEntriesToAgUiMessages(
 ): readonly Message[] {
   const toolNames = new Map<string, string>();
   for (const entry of entries) {
-    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    if (entry.type !== "message" || entry.message.role !== "assistant") {
+      continue;
+    }
     for (const part of entry.message.content) {
-      if (part.type === "tool-call") toolNames.set(part.toolCall.id, part.toolCall.name);
+      if (part.type === "tool-call") {
+        toolNames.set(part.toolCall.id, part.toolCall.name);
+      }
     }
   }
   return Object.freeze(
@@ -291,7 +297,9 @@ function assistantToAgUiMessage(id: string, message: ChatAssistantMessage): Mess
   return {
     id,
     role: "assistant",
+    /* CONDITIONAL-SPREAD: Omit absent content from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(content !== undefined ? { content } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent toolCalls from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
   } satisfies AgUiAssistantMessage;
 }
@@ -326,18 +334,24 @@ function toolHistoryToAgUiMessage(
 }
 
 function contentFromAgUi(value: AgUiUserMessage["content"], path: string): ChatContent {
-  if (typeof value === "string") return decodeContent(value, path);
+  if (typeof value === "string") {
+    return decodeContent(value, path);
+  }
   const parts = value.map((part, index) => inputPartToCanonical(part, `${path}[${index}]`));
   return decodeContent(parts, path);
 }
 
 function contentToAgUiUserContent(value: ChatContent): AgUiUserMessage["content"] {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    return value;
+  }
   return value.map((part) => canonicalPartToAgUi(part));
 }
 
 function inputPartToCanonical(part: InputContentPart, path: string): ChatContentPart {
-  if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "text") {
+    return { type: "text", text: part.text };
+  }
   try {
     return decodeChatContentPart(
       part.metadata === undefined

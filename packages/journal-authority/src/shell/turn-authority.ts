@@ -173,6 +173,7 @@ export function* createTurnJournal(executionId: string): Operation<TurnJournal> 
             return {
               status: "commit",
               next: yield* controlForRecord(capsule, current.ownerFence, journalHead),
+              /* CONDITIONAL-SPREAD: Omit absent journalSegments from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
               ...(journalSegments.length > 0 ? { journalSegments } : {}),
               result: capsule,
             };

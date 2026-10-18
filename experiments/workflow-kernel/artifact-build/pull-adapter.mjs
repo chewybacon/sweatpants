@@ -15,29 +15,37 @@ export function createPullMachine(bundle, input, snapshot) {
     const { artifact, schemas } = loadBundle(bundle);
     const validate = (digest, value) => {
         const result = parseRegisteredSchema(schemas, digest, value);
-        if (result.status !== "ok" || hash(result.value) !== hash(value))
+        if (result.status !== "ok" || hash(result.value) !== hash(value)) {
             throw Error("Compiled boundary validation failed");
+        }
     };
     validate(artifact.boundary.input, input);
     let state;
     if (snapshot) {
         const { checksum, ...body } = snapshot;
-        if (checksum !== hash(body) || body.artifact !== artifact.id || body.input !== hash(input))
+        if (
+            checksum !== hash(body) ||
+            body.artifact !== artifact.id ||
+            body.input !== hash(input)
+        ) {
             throw Error("Continuation identity mismatch");
+        }
         state = copy(body.state);
         if (
             state.program !== artifact.compiled.program.id ||
             !["waiting", "done"].includes(state.status)
-        )
+        ) {
             throw Error("Invalid continuation boundary");
+        }
     } else {
         state = start(artifact.compiled.program, copy(input));
         run(artifact.compiled.program, state);
     }
     function frontier() {
         if (state.status === "done") {
-            if (state.outcome.kind === "returned")
+            if (state.outcome.kind === "returned") {
                 validate(artifact.boundary.output, state.outcome.value);
+            }
             return { type: "terminal", outcome: copy(state.outcome) };
         }
         const binding = artifact.tool.elicits[state.site];
@@ -47,15 +55,17 @@ export function createPullMachine(bundle, input, snapshot) {
             !Array.isArray(request) ||
             request[0] !== "elicit" ||
             request[1] !== binding.key
-        )
+        ) {
             throw Error("Unsupported compiled pull");
+        }
         const options = request[2];
         if (
             !options ||
             typeof options.message !== "string" ||
             Object.keys(options).some((k) => k !== "message")
-        )
+        ) {
             throw Error("This adapter supports message-only elicit requests");
+        }
         return {
             type: "pull",
             descriptor: {
@@ -70,13 +80,17 @@ export function createPullMachine(bundle, input, snapshot) {
     return {
         frontier,
         resume(value) {
-            if (state.status !== "waiting") throw Error("No pending pull");
+            if (state.status !== "waiting") {
+                throw Error("No pending pull");
+            }
             validate(artifact.contracts[state.site].reply, value);
             run(artifact.compiled.program, state, { reply: copy(value) });
             return frontier();
         },
         raise(error) {
-            if (state.status !== "waiting") throw Error("No pending pull");
+            if (state.status !== "waiting") {
+                throw Error("No pending pull");
+            }
             validate(artifact.contracts[state.site].error, error);
             run(artifact.compiled.program, state, { error: copy(error) });
             return frontier();
@@ -110,8 +124,12 @@ export function createCompiledPullProgram(bundle) {
             }
             next = machine.resume(reply);
         }
-        if (next.outcome.kind === "returned") return next.outcome.value;
-        if (next.outcome.kind === "thrown") throw next.outcome.value;
+        if (next.outcome.kind === "returned") {
+            return next.outcome.value;
+        }
+        if (next.outcome.kind === "thrown") {
+            throw next.outcome.value;
+        }
         throw Error("Unsupported compiled terminal outcome: " + next.outcome.kind);
     };
 }

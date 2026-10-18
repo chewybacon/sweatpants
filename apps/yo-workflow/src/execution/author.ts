@@ -58,7 +58,9 @@ ${feedback}`,
       );
       while (true) {
         const next = yield* stream.next();
-        if (next.done) return next.value;
+        if (next.done) {
+          return next.value;
+        }
       }
     });
     if (response.stopReason === "length" && !response.errorMessage) {
@@ -69,7 +71,9 @@ ${feedback}`,
           .filter((part) => part.type === "text")
           .reduce((count, part) => count + part.text.length, 0),
       });
-      if (maxTokens < 32_768) continue;
+      if (maxTokens < 32_768) {
+        continue;
+      }
       throw Error(
         "The model ran out of output tokens while writing the workflow, even after retrying with a larger budget. No workflow was started. Try authoring again.",
       );
@@ -86,7 +90,9 @@ ${feedback}`,
       !source || source.includes("```")
         ? "Expected bare Scheme source, without Markdown or explanation"
         : await validate(source);
-    if (!diagnostic) return source;
+    if (!diagnostic) {
+      return source;
+    }
     feedback = `Your previous response was rejected before execution. Rewrite the complete caller as bare Scheme only. Validator feedback: ${diagnostic.slice(0, 2000)}`;
     console.warn("Workflow authoring validation rejected source", { diagnostic });
   }

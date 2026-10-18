@@ -116,7 +116,9 @@ export function mcpMessagesToChatMessages(messages: readonly McpMessage[]): Chat
     const path = `$.messages[${index}]`;
     const blocks = Array.isArray(message.content) ? message.content : [message.content];
     const toolUses = blocks.filter((block) => block.type === "tool_use");
-    for (const call of toolUses) toolNames.set(call.id, call.name);
+    for (const call of toolUses) {
+      toolNames.set(call.id, call.name);
+    }
     const toolResults = blocks.filter((block) => block.type === "tool_result");
 
     if (message.role === "assistant") {
@@ -184,7 +186,9 @@ function mcpContentFromChatPart(part: ChatContentPart, path: string): McpContent
 }
 
 function mcpContentFromChatContent(content: ChatContent, path: string): McpContentBlock[] {
-  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (typeof content === "string") {
+    return [{ type: "text", text: content }];
+  }
   return content.map((part, index) => mcpContentFromChatPart(part, `${path}[${index}]`));
 }
 

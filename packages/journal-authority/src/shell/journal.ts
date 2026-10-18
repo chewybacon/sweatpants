@@ -301,7 +301,9 @@ export function createJournal(
               return {
                 status: "commit",
                 next,
+                /* CONDITIONAL-SPREAD: Omit absent journalSegments from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
                 ...(journalSegments.length > 0 ? { journalSegments } : {}),
+                /* CONDITIONAL-SPREAD: Omit absent replaySegments from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
                 ...(replay.length > 0 ? { replaySegments: replay } : {}),
                 objects,
                 result: { value: transition.result, candidate, cancellationTargets },

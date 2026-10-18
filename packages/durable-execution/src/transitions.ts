@@ -21,8 +21,11 @@ const durableReferenceSchema = z
   })
   .transform((value) => ({
     id: value.id,
+    /* CONDITIONAL-SPREAD: Omit absent byteLength from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent version from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.version !== undefined ? { version: value.version } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent integrity from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
   }));
 const storedJsonSchema = z.discriminatedUnion("storage", [

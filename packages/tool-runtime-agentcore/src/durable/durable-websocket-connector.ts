@@ -70,6 +70,7 @@ export function createSigV4AgentCoreWebSocketConnector(
         const unsigned = new HttpRequest({
           protocol: "https:",
           hostname: endpoint.hostname,
+          /* CONDITIONAL-SPREAD: Omit absent port from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(endpoint.port ? { port: Number(endpoint.port) } : {}),
           method: "GET",
           path: endpoint.pathname,

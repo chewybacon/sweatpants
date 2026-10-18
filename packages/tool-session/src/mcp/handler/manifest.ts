@@ -30,6 +30,7 @@ function projectElicits(tool: ListedTool): Record<string, McpElicitProjection> |
         artifact.response.inputProjection,
         `tool ${tool.name} elicitation ${key} response`,
       ),
+      /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(artifact.context
         ? {
             context: portableSchemaObject(
@@ -47,7 +48,9 @@ function projectElicits(tool: ListedTool): Record<string, McpElicitProjection> |
 export function projectMcpTool(name: string, tool: ListedTool): McpToolProjection {
   const elicits = projectElicits(tool);
   const requires = {
+    /* CONDITIONAL-SPREAD: Omit absent elicitation from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(tool.capabilities.elicitation ? { elicitation: true } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent sampling from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(tool.capabilities.sampling ? { sampling: true } : {}),
   };
   const hasRequires = Object.keys(requires).length > 0;
@@ -58,11 +61,14 @@ export function projectMcpTool(name: string, tool: ListedTool): McpToolProjectio
       tool.artifacts.parameters.inputProjection,
       `tool ${name} parameters`,
     ),
+    /* CONDITIONAL-SPREAD: Omit absent _meta from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(elicits || hasRequires
       ? {
           _meta: {
             "x-sweatpants": {
+              /* CONDITIONAL-SPREAD: Omit absent elicits from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(elicits ? { elicits } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent requires from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(hasRequires ? { requires } : {}),
             },
           },
@@ -158,6 +164,7 @@ export function generateMcpManifest(
     server: {
       name,
       version,
+      /* CONDITIONAL-SPREAD: Omit absent description from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(description && { description }),
     },
     mcp: {

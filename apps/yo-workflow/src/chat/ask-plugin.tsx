@@ -119,7 +119,9 @@ export function ReplyForm({
                     variant="ghost"
                     disabled={blocked}
                     onClick={() => {
-                      if (!blocked) onRespond({ action: "decline" });
+                      if (!blocked) {
+                        onRespond({ action: "decline" });
+                      }
                     }}
                   >
                     Decline
@@ -129,7 +131,9 @@ export function ReplyForm({
                     variant="ghost"
                     disabled={blocked}
                     onClick={() => {
-                      if (!blocked) onRespond({ action: "cancel" });
+                      if (!blocked) {
+                        onRespond({ action: "cancel" });
+                      }
                     }}
                   >
                     Cancel

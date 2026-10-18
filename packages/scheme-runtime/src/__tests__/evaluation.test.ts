@@ -11,7 +11,9 @@ describe("Scheme engine", () => {
       });
       const invalid = yield* driver.validate("(let ((x 1))");
       expect(invalid.valid).toBe(false);
-      if (!invalid.valid) expect(invalid.message).toMatch(/end of input|read/i);
+      if (!invalid.valid) {
+        expect(invalid.message).toMatch(/end of input|read/i);
+      }
     });
   });
   it("runs tail calls, and/or, lexical callbacks and immutable JSON updates", async () => {

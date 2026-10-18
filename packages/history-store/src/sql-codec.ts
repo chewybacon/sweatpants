@@ -82,7 +82,9 @@ export function receiptFromRow(row: ReceiptRow): CommandReceipt {
     retainUntil: numberValue(row.retainUntil, "retain_until"),
     admittedRevision: row.admittedRevision,
     resultingRevision: row.resultingRevision,
+    /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
     ...(row.logicalTurnId === null ? {} : { logicalTurnId: row.logicalTurnId }),
+    /* CONDITIONAL-SPREAD: Omit absent executionId from stored history and commit receipts; explicit undefined is not a portable JSON value. */
     ...(row.executionId === null ? {} : { executionId: row.executionId }),
   };
 }

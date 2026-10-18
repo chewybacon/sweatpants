@@ -81,8 +81,9 @@ describe("AG-UI 1.0 boundary", () => {
       { type: EventType.TEXT_MESSAGE_START, messageId: "answer" },
       { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "answer", delta: "Hello" },
       { type: EventType.TEXT_MESSAGE_END, messageId: "answer" },
-    ])
+    ]) {
       state = foldAGUIEvent(state, decodeAGUIEvent(event));
+    }
     expect(materializeChatMessages(state)).toMatchObject([{ id: "answer", role: "assistant" }]);
   });
 
@@ -119,8 +120,9 @@ describe("AG-UI 1.0 boundary", () => {
       { type: EventType.TEXT_MESSAGE_START, messageId: "child-message", subagentRunId: "child" },
       { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "child-message", delta: "hello" },
       { type: EventType.TEXT_MESSAGE_END, messageId: "child-message" },
-    ])
+    ]) {
       state = foldAGUIEvent(state, decodeAGUIEvent(event));
+    }
     const messages = materializeChatMessages(state);
     expect(messages).toMatchObject([{ id: "child-message", subagentRunId: "child" }]);
     const snapshot = decodeAGUIEvent({

@@ -225,10 +225,13 @@ export const elicitOptionsParser: Parser<DurableElicitDescriptor> = parser(elici
     key: options.key,
     message: options.message,
     response: normalizePortableSchema(options.response),
+    /* CONDITIONAL-SPREAD: Omit absent contextContract from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(options.contextContract === undefined
       ? {}
       : { contextContract: normalizePortableSchema(options.contextContract) }),
+    /* CONDITIONAL-SPREAD: Omit absent context from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(options.context === undefined ? {} : { context: asJson(options.context) }),
+    /* CONDITIONAL-SPREAD: Omit absent binding from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(options.binding === undefined ? {} : { binding: options.binding }),
   }),
 );
@@ -243,6 +246,7 @@ export const effectOptionsParser: Parser<EffectDescriptor> = parser(effectOption
       input: options.input,
       resolver: {
         audience: options.resolver.audience,
+        /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(options.resolver.route === undefined ? {} : { route: options.resolver.route }),
       },
     }),
@@ -281,7 +285,9 @@ export const waitOptionsParser: Parser<WaitDescriptor> = parser(waitOptionsSchem
   Object.freeze({
     kind: "wait" as const,
     key: options.key,
+    /* CONDITIONAL-SPREAD: Omit absent notBefore from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(options.notBefore === undefined ? {} : { notBefore: options.notBefore }),
+    /* CONDITIONAL-SPREAD: Omit absent durationMs from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(options.durationMs === undefined ? {} : { durationMs: options.durationMs }),
   }),
 );
@@ -907,6 +913,7 @@ function normalizeParsedDescriptor(
         input: asJson(descriptor.input),
         resolver: {
           audience: descriptor.resolver.audience,
+          /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(descriptor.resolver.route === undefined ? {} : { route: descriptor.resolver.route }),
         },
       };
@@ -916,17 +923,22 @@ function normalizeParsedDescriptor(
         key: descriptor.key,
         message: descriptor.message,
         response: normalizePortableSchema(descriptor.response),
+        /* CONDITIONAL-SPREAD: Omit absent contextContract from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(descriptor.contextContract === undefined
           ? {}
           : { contextContract: normalizePortableSchema(descriptor.contextContract) }),
+        /* CONDITIONAL-SPREAD: Omit absent context from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(descriptor.context === undefined ? {} : { context: asJson(descriptor.context) }),
+        /* CONDITIONAL-SPREAD: Omit absent binding from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(descriptor.binding === undefined ? {} : { binding: descriptor.binding }),
       };
     case "wait":
       return {
         kind: "wait",
         key: descriptor.key,
+        /* CONDITIONAL-SPREAD: Omit absent notBefore from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(descriptor.notBefore === undefined ? {} : { notBefore: descriptor.notBefore }),
+        /* CONDITIONAL-SPREAD: Omit absent durationMs from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(descriptor.durationMs === undefined ? {} : { durationMs: descriptor.durationMs }),
       };
     case "invoke":
@@ -948,6 +960,7 @@ function normalizeParsedDescriptor(
           version: child.version,
           digest: child.digest,
           input: asJson(child.input),
+          /* CONDITIONAL-SPREAD: Omit absent durability from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(child.durability === undefined ? {} : { durability: child.durability }),
         })),
         expiry: descriptor.expiry,
@@ -961,6 +974,7 @@ function normalizeParsedDescriptor(
           version: child.version,
           digest: child.digest,
           input: asJson(child.input),
+          /* CONDITIONAL-SPREAD: Omit absent durability from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(child.durability === undefined ? {} : { durability: child.durability }),
         })),
         expiry: descriptor.expiry,
@@ -992,6 +1006,7 @@ function normalizeParsedOutcome(value: z.infer<typeof operationOutcomeSchema>): 
     error: {
       code: value.error.code,
       message: value.error.message,
+      /* CONDITIONAL-SPREAD: Omit absent details from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(value.error.details === undefined ? {} : { details: value.error.details }),
     },
   };
@@ -1629,7 +1644,9 @@ export function openProgramAttachment(
         state.disposition = acceptedReason;
       },
       *close(reason: ProgramShutdownReason): Operation<void> {
-        if (state.phase === "disposed") return;
+        if (state.phase === "disposed") {
+          return;
+        }
         state.disposition = requireParsed(
           programShutdownReasonParser,
           reason,

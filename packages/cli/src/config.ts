@@ -43,7 +43,7 @@ export function defineConfig(config: SweatpantsConfig): SweatpantsConfig {
   return Object.freeze({
     app: Object.freeze({
       command: Object.freeze([...parsed.app.command]) as unknown as readonly [string, ...string[]],
-      ...(parsed.app.cwd === undefined ? {} : { cwd: parsed.app.cwd }),
+      cwd: parsed.app.cwd,
     }),
     programs,
     development: Object.freeze({
@@ -90,7 +90,7 @@ function normalizePrograms(
     normalized[publicKey] = Object.freeze({
       program: root.program,
       source: Object.freeze({ module: sourceModule, export: root.source.export }),
-      ...(root.placement === undefined ? {} : { placement: root.placement }),
+      placement: root.placement,
     });
   }
   return Object.freeze(normalized);

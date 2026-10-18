@@ -40,6 +40,7 @@ async function playToCompletion(substrate: PlayTttSubstrate): Promise<PlayOutcom
         basisRevision: pending.basisRevision,
         logicalTurnId: pending.logicalTurnId,
         executionId: pending.executionId,
+        /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
         ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }
@@ -106,6 +107,7 @@ async function playThroughDisconnectedTurn(
         basisRevision: pending.basisRevision,
         logicalTurnId: pending.logicalTurnId,
         executionId: pending.executionId,
+        /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
         ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
       });
     }

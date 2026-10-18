@@ -22,6 +22,7 @@ function* prepareReadChat(input: DurableChatReadRequest): Operation<PreparedChat
     body: {
       ...submitted,
       conversationId: input.conversationId,
+      /* CONDITIONAL-SPREAD: Omit absent knownWindowToken from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(input.knownWindowToken ? { knownWindowToken: input.knownWindowToken } : {}),
     },
   };

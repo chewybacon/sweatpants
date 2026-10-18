@@ -49,8 +49,9 @@ const reserved = new Set(["sample", "decision", "random", "scheme.invoke", "sche
 /** The interpreter yields descriptions. Sweatpants owns every external effect and child. */
 export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
   const registry = new Map(bindings.map((tool) => [tool.name, tool]));
-  if (registry.size !== bindings.length || bindings.some((tool) => reserved.has(tool.name)))
+  if (registry.size !== bindings.length || bindings.some((tool) => reserved.has(tool.name))) {
     throw new Error("Duplicate or reserved Scheme capability");
+  }
   const capabilities = [...registry.keys(), "random", "sample", "decision", "scheme.invoke"];
   const contracts = [
     ...bindings.map((tool) => ({
@@ -112,13 +113,15 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
           status: "invalid",
           diagnostic: {
             ...validation.diagnostic,
+            /* CONDITIONAL-SPREAD: Omit absent sourceHint from workflow requests and execution events; explicit undefined is not a portable JSON value. */
             ...(sourceHint === undefined ? {} : { sourceHint }),
+            /* CONDITIONAL-SPREAD: Omit absent repairHint from workflow requests and execution events; explicit undefined is not a portable JSON value. */
             ...(repairHint === undefined ? {} : { repairHint }),
           },
           completedEffects: 0,
         };
       }
-      if (validateOnly)
+      if (validateOnly) {
         return {
           status: "valid",
           checks: {
@@ -126,6 +129,7 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
             unchecked: [...validation.checks.unchecked],
           },
         };
+      }
       const evaluation = yield* createSchemeEvaluation({
         source: program,
         capabilities,
@@ -149,15 +153,17 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
                   ? decisionRequestSchema
                   : invocation);
           const checked = validateAuthoredSchema<Json>(schema, data);
-          if (checked.status !== "ok")
+          if (checked.status !== "ok") {
             throw new SchemeEvaluationError(`Invalid ${id} request: ${JSON.stringify(checked)}`);
-          if (invocationId === undefined)
+          }
+          if (invocationId === undefined) {
             invocationId = yield* context.record(
               { key: "scheme.invocation-id", retrySafety: { mode: "repeatable" } },
               function* (attempt) {
                 return attempt.pullId;
               },
             );
+          }
           const callId = `${invocationId}/tool-${count}`;
           yield* context.emit("tool_started", {
             callId,
@@ -178,14 +184,15 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
                 },
               }),
             );
-          } else if (id === "random")
+          } else if (id === "random") {
             value = yield* randomValue(randomParameters.parse(checked.value), context);
-          else if (id === "decision")
+          } else if (id === "decision") {
             value = assertJson(yield* context.decision(decisionRequestSchema.parse(checked.value)));
-          else
+          } else {
             value = assertJson(
               yield* sampleCompletion(samplingParameters.parse(checked.value), context, callId),
             );
+          }
           recovery.record(value);
           count++;
           yield* context.emit("tool_completed", {
@@ -199,7 +206,9 @@ export function createSchemeTool(bindings: readonly BoundTool[]): BoundTool {
         return step.value;
       } catch (error) {
         // Authored faults are visible outcomes, with accepted work counted. Infrastructure failures propagate.
-        if (!(error instanceof SchemeEvaluationError)) throw error;
+        if (!(error instanceof SchemeEvaluationError)) {
+          throw error;
+        }
         return {
           status: "failed",
           diagnostic: { ...schemeDiagnostic(error.message, "execution") },

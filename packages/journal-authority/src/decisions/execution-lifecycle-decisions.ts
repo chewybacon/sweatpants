@@ -42,6 +42,7 @@ export function requestCancellation(
       accepted: true,
       duplicate: true,
       commandId: current.commandId,
+      /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(current.reason === undefined ? {} : { reason: current.reason }),
       frontier: structuredClone(current.frontier),
     };
@@ -50,6 +51,7 @@ export function requestCancellation(
   const frontierPull = pullByAction(task, task.nextActionIndex);
   const frontier = {
     actionIndex: task.nextActionIndex,
+    /* CONDITIONAL-SPREAD: Omit absent pullId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(frontierPull === undefined ? {} : { pullId: frontierPull.pullId }),
   };
   const safeReason = sanitizeCancellationReason(reason);
@@ -58,6 +60,7 @@ export function requestCancellation(
     cancellation: {
       type: "requested",
       commandId,
+      /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(safeReason === undefined ? {} : { reason: safeReason }),
       frontier,
     },
@@ -66,6 +69,7 @@ export function requestCancellation(
     type: "CancellationRequested",
     taskId,
     commandId,
+    /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(safeReason === undefined ? {} : { reason: safeReason }),
     frontier,
   });
@@ -86,6 +90,7 @@ export function requestCancellation(
         type: "cancelling_children",
         commandId,
         childTaskIds: [child.taskId],
+        /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(safeReason === undefined ? {} : { reason: safeReason }),
         frontier,
       };
@@ -106,6 +111,7 @@ export function requestCancellation(
           type: "settling_pull",
           commandId,
           pullId: frontierPull.pullId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(safeReason === undefined ? {} : { reason: safeReason }),
           frontier,
         };
@@ -118,6 +124,7 @@ export function requestCancellation(
     accepted: true,
     duplicate: false,
     commandId,
+    /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(safeReason === undefined ? {} : { reason: safeReason }),
     frontier,
   };
@@ -158,6 +165,7 @@ export function beginCancellationUnwind(
     cancellation: {
       type: "unwinding",
       commandId: current.commandId,
+      /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(current.reason === undefined ? {} : { reason: current.reason }),
       frontier: current.frontier,
     },
@@ -539,6 +547,7 @@ function failIndeterminate(
     task.lifecycle.cancellation = {
       type: "requested",
       commandId: task.lifecycle.cancellation.commandId,
+      /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(task.lifecycle.cancellation.reason === undefined
         ? {}
         : { reason: task.lifecycle.cancellation.reason }),

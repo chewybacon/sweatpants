@@ -138,6 +138,7 @@ export function listResources(
           mediaType: file.mediaType,
           size: file.size,
           fileDigest: file.digest,
+          /* CONDITIONAL-SPREAD: The classification fields belong only to the mount.access.kind === "model_readable" variant. */
           ...(mount.access.kind === "model_readable"
             ? { classification: mount.access.classification }
             : {}),
@@ -154,6 +155,7 @@ export function listResources(
   return deepFreeze({
     entries: page,
     truncated,
+    /* CONDITIONAL-SPREAD: Omit absent cursor from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(truncated && page.length > 0 ? { cursor: page[page.length - 1]!.logicalPath } : {}),
     ...combineResourceProvenance(values),
   });
@@ -385,7 +387,9 @@ function createReader(
     if (operation === "list") {
       return assertJson(
         listResources(options.view, options.registry, options.consumer, {
+          /* CONDITIONAL-SPREAD: Omit absent prefix from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
           ...(typeof record["prefix"] === "string" ? { prefix: record["prefix"] } : {}),
+          /* CONDITIONAL-SPREAD: Omit absent cursor from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
           ...(typeof record["cursor"] === "string" ? { cursor: record["cursor"] } : {}),
         }),
       );

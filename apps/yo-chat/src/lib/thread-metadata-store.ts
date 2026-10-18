@@ -24,8 +24,9 @@ export interface ThreadListOptions {
 }
 export function threadListLimit(options: ThreadListOptions = {}): number {
   const limit = options.limit ?? 50;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new Error("Thread page limit must be between 1 and 100");
+  }
   return limit;
 }
 

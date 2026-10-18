@@ -118,7 +118,9 @@ describe("result-oriented parser", () => {
     );
     const result = valueParser.parse({ secret: true });
     expect(result.ok).toBe(false);
-    if (result.ok) return;
+    if (result.ok) {
+      return;
+    }
     expect(result.issues).toHaveLength(16);
     expect(result.issues[0]?.message).toHaveLength(512);
     expect(JSON.stringify(result.issues[0])).not.toContain("secret");

@@ -23,8 +23,12 @@ export const game = createDurableTool("repeating-game", { version: "1" })
       rounds = rounds + 1;
       try {
         const action = yield* turn(ctx, rounds);
-        if (action === "decline") break;
-        if (action === "cancel") continue;
+        if (action === "decline") {
+          break;
+        }
+        if (action === "cancel") {
+          continue;
+        }
         score = score + 1;
       } finally {
         yield* ctx.elicit("cleanup", { message: "Finished " + rounds });

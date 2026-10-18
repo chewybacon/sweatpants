@@ -46,7 +46,9 @@ export function createCloudflareWorkflowApp(
     shutdownDeadlineMs: 0,
     setup: {
       application: function* () {
-        if (decisionProvider) yield* installDecisionProvider(decisionProvider);
+        if (decisionProvider) {
+          yield* installDecisionProvider(decisionProvider);
+        }
         yield* setupDurableStreams({
           ...createCloudflareResponseStores<string>(bindings.RESPONSE_STREAMS),
           retentionPolicy: { mode: "retain_forever" },

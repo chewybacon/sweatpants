@@ -235,6 +235,7 @@ export function createWorkflowProgramDriver(
           pullId: command.pullId,
           attemptId: command.attemptId,
           descriptor: command.descriptor,
+          /* CONDITIONAL-SPREAD: Omit absent placement from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(command.placement === undefined ? {} : { placement: command.placement }),
         };
         const event = yield* handle.exchange(authorizeCommand);
@@ -271,6 +272,7 @@ export function createWorkflowProgramDriver(
         state.checkpointable = false;
         const event = yield* handle.exchange({
           type: "cancel",
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(command.reason === undefined ? {} : { reason: command.reason }),
         });
         return present(event);

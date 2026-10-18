@@ -46,10 +46,11 @@ describe("MCP interaction projection", () => {
     expect(() => projectInputRequest(elicit)).toThrow("flat MCP form adapter");
   });
   it("does not apply an accept mapping to decline or cancel", () => {
-    for (const action of ["decline", "cancel"])
+    for (const action of ["decline", "cancel"]) {
       expect(resumeInput(elicit, { "input-1": { action } })).toMatchObject({
         response: { action },
       });
+    }
   });
   it("retains sampling tool calls for agent-like authored tools", () => {
     const ask: ToolInvocationSampleAsk = { kind: "sample", requestId: "sample-1", messages: [] };

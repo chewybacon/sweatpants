@@ -66,7 +66,9 @@ describe("memory execution store", () => {
       });
       const chunks = yield* call(async () => {
         const values: Json[] = [];
-        for await (const chunk of stream) values.push(...chunk);
+        for await (const chunk of stream) {
+          values.push(...chunk);
+        }
         return values;
       });
       expect(chunks).toEqual([{ outcome: "first" }, { outcome: "second" }]);

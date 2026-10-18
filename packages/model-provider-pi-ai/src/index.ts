@@ -178,10 +178,13 @@ export function resolveModelSelection(input: ResolveModelSelectionInput): ModelS
 function fromPiThinkingLevelMap(
   value: PiAi.ThinkingLevelMap | undefined,
 ): Model["thinkingLevelMap"] | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const { max, ...shared } = value;
   return {
     ...shared,
+    /* CONDITIONAL-SPREAD: Omit absent xhigh from provider requests and response metadata; explicit undefined is not a portable JSON value. */
     ...(max === undefined ? {} : { xhigh: max }),
   };
 }
@@ -274,7 +277,9 @@ export function createPiAiModelProvider(
     resolveModel(selection) {
       const normalized = parseModelSelection(selection, "model");
       const model = models.getModel(normalized.provider, normalized.id);
-      if (model) return fromPiAiModel(model);
+      if (model) {
+        return fromPiAiModel(model);
+      }
       throw new ModelResolutionError(
         `Unable to resolve chat model ${sanitizeIdentifier(normalized.provider)}/${sanitizeIdentifier(normalized.id)}`,
       );

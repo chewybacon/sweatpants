@@ -385,6 +385,7 @@ export function reduceForkMemberTerminal(
   }
 
   const base = {
+    /* CONDITIONAL-SPREAD: Omit absent winnerSelected from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(winnerSelected === undefined ? {} : { winnerSelected }),
     cancelMembers,
   };

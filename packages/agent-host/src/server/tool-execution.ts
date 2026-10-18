@@ -33,37 +33,45 @@ export function prepareChatTools(
 ) {
   const names = new Set<string>();
   for (const tool of tools) {
-    if (names.has(tool.name)) throw new Error(`Duplicate tool name: ${tool.name}`);
+    if (names.has(tool.name)) {
+      throw new Error(`Duplicate tool name: ${tool.name}`);
+    }
     names.add(tool.name);
-    if (tool.execution === "crank_native" && !isChatDurableTool(tool))
+    if (tool.execution === "crank_native" && !isChatDurableTool(tool)) {
       throw new Error(`Durable tool requires its authored program: ${tool.name}`);
+    }
   }
   const effectKeys = new Set<string>();
   for (const effect of effects) {
     const key = durableEffectKey(effect.definition.name, effect.definition.version);
-    if (effectKeys.has(key)) throw new Error(`Duplicate effect handler: ${key}`);
+    if (effectKeys.has(key)) {
+      throw new Error(`Duplicate effect handler: ${key}`);
+    }
     effectKeys.add(key);
   }
   for (const tool of tools.filter(isChatDurableTool)) {
     for (const effect of Object.values(tool.manifest.effects)) {
       const key = durableEffectKey(effect.name, effect.version);
-      if (!effectKeys.has(key))
+      if (!effectKeys.has(key)) {
         throw new Error(
           `Tool ${tool.name} requires effect handler: ${effect.name}@${effect.version}`,
         );
+      }
       const registration = effects.find(
         (entry) => durableEffectKey(entry.definition.name, entry.definition.version) === key,
       )!;
-      if (canonicalJson(registration.definition) !== canonicalJson(effect))
+      if (canonicalJson(registration.definition) !== canonicalJson(effect)) {
         throw new Error(
           `Effect handler contract mismatch for ${tool.name}: ${effect.name}@${effect.version}`,
         );
+      }
     }
   }
-  if (tools.length && !execution)
+  if (tools.length && !execution) {
     throw new Error(
       "Tools require an execution adapter; configure local({ worker, durableWorker }) or routeTools(...)",
     );
+  }
   const prepared = execution?.prepare(tools, "tools") ?? {};
   const bindings = new Map<string, ToolExecutionBinding>();
   const drivers = new Map(prepared.drivers ?? []);
@@ -74,28 +82,35 @@ export function prepareChatTools(
   if (
     driverNames.size !==
     (prepared.drivers?.length ?? 0) + (prepared.driverFactories?.length ?? 0)
-  )
+  ) {
     throw new Error("Duplicate durable execution driver");
+  }
   for (const binding of prepared.bindings ?? []) {
-    if (bindings.has(binding.publicName))
+    if (bindings.has(binding.publicName)) {
       throw new Error(`Duplicate durable binding: ${binding.publicName}`);
-    if (!tools.includes(binding.tool) || binding.publicName !== binding.tool.name)
+    }
+    if (!tools.includes(binding.tool) || binding.publicName !== binding.tool.name) {
       throw new Error(`Invalid durable binding: ${binding.publicName}`);
+    }
     const route = binding.route;
     const driverKind =
       route && typeof route === "object" && !Array.isArray(route) ? route.driverKind : undefined;
     if (
       typeof driverKind !== "string" ||
       (driverKind !== "program" && !driverNames.has(driverKind))
-    )
+    ) {
       throw new Error(`Missing durable driver for: ${binding.publicName}`);
+    }
     bindings.set(binding.publicName, binding);
   }
   for (const tool of tools.filter(isChatDurableTool)) {
-    if (!bindings.has(tool.name)) throw new Error(`No durable execution binding for: ${tool.name}`);
+    if (!bindings.has(tool.name)) {
+      throw new Error(`No durable execution binding for: ${tool.name}`);
+    }
   }
-  if (tools.some((t) => !isChatDurableTool(t)) && !prepared.createResources)
+  if (tools.some((t) => !isChatDurableTool(t)) && !prepared.createResources) {
     throw new Error("Execution adapter does not provide ordinary tool resources");
+  }
   return {
     programs: tools.filter(isChatDurableTool),
     *install(samplingProvider: ToolSessionSamplingProvider): Operation<void> {
@@ -153,10 +168,11 @@ export function* installChatTools(options: {
 export function inProcess(options: { setup?: () => Operation<void> } = {}): ToolExecutionAdapter {
   return {
     prepare(tools) {
-      if (tools.some((tool) => !isChatDurableTool(tool)))
+      if (tools.some((tool) => !isChatDurableTool(tool))) {
         throw new Error(
           "inProcess accepts durable programs only; ordinary tools require a worker runtime",
         );
+      }
       return {
         setup: options.setup,
         bindings: tools

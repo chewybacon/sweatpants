@@ -38,6 +38,7 @@ if (process.argv[2] === "step") {
             [
                 new URL(import.meta.url).pathname,
                 "step",
+
                 ...(reply === undefined ? [] : [JSON.stringify(reply)]),
             ],
             { encoding: "utf8" },

@@ -81,6 +81,7 @@ export function toolFailureEnvelope(value: Json | undefined): ToolFailureEnvelop
     error: {
       code: error["code"],
       message: error["message"],
+      /* CONDITIONAL-SPREAD: Omit absent details from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(error["details"] === undefined ? {} : { details: error["details"] }),
     },
   };
@@ -94,7 +95,9 @@ export function jsonRecord(value: Json | undefined): Record<string, Json> | unde
 
 export function placementFromJson(value: Json | undefined): TreePlacement | undefined {
   const input = jsonRecord(value);
-  if (!input) return undefined;
+  if (!input) {
+    return undefined;
+  }
   const nodeId = input["nodeId"];
   const parentNodeId = input["parentNodeId"];
   const sequence = input["sequence"];
@@ -108,7 +111,9 @@ export function placementFromJson(value: Json | undefined): TreePlacement | unde
 }
 
 export function portableDescriptorFromJson(value: Json | undefined) {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   try {
     return parsePortableSchemaDescriptor(value);
   } catch {

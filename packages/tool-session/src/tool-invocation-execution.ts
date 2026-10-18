@@ -138,6 +138,7 @@ export function createToolInvocationExecution<
               key: event.request.key,
               message: event.request.message,
               schema: event.request.schema.json,
+              /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(event.request.context !== undefined ? { context: event.request.context } : {}),
             });
             break;
@@ -225,7 +226,9 @@ export function createToolInvocationExecution<
 
         if (resume.kind === "elicit") {
           const pending = pendingElicit;
-          if (!pending) return;
+          if (!pending) {
+            return;
+          }
           if (pending.id !== resume.requestId) {
             throw new Error(
               `Elicitation ID mismatch: expected ${pending.id}, got ${resume.requestId}`,
@@ -238,7 +241,9 @@ export function createToolInvocationExecution<
         }
 
         const pending = pendingSample;
-        if (!pending) return;
+        if (!pending) {
+          return;
+        }
         if (pending.id !== resume.requestId) {
           throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${resume.requestId}`);
         }

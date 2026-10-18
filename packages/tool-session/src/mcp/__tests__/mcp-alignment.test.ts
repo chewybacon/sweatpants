@@ -202,7 +202,9 @@ describe("SampleExchange helpers", () => {
       // The input in tool_use should be blank
       const toolUse = exchange.response.content[0];
       expect(toolUse).toMatchObject({ type: "tool-call" });
-      if (toolUse?.type !== "tool-call") throw new Error("expected a tool-call part");
+      if (toolUse?.type !== "tool-call") {
+        throw new Error("expected a tool-call part");
+      }
       expect(toolUse.toolCall.input).toEqual({});
     });
 
@@ -342,13 +344,17 @@ describe("Exchange message count consistency", () => {
     // Get tool_use id from response
     const toolUse = exchange.response.content[0];
     expect(toolUse).toMatchObject({ type: "tool-call" });
-    if (toolUse?.type !== "tool-call") throw new Error("expected a tool-call part");
+    if (toolUse?.type !== "tool-call") {
+      throw new Error("expected a tool-call part");
+    }
     expect(toolUse.toolCall.id).toBe("unique_call_id_123");
 
     // Get tool result call identity from third message
     const thirdMsg = exchange.messages[2];
     expect(thirdMsg?.role).toBe("tool");
-    if (thirdMsg?.role !== "tool") throw new Error("expected a tool result");
+    if (thirdMsg?.role !== "tool") {
+      throw new Error("expected a tool result");
+    }
     expect(thirdMsg.toolCallId).toBe("unique_call_id_123");
 
     // Tool result content should echo parsed data

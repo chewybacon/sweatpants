@@ -52,10 +52,15 @@ function summarizePart(value: unknown): TimelinePart {
       : undefined;
   return {
     kind: type,
+    /* CONDITIONAL-SPREAD: Omit absent key from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
     ...(typeof part["key"] === "string" ? { key: part["key"] } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent state from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
     ...(typeof part["state"] === "string" ? { state: part["state"] } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent text from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
     ...(typeof part["text"] === "string" ? { text: part["text"] } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent name from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
     ...(typeof part["name"] === "string" ? { name: part["name"] } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent parts from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
     ...(children !== undefined ? { parts: children } : {}),
   };
 }

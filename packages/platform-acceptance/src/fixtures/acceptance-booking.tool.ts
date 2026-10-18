@@ -63,8 +63,9 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
     }
 
     if (params.behavior === "crash_after_resume") {
-      if (isMainThread || !params.crashEvidencePath)
+      if (isMainThread || !params.crashEvidencePath) {
         throw new Error("Crash fixture requires a worker and evidence file");
+      }
       // Record a stand-in external effect, then die before returning its result.
       appendFileSync(params.crashEvidencePath, "booking-attempt\n");
       process.exit(23);

@@ -18,7 +18,9 @@ export function schemeDiagnostic(
     message === "Unbound identifier"
       ? /#<&irritants irritants: \(([^\s()]+)\)>/.exec(detail)?.[1]
       : undefined;
-  if (identifier) message = `Unbound identifier: ${identifier}`;
+  if (identifier) {
+    message = `Unbound identifier: ${identifier}`;
+  }
   // Only the reader's input position refers to authored source. hoot/errors.scm does not.
   const reader = /#<&i\/o-line-and-column line: (\d+) column: (\d+)>/.exec(detail);
   const location = reader ? { line: Number(reader[1]), column: Number(reader[2]) } : undefined;
@@ -39,7 +41,9 @@ export function schemeDiagnostic(
     phase,
     message,
     detail,
+    /* CONDITIONAL-SPREAD: Diagnostic JSON omits identifier when the evaluator supplies no such detail. */
     ...(identifier ? { identifier } : {}),
+    /* CONDITIONAL-SPREAD: Diagnostic JSON omits location when the evaluator supplies no such detail. */
     ...(location ? { location } : {}),
   };
 }

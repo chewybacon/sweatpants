@@ -64,6 +64,7 @@ function createScriptedModelProvider(options: {
       return resource(function* (provide) {
         const parts = [
           { type: "text" as const, text: options.text },
+
           ...(options.toolCall
             ? [
                 {
@@ -93,6 +94,7 @@ function createScriptedModelProvider(options: {
             delta: options.text,
             partial: { role: "assistant", content: [{ type: "text", text: options.text }] },
           },
+
           ...(options.toolCall
             ? [
                 {
@@ -112,7 +114,9 @@ function createScriptedModelProvider(options: {
         let index = 0;
         yield* provide({
           *next(): Operation<IteratorResult<RuntimeStreamEvent, ModelResponse>> {
-            if (index < events.length) return { done: false, value: events[index++]! };
+            if (index < events.length) {
+              return { done: false, value: events[index++]! };
+            }
             return { done: true, value: finalMessage };
           },
         } as Subscription<RuntimeStreamEvent, ModelResponse>);
@@ -123,7 +127,9 @@ function createScriptedModelProvider(options: {
       const subscription = yield* stream;
       while (true) {
         const next = yield* subscription.next();
-        if (next.done) return next.value;
+        if (next.done) {
+          return next.value;
+        }
       }
     },
   };

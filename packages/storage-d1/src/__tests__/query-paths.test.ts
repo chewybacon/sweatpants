@@ -117,6 +117,7 @@ async function exercise(kernel: DurableKernel) {
   for (const ensure of [...ensures, claim]) {
     for (const key of [
       ensure.key,
+
       ...("alternateKeys" in ensure ? (ensure.alternateKeys ?? []) : []),
     ]) {
       expect(await run(() => kernel.readImmutable(ensure.collection, key))).not.toBeNull();

@@ -78,7 +78,9 @@ describe("long conversation bounded hydration", () => {
           deletedAt: null,
           ownerTransition: { kind: "clear" },
         });
-        if (initialized.status !== "committed") throw new Error("initialization failed");
+        if (initialized.status !== "committed") {
+          throw new Error("initialization failed");
+        }
 
         const body = "x".repeat(MESSAGE_BODY_BYTES);
         let currentHead: ConversationHead = initialized.head;
@@ -120,7 +122,9 @@ describe("long conversation bounded hydration", () => {
           currentHead = published.head;
           currentCheckpoint = published.checkpoint;
         }
-        if (!currentCheckpoint) throw new Error("long conversation was not published");
+        if (!currentCheckpoint) {
+          throw new Error("long conversation was not published");
+        }
         expect(BigInt(currentCheckpoint.archiveFrontierOrdinal)).toBeGreaterThan(0n);
         expect(currentCheckpoint.encodedBytes).toBeLessThanOrEqual(CHECKPOINT_LIMIT);
 
@@ -130,9 +134,13 @@ describe("long conversation bounded hydration", () => {
         checkpointReads = 0;
         historyReads = 0;
         const head = yield* observedStore.loadHead(conversationId);
-        if (!head?.checkpoint) throw new Error("long conversation head has no checkpoint");
+        if (!head?.checkpoint) {
+          throw new Error("long conversation head has no checkpoint");
+        }
         const checkpoint = yield* observedStore.getCheckpoint(head.checkpoint);
-        if (!checkpoint) throw new Error("long conversation checkpoint is missing");
+        if (!checkpoint) {
+          throw new Error("long conversation checkpoint is missing");
+        }
         const window = yield* buildConversationWindow({
           conversationId,
           head,

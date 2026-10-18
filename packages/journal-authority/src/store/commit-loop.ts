@@ -45,7 +45,9 @@ export function* runExecutionCommitLoop<Result>(
       expectedControlRevision: current?.controlRevision ?? null,
       expectedOwnerFence: current?.ownerFence ?? "0",
       nextControl: decision.next,
+      /* CONDITIONAL-SPREAD: Omit absent journalSegments from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(decision.journalSegments ? { journalSegments: decision.journalSegments } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent replaySegments from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(decision.replaySegments ? { replaySegments: decision.replaySegments } : {}),
       objects: decision.objects,
       updatedAt: Date.now(),

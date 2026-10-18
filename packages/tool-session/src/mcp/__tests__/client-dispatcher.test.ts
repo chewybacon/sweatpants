@@ -54,6 +54,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { raw: "ok" },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "elicit-1", parentNodeId: null, sequence: 0 },
     });
@@ -94,6 +95,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { wrong: true },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "elicit-2", parentNodeId: null, sequence: 0 },
     } as const;
@@ -135,6 +137,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { raw: "ok" },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "mismatch-1", parentNodeId: null, sequence: 0 },
     });
@@ -170,6 +173,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { raw: "ok" },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "elicit-3", parentNodeId: null, sequence: 0 },
     };
@@ -208,6 +212,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { raw: "ok" },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "failed-1", parentNodeId: null, sequence: 0 },
     });
@@ -251,6 +256,7 @@ describe("client elicitation dispatcher", () => {
       seq: 0,
       context: { raw: "ok" },
       responseContract: binding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
       placement: { nodeId: "elicit-4", parentNodeId: null, sequence: 0 },
     };

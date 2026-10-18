@@ -651,8 +651,11 @@ async function main() {
       yield* collectEvents(session, events, function* (event) {
         if (event.type === "sample_request") {
           capturedSampleRequest = {
+            /* CONDITIONAL-SPREAD: Omit absent systemPrompt from worker and tool-session messages; explicit undefined is not a portable JSON value. */
             ...(event.systemPrompt !== undefined ? { systemPrompt: event.systemPrompt } : {}),
+            /* CONDITIONAL-SPREAD: Omit absent maxTokens from worker and tool-session messages; explicit undefined is not a portable JSON value. */
             ...(event.maxTokens !== undefined ? { maxTokens: event.maxTokens } : {}),
+            /* CONDITIONAL-SPREAD: Omit absent modelPreferences from worker and tool-session messages; explicit undefined is not a portable JSON value. */
             ...(event.modelPreferences !== undefined
               ? { modelPreferences: event.modelPreferences }
               : {}),

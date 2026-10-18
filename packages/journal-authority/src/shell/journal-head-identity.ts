@@ -8,11 +8,15 @@ export function advanceJournalHeadIdentities(
   entries: readonly DurableSemanticRecord[],
   proposedHeads: Map<string, string> = new Map(),
 ): AuthorityState {
-  if (entries.length === 0) return state;
+  if (entries.length === 0) {
+    return state;
+  }
   const sessions = new Map(state.sessions);
   for (const sessionId of new Set(entries.map((entry) => entry.sessionId))) {
     const session = sessions.get(sessionId);
-    if (!session) throw new Error(`Journal append names unknown session ${sessionId}`);
+    if (!session) {
+      throw new Error(`Journal append names unknown session ${sessionId}`);
+    }
     const journalHeadId = proposedHeads.get(sessionId) ?? uuidv7();
     proposedHeads.set(sessionId, journalHeadId);
     sessions.set(sessionId, {

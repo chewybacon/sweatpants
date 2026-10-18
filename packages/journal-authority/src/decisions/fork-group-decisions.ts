@@ -172,12 +172,15 @@ export function openForkGroup(
       // Peer member audiences are derived locally, never taken from
       // peer-supplied claims (REQ-041).
       audience: durability?.kind === "peer_hosted" ? `peer:${durability.peer}` : request.audience,
+      /* CONDITIONAL-SPREAD: Omit absent elicitAudience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(parent.execution.elicitAudience === undefined
         ? {}
         : { elicitAudience: parent.execution.elicitAudience }),
+      /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(parent.execution.catalog === undefined
         ? {}
         : { catalog: parent.execution.catalog, catalogDigest: parent.execution.catalogDigest! }),
+      /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(member.route === undefined ? {} : { route: member.route }),
       parentTaskId: parent.taskId,
       parentPullId: pull.pullId,
@@ -268,6 +271,7 @@ export function breachForkGroup(
   return {
     groupId: group.groupId,
     cancelMembers,
+    /* CONDITIONAL-SPREAD: Omit absent resolution from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(resolution === undefined ? {} : { resolution }),
   };
 }

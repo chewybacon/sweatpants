@@ -64,11 +64,13 @@ export function projectAvailableToolContracts(
       manifest.outputSchema.digest,
       ...Object.values(manifest.elicits).flatMap((elicit) => [
         elicit.response.digest,
+
         ...(elicit.context ? [elicit.context.digest] : []),
       ]),
       ...Object.values(manifest.effects).flatMap((effect) => [
         effect.inputSchema.digest,
         effect.outputSchema.digest,
+
         ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
       ]),
     ];

@@ -103,6 +103,7 @@ export function createToolInventoryEntry(
         {
           binding: tool.bindings.elicits[key]!,
           responseContract: artifact.response,
+          /* CONDITIONAL-SPREAD: Omit absent contextContract from portable tool references and inventory; explicit undefined is not a portable JSON value. */
           ...(artifact.context ? { contextContract: artifact.context } : {}),
         },
       ]),
@@ -111,6 +112,7 @@ export function createToolInventoryEntry(
       elicits: Boolean(tool.capabilities?.elicitation),
       samples: Boolean(tool.capabilities?.sampling),
     },
+    /* CONDITIONAL-SPREAD: Omit absent metadata from portable tool references and inventory; explicit undefined is not a portable JSON value. */
     ...(metadata ? { metadata } : {}),
   };
 }

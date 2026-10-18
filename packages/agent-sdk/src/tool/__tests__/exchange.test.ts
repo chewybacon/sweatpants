@@ -27,7 +27,9 @@ describe("authored elicitation exchange completion", () => {
     });
 
     expect(result.action).toBe("accept");
-    if (result.action !== "accept") throw new Error("expected accepted elicitation");
+    if (result.action !== "accept") {
+      throw new Error("expected accepted elicitation");
+    }
     expect(result.content).toEqual({ answer: "yes", confirmed: true });
     expect(result.exchange.context).toBe(context);
     expect(result.exchange.messages).toEqual([

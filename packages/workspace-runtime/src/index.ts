@@ -430,7 +430,9 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
         const result = yield* operations.readFile(
           {
             path: request.path,
+            /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
             ...(request.startLine === undefined ? {} : { startLine: request.startLine }),
+            /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
             ...(request.endLine === undefined ? {} : { endLine: request.endLine }),
           },
           execution,
@@ -505,7 +507,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
     if (previous && previous.requestDigest !== requestDigest) {
       throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");
     }
-    return { requestDigest, ...(previous ? { previous } : {}) };
+    return { requestDigest, previous };
   }
 
   function assertExpectedRevision(expected: string): void {
@@ -750,7 +752,9 @@ export function installRemoteWorkspaceFilesProvider(options: {
         fence: binding.fence,
         operationId: execution.operationId("workspace.read-file"),
         path: input.path,
+        /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
         ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+        /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
         ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
       });
       if (response.type !== "read-result") {
@@ -898,12 +902,18 @@ function normalizeWorkspaceRequest(
       fence: input.fence,
       operationId: input.operationId,
       path: safeRelativePath(input.path),
+      /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
       ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
       ...(input.endLine !== undefined ? { endLine: input.endLine } : {}),
     };
   }
-  if (input.type === "list") return { ...input, path: safeRelativePath(input.path) };
-  if (input.type === "write") return { ...input, path: safeRelativePath(input.path) };
+  if (input.type === "list") {
+    return { ...input, path: safeRelativePath(input.path) };
+  }
+  if (input.type === "write") {
+    return { ...input, path: safeRelativePath(input.path) };
+  }
   return input;
 }
 
@@ -1151,7 +1161,13 @@ function boundedMessage(error: unknown): string {
 
 function errorResponse(status: number, code: string, message: string, details?: Json): Response {
   return Response.json(
-    { error: { code, message, ...(details === undefined ? {} : { details }) } },
+    {
+      error: {
+        code,
+        message /* CONDITIONAL-SPREAD: Omit absent details from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */,
+        ...(details === undefined ? {} : { details }),
+      },
+    },
     { status },
   );
 }

@@ -271,11 +271,13 @@ export function reconcileAgentCoreDurableReadiness(
     input.manifest.outputSchema.digest,
     ...Object.values(input.manifest.elicits).flatMap((elicit) => [
       elicit.response.digest,
+
       ...(elicit.context ? [elicit.context.digest] : []),
     ]),
     ...Object.values(input.manifest.effects).flatMap((effect) => [
       effect.inputSchema.digest,
       effect.outputSchema.digest,
+
       ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
     ]),
   ];

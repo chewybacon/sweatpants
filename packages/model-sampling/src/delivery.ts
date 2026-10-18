@@ -39,7 +39,9 @@ const ProgramDeliveryWriterContext = createContext<ProgramDeliveryWriter | undef
 export const ProgramDeliveryApi = createApi("model-sampling:delivery", {
   *append(events: readonly ProgramDeliveryEnvelope[]): Operation<number> {
     const writer = yield* ProgramDeliveryWriterContext.get();
-    if (!writer) throw new ProgramDeliveryUnavailable();
+    if (!writer) {
+      throw new ProgramDeliveryUnavailable();
+    }
     return yield* writer.append(events);
   },
   *installed(): Operation<boolean> {

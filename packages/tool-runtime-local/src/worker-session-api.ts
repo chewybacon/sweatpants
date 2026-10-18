@@ -43,7 +43,9 @@ function workerMessagesToChatMessages(messages: readonly WorkerMessage[]): ChatM
 
     const blocks = message.content;
     const toolUses = blocks.filter((block) => block.type === "tool_use");
-    for (const call of toolUses) toolNames.set(call.id, call.name);
+    for (const call of toolUses) {
+      toolNames.set(call.id, call.name);
+    }
     const toolResults = blocks.filter((block) => block.type === "tool_result");
     if (message.role === "user" && toolUses.length > 0 && toolResults.length === 0) {
       throw new Error(`${path}: worker tool calls must be in an assistant message`);
@@ -126,7 +128,7 @@ export const WorkerSessionApi = createApi("worker-session", {
       key: request.key,
       message: request.message,
       schema: request.schema,
-      ...(request.context !== undefined && { context: request.context }),
+      context: request.context,
     });
 
     const result = yield* queue.next();

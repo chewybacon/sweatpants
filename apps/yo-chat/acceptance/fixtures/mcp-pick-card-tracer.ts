@@ -85,17 +85,22 @@ export function createPickCardMcpTracer(options: {
     const continuation = request.params.requestState;
     if (continuation !== undefined) {
       const state = yield* continuations.verify(continuation, requestBinding(request, callerId));
-      if (state.invocationId !== sessionId) throw new Error("Continuation invocation mismatch");
+      if (state.invocationId !== sessionId) {
+        throw new Error("Continuation invocation mismatch");
+      }
       const response = decodeMcpFormResponse(request.params.inputResponses, state.pullId);
       const operation = yield* authority.operationState(sessionId, taskId, state.pullId);
-      if (operation.status !== "found" || operation.descriptor.kind !== "elicit")
+      if (operation.status !== "found" || operation.descriptor.kind !== "elicit") {
         throw new Error("Unknown pending pull");
+      }
       const cards = PickCardContextSchema.parse(operation.descriptor.context).cards;
       const picked =
         response.action === "accept"
           ? cards.find((card) => card.display === response.content?.picked)
           : undefined;
-      if (response.action === "accept" && !picked) throw new Error("Selected card was not offered");
+      if (response.action === "accept" && !picked) {
+        throw new Error("Selected card was not offered");
+      }
       const completion = assertJson(
         response.action === "accept"
           ? { action: "accept", content: { picked } }
@@ -114,13 +119,17 @@ export function createPickCardMcpTracer(options: {
           participantId: "user:pickCard",
           completion,
         });
-        if (validated.status !== "valid") throw new Error(`Invalid input: ${validated.status}`);
+        if (validated.status !== "valid") {
+          throw new Error(`Invalid input: ${validated.status}`);
+        }
         const resolution = yield* authority.resolve({
           capability: authority.resolutionCapability(sessionId, taskId, state.pullId),
           audience: validated.audience,
           outcome: validated.outcome,
         });
-        if (resolution.status === "rejected") throw new Error(`Rejected input: ${resolution.code}`);
+        if (resolution.status === "rejected") {
+          throw new Error(`Rejected input: ${resolution.code}`);
+        }
       }
     } else if (request.params.inputResponses !== undefined) {
       throw new Error("Input responses require a continuation");
@@ -128,7 +137,9 @@ export function createPickCardMcpTracer(options: {
 
     const recovered = yield* authority.taskRecoveryState(sessionId, taskId);
     if (recovered.status === "terminal") {
-      if (recovered.outcome.status !== "ok") throw new Error("Tool failed");
+      if (recovered.outcome.status !== "ok") {
+        throw new Error("Tool failed");
+      }
       return {
         jsonrpc: "2.0",
         id: request.id,
@@ -149,7 +160,9 @@ export function createPickCardMcpTracer(options: {
         },
       };
     }
-    if (next.state !== "parked") throw new Error(`Unexpected state: ${next.state}`);
+    if (next.state !== "parked") {
+      throw new Error(`Unexpected state: ${next.state}`);
+    }
     const pending = yield* authority.operationState(sessionId, taskId, next.pullId);
     if (pending.status !== "found" || pending.descriptor.kind !== "elicit") {
       throw new Error("Expected an elicitation park");

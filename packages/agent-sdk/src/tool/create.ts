@@ -175,6 +175,7 @@ function finalizeCoreUnifiedTool(options: {
   const interfaceDigest = computeToolInterfaceDigest({
     name: options.name,
     parameters: artifacts.parameters,
+    /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(artifacts.output ? { output: artifacts.output } : {}),
     elicits: artifacts.elicits,
     annotations: options.annotations,

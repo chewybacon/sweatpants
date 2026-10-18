@@ -23,7 +23,9 @@ export const scheme = createSchemeTool(primitives);
 export const programs: readonly BoundTool[] = [scheme, ...primitives];
 export const workflowExposure: ToolExposurePolicy = {
   *filter({ entries }) {
-    if (!entries) throw new Error("Workflow authoring requires an installed tool inventory");
+    if (!entries) {
+      throw new Error("Workflow authoring requires an installed tool inventory");
+    }
     return entries
       .filter((entry) => entry.definition.name === "scheme")
       .map((entry) => entry.definition);

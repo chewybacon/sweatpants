@@ -215,6 +215,7 @@ export function* stageProgramDriverModelSampleInput(
     ...request,
     invocation: {
       context: yield* stageModelContextSource(request.invocation.context, conversationId),
+      /* CONDITIONAL-SPREAD: Omit absent options from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
     },
   };
@@ -373,7 +374,9 @@ export function* resolveModelContextSource(
 }
 
 export function safeProviderErrorMessage(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   return replaceControlCharacters(value)
     .replaceAll(/(bearer|basic)\s+[^\s,;]+/gi, "$1 [redacted]")
     .replaceAll(/(token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
@@ -441,6 +444,7 @@ export function createHostModelSamplingService(options: {
               sessionId: attempt.pullId,
             },
           },
+          /* CONDITIONAL-SPREAD: The delivery fields belong only to the plan.delivery.type === "outer-assistant" variant. */
           ...(plan.delivery.type === "outer-assistant"
             ? {
                 delivery: {
@@ -585,6 +589,7 @@ export function createHostModelSamplingService(options: {
                 sessionId: attempt.pullId,
               },
             },
+            /* CONDITIONAL-SPREAD: The delivery fields belong only to the plan.delivery.type === "outer-assistant" variant. */
             ...(plan.delivery.type === "outer-assistant"
               ? {
                   delivery: {
@@ -638,7 +643,9 @@ export function createHostModelSamplingService(options: {
             attempt.taskId,
             attempt.pullId,
           ));
-        if (!preparation) return;
+        if (!preparation) {
+          return;
+        }
         const accepted = yield* options.journal.acceptAssistantPartial({
           executionId: preparation.executionId,
           taskId: attempt.taskId,

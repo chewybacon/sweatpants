@@ -78,6 +78,7 @@ async function settle(
       logicalTurnId: pending.logicalTurnId,
       executionId: pending.executionId,
       callId,
+      /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(pending.parentRunId ? { parentRunId: pending.parentRunId } : {}),
     });
     callId = latestToolCallId(current) ?? callId;

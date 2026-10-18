@@ -299,6 +299,7 @@ export function reservePull(
       resultDescriptor: policy.resultDescriptor,
       resultSchemaDigest: policy.resultDescriptor.digest,
       maxOutcomeBytes: draft.maxOutcomeBytes,
+      /* CONDITIONAL-SPREAD: Omit absent publicMessageId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(publicMessageId === undefined ? {} : { publicMessageId }),
     },
     resolutionAuthority: executableDescriptor(effectiveDescriptor)
@@ -333,12 +334,14 @@ export function reservePull(
     pullId,
     descriptor,
     descriptorDigest,
+    /* CONDITIONAL-SPREAD: Omit absent publicMessageId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(publicMessageId === undefined ? {} : { publicMessageId }),
   });
   if (executableDescriptor(effectiveDescriptor)) {
     const authorized = startAttempt(draft, task, pull);
     return {
       ...authorized,
+      /* CONDITIONAL-SPREAD: Omit absent restoredFrontierConsumed from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(request.restoredFrontier === undefined
         ? {}
         : { restoredFrontierConsumed: true as const }),
@@ -357,6 +360,7 @@ export function reservePull(
     pullId,
     reason: pendingReason(descriptor),
     resolutionCapability: capability,
+    /* CONDITIONAL-SPREAD: Omit absent restoredFrontierConsumed from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.restoredFrontier === undefined ? {} : { restoredFrontierConsumed: true as const }),
   };
 }
@@ -622,7 +626,11 @@ export function resolvePull(
         );
         outcome = {
           status: "ok",
-          value: { action: envelope.action, ...(reason === undefined ? {} : { reason }) },
+          value: {
+            action:
+              envelope.action /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+            ...(reason === undefined ? {} : { reason }),
+          },
         };
       }
     } else {
@@ -692,6 +700,7 @@ export function resolvePull(
     type: "PullResolved",
     taskId: task.taskId,
     pullId: pull.pullId,
+    /* CONDITIONAL-SPREAD: Omit absent attemptId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(attempt ? { attemptId: attempt.attemptId } : {}),
     outcome,
     outcomeDigest: digest,
@@ -738,6 +747,7 @@ export function resolvePull(
     task.lifecycle.cancellation = {
       type: "requested",
       commandId: task.lifecycle.cancellation.commandId,
+      /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(task.lifecycle.cancellation.reason === undefined
         ? {}
         : { reason: task.lifecycle.cancellation.reason }),
@@ -807,6 +817,7 @@ export function appendEmission(
     offset,
     eventId: `journal:${request.sessionId}:${offset}`,
     duplicate: false,
+    /* CONDITIONAL-SPREAD: Omit absent restoredFrontierConsumed from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.restoredFrontier === undefined ? {} : { restoredFrontierConsumed: true as const }),
   };
   task.actions.push({
@@ -902,6 +913,7 @@ export function completeTask(
   const receipt: TaskCloseReceipt = {
     offset,
     duplicate: false,
+    /* CONDITIONAL-SPREAD: Omit absent restoredFrontierConsumed from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.restoredFrontier === undefined ? {} : { restoredFrontierConsumed: true as const }),
   };
   const activeLifecycle = task.lifecycle.status === "active" ? task.lifecycle : undefined;
@@ -963,6 +975,7 @@ function startAttempt(
     pullId: pull.pullId,
     attemptId,
     descriptor,
+    /* CONDITIONAL-SPREAD: The effectContractDigest, effectDefinition fields belong only to the descriptor.kind === "effect" variant. */
     ...(descriptor.kind === "effect"
       ? {
           effectContractDigest: effectDigestForPull(task.program.manifest, descriptor),
@@ -985,6 +998,7 @@ function authorizeExisting(
       pullId: pull.pullId,
       attemptId: active.attemptId,
       descriptor: installedOrRecordedDescriptor(pull.request.acceptedDescriptor),
+      /* CONDITIONAL-SPREAD: The effectContractDigest, effectDefinition fields belong only to the pull.request.acceptedDescriptor.kind === "effect" variant. */
       ...(pull.request.acceptedDescriptor.kind === "effect"
         ? {
             effectContractDigest: effectDigestForPull(

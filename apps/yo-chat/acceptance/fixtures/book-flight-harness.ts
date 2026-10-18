@@ -58,7 +58,9 @@ export type ResumeInput = {
 const commandLifetimes = new Map<string, { issuedAt: number; expiresAt: number }>();
 function commandLifetime(commandId: string): { issuedAt: number; expiresAt: number } {
   const existing = commandLifetimes.get(commandId);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const issuedAt = Date.now();
   const created = { issuedAt, expiresAt: issuedAt + 60_000 };
   commandLifetimes.set(commandId, created);
@@ -229,7 +231,9 @@ function lastToolResultFailed(request: ModelProviderStreamRequest): boolean {
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message?.role !== "tool") continue;
+    if (message?.role !== "tool") {
+      continue;
+    }
     return message.isError;
   }
   return false;
@@ -266,7 +270,7 @@ function buildChatRequest(
   return new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    ...(signal ? { signal } : {}),
+    signal,
     body: JSON.stringify({
       command: resume
         ? {
@@ -290,10 +294,12 @@ function buildChatRequest(
       clientId: "book-flight-acceptance",
       conversationId,
       runId,
+      /* CONDITIONAL-SPREAD: Omit absent userMessage from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(!resume && messages.at(-1) ? { userMessage: messages.at(-1) } : {}),
       state: {},
       context: [],
       forwardedProps: {},
+      /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
     }),
   });
@@ -469,6 +475,7 @@ export function publicInterrupt(events: PublicEvent[]):
         basisRevision,
         logicalTurnId,
         executionId,
+        /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
         ...(typeof runId === "string" ? { parentRunId: runId } : {}),
       };
     }

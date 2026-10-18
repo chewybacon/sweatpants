@@ -54,18 +54,11 @@ function ToolCallGroup({ part }: { part: Extract<ReactChatUIPart, { type: "tool-
           ? "complete"
           : "running",
     target: compactTarget(part.rawInput ?? part.input),
-    ...(part.output !== undefined
-      ? {
-          resultDetail: (
-            <CodeBlock
-              code={JSON.stringify(part.output, null, 2)}
-              language="json"
-              maxHeight="40vh"
-            />
-          ),
-        }
-      : {}),
-    ...(part.errorText ? { errorMessage: part.errorText } : {}),
+    resultDetail:
+      part.output !== undefined ? (
+        <CodeBlock code={JSON.stringify(part.output, null, 2)} language="json" maxHeight="40vh" />
+      ) : undefined,
+    errorMessage: part.errorText ? part.errorText : undefined,
   };
   return (
     <>
@@ -195,7 +188,7 @@ function DurableChat({ conversationId }: { conversationId: string }) {
               onStop={stop}
               isDisabled={!renderReady}
               placeholder="Send a task to the journal-native coding harness…"
-              {...(error ? { status: { type: "error" as const, message: error.message } } : {})}
+              status={error ? { type: "error" as const, message: error.message } : undefined}
             />
           </LayoutFooter>
         }

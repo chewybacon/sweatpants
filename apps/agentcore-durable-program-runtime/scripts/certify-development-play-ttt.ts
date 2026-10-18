@@ -140,6 +140,7 @@ async function main(): Promise<void> {
       ...request,
       invocation: {
         context: { type: "object", object: { objectId }, digest: snapshot },
+        /* CONDITIONAL-SPREAD: Omit absent options from certification model requests; explicit undefined is not a portable JSON value. */
         ...(request.invocation.options === undefined
           ? {}
           : { options: request.invocation.options }),

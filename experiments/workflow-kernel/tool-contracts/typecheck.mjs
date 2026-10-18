@@ -41,10 +41,13 @@ export function checkToolDefinition(source) {
             return {
                 code: d.code,
                 message: ts.flattenDiagnosticMessageText(d.messageText, "\n"),
-                ...(d.file
-                    ? { file: d.file.fileName === filename ? "workflow.ts" : d.file.fileName }
-                    : {}),
-                ...(position ? { line: position.line + 1, column: position.character + 1 } : {}),
+                file: d.file
+                    ? d.file.fileName === filename
+                        ? "workflow.ts"
+                        : d.file.fileName
+                    : undefined,
+                line: position ? position.line + 1 : undefined,
+                column: position ? position.character + 1 : undefined,
             };
         });
     if (diagnostics.length) {

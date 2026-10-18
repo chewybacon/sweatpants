@@ -42,6 +42,7 @@ const continuationSchema = z.strictObject({
         executionId: value.executionId,
         callId: value.callId,
         toolName: value.toolName,
+        /* CONDITIONAL-SPREAD: Omit absent sessionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
       }),
     ),
@@ -281,6 +282,7 @@ function inputRequired(
           callId: ref.callId,
           elicitId: request.elicitId,
           toolName: tool,
+          /* CONDITIONAL-SPREAD: Omit absent context from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(request.context !== undefined ? { context: request.context } : {}),
         }),
         binding,

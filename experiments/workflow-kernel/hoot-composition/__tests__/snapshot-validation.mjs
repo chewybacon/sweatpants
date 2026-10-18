@@ -4,10 +4,18 @@ import { parse } from "../../scheme-data/read.mjs";
 
 // Serialize trusted test mutations, retaining dotted bindings from the Scheme reader.
 function datum(value) {
-    if (Array.isArray(value)) return `(${value.map(datum).join(" ")})`;
-    if (typeof value === "string") return JSON.stringify(value);
-    if (typeof value === "boolean") return value ? "#t" : "#f";
-    if (typeof value === "number") return String(value);
+    if (Array.isArray(value)) {
+        return `(${value.map(datum).join(" ")})`;
+    }
+    if (typeof value === "string") {
+        return JSON.stringify(value);
+    }
+    if (typeof value === "boolean") {
+        return value ? "#t" : "#f";
+    }
+    if (typeof value === "number") {
+        return String(value);
+    }
     return value.sym;
 }
 const symbol = (sym) => ({ sym });

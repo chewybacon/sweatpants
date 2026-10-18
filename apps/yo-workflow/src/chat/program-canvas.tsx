@@ -111,7 +111,9 @@ const nodeTypes = { program: ProgramCard, loop: LoopRegion };
 
 // Render the planned route, including branch gutters and loop-return lanes.
 function ProgramEdge({ id, data, markerEnd, style, label }: EdgeProps<RoutedEdge>) {
-  if (!data?.points.length) return null;
+  if (!data?.points.length) {
+    return null;
+  }
   const points = data.points;
   let path = `M ${points[0].x} ${points[0].y}`;
   for (let i = 1; i < points.length - 1; i++) {
@@ -121,7 +123,9 @@ function ProgramEdge({ id, data, markerEnd, style, label }: EdgeProps<RoutedEdge
     const before = Math.hypot(current.x - prev.x, current.y - prev.y);
     const after = Math.hypot(next.x - current.x, next.y - current.y);
     const radius = Math.min(10, before / 2, after / 2);
-    if (!before || !after) continue;
+    if (!before || !after) {
+      continue;
+    }
     const a = {
       x: current.x + ((prev.x - current.x) * radius) / before,
       y: current.y + ((prev.y - current.y) * radius) / before,
@@ -158,13 +162,17 @@ export function ProgramCanvas({ flow }: { flow: Flow }) {
   const [instance, setInstance] = useState<ReactFlowInstance<CanvasNode> | null>(null);
   useEffect(() => {
     const element = container.current;
-    if (!element || !instance) return;
+    if (!element || !instance) {
+      return;
+    }
     let frame = 0;
     // A canvas mounted inside closed details has no viewport. Fit after it
     // becomes measurable, including when an outer disclosure opens again.
     const observer = new ResizeObserver(([entry]) => {
       cancelAnimationFrame(frame);
-      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) {
+        return;
+      }
       frame = requestAnimationFrame(() => {
         void instance.fitView({ padding: 0.15, maxZoom: 0.85 });
       });

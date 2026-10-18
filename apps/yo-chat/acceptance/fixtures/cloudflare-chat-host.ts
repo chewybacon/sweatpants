@@ -78,6 +78,7 @@ export async function startCloudflareChatHost(
             modules: { "index.js": workerModule },
           },
           exports: {
+            /* CONDITIONAL-SPREAD: Only Durable Object placement declares and binds the Conversations resource. */
             ...(placement === "durable-object"
               ? { Conversations: { type: "durable-object" as const, storage: "sqlite" as const } }
               : {}),
@@ -87,6 +88,7 @@ export async function startCloudflareChatHost(
           },
           env: {
             CHAT_HOST_PLACEMENT: { type: "text", value: placement },
+            /* CONDITIONAL-SPREAD: Only Durable Object placement declares and binds the Conversations resource. */
             ...(placement === "durable-object"
               ? {
                   CONVERSATIONS: {
@@ -133,8 +135,9 @@ export async function startCloudflareChatHost(
     const database = (await worker.getD1Database("JOURNAL")) as unknown as D1Database;
     const frozenSchema = process.env.YO_CHAT_CPU_PROFILE_SCHEMA;
     if (frozenSchema) {
-      if (!frozenBundle || !profileDirectory)
+      if (!frozenBundle || !profileDirectory) {
         throw new Error("Frozen schema requires a frozen CPU profile bundle");
+      }
       const statements: string[] = JSON.parse(await readFile(frozenSchema, "utf8"));
       await database.batch(statements.map((sql) => database.prepare(sql)));
     } else {

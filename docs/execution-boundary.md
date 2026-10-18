@@ -54,6 +54,27 @@ unknown. Disposal remains available. Callers must dispose handles in a finalizer
 Cancellation may produce another suspension for cleanup; disposal does not promise
 logical cleanup. A terminal boundary cannot be resumed.
 
+### Lifecycle spike: ownership before and after startup
+
+The tool adapter owns cleanup after `host.start` succeeds and until the first
+boundary is obtained. If that advance throws or its scope is cancelled, a
+finalizer disposes the invocation: no execution handle has reached the caller.
+After successful startup, the caller owns disposal as before. Acquisition inside
+`host.start` remains the host's responsibility.
+
+The shared handle separates revoking advancement from acknowledging release.
+Disposal immediately closes the handle to resume/cancel. Successful driver
+disposal makes subsequent disposal a no-op; failed or interrupted disposal allows
+the owner to retry. Concurrent disposal is rejected. There is no automatic retry.
+Drivers must tolerate partial release and repeated disposal after interruption.
+
+The executable examples are `foundation/src/__tests__/execution.test.ts` and
+the abandoned-startup scenario in `tool-session/src/__tests__/invocation-executor.test.ts`.
+This is a narrow spike: it does not establish retry-safe cleanup in every host or
+transport. In particular, a host that forgets an invocation before release
+finishes still needs its own ownership fix. Snapshot capture's lifecycle guard
+and a production placement/recovery matrix remain follow-up work.
+
 Suspension IDs are scoped to an adapter lifetime. They are not durable receipts,
 and must not be used to correlate commands across reconnection or restoration.
 The existing ProgramDriver retains execution epochs, ordered actions, authorization,

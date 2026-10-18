@@ -217,14 +217,18 @@ export function* createHandleHost(): Operation<HandleHost> {
     },
     *attach(id) {
       const invocation = invocations.get(id);
-      if (!invocation) throw new InvocationNotFound(id);
+      if (!invocation) {
+        throw new InvocationNotFound(id);
+      }
       refCounts.set(id, (refCounts.get(id) ?? 0) + 1);
       return handleFor(invocation);
     },
     *release(id) {
       const remaining = (refCounts.get(id) ?? 0) - 1;
       refCounts.set(id, remaining);
-      if (remaining > 0) return;
+      if (remaining > 0) {
+        return;
+      }
       const invocation = invocations.get(id);
       if (invocation && invocation.status !== "running" && invocation.status !== "parked") {
         invocations.delete(id);
@@ -275,7 +279,9 @@ export function* createInvocationHost(): Operation<InvocationHost> {
 
   function lookup(id: string): Invocation {
     const invocation = invocations.get(id);
-    if (!invocation) throw new InvocationNotFound(id);
+    if (!invocation) {
+      throw new InvocationNotFound(id);
+    }
     return invocation;
   }
 
@@ -305,7 +311,9 @@ export function* createInvocationHost(): Operation<InvocationHost> {
     *release(id) {
       const remaining = (refCounts.get(id) ?? 0) - 1;
       refCounts.set(id, remaining);
-      if (remaining > 0) return;
+      if (remaining > 0) {
+        return;
+      }
       const invocation = invocations.get(id);
       if (invocation && invocation.status !== "running" && invocation.status !== "parked") {
         invocations.delete(id);

@@ -46,22 +46,32 @@ interface PackageInfo {
 function isTestPath(relativePath: string): boolean {
   const segments = relativePath.split("/");
   const base = segments[segments.length - 1] ?? "";
-  if (/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(base)) return true;
+  if (/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(base)) {
+    return true;
+  }
   return segments.some((segment) => TEST_SEGMENTS.has(segment));
 }
 
 function listSourceFiles(rootDir: string, dir: string): string[] {
   const files: string[] = [];
-  if (!existsSync(dir)) return files;
+  if (!existsSync(dir)) {
+    return files;
+  }
   for (const entry of readdirSync(dir)) {
-    if (entry.endsWith(".d.ts")) continue;
+    if (entry.endsWith(".d.ts")) {
+      continue;
+    }
     const full = join(dir, entry);
     const relativePath = relative(rootDir, full).replaceAll("\\", "/");
     if (statSync(full).isDirectory()) {
-      if (EXCLUDED_DIRS.has(entry)) continue;
+      if (EXCLUDED_DIRS.has(entry)) {
+        continue;
+      }
       files.push(...listSourceFiles(rootDir, full));
     } else if (SOURCE_EXTENSIONS.has(full.slice(full.lastIndexOf(".")))) {
-      if (isTestPath(relativePath)) continue;
+      if (isTestPath(relativePath)) {
+        continue;
+      }
       files.push(full);
     }
   }
@@ -72,13 +82,19 @@ function discoverMembers(root: string): PackageInfo[] {
   const members: PackageInfo[] = [];
   for (const group of ["packages", "apps"]) {
     const groupDir = join(root, group);
-    if (!existsSync(groupDir)) continue;
+    if (!existsSync(groupDir)) {
+      continue;
+    }
     for (const entry of readdirSync(groupDir)) {
       const dir = join(groupDir, entry);
       const manifestPath = join(dir, "package.json");
-      if (!statSync(dir).isDirectory() || !existsSync(manifestPath)) continue;
+      if (!statSync(dir).isDirectory() || !existsSync(manifestPath)) {
+        continue;
+      }
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { name?: string };
-      if (!manifest.name) continue;
+      if (!manifest.name) {
+        continue;
+      }
       members.push({ dir, member: `${group}/${entry}`, name: manifest.name });
     }
   }
@@ -132,7 +148,9 @@ export function buildConsumerMap(
       const source = readFileSync(file, "utf8");
       for (const importedName of importedModuleNames(file, source)) {
         for (const [name, target] of byName) {
-          if (target === member.member || !isPackageImport(importedName, name)) continue;
+          if (target === member.member || !isPackageImport(importedName, name)) {
+            continue;
+          }
           if (!consumers.get(target)?.includes(member.member)) {
             consumers.get(target)?.push(member.member);
           }
@@ -164,10 +182,18 @@ export function parseMemberLedger(indexPath: string): Map<string, LedgerStatus> 
   let rowCount = 0;
   for (const rawLine of section.split("\n")) {
     const line = rawLine.trim();
-    if (line === "" || line === "## Workspace member ledger") continue;
-    if (/^\|\s*:?-{3,}/.test(line)) continue;
-    if (/^\|\s*Member\s*\|\s*Status\s*\|/i.test(line)) continue;
-    if (!line.startsWith("|")) continue;
+    if (line === "" || line === "## Workspace member ledger") {
+      continue;
+    }
+    if (/^\|\s*:?-{3,}/.test(line)) {
+      continue;
+    }
+    if (/^\|\s*Member\s*\|\s*Status\s*\|/i.test(line)) {
+      continue;
+    }
+    if (!line.startsWith("|")) {
+      continue;
+    }
     const row = /^\|\s*`([^`]+)`\s*\|\s*([A-Za-z]+)\s*\|/.exec(line);
     if (!row) {
       throw ledgerError(indexPath, `invalid ledger row: ${line}`);
@@ -241,7 +267,9 @@ export function formatReport(report: HygieneReport): string {
       ? "FAIL"
       : (member.ledgerStatus ?? (member.consumerCount > 0 ? "library" : "?"));
     lines.push(`${status.padEnd(15)} ${member.member} (consumers: ${member.consumerCount})`);
-    if (member.violation) lines.push(`  -> ${member.violation}`);
+    if (member.violation) {
+      lines.push(`  -> ${member.violation}`);
+    }
   }
   if (report.violations.length > 0) {
     lines.push(
@@ -261,7 +289,9 @@ function main(): void {
   try {
     const report = scanWorkspace(root, ledgerPath);
     console.log(formatReport(report));
-    if (report.violations.length > 0) process.exitCode = 1;
+    if (report.violations.length > 0) {
+      process.exitCode = 1;
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
@@ -270,4 +300,6 @@ function main(): void {
 
 const isDirectRun =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isDirectRun) main();
+if (isDirectRun) {
+  main();
+}

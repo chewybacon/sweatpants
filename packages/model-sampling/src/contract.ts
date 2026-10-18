@@ -283,13 +283,16 @@ export const modelSampleRequestParser: Parser<ModelSampleRequest> =
     return success({
       invocation: {
         context: context.value,
+        /* CONDITIONAL-SPREAD: Omit absent options from canonical model requests; explicit undefined is not a portable JSON value. */
         ...(value.invocation.options === undefined
           ? {}
           : { options: normalizeOptions(value.invocation.options) }),
       },
       tools,
       response: value.response as ModelResponseMode,
+      /* CONDITIONAL-SPREAD: Omit absent modelPreferences from canonical model requests; explicit undefined is not a portable JSON value. */
       ...(value.modelPreferences === undefined ? {} : { modelPreferences: value.modelPreferences }),
+      /* CONDITIONAL-SPREAD: Omit absent classifications from canonical model requests; explicit undefined is not a portable JSON value. */
       ...(value.classifications === undefined ? {} : { classifications: value.classifications }),
     });
   });
@@ -334,6 +337,7 @@ export function resolveModelSampleSourceRequest(
     ...request,
     invocation: {
       context,
+      /* CONDITIONAL-SPREAD: Omit absent options from canonical model requests; explicit undefined is not a portable JSON value. */
       ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
     },
   });
@@ -349,13 +353,16 @@ export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSamp
   return assertJson({
     invocation: {
       context: request.invocation.context,
+      /* CONDITIONAL-SPREAD: Omit absent options from canonical model requests; explicit undefined is not a portable JSON value. */
       ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
     },
     tools: request.tools,
     response: request.response,
+    /* CONDITIONAL-SPREAD: Omit absent modelPreferences from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(request.modelPreferences === undefined
       ? {}
       : { modelPreferences: request.modelPreferences }),
+    /* CONDITIONAL-SPREAD: Omit absent classifications from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(request.classifications === undefined ? {} : { classifications: request.classifications }),
   }) as JsonObject;
 }
@@ -370,11 +377,17 @@ export function encodeModelSampleResult(result: ModelSampleResult): ModelSampleW
 
 function normalizeOptions(value: z.output<typeof optionsSchema>): ModelSampleInvocationOptions {
   return {
+    /* CONDITIONAL-SPREAD: Omit absent toolChoice from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.toolChoice === undefined ? {} : { toolChoice: value.toolChoice }),
+    /* CONDITIONAL-SPREAD: Omit absent maxTokens from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.maxTokens === undefined ? {} : { maxTokens: value.maxTokens }),
+    /* CONDITIONAL-SPREAD: Omit absent temperature from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+    /* CONDITIONAL-SPREAD: Omit absent topP from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.topP === undefined ? {} : { topP: value.topP }),
+    /* CONDITIONAL-SPREAD: Omit absent topK from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.topK === undefined ? {} : { topK: value.topK }),
+    /* CONDITIONAL-SPREAD: Omit absent thinking from canonical model requests; explicit undefined is not a portable JSON value. */
     ...(value.thinking === undefined ? {} : { thinking: value.thinking }),
   };
 }

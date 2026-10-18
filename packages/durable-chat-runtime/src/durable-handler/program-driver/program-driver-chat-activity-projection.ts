@@ -221,8 +221,10 @@ export function publicActivityElicitSnapshots(
         bindingId,
         key,
         message: value.message ?? "Input required",
+        /* CONDITIONAL-SPREAD: Omit absent context from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(facts?.["context"] !== undefined ? { context: facts["context"] } : {}),
         responseContract,
+        /* CONDITIONAL-SPREAD: Omit absent contextContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(contextContract !== undefined ? { contextContract } : {}),
         toolName,
         callId,

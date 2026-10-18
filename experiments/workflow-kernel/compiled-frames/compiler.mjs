@@ -8,13 +8,16 @@ export function compileWorkflow(source, { compileScheme = compile, ...options } 
         frameNames = {};
     const code = program.functions[program.entry].code;
     code.forEach((ins, i) => {
-        if (ins[0] === "closure" && code[i + 1]?.[0] === "define")
+        if (ins[0] === "closure" && code[i + 1]?.[0] === "define") {
             frameNames[ins[1]] = code[i + 1][1];
+        }
     });
     return { ...emitted, program, debug: { ...emitted.debug, frameNames } };
 }
 export function inspect(artifact, state) {
-    if (state.program !== artifact.program.id) throw Error("Checkpoint/program mismatch");
+    if (state.program !== artifact.program.id) {
+        throw Error("Checkpoint/program mismatch");
+    }
     return {
         status: state.status,
         site: state.site,

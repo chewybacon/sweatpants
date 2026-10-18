@@ -75,7 +75,9 @@ export function* liveProjection(params: {
   const roots = yield* stage("merge-roots", function* () {
     const merged = new Map(params.sealed);
     for (const [rootId, root] of params.hot) {
-      if (!merged.has(rootId)) merged.set(rootId, root);
+      if (!merged.has(rootId)) {
+        merged.set(rootId, root);
+      }
     }
     yield* note({
       kind: "roots-merged",
@@ -120,7 +122,9 @@ function runLiveProjection(params: Parameters<typeof liveProjection>[0]): ChatPr
     () => liveProjection(params),
     (error) => error,
   );
-  if (!outcome.ok) throw outcome.error;
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
   return outcome.value;
 }
 
@@ -202,12 +206,16 @@ export class LiveChatCompactor {
     this.rebuild(false);
     const actions: LiveCompactorAction[] = [];
     for (const root of window.hotRoots) {
-      if (root.kind !== "activity-subtree") continue;
+      if (root.kind !== "activity-subtree") {
+        continue;
+      }
       for (const node of root.nodes) {
         const transition = transitionChatProjection(this.current, node.event);
         this.current = transition.projection;
         for (const action of transition.actions) {
-          if (action.type !== "text-changed") actions.push(action);
+          if (action.type !== "text-changed") {
+            actions.push(action);
+          }
         }
       }
     }
@@ -229,7 +237,9 @@ export class LiveChatCompactor {
       requireComplete: true,
     });
     this.sealedRoots.clear();
-    for (const [rootId, root] of candidate) this.sealedRoots.set(rootId, root);
+    for (const [rootId, root] of candidate) {
+      this.sealedRoots.set(rootId, root);
+    }
     this.replaceProjection(projection);
   }
 

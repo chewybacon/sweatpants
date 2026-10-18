@@ -91,9 +91,11 @@ const config = defineConfig(({ mode }) => {
       // &importer=...), which defeats vitest's module mocking of the `?modulePath`
       // import and makes esbuild choke on the query-laden .ts path. Tests mock the
       // worker URL directly; real dev/prod builds keep the plugin.
+
       ...(process.env["VITEST"] || isCloudflare ? [] : [nodeWorkerPlugin()]),
       // The devtools event bus binds a fixed auxiliary port; omit it from the
       // isolated Playwright server so it can run beside a developer instance.
+
       ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" || process.env["VITEST"] || isCloudflare
         ? []
         : [devtools()]),
@@ -103,6 +105,7 @@ const config = defineConfig(({ mode }) => {
       tailwindcss(),
       imagetools(),
       // Start’s environment transforms split React from the jsdom renderer; unit tests need plain React.
+
       ...(process.env["VITEST"]
         ? []
         : [tanstackStart(isCloudflare ? { server: { entry: "server.cloudflare" } } : {})]),

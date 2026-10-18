@@ -34,6 +34,7 @@ function activity(input: {
         kind: input.kind,
         state: input.state,
         presentation: input.kind === "activity" ? "opaque" : "public",
+        /* CONDITIONAL-SPREAD: Omitting publicData preserves existing projection fields when this partial update is merged. */
         ...(input.publicData ? { publicData: input.publicData } : {}),
       },
     },
@@ -89,6 +90,7 @@ describe("headless nested projection", () => {
         role: "tool",
         toolCallId: "booking-call",
         content: JSON.stringify({ booked: true }),
+        /* CONDITIONAL-SPREAD: Omitting error preserves existing projection fields when this partial update is merged. */
         ...(failed ? { error: "Booking failed" } : {}),
       });
       for (const projected of [eventResult, messageResult]) {

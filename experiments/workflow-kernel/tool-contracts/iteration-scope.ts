@@ -15,7 +15,9 @@ export const holds = createDurableTool("iteration-holds", { version: "1" })
     while (remaining > 0) {
       yield* scoped(function* () {
         const hold = yield* ctx.elicit("acquire", { message: "Reserve a hold" });
-        if (hold.action !== "accept") throw "Hold declined";
+        if (hold.action !== "accept") {
+          throw "Hold declined";
+        }
         yield* ensure(function* () {
           yield* ctx.elicit("release", { message: hold.content.id });
         });

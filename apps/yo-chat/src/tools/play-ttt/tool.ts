@@ -135,6 +135,7 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
           isModel: true,
           boardAfter: [...board],
           moveNumber: moveHistory.length + 1,
+          /* CONDITIONAL-SPREAD: Omit absent reasoning from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
           ...(sampled.text ? { reasoning: sampled.text.slice(0, 512) } : {}),
         });
       } else {
@@ -146,6 +147,7 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
             context: {
               board,
               moveHistory,
+              /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
               ...(last ? { lastMove: { position: last.position, player: last.player } } : {}),
               modelSymbol,
               userSymbol,
@@ -192,7 +194,9 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
           context: {
             board,
             moveHistory,
+            /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
             ...(last ? { lastMove: { position: last.position, player: last.player } } : {}),
+            /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
             ...(winningLine ? { winningLine } : {}),
             gameOver: true,
             resultMessage,
@@ -213,6 +217,7 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
           winner,
           board,
           boardDisplay: formatBoard(board),
+          /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
           ...(winningLine ? { winningLine } : {}),
           message:
             status === "draw"

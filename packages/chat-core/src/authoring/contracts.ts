@@ -286,7 +286,9 @@ function normalizeContext(context: StructuralContext): AuthoredChatContextView {
 function normalizeArtifact(artifact: StructuralArtifact): AuthoredChatArtifact {
   return snapshot({
     id: artifact.id,
+    /* CONDITIONAL-SPREAD: Omit absent name from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(artifact.name === undefined ? {} : { name: artifact.name }),
+    /* CONDITIONAL-SPREAD: Omit absent description from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(artifact.description === undefined ? {} : { description: artifact.description }),
     parts: artifact.parts.map(normalizePart),
   });

@@ -241,6 +241,7 @@ export function createPlacementModelSamplingService(options: {
           yield* options.sampler.cancel({
             version: AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
             attachment,
+            /* CONDITIONAL-SPREAD: Omit absent reason from AgentCore request and session records; explicit undefined is not a portable JSON value. */
             ...(reason ? { reason } : {}),
           });
         }
@@ -255,6 +256,7 @@ export function createPlacementModelSamplingService(options: {
             sessionId: identity.sessionId,
             taskId: identity.taskId,
             pullId: identity.pullId,
+            /* CONDITIONAL-SPREAD: Omit absent messageId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
             ...(remote.messageId ? { messageId: remote.messageId } : {}),
             origin: {
               kind: "agentcore-model-sample",

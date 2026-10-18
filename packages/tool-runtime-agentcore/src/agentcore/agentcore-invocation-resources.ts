@@ -115,6 +115,7 @@ export function createAgentCoreToolInvocationResources(
       const current = (yield* stores.handles.get(handle.sessionId)) ?? handle;
       const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0);
       const updated = yield* stores.handles.update(handle.sessionId, {
+        /* CONDITIONAL-SPREAD: Stale or terminal responses must not overwrite the current status and pending request. */
         ...(!terminalStatus(current.status) && isNewerOrEqual
           ? {
               status: response.status,
@@ -252,6 +253,7 @@ export function createAgentCoreToolInvocationResources(
         createdAt: startedAt.toISOString(),
         updatedAt: startedAt.toISOString(),
         expiresAt: expiresAt.toISOString(),
+        /* CONDITIONAL-SPREAD: Omit absent metadata from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(sessionOptions?.model ? { metadata: { selectedModel: sessionOptions.model } } : {}),
       };
       yield* stores.handles.create(handle);
@@ -264,10 +266,13 @@ export function createAgentCoreToolInvocationResources(
         toolName: tool.name,
         params: validatedParams,
         context: {
+          /* CONDITIONAL-SPREAD: Omit absent callId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(sessionOptions?.sessionId !== undefined && { callId: sessionOptions.sessionId }),
+          /* CONDITIONAL-SPREAD: Omit absent systemPrompt from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(sessionOptions?.systemPrompt !== undefined && {
             systemPrompt: sessionOptions.systemPrompt,
           }),
+          /* CONDITIONAL-SPREAD: Omit absent model from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(sessionOptions?.model !== undefined && { model: sessionOptions.model }),
         },
       });

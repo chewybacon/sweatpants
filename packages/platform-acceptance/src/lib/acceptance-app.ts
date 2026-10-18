@@ -125,6 +125,7 @@ function createSamplingProvider(
         context: modelContext,
         options: {
           ...context.model.streamOptions,
+          /* CONDITIONAL-SPREAD: Omit absent maxTokens from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
           ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
         },
       });
@@ -203,7 +204,7 @@ export function createAcceptanceApplication(
       kind: "custom",
       conversationStore,
       executionStore,
-      ...(options.storageProfile ? { profile: options.storageProfile } : {}),
+      profile: options.storageProfile,
     },
     createProgramDriverJournalStore(selectedExecutionStore) {
       journalStore =
@@ -217,9 +218,8 @@ export function createAcceptanceApplication(
           ]),
           schemaRegistry: programDriverSchemaRegistry(acceptanceDurableTool.artifacts.catalog),
           executionStore: selectedExecutionStore,
-          ...(options.storageProfile === "low"
-            ? { privateSegmentTarget: LOW_PRIVATE_SEGMENT_TARGET }
-            : {}),
+          privateSegmentTarget:
+            options.storageProfile === "low" ? LOW_PRIVATE_SEGMENT_TARGET : undefined,
         });
       return journalStore;
     },
@@ -275,6 +275,7 @@ export function createAcceptanceApplication(
           ) {
             return yield* executionSampling.sample(request, attempt);
           },
+          /* CONDITIONAL-SPREAD: Expose acknowledge only when its backing capability exists; callers inspect supported methods. */
           ...(executionSampling.acknowledge
             ? {
                 *acknowledge(
@@ -364,7 +365,7 @@ export function createAcceptanceApplication(
                 driverKind: options.durableDriverKind ?? "worker",
                 profile: "framework-acceptance-durable",
               },
-              ...(options.durableActivation ? { activation: options.durableActivation } : {}),
+              activation: options.durableActivation,
             },
           ],
         ]),

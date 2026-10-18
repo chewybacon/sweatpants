@@ -130,6 +130,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       method: req.method,
       headers: req.headers as any,
       body: isBodyMethod ? (req as any) : undefined,
+      /* CONDITIONAL-SPREAD: Omit absent duplex from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(isBodyMethod ? { duplex: "half" as const } : {}),
     };
 

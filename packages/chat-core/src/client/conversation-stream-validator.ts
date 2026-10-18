@@ -56,7 +56,9 @@ export class ConversationSegmentValidator {
         if (root.kind === "message") {
           this.subagents.push({ type: EventType.MESSAGES_SNAPSHOT, messages: [root.message] });
         } else {
-          for (const node of root.nodes) this.subagents.push(node.event);
+          for (const node of root.nodes) {
+            this.subagents.push(node.event);
+          }
         }
       }
       this.eventCount += 1;

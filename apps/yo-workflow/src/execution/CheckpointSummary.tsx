@@ -2,7 +2,9 @@ import type { ExecutionView } from "./contract.ts";
 
 export function CheckpointSummary({ view }: { view: ExecutionView }) {
   const state = view.inspection;
-  if (!state) return <p>No evaluator state captured yet.</p>;
+  if (!state) {
+    return <p>No evaluator state captured yet.</p>;
+  }
   const environment = state.environments.find((env) => env.id === state.currentEnvironment);
   const next = state.frames[0];
   return (

@@ -14,7 +14,9 @@ export function ReplyFocusProvider({ children }: { children: ReactNode }) {
   const pending = useRef(false);
   useEffect(() => {
     const cancel = (event: Event) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented) {
+        return;
+      }
       pending.current = false;
     };
     window.addEventListener("wheel", cancel, { passive: true });
@@ -34,11 +36,15 @@ export function ReplyFocusProvider({ children }: { children: ReactNode }) {
 export function useReplyFocus(input: RefObject<HTMLTextAreaElement | null>, blocked: boolean) {
   const pending = useContext(ReplyFocus);
   useEffect(() => {
-    if (blocked || !pending?.current) return;
+    if (blocked || !pending?.current) {
+      return;
+    }
     // Let the previous receipt's height transition finish before choosing the scroll target.
     const timer = window.setTimeout(() => {
       const field = input.current;
-      if (!pending.current || !field || field.disabled) return;
+      if (!pending.current || !field || field.disabled) {
+        return;
+      }
       pending.current = false;
       const card = field.closest(".ask-card");
       const target =
@@ -54,6 +60,8 @@ export function useReplyFocus(input: RefObject<HTMLTextAreaElement | null>, bloc
     return () => window.clearTimeout(timer);
   }, [blocked, input, pending]);
   return () => {
-    if (pending) pending.current = true;
+    if (pending) {
+      pending.current = true;
+    }
   };
 }

@@ -313,11 +313,15 @@ function restoreClaims(
     taskId: request.taskId,
     ownerId: request.ownerId,
     activationEpoch: request.activationEpoch,
+    /* CONDITIONAL-SPREAD: Omit absent releaseId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.releaseId === undefined ? {} : { releaseId: request.releaseId }),
+    /* CONDITIONAL-SPREAD: Omit absent sandboxSessionId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.sandboxSessionId === undefined
       ? {}
       : { sandboxSessionId: request.sandboxSessionId }),
+    /* CONDITIONAL-SPREAD: Omit absent replayDomain from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.replayDomain === undefined ? {} : { replayDomain: request.replayDomain }),
+    /* CONDITIONAL-SPREAD: Omit absent frontierDomain from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.frontierDomain === undefined ? {} : { frontierDomain: request.frontierDomain }),
     taskRevision: session.control.revision,
     journalHeadId: draft.context.journalHeadId,

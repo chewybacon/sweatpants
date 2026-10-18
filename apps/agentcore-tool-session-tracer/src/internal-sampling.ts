@@ -61,6 +61,7 @@ export function readAgentCoreToolSampleConfig(
 
   return {
     mode: rawMode,
+    /* CONDITIONAL-SPREAD: Omit absent explicitModel from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
     ...(provider && id ? { explicitModel: { provider, id } } : {}),
   };
 }
@@ -194,12 +195,15 @@ export async function sampleInsideAgentCore(
       model,
       context: modelContext(request.messages, request),
       options: {
+        /* CONDITIONAL-SPREAD: Omit absent maxTokens from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
         ...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent toolChoice from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
         ...(request.toolChoice === "auto" ||
         request.toolChoice === "required" ||
         request.toolChoice === "none"
           ? { toolChoice: request.toolChoice }
           : {}),
+        /* CONDITIONAL-SPREAD: Omit absent responseFormat from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
         ...(request.schema
           ? {
               responseFormat: {

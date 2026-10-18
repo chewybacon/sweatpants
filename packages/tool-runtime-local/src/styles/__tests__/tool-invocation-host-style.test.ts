@@ -69,7 +69,9 @@ describe("tool invocation host: the property the PoC needed", () => {
         yield* facade.start("booking", bookFlight, "SFO");
         return yield* facade.turn("booking");
       });
-      if (elicit.type !== "parked") throw new Error("expected an elicit park");
+      if (elicit.type !== "parked") {
+        throw new Error("expected an elicit park");
+      }
 
       // Request B: answer the elicit, turn to the next park, exit.
       const sample = yield* scoped(function* (): Operation<Disposition> {
@@ -77,7 +79,9 @@ describe("tool invocation host: the property the PoC needed", () => {
         yield* facade.respond("booking", elicit.requestId, "UA-100");
         return yield* facade.turn("booking");
       });
-      if (sample.type !== "parked") throw new Error("expected a sample park");
+      if (sample.type !== "parked") {
+        throw new Error("expected a sample park");
+      }
       expect(sample.kind).toBe("sample");
 
       // Request C: answer the sample and collect the terminal disposition.
@@ -183,7 +187,9 @@ describe("what scope middleware can observe", () => {
         const handle = yield* host.start("booking", bookFlight, "SFO");
         return yield* handle.turn();
       });
-      if (elicit.type !== "parked") throw new Error("expected a park");
+      if (elicit.type !== "parked") {
+        throw new Error("expected a park");
+      }
 
       const sample = yield* scoped(function* (): Operation<Disposition> {
         const host = yield* HandleHostPort.use();
@@ -191,7 +197,9 @@ describe("what scope middleware can observe", () => {
         yield* handle.respond(elicit.requestId, "UA-100");
         return yield* handle.turn();
       });
-      if (sample.type !== "parked") throw new Error("expected a park");
+      if (sample.type !== "parked") {
+        throw new Error("expected a park");
+      }
 
       yield* scoped(function* () {
         const host = yield* HandleHostPort.use();
@@ -246,14 +254,18 @@ describe("what scope middleware can observe", () => {
         yield* facade.start("booking", bookFlight, "SFO");
         return yield* facade.turn("booking");
       });
-      if (elicit.type !== "parked") throw new Error("expected a park");
+      if (elicit.type !== "parked") {
+        throw new Error("expected a park");
+      }
 
       const sample = yield* scoped(function* (): Operation<Disposition> {
         const facade = yield* InvocationHostPort.use();
         yield* facade.respond("booking", elicit.requestId, "UA-100");
         return yield* facade.turn("booking");
       });
-      if (sample.type !== "parked") throw new Error("expected a park");
+      if (sample.type !== "parked") {
+        throw new Error("expected a park");
+      }
 
       yield* scoped(function* () {
         const facade = yield* InvocationHostPort.use();
@@ -292,10 +304,14 @@ describe("what scope middleware can observe", () => {
         const facade = yield* InvocationHostPort.use();
         yield* facade.start("shared-id", bookFlight, "inner");
         const parked = yield* facade.turn("shared-id");
-        if (parked.type !== "parked") throw new Error("expected a park");
+        if (parked.type !== "parked") {
+          throw new Error("expected a park");
+        }
         yield* facade.respond("shared-id", parked.requestId, "inner-flight");
         const next = yield* facade.turn("shared-id");
-        if (next.type !== "parked") throw new Error("expected a park");
+        if (next.type !== "parked") {
+          throw new Error("expected a park");
+        }
         return next.requestId;
       });
 

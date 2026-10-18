@@ -140,16 +140,18 @@ if (process.argv[2] === "step") {
         } else {
             assert.deepEqual(r.outcome, { kind: "cancelled" });
             assert.ok(!trace.includes("after inner scope"));
-            if (c.cancelAt !== "after deep scope" && c.cancelAt !== "inner cleanup")
+            if (c.cancelAt !== "after deep scope" && c.cancelAt !== "inner cleanup") {
                 assert.ok(!trace.includes("after deep scope"));
+            }
             for (const label of [
                 "helper cleanup",
                 "deep cleanup",
                 "deep finally",
                 "inner cleanup",
                 "outer cleanup",
-            ])
+            ]) {
                 assert.equal(trace.filter((x) => x === label).length, 1, label);
+            }
             assert.equal(trace.at(-1), "outer cleanup");
         }
         assert.equal(r.state.scopes.length, 0);

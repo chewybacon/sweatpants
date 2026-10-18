@@ -82,7 +82,9 @@ describe("required program recovery contract", () => {
       const attachment = yield* driver.attach(attach);
       const checkpoint = yield* driver.checkpoint(attachment);
       expect(checkpoint).toEqual({ kind: "replay" });
-      if (checkpoint.kind !== "replay") throw new Error("Expected replay checkpoint");
+      if (checkpoint.kind !== "replay") {
+        throw new Error("Expected replay checkpoint");
+      }
       expect(calls).toEqual(["attach"]);
       yield* driver.shutdown(attachment, "parked");
       const restored = yield* driver.restore({ ...request, checkpoint });

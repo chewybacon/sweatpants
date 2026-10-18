@@ -24,8 +24,11 @@ const checkpointReferenceSchema = z
   })
   .transform((value) => ({
     id: value.id,
+    /* CONDITIONAL-SPREAD: Omit absent byteLength from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent version from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.version !== undefined ? { version: value.version } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent integrity from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
   }));
 const checkpointStoredJsonSchema = z.discriminatedUnion("storage", [
@@ -50,6 +53,7 @@ const parkedTaskCheckpointSchema = z
   })
   .transform((value) => ({
     taskId: value.taskId,
+    /* CONDITIONAL-SPREAD: Omit absent parentTaskId from durable execution records; explicit undefined is not a portable JSON value. */
     ...(value.parentTaskId !== undefined ? { parentTaskId: value.parentTaskId } : {}),
     program: value.program,
     input: value.input,
@@ -160,6 +164,7 @@ export function proposeQuiescentCut(
 
   const parkedTasks = current.tasks.map((task) => ({
     taskId: task.taskId,
+    /* CONDITIONAL-SPREAD: Omit absent parentTaskId from durable execution records; explicit undefined is not a portable JSON value. */
     ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
     program: task.program,
     input: task.input,

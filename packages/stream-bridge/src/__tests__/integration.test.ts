@@ -28,7 +28,7 @@ async function withServer(
   const server = createServer(async (req, res) => {
     try {
       const webRequest = new Request(`http://localhost${req.url}`, {
-        ...(req.method ? { method: req.method } : {}),
+        method: req.method ? req.method : undefined,
         headers: req.headers as Record<string, string>,
       });
 

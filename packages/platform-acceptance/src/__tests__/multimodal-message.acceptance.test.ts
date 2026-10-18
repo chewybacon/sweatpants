@@ -84,7 +84,9 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
         messages: conversation.snapshot().messages.map((message) => ({
           role: message.role,
           content: message.parts.map((part) => {
-            if (part.type === "text") return { type: "text", text: part.text };
+            if (part.type === "text") {
+              return { type: "text", text: part.text };
+            }
             if (
               part.type === "image" ||
               part.type === "audio" ||
@@ -94,6 +96,7 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
               return {
                 type: part.type,
                 source: part.source,
+                /* CONDITIONAL-SPREAD: Omit absent metadata from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
                 ...(part.metadata === undefined ? {} : { metadata: part.metadata }),
               };
             }

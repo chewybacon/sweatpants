@@ -37,7 +37,9 @@ for (const bodyFails of [false, true]) {
                 nativeTrace.push("second");
                 throw "second failed";
             });
-            if (bodyFails) throw "body failed";
+            if (bodyFails) {
+                throw "body failed";
+            }
             return "done";
         });
     } catch (error) {

@@ -298,7 +298,9 @@ export const modelStreamEventParser: Parser<ModelStreamEvent> =
 
 export function decodeModelContext(value: unknown, path = "$"): ModelContext {
   const parsed = modelContextStructureParser.parse(value);
-  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "context");
+  if (!parsed.ok) {
+    throw modelErrorFromIssues(parsed.issues, path, "context");
+  }
   return requireModel(
     normalizeResult(() => normalizeModelContext(parsed.value, path), "context"),
     path,
@@ -307,7 +309,9 @@ export function decodeModelContext(value: unknown, path = "$"): ModelContext {
 
 export function decodeModelResponse(value: unknown, path = "$"): ModelResponse {
   const parsed = modelResponseStructureParser.parse(value);
-  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "response");
+  if (!parsed.ok) {
+    throw modelErrorFromIssues(parsed.issues, path, "response");
+  }
   return requireModel(
     normalizeResult(() => normalizeModelResponse(parsed.value, path), "response"),
     path,
@@ -316,7 +320,9 @@ export function decodeModelResponse(value: unknown, path = "$"): ModelResponse {
 
 export function decodeModelStreamEvent(value: unknown, path = "$"): ModelStreamEvent {
   const parsed = modelStreamEventStructureParser.parse(value);
-  if (!parsed.ok) throw modelErrorFromIssues(parsed.issues, path, "stream-event");
+  if (!parsed.ok) {
+    throw modelErrorFromIssues(parsed.issues, path, "stream-event");
+  }
   return requireModel(
     normalizeResult(() => normalizeModelStreamEvent(parsed.value, path), "stream-event"),
     path,
@@ -427,7 +433,9 @@ function normalizeModelStreamEvent(
 }
 
 function normalizeSource(value: StructuralModelResponse["source"]): ModelResponseSource | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) {
+    return null;
+  }
   return freeze({
     api: value.api,
     provider: value.provider,
@@ -437,7 +445,9 @@ function normalizeSource(value: StructuralModelResponse["source"]): ModelRespons
 }
 
 function normalizeUsage(value: StructuralModelResponse["usage"]): ModelUsage | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) {
+    return null;
+  }
   return freeze({
     input: value.input ?? null,
     output: value.output ?? null,
@@ -477,13 +487,17 @@ function normalizeResult<T>(
   try {
     return success(operation());
   } catch (error) {
-    if (error instanceof ModelDecodeError) return failure(issueFromModelError(error));
+    if (error instanceof ModelDecodeError) {
+      return failure(issueFromModelError(error));
+    }
     throw error;
   }
 }
 
 function requireModel<T>(result: ParseResult<T>, path: string): T {
-  if (result.ok) return result.value;
+  if (result.ok) {
+    return result.value;
+  }
   throw modelErrorFromIssues(result.issues, path, "value");
 }
 
@@ -496,10 +510,15 @@ function modelErrorFromIssues(
   const relative = issue.path.map(String).join(".");
   const path = relative.length === 0 ? basePath : `${basePath}.${relative}`;
   let code: ModelDecodeErrorCode = "invalid-value";
-  if (issue.code === "unrecognized_keys") code = "unknown-field";
-  else if (context === "context") code = "invalid-context";
-  else if (context === "response") code = "invalid-response";
-  else if (context === "stream-event") code = "invalid-stream-event";
+  if (issue.code === "unrecognized_keys") {
+    code = "unknown-field";
+  } else if (context === "context") {
+    code = "invalid-context";
+  } else if (context === "response") {
+    code = "invalid-response";
+  } else if (context === "stream-event") {
+    code = "invalid-stream-event";
+  }
   return new ModelDecodeError(code, path, issue.message);
 }
 
@@ -512,7 +531,9 @@ function issueFromModelError(error: ModelDecodeError): ParseIssue {
 }
 
 function decodePath(path: string): Array<string | number> {
-  if (path === "$" || path.length === 0) return [];
+  if (path === "$" || path.length === 0) {
+    return [];
+  }
   return path
     .replace(/^\$\.?/u, "")
     .split(/[.[\]]+/u)
@@ -523,7 +544,9 @@ function decodePath(path: string): Array<string | number> {
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
-    for (const child of Object.values(value)) freeze(child);
+    for (const child of Object.values(value)) {
+      freeze(child);
+    }
   }
   return value;
 }

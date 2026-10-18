@@ -43,6 +43,7 @@ export const rootTool = createPinnedDurableProgram(manifest, function* (input, c
     const sampleRequest: ModelSampleSourceRequest = {
       invocation: {
         context: contextSource,
+        /* CONDITIONAL-SPREAD: Omit absent options from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(iteration === 0 && input.toolChoice !== undefined
           ? { options: { toolChoice: input.toolChoice } }
           : {}),
@@ -179,7 +180,11 @@ function* invokeCatalogTool(
     return {
       result: {
         status: "error",
-        error: { code, message, ...(details === undefined ? {} : { details }) },
+        error: {
+          code,
+          message /* CONDITIONAL-SPREAD: Omit absent details from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */,
+          ...(details === undefined ? {} : { details }),
+        },
       },
       failed: true,
     };

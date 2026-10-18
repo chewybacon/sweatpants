@@ -12,8 +12,12 @@ import { jsonRecord } from "./program-driver-chat-projection-codecs.ts";
 
 function recordOwner(record: DurableSemanticRecord, index: ChatJournalIndex): string | undefined {
   const payload = record.payload;
-  if (payload.type === "AssistantPartialAccepted") return payload.fact.messageId;
-  if (payload.type !== "DurableEmission") return undefined;
+  if (payload.type === "AssistantPartialAccepted") {
+    return payload.fact.messageId;
+  }
+  if (payload.type !== "DurableEmission") {
+    return undefined;
+  }
   if (payload.descriptor.eventType === "assistant_text") {
     return index.modelMessageIds.get(record) ?? undefined;
   }
@@ -50,12 +54,16 @@ export function* publishedJournalOwners(
   const observe = (roots: readonly PublicProjectionRoot[]) => {
     for (const root of roots) {
       for (const id of rootIdentities(root)) {
-        if (missing.delete(id)) published.add(id);
+        if (missing.delete(id)) {
+          published.add(id);
+        }
       }
     }
   };
   observe(hot);
-  if (!checkpoint || checkpoint.archiveFrontierOrdinal === "0") return published;
+  if (!checkpoint || checkpoint.archiveFrontierOrdinal === "0") {
+    return published;
+  }
   let beforePosition: string | null = checkpoint.nextPublicPosition;
   while (missing.size > 0 && beforePosition !== null) {
     const page: PublicHistoryReadPage = yield* store.readPublicHistoryBefore({
@@ -94,7 +102,9 @@ export function recordsForPublication(
       );
     }
     const owner = recordOwner(record, index);
-    if (owner && !publishedOwners.has(owner)) return true;
+    if (owner && !publishedOwners.has(owner)) {
+      return true;
+    }
     // A host can accept completion before losing its publication. Replacing a
     // retained owner's terminal state is safe; archived owners stay archived.
     return (

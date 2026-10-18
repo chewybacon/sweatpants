@@ -128,7 +128,9 @@ export function createPortableHootProgram(
             const driver = createWorkflowProgramDriver(
                 createKernelProgramBackend({
                     *manifest(program) {
-                        if (program.digest !== digest) throw Error("Manifest unavailable");
+                        if (program.digest !== digest) {
+                            throw Error("Manifest unavailable");
+                        }
                         return manifest;
                     },
                     kernelIdentity: identity,

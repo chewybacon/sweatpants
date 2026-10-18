@@ -158,7 +158,9 @@ describe("Book Flight Tool", () => {
       yield* runMCPTool(bookFlightTool, { destination: "MIA", date: "2024-12-01" }, client);
 
       const selectionElicit = client.elicitCalls[0];
-      if (!selectionElicit) throw new Error("selection elicitation was not captured");
+      if (!selectionElicit) {
+        throw new Error("selection elicitation was not captured");
+      }
       expect(selectionElicit.message).toContain("FL001");
       expect(selectionElicit.message).toContain("FL002");
       expect(selectionElicit.message).toContain("FL003");
@@ -178,7 +180,9 @@ describe("Book Flight Tool", () => {
       yield* runMCPTool(bookFlightTool, { destination: "ATL", date: "2024-12-15" }, client);
 
       const confirmElicit = client.elicitCalls[1];
-      if (!confirmElicit) throw new Error("confirmation elicitation was not captured");
+      if (!confirmElicit) {
+        throw new Error("confirmation elicitation was not captured");
+      }
       expect(confirmElicit.message).toContain(summaryText);
       expect(confirmElicit.message).toContain("Confirm");
     });

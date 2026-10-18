@@ -90,7 +90,9 @@ function* readAllTerminalEntries(): Operation<readonly unknown[]> {
       50,
     );
     entries.push(...page.entries);
-    if (page.nextCursor === null) return entries;
+    if (page.nextCursor === null) {
+      return entries;
+    }
     cursor = page.nextCursor;
   }
 }
@@ -119,7 +121,9 @@ function verifyPrivateSegments(
     const prior = new Map<string, { segmentId: string; lastSequence: bigint }>();
     for (const row of rows) {
       const entries = JSON.parse(row.entries_json) as unknown;
-      if (!Array.isArray(entries)) throw new Error(`${table} ${row.segment_id} is not an array`);
+      if (!Array.isArray(entries)) {
+        throw new Error(`${table} ${row.segment_id} is not an array`);
+      }
       const encoded = canonicalJson(entries);
       if (sha256(encoded) !== row.content_hash) {
         throw new Error(`${table} ${row.segment_id} has an invalid content hash`);
@@ -174,7 +178,9 @@ function* streamPrivateEvidence(
   let replayEntries = 0;
   for (const row of controls) {
     const control = JSON.parse(row.control_json) as Record<string, unknown>;
-    if (control["kind"] !== "authority-control") continue;
+    if (control["kind"] !== "authority-control") {
+      continue;
+    }
     const journalHead = control["journalHead"] as {
       segmentId?: string;
       lastSequence?: string;
@@ -191,7 +197,9 @@ function* streamPrivateEvidence(
       });
       journalEntries += yield* call(async () => {
         let count = 0;
-        for await (const chunk of stream) count += chunk.length;
+        for await (const chunk of stream) {
+          count += chunk.length;
+        }
         return count;
       });
     }
@@ -203,7 +211,9 @@ function* streamPrivateEvidence(
       });
       replayEntries += yield* call(async () => {
         let count = 0;
-        for await (const chunk of stream) count += chunk.length;
+        for await (const chunk of stream) {
+          count += chunk.length;
+        }
         return count;
       });
     }
@@ -234,7 +244,9 @@ function* collectExpected(
   yield* installExecutionStore(handle.storage.executionStore);
   metrics.reset();
   const head = yield* ConversationStoreApi.operations.loadHead(conversationId);
-  if (!head) throw new Error("storage spine producer did not leave a conversation head");
+  if (!head) {
+    throw new Error("storage spine producer did not leave a conversation head");
+  }
   const checkpoint = head.checkpoint
     ? yield* ConversationStoreApi.operations.getCheckpoint(head.checkpoint)
     : null;
@@ -266,6 +278,7 @@ function* collectExpected(
     head,
     publicRoots: [
       ...publicPage.roots,
+
       ...(checkpoint ? checkpointHotRoots(checkpoint.payload) : []),
     ],
     terminalEntries,

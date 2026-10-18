@@ -5,7 +5,7 @@ import {
   cloneJson,
   canonicalSnapshot,
 } from "@sweatpants/foundation";
-import { z } from "zod";
+import { serializeEffectError } from "./serialize-error.ts";
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 import type { EffectDefinition, OperationOutcome } from "./contract.ts";
@@ -121,20 +121,6 @@ export function* useDurableEffectRegistry(): Operation<DurableEffectRegistry> {
 }
 
 const MAX_INLINE_BYTES = 1024 * 1024;
-const MAX_ERROR_DETAILS_BYTES = 64 * 1024;
-
-function safeErrorDetails(error: unknown): Json | undefined {
-  if (error === null || typeof error !== "object" || !("details" in error)) return undefined;
-  try {
-    const details = canonicalSnapshot(error.details);
-    return new TextEncoder().encode(details.canonical).byteLength <= MAX_ERROR_DETAILS_BYTES
-      ? (details.value as Json)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Canonical host-effect dispatch API. Authority orchestration resolves its returned outcome. */
 export const DurableEffects = createApi("durable-effects:execute", {
   *execute(authorization: DurableEffectAuthorization): Operation<OperationOutcome> {
@@ -196,27 +182,18 @@ export const DurableEffects = createApi("durable-effects:execute", {
       }
       return { status: "error", error: disposition.error };
     } catch (error) {
-      if (controller.signal.aborted) return { status: "cancelled" };
-      const details = safeErrorDetails(error);
-      return {
-        status: "error",
-        error: {
-          code: errorCode(error),
-          message: error instanceof Error ? error.message : "Durable effect failed",
-          ...(details === undefined ? {} : { details }),
-        },
-      };
+      if (controller.signal.aborted) {
+        return { status: "cancelled" };
+      }
+      return { status: "error", error: serializeEffectError(error) };
     } finally {
       release();
-      if (!controller.signal.aborted) controller.abort();
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
     }
   },
 });
-
-function errorCode(error: unknown): string {
-  const parsed = z.object({ code: z.string() }).loose().safeParse(error);
-  return parsed.success ? parsed.data.code : "effect_failed";
-}
 
 function isOperation(value: unknown): value is Operation<unknown> {
   return Boolean(

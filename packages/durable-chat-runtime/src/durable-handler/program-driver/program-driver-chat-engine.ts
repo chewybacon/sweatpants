@@ -31,7 +31,9 @@ export function createProgramDriverChatEngine(
             () => activateAndPresent(params),
           );
           const event = events[cursor];
-          if (!event) return { done: true, value: undefined };
+          if (!event) {
+            return { done: true, value: undefined };
+          }
           cursor += 1;
           return { done: false, value: event };
         },

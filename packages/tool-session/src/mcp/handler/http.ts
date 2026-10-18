@@ -19,9 +19,12 @@ export const requestEnvelope = z.strictObject({
 
 /** Bound streaming bodies as well as requests with a declared Content-Length. */
 export async function readMcpBody(request: Request): Promise<unknown> {
-  if (Number(request.headers.get("content-length")) > MCP_MAX_REQUEST_BYTES)
+  if (Number(request.headers.get("content-length")) > MCP_MAX_REQUEST_BYTES) {
     throw new McpHttpError(413, -32600, "Request too large");
-  if (!request.body) throw new McpHttpError(400, -32700, "Request body is missing");
+  }
+  if (!request.body) {
+    throw new McpHttpError(400, -32700, "Request body is missing");
+  }
   const reader = request.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytes = 0;
@@ -29,7 +32,9 @@ export async function readMcpBody(request: Request): Promise<unknown> {
   try {
     while (true) {
       const next = await reader.read();
-      if (next.done) break;
+      if (next.done) {
+        break;
+      }
       bytes += next.value.byteLength;
       if (bytes > MCP_MAX_REQUEST_BYTES) {
         await reader.cancel();
@@ -40,7 +45,9 @@ export async function readMcpBody(request: Request): Promise<unknown> {
     raw += decoder.decode();
     return JSON.parse(raw);
   } catch (error) {
-    if (error instanceof McpHttpError) throw error;
+    if (error instanceof McpHttpError) {
+      throw error;
+    }
     throw new McpHttpError(400, -32700, "Invalid JSON body");
   } finally {
     reader.releaseLock();

@@ -56,6 +56,7 @@ function asyncTurnIterator(
   const return_ = iterator.return?.bind(iterator);
   return {
     next: async () => iterator.next(),
+    /* CONDITIONAL-SPREAD: Omit absent return from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
     ...(return_ ? { return: async () => return_() } : {}),
   };
 }

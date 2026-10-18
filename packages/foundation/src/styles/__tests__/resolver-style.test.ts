@@ -108,7 +108,9 @@ describe("generic resolver style", () => {
       const facade = yield* resolver.use();
       yield* facade.around({
         *resolve([input], _next) {
-          if (input.value === "blocked") return "policy-route";
+          if (input.value === "blocked") {
+            return "policy-route";
+          }
           throw new Error("unexpected next call in this fixture");
         },
       });

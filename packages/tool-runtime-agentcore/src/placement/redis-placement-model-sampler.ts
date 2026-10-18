@@ -176,6 +176,7 @@ function attachment(record: RemoteSampleRecord): RemoteSampleAttachment {
     streamId: record.streamId,
     producerEpoch: record.producerEpoch,
     state: record.state,
+    /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(record.terminalLsn === undefined ? {} : { terminalLsn: record.terminalLsn }),
   };
 }
@@ -351,6 +352,7 @@ export function createRedisPlacementModelSampler(options: {
         events: page.tokens,
         lsn: page.lsn,
         state: record.state,
+        /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(record.terminalLsn === undefined ? {} : { terminalLsn: record.terminalLsn }),
       };
     },
@@ -470,6 +472,7 @@ export function createRedisPlacementModelSampler(options: {
           producerEpoch: fence.producerEpoch,
           taskId: identity.taskId,
           pullId: identity.pullId,
+          /* CONDITIONAL-SPREAD: Omit absent messageId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(value.messageId ? { messageId: value.messageId } : {}),
           event: value.event,
         })),

@@ -83,9 +83,12 @@ export function* sampleCompletion(
     throw new Error("Sampling history, prompt, context, and schema exceed 32 KiB");
   }
   const request = {
+    /* CONDITIONAL-SPREAD: Choose mutually exclusive prompt, messages fields for history.length === 0; both branches cannot be present. */
     ...(history.length === 0 ? { prompt } : { messages }),
+    /* CONDITIONAL-SPREAD: Omit absent systemPrompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
     ...(input.systemPrompt === undefined ? {} : { systemPrompt: input.systemPrompt }),
     maxTokens: input.maxTokens ?? 4096,
+    /* CONDITIONAL-SPREAD: Omit absent thinking from workflow requests and execution events; explicit undefined is not a portable JSON value. */
     ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
   };
   if (input.schema !== undefined) {

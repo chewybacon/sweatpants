@@ -31,14 +31,20 @@ function selectedProvider(): YoChatAuthProvider {
 }
 
 function environmentKey(provider: YoChatAuthProvider): string | undefined {
-  if (provider === "github-copilot") return process.env["COPILOT_GITHUB_TOKEN"];
-  if (provider === "opencode") return process.env["OPENCODE_API_KEY"];
+  if (provider === "github-copilot") {
+    return process.env["COPILOT_GITHUB_TOKEN"];
+  }
+  if (provider === "opencode") {
+    return process.env["OPENCODE_API_KEY"];
+  }
   return undefined;
 }
 
 function storedCredential(provider: YoChatAuthProvider): Record<string, unknown> | undefined {
   const path = sweatpantsAuthFile();
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) {
+    return undefined;
+  }
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as {
       credentials?: Record<string, unknown>;
@@ -64,7 +70,9 @@ export function getModelAuthStatus(): ModelAuthStatus {
   }
   const credential = storedCredential(provider);
   const path = sweatpantsAuthFile();
-  if (!credential) return { ok: false, provider, source: path, reason: "credential not found" };
+  if (!credential) {
+    return { ok: false, provider, source: path, reason: "credential not found" };
+  }
   if (provider === "opencode") {
     return typeof credential["key"] === "string" && credential["key"].trim()
       ? { ok: true, provider, source: path }
@@ -76,12 +84,19 @@ export function getModelAuthStatus(): ModelAuthStatus {
     credential["type"] !== "oauth" ||
     typeof credential["access"] !== "string" ||
     typeof credential["refresh"] !== "string"
-  )
+  ) {
     return { ok: false, provider, source: path, reason: "OAuth credential is invalid" };
+  }
   if (expiresAt !== undefined && expiresAt <= Date.now()) {
     return { ok: false, provider, source: path, expiresAt, reason: "OAuth token expired" };
   }
-  return { ok: true, provider, source: path, ...(expiresAt === undefined ? {} : { expiresAt }) };
+  return {
+    ok: true,
+    provider,
+    source:
+      path /* CONDITIONAL-SPREAD: Omit absent expiresAt from chat requests and authored tool results; explicit undefined is not a portable JSON value. */,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+  };
 }
 
 export function requireModelAuth(): ModelAuthStatus {

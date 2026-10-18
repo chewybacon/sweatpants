@@ -39,7 +39,9 @@ describe("accepted public root-position index", () => {
     const store = createMemoryConversationStore();
     await run(function* () {
       const created = yield* store.compareAndSwapHead("conversation", null, null, initial);
-      if (created.status !== "committed") throw new Error("failed to create head");
+      if (created.status !== "committed") {
+        throw new Error("failed to create head");
+      }
       const roots = [root("root-0", "0"), root("root-1", "1")];
       const segmentSnapshot = canonicalJson(roots);
       const segmentSnapshotDigest = sha256(segmentSnapshot);

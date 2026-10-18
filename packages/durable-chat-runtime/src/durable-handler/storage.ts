@@ -147,12 +147,15 @@ const storageEnvironmentSchema = z
 export function chatStorageFromEnv(options: ChatStorageEnvOptions): ChatStorageConfig {
   const source = options.env ?? process.env;
   const result = storageEnvironmentSchema.safeParse({
+    /* CONDITIONAL-SPREAD: Omit absent SWEATPANTS_STORAGE from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(source["SWEATPANTS_STORAGE"] !== undefined
       ? { SWEATPANTS_STORAGE: source["SWEATPANTS_STORAGE"] }
       : {}),
+    /* CONDITIONAL-SPREAD: Omit absent SWEATPANTS_DB_PATH from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(source["SWEATPANTS_DB_PATH"] !== undefined
       ? { SWEATPANTS_DB_PATH: source["SWEATPANTS_DB_PATH"] }
       : {}),
+    /* CONDITIONAL-SPREAD: Omit absent SWEATPANTS_PG_URL from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(source["SWEATPANTS_PG_URL"] !== undefined
       ? { SWEATPANTS_PG_URL: source["SWEATPANTS_PG_URL"] }
       : {}),

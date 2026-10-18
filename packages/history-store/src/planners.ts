@@ -318,7 +318,9 @@ export function planConversationCommit(input: {
       publicSegmentEnsure(segment, index),
     ),
     ...(request.publicArchiveRootIndex ?? []).map((entry) => publicRootIndexEnsure(entry)),
+
     ...(request.checkpoint ? [checkpointEnsure(request.checkpoint)] : []),
+
     ...(request.terminalHistorySegment
       ? [terminalSegmentEnsure(request.terminalHistorySegment)]
       : []),

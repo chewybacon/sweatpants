@@ -49,11 +49,15 @@ const HISTORICAL =
 
 function listFiles(dir: string): string[] {
   const files: string[] = [];
-  if (!existsSync(dir)) return files;
+  if (!existsSync(dir)) {
+    return files;
+  }
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
-      if (EXCLUDED_DIRS.has(entry)) continue;
+      if (EXCLUDED_DIRS.has(entry)) {
+        continue;
+      }
       files.push(...listFiles(full));
     } else if (SOURCE_EXTENSIONS.has(entry.slice(entry.lastIndexOf(".")))) {
       files.push(full);
@@ -85,15 +89,21 @@ function workspaceFiles(): string[] {
 function filesMatching(files: readonly string[], pattern: RegExp): Map<string, number> {
   const hits = new Map<string, number>();
   for (const file of files) {
-    if (SELF_SCANNING.test(file) || HISTORICAL.test(file)) continue;
+    if (SELF_SCANNING.test(file) || HISTORICAL.test(file)) {
+      continue;
+    }
     const count = (readFileSync(file, "utf8").match(pattern) ?? []).length;
-    if (count > 0) hits.set(relative(repoRoot, file), count);
+    if (count > 0) {
+      hits.set(relative(repoRoot, file), count);
+    }
   }
   return hits;
 }
 
 function describeHits(hits: Map<string, number>): string {
-  if (hits.size === 0) return "0 hits";
+  if (hits.size === 0) {
+    return "0 hits";
+  }
   return `${hits.size} file(s): ${[...hits.entries()]
     .slice(0, 5)
     .map(([f, c]) => `${f}(${c})`)
@@ -343,7 +353,9 @@ function main(): void {
   let failed = 0;
   for (const result of results) {
     const mark = result.passed ? "PASS" : "FAIL";
-    if (!result.passed) failed += 1;
+    if (!result.passed) {
+      failed += 1;
+    }
     console.log(`${mark} ${result.id} (${result.reqs.join(", ")}) — ${result.detail}`);
   }
   console.log(
@@ -351,9 +363,13 @@ function main(): void {
       ? `\ncampaign evidence (${mode}): all ${results.length} checks pass`
       : `\ncampaign evidence (${mode}): ${failed} of ${results.length} checks fail`,
   );
-  if (failed > 0) process.exitCode = 1;
+  if (failed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 const isDirectRun =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isDirectRun) main();
+if (isDirectRun) {
+  main();
+}

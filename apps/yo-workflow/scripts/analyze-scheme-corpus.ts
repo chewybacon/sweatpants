@@ -24,5 +24,7 @@ for (const attempt of corpus.attempts) {
   });
 }
 const report = { validationFuel: String(limits.validationFuel), measurements };
-if (process.argv[2]) await writeFile(process.argv[2], JSON.stringify(report, null, 2) + "\n");
+if (process.argv[2]) {
+  await writeFile(process.argv[2], JSON.stringify(report, null, 2) + "\n");
+}
 console.log(JSON.stringify(report, null, 2));

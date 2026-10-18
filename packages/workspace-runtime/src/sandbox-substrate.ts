@@ -295,6 +295,7 @@ export function* createWorkspaceVersion(input: {
     format: "sweatpants.workspace-materialization.v1",
     kind: input.kind,
     object,
+    /* CONDITIONAL-SPREAD: Omit absent baseVersionDigest from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
     ...(input.parent ? { baseVersionDigest: input.parent.versionDigest } : {}),
     taskId: input.taskId,
     sandboxGeneration: input.sandboxGeneration,
@@ -315,6 +316,7 @@ export function* createWorkspaceVersion(input: {
     format: "sweatpants.workspace-version.v1",
     workspaceId: input.workspaceId,
     versionDigest,
+    /* CONDITIONAL-SPREAD: Omit absent parentDigest from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
     ...(parentDigest ? { parentDigest } : {}),
     materialization,
   };
@@ -480,6 +482,7 @@ export class FiniteHttpRestoreProtocol {
     this.restores.delete(request.restoreId);
     return {
       entries: state.pages.flatMap((page) => structuredClone(page.entries)),
+      /* CONDITIONAL-SPREAD: Omit absent currentCommand from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
       ...(request.currentCommand === undefined
         ? {}
         : { currentCommand: cloneJson(request.currentCommand) }),

@@ -43,6 +43,35 @@ const bindingIdentityTool = createTool("invocation_host_binding_identity")
   });
 
 describe("ToolInvocationHost", () => {
+  it.each([undefined, "", "stopped"])(
+    "accepts a direct optional cancellation reason (%s) and deduplicates retries",
+    async (reason) => {
+      await run(function* () {
+        yield* createLocalToolInvocationRuntime({});
+        const host = yield* ToolInvocationHostPort.use();
+        const invocationId = "optional-cancel-reason";
+        yield* host.start({ invocationId, tool: bookingTool, input: { destination: "NYC" } });
+        const parked = yield* host.turn({ invocationId, commandId: "start", cursor: 0 });
+        if (parked.type !== "parked") {
+          throw new Error("Expected a parked question");
+        }
+
+        const command = { invocationId, commandId: "cancel", cursor: parked.cursor };
+        const cancelled = yield* host.turn({ ...command, resume: { kind: "cancel", reason } });
+        if (cancelled.type !== "cancelled") {
+          throw new Error("Expected cancellation");
+        }
+        expect(cancelled.reason).toBe(reason);
+        const retried = yield* host.turn({
+          ...command,
+          resume: reason === undefined ? { kind: "cancel" } : { kind: "cancel", reason },
+        });
+        expect(retried).toEqual(cancelled);
+        yield* host.dispose(invocationId);
+      });
+    },
+  );
+
   it("projects the contract-derived binding identity on parked elicit asks", async () => {
     await run(function* () {
       yield* createLocalToolInvocationRuntime({});
@@ -92,7 +121,9 @@ describe("ToolInvocationHost", () => {
         type: "parked",
         ask: { kind: "elicit", key: "flight" },
       });
-      if (parked.type !== "parked") throw new Error("expected parked invocation");
+      if (parked.type !== "parked") {
+        throw new Error("expected parked invocation");
+      }
 
       const completed = yield* host.turn({
         invocationId,
@@ -153,7 +184,9 @@ describe("ToolInvocationHost", () => {
       const invocationId = "ephemeral:session:port";
       yield* facade.start({ invocationId, tool: bookingTool, input: { destination: "LHR" } });
       const parked = yield* facade.turn({ invocationId, commandId: "pull-0", cursor: 0 });
-      if (parked.type !== "parked") throw new Error("expected parked invocation");
+      if (parked.type !== "parked") {
+        throw new Error("expected parked invocation");
+      }
       yield* facade.turn({
         invocationId,
         commandId: "cancel-0",
@@ -233,7 +266,9 @@ describe("ToolInvocationHost", () => {
         commandId: "pull-0",
         cursor: 0,
       });
-      if (parked.type !== "parked") throw new Error("expected parked invocation");
+      if (parked.type !== "parked") {
+        throw new Error("expected parked invocation");
+      }
 
       const cancelled = yield* host.turn({
         invocationId,

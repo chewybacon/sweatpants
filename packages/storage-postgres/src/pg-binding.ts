@@ -62,7 +62,7 @@ export async function openPostgresStorage(
       : new Pool({
           connectionString: options.connectionString ?? DEFAULT_POSTGRES_URL,
           max: options.maxPoolSize ?? 10,
-          ...(options.synchronousCommit === "off" ? { options: "-c synchronous_commit=off" } : {}),
+          options: options.synchronousCommit === "off" ? "-c synchronous_commit=off" : undefined,
         });
   const pool = options.pool ?? ownedPool!;
   const owned = ownedPool !== null;

@@ -60,6 +60,7 @@ export function projectInterrupt(
       interrupts: [
         {
           id: pending.pullId,
+          /* CONDITIONAL-SPREAD: Omit absent subagentRunId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(subagentRunId === undefined ? {} : { subagentRunId }),
           reason: "input_required",
           message: encoded.message,
@@ -69,11 +70,14 @@ export function projectInterrupt(
             "sweatpants/key": publicKey,
             "sweatpants/toolName": correlation.toolName,
             callId: correlation.callId,
+            /* CONDITIONAL-SPREAD: Omit absent elicitId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(correlation.elicitId ? { elicitId: correlation.elicitId } : {}),
             "sweatpants/elicitation": {
               bindingId: binding.id,
+              /* CONDITIONAL-SPREAD: Omit absent context from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
               ...(authoredContext !== undefined ? { context: authoredContext } : {}),
               responseContract,
+              /* CONDITIONAL-SPREAD: Omit absent contextContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
               ...(contextContract ? { contextContract } : {}),
               placement,
             },

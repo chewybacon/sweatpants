@@ -68,7 +68,9 @@ export function selectStoredModel(
 
 export function clearStoredModelSelection(path = sweatpantsAuthFile()): void {
   const current = readAuthFile(path);
-  if (current.selected === undefined) return;
+  if (current.selected === undefined) {
+    return;
+  }
   const { selected: _selected, ...withoutSelection } = current;
   writeAuthFile(path, withoutSelection);
 }
@@ -104,7 +106,9 @@ export class FileCredentialStore implements CredentialStore {
       const current = readAuthFile(this.path);
       const next = await fn(cloneCredential(current.credentials[providerId]));
       options?.signal?.throwIfAborted();
-      if (next === undefined) return cloneCredential(current.credentials[providerId]);
+      if (next === undefined) {
+        return cloneCredential(current.credentials[providerId]);
+      }
       writeAuthFile(this.path, {
         ...current,
         credentials: { ...current.credentials, [providerId]: cloneCredential(next)! },
@@ -117,7 +121,9 @@ export class FileCredentialStore implements CredentialStore {
     options?.signal?.throwIfAborted();
     await this.enqueue(providerId, async () => {
       const current = readAuthFile(this.path);
-      if (!(providerId in current.credentials)) return;
+      if (!(providerId in current.credentials)) {
+        return;
+      }
       const credentials = { ...current.credentials };
       delete credentials[providerId];
       const next: AuthFile = { ...current, credentials };
@@ -143,27 +149,37 @@ export class FileCredentialStore implements CredentialStore {
       return await task();
     } finally {
       release();
-      if (this.#chains.get(providerId) === chain) this.#chains.delete(providerId);
+      if (this.#chains.get(providerId) === chain) {
+        this.#chains.delete(providerId);
+      }
     }
   }
 }
 
 export function removeAuthFile(path = sweatpantsAuthFile()): void {
-  if (existsSync(path)) rmSync(path);
+  if (existsSync(path)) {
+    rmSync(path);
+  }
 }
 
 function workspaceRoot(): string {
   let directory = process.cwd();
   while (true) {
-    if (existsSync(resolve(directory, "pnpm-workspace.yaml"))) return directory;
+    if (existsSync(resolve(directory, "pnpm-workspace.yaml"))) {
+      return directory;
+    }
     const parent = dirname(directory);
-    if (parent === directory) return process.cwd();
+    if (parent === directory) {
+      return process.cwd();
+    }
     directory = parent;
   }
 }
 
 function readAuthFile(path: string): AuthFile {
-  if (!existsSync(path)) return { version: 1, credentials: {} };
+  if (!existsSync(path)) {
+    return { version: 1, credentials: {} };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
@@ -175,8 +191,9 @@ function readAuthFile(path: string): AuthFile {
   }
   const credentials: Record<string, Credential> = {};
   for (const [providerId, credential] of Object.entries(parsed["credentials"])) {
-    if (!isCredential(credential))
+    if (!isCredential(credential)) {
       throw new Error(`Invalid credential for ${providerId} in ${path}`);
+    }
     credentials[providerId] = credential;
   }
   const selected = parsed["selected"];
@@ -185,6 +202,7 @@ function readAuthFile(path: string): AuthFile {
   }
   return {
     version: 1,
+    /* CONDITIONAL-SPREAD: Omit absent selected from provider requests and response metadata; explicit undefined is not a portable JSON value. */
     ...(selected === undefined ? {} : { selected }),
     credentials,
   };
@@ -199,7 +217,9 @@ function writeAuthFile(path: string, state: AuthFile): void {
     renameSync(temporary, path);
     chmodSync(path, 0o600);
   } finally {
-    if (existsSync(temporary)) rmSync(temporary, { force: true });
+    if (existsSync(temporary)) {
+      rmSync(temporary, { force: true });
+    }
   }
 }
 
@@ -220,7 +240,9 @@ function isSelection(value: unknown): value is StoredModelSelection {
 }
 
 function isCredential(value: unknown): value is Credential {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value)) {
+    return false;
+  }
   if (value["type"] === "api_key") {
     return value["key"] === undefined || typeof value["key"] === "string";
   }

@@ -118,7 +118,9 @@ describe("canonical Chat History composition", () => {
     expect(chatHistoryEntryParser.parse(entry)).toEqual({ ok: true, value: entry });
     expect(Object.isFrozen(entry)).toBe(true);
     expect(Object.isFrozen(entry.metadata)).toBe(true);
-    if (entry.type !== "message") throw new Error("expected message entry");
+    if (entry.type !== "message") {
+      throw new Error("expected message entry");
+    }
     expect(Object.isFrozen(entry.message)).toBe(true);
   });
 

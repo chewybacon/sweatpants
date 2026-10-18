@@ -75,7 +75,7 @@ export const EffectionKernel: Executor<Program, Json, Request, Reply, Json> = {
             error instanceof DurableProgramCancellation
               ? {
                   kind: "cancelled",
-                  ...(error.reason === undefined ? {} : { reason: error.reason }),
+                  reason: error.reason,
                 }
               : { kind: "failed", error },
           );

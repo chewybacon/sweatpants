@@ -75,7 +75,9 @@ describe("projection programs", () => {
     function* program(values: readonly number[]): ProjectionProgram<number, Note> {
       let total = 0;
       for (const value of values) {
-        if (value < 0) continue;
+        if (value < 0) {
+          continue;
+        }
         total += yield* stage(`add:${value}`, function* () {
           yield* note({ kind: "added", count: value });
           return value;
@@ -132,7 +134,9 @@ describe("projection programs", () => {
     const plain = runProjectionProgram(program, toError);
     const traced: string[] = [];
     const observed = runProjectionProgram(program, toError, (event) => {
-      if (event.type === "note") traced.push(event.note.kind);
+      if (event.type === "note") {
+        traced.push(event.note.kind);
+      }
     });
 
     expect(plain).toMatchObject({ ok: true, value: 10 });

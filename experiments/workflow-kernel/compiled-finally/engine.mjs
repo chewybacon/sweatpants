@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { parse } from "../scheme-data/read.mjs";
 const sym = (x) => ({ sym: x });
 const name = (x) => {
-    if (!x?.sym) throw Error("Expected identifier");
+    if (!x?.sym) {
+        throw Error("Expected identifier");
+    }
     return x.sym;
 };
 export function compile(source) {
@@ -23,7 +25,9 @@ export function compile(source) {
         }
         xs.forEach((x, i) => {
             expr(x, c, tail && i === xs.length - 1);
-            if (i < xs.length - 1) c.push(["pop"]);
+            if (i < xs.length - 1) {
+                c.push(["pop"]);
+            }
         });
     }
     function expr(x, c, tail = false) {
@@ -31,14 +35,18 @@ export function compile(source) {
             c.push(x?.sym ? ["get", x.sym] : ["const", x]);
             return;
         }
-        if (!x.length) throw Error("Empty application");
+        if (!x.length) {
+            throw Error("Empty application");
+        }
         const op = x[0]?.sym;
         if (op === "lambda") {
             c.push(["closure", fn(x[1].map(name), x.slice(2))]);
             return;
         }
         if (op === "let") {
-            if (!Array.isArray(x[1])) throw Error("Named let is not supported in this spike");
+            if (!Array.isArray(x[1])) {
+                throw Error("Named let is not supported in this spike");
+            }
             expr(
                 [[sym("lambda"), x[1].map((b) => b[0]), ...x.slice(2)], ...x[1].map((b) => b[1])],
                 c,
@@ -57,7 +65,9 @@ export function compile(source) {
             return;
         }
         if (op === "if") {
-            if (x.length !== 4) throw Error("if expects three operands");
+            if (x.length !== 4) {
+                throw Error("if expects three operands");
+            }
             expr(x[1], c);
             const branch = c.length;
             c.push(["false", 0]);
@@ -70,16 +80,21 @@ export function compile(source) {
             return;
         }
         if (op === "define") {
-            if (Array.isArray(x[1])) expr([sym("lambda"), x[1].slice(1), ...x.slice(2)], c);
-            else {
-                if (x.length !== 3) throw Error("Invalid define");
+            if (Array.isArray(x[1])) {
+                expr([sym("lambda"), x[1].slice(1), ...x.slice(2)], c);
+            } else {
+                if (x.length !== 3) {
+                    throw Error("Invalid define");
+                }
                 expr(x[2], c);
             }
             c.push(["define", name(Array.isArray(x[1]) ? x[1][0] : x[1])]);
             return;
         }
         if (op === "set!") {
-            if (x.length !== 3) throw Error("set! expects name and value");
+            if (x.length !== 3) {
+                throw Error("set! expects name and value");
+            }
             expr(x[2], c);
             c.push(["set", name(x[1])]);
             return;
@@ -103,26 +118,33 @@ export function compile(source) {
             return;
         }
         if (op === "scope") {
-            if (x.length !== 3 || typeof x[1] !== "string")
+            if (x.length !== 3 || typeof x[1] !== "string") {
                 throw Error("scope expects a source site and closure");
+            }
             expr(x[2], c);
             c.push(["scope", x[1]]);
             return;
         }
         if (op === "ensure") {
-            if (x.length !== 2) throw Error("ensure expects a closure");
+            if (x.length !== 2) {
+                throw Error("ensure expects a closure");
+            }
             expr(x[1], c);
             c.push(["ensure"]);
             return;
         }
         if (op === "workflow-return" || op === "workflow-throw") {
-            if (x.length !== 2) throw Error("Expected completion value");
+            if (x.length !== 2) {
+                throw Error("Expected completion value");
+            }
             expr(x[1], c);
             c.push([op === "workflow-return" ? "return" : "throw"]);
             return;
         }
         if (op === "try-finally") {
-            if (x.length !== 3) throw Error("Expected body and cleanup");
+            if (x.length !== 3) {
+                throw Error("Expected body and cleanup");
+            }
             const enter = c.length;
             c.push(["protect", null]);
             expr(x[1], c, false);
@@ -134,22 +156,28 @@ export function compile(source) {
             return;
         }
         if (op === "yield-at") {
-            if (x.length !== 3 || typeof x[1] !== "string")
+            if (x.length !== 3 || typeof x[1] !== "string") {
                 throw Error("yield-at expects label and request");
+            }
             expr(x[2], c);
             c.push(["yield", x[1]]);
             return;
         }
         if (op === "yield") {
-            if (x.length !== 2) throw Error("yield expects one request");
+            if (x.length !== 2) {
+                throw Error("yield expects one request");
+            }
             expr(x[1], c);
             c.push(["yield"]);
             return;
         }
-        if (["call/cc", "quote", "define-syntax", "letrec"].includes(op))
+        if (["call/cc", "quote", "define-syntax", "letrec"].includes(op)) {
             throw Error(`Unsupported form: ${op}`);
+        }
         expr(x[0], c);
-        for (const arg of x.slice(1)) expr(arg, c);
+        for (const arg of x.slice(1)) {
+            expr(arg, c);
+        }
         c.push([tail ? "tailcall" : "call", x.length - 1]);
     }
     const entry = fn([], parse(source));
@@ -173,8 +201,9 @@ const builtins = {
             typeof object !== "object" ||
             Array.isArray(object) ||
             !Object.hasOwn(object, key)
-        )
+        ) {
             throw Error("Missing JSON object field: " + key);
+        }
         return object[key];
     },
     object: (...pairs) => Object.fromEntries(pairs),
@@ -199,15 +228,22 @@ export function run(program, state, options = {}) {
         state.version !== 2 ||
         state.program !== program.id ||
         program.runtime !== "explicit-tool-contracts-v4"
-    )
+    ) {
         throw Error("Checkpoint/program mismatch");
-    if (state.status === "done") throw Error("Program already completed");
+    }
+    if (state.status === "done") {
+        throw Error("Program already completed");
+    }
     let fuel = options.fuel ?? 100000;
     function lookup(env, key) {
         for (let e = env; e !== null; e = state.heap[e].parent) {
-            if (Object.hasOwn(state.heap[e].bindings, key)) return state.heap[e].bindings[key];
+            if (Object.hasOwn(state.heap[e].bindings, key)) {
+                return state.heap[e].bindings[key];
+            }
         }
-        if (Object.hasOwn(builtins, key)) return { builtin: key };
+        if (Object.hasOwn(builtins, key)) {
+            return { builtin: key };
+        }
         throw Error(`Unbound name: ${key}`);
     }
     function finish(outcome) {
@@ -225,7 +261,9 @@ export function run(program, state, options = {}) {
             // Match native Effection: drain all cleanups; the last failure wins.
             scope.outcome = outcome;
         }
-        if (scope.id === 0) state.scopePhase = "cleanup";
+        if (scope.id === 0) {
+            state.scopePhase = "cleanup";
+        }
         const cleanup = scope.cleanups.pop();
         if (cleanup) {
             const env = state.heap.length;
@@ -241,10 +279,13 @@ export function run(program, state, options = {}) {
             state.status = "running";
             return;
         }
-        if (state.scopes.pop() !== scope) throw Error("Scope ownership mismatch");
+        if (state.scopes.pop() !== scope) {
+            throw Error("Scope ownership mismatch");
+        }
         let pending = scope.outcome;
-        if (state.cancellationRequested && !cleaning() && pending.kind === "returned")
+        if (state.cancellationRequested && !cleaning() && pending.kind === "returned") {
             pending = { kind: "cancelled" };
+        }
         if (!state.frames.length) {
             finish(pending);
             return;
@@ -252,7 +293,9 @@ export function run(program, state, options = {}) {
         if (pending.kind === "returned") {
             state.frames.at(-1).stack.push(pending.value);
             state.status = "running";
-        } else unwind(pending);
+        } else {
+            unwind(pending);
+        }
     }
     function startCleanup(frame, handler, outcome) {
         handler.phase = "cleanup";
@@ -298,7 +341,9 @@ export function run(program, state, options = {}) {
             const boundary = f.cleanupScope ?? f.scopeBoundary;
             if (boundary !== undefined) {
                 const scope = state.scopes.at(-1);
-                if (scope?.id !== boundary) throw Error("Scope/frame mismatch");
+                if (scope?.id !== boundary) {
+                    throw Error("Scope/frame mismatch");
+                }
                 drainScope(scope, outcome);
                 return;
             }
@@ -306,7 +351,9 @@ export function run(program, state, options = {}) {
                 if (state.frames.length) {
                     state.frames.at(-1).stack.push(outcome.value);
                     state.status = "running";
-                } else finish(outcome);
+                } else {
+                    finish(outcome);
+                }
                 return;
             }
         }
@@ -318,8 +365,9 @@ export function run(program, state, options = {}) {
     if (options.cancel) {
         state.cancellationRequested = true;
         if (cleaning()) {
-            if (!Object.hasOwn(options, "reply") && !Object.hasOwn(options, "error"))
+            if (!Object.hasOwn(options, "reply") && !Object.hasOwn(options, "error")) {
                 return { waiting: state.status === "waiting", effect: state.pendingEffect, state };
+            }
         } else {
             unwind({ kind: "cancelled" });
         }
@@ -331,14 +379,20 @@ export function run(program, state, options = {}) {
         } else if (Object.hasOwn(options, "reply")) {
             state.frames.at(-1).stack.push(options.reply);
             state.status = "running";
-        } else throw Error("Reply required");
+        } else {
+            throw Error("Reply required");
+        }
     }
     while (state.frames.length && state.status !== "done") {
-        if (fuel-- <= 0) throw Error("Instruction budget exhausted");
+        if (fuel-- <= 0) {
+            throw Error("Instruction budget exhausted");
+        }
         const f = state.frames.at(-1),
             s = f.stack,
             ins = program.functions[f.fn].code[f.ip++];
-        if (!ins) throw Error("Invalid instruction pointer");
+        if (!ins) {
+            throw Error("Invalid instruction pointer");
+        }
         const [op, arg] = ins;
         switch (op) {
             case "scope": {
@@ -346,8 +400,9 @@ export function run(program, state, options = {}) {
                 if (
                     !Number.isInteger(body?.closure) ||
                     program.functions[body.closure].params.length
-                )
+                ) {
                     throw Error("Expected zero-argument scope body");
+                }
                 const id = state.nextScope++,
                     parent = state.scopes.at(-1).id;
                 state.scopes.push({ id, parent, site: arg, phase: "body", cleanups: [] });
@@ -369,8 +424,9 @@ export function run(program, state, options = {}) {
                 if (
                     !Number.isInteger(cleanup?.closure) ||
                     program.functions[cleanup.closure].params.length
-                )
+                ) {
                     throw Error("Expected zero-argument cleanup");
+                }
                 state.scopes.at(-1).cleanups.push(cleanup);
                 s.push(null);
                 break;
@@ -398,9 +454,12 @@ export function run(program, state, options = {}) {
             case "set": {
                 const value = s.pop();
                 let env = f.env;
-                while (env !== null && !Object.hasOwn(state.heap[env].bindings, arg))
+                while (env !== null && !Object.hasOwn(state.heap[env].bindings, arg)) {
                     env = state.heap[env].parent;
-                if (env === null) throw Error("Unbound assignment: " + arg);
+                }
+                if (env === null) {
+                    throw Error("Unbound assignment: " + arg);
+                }
                 state.heap[env].bindings[arg] = value;
                 s.push(value);
                 break;
@@ -415,7 +474,9 @@ export function run(program, state, options = {}) {
             case "leave-block": {
                 const value = s.pop(),
                     h = f.handlers.pop();
-                if (h?.kind !== "lexical") throw Error("Lexical handler mismatch");
+                if (h?.kind !== "lexical") {
+                    throw Error("Lexical handler mismatch");
+                }
                 f.env = h.env;
                 s.length = h.depth;
                 s.push(value);
@@ -426,7 +487,9 @@ export function run(program, state, options = {}) {
                 break;
             case "end-loop": {
                 const h = f.handlers.pop();
-                if (h?.kind !== "loop") throw Error("Loop handler mismatch");
+                if (h?.kind !== "loop") {
+                    throw Error("Loop handler mismatch");
+                }
                 s.length = h.depth;
                 s.push(null);
                 break;
@@ -439,7 +502,9 @@ export function run(program, state, options = {}) {
                 s.pop();
                 break;
             case "false":
-                if (s.pop() === false) f.ip = arg;
+                if (s.pop() === false) {
+                    f.ip = arg;
+                }
                 break;
             case "jump":
                 f.ip = arg;
@@ -454,12 +519,15 @@ export function run(program, state, options = {}) {
                 const h = f.handlers.pop();
                 s.length = h.depth;
                 let outcome = h.pending;
-                if (state.cancellationRequested && !cleaning() && outcome.kind !== "thrown")
+                if (state.cancellationRequested && !cleaning() && outcome.kind !== "thrown") {
                     outcome = { kind: "cancelled" };
+                }
                 if (outcome.kind === "normal") {
                     s.push(outcome.value);
                     f.ip = h.end;
-                } else unwind(outcome);
+                } else {
+                    unwind(outcome);
+                }
                 break;
             }
             case "yield":
@@ -479,13 +547,20 @@ export function run(program, state, options = {}) {
                     callee = s.pop();
                 if (callee?.builtin) {
                     const value = builtins[callee.builtin](...args);
-                    if (op === "tailcall") unwind({ kind: "returned", value });
-                    else s.push(value);
+                    if (op === "tailcall") {
+                        unwind({ kind: "returned", value });
+                    } else {
+                        s.push(value);
+                    }
                     break;
                 }
-                if (!Number.isInteger(callee?.closure)) throw Error("Not callable");
+                if (!Number.isInteger(callee?.closure)) {
+                    throw Error("Not callable");
+                }
                 const def = program.functions[callee.closure];
-                if (args.length !== def.params.length) throw Error("Arity mismatch");
+                if (args.length !== def.params.length) {
+                    throw Error("Arity mismatch");
+                }
                 const env = state.heap.length;
                 state.heap.push({
                     parent: callee.env,
@@ -494,10 +569,16 @@ export function run(program, state, options = {}) {
                 const frame = { fn: callee.closure, ip: 0, env, stack: [], handlers: [] };
                 // A protected frame must survive a tail call to run its finally.
                 if (op === "tailcall" && !f.handlers.length) {
-                    if (f.scopeBoundary !== undefined) frame.scopeBoundary = f.scopeBoundary;
-                    if (f.cleanupScope !== undefined) frame.cleanupScope = f.cleanupScope;
+                    if (f.scopeBoundary !== undefined) {
+                        frame.scopeBoundary = f.scopeBoundary;
+                    }
+                    if (f.cleanupScope !== undefined) {
+                        frame.cleanupScope = f.cleanupScope;
+                    }
                     state.frames[state.frames.length - 1] = frame;
-                } else state.frames.push(frame);
+                } else {
+                    state.frames.push(frame);
+                }
                 state.maxFrames = Math.max(state.maxFrames, state.frames.length);
                 break;
             }
