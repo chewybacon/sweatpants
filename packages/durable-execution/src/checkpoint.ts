@@ -1,3 +1,4 @@
+import { durableReferenceSchema } from "./reference-schema.ts";
 import { parser, cloneJson } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
@@ -13,27 +14,9 @@ import {
 } from "./contract.ts";
 
 const checkpointTextSchema = z.string().min(1).max(4_096);
-const checkpointReferenceSchema = z
-  .strictObject({
-    id: checkpointTextSchema,
-    byteLength: z.number().int().nonnegative().safe().optional(),
-    version: z.string().min(1).max(256).optional(),
-    integrity: z
-      .strictObject({ algorithm: checkpointTextSchema, value: checkpointTextSchema })
-      .optional(),
-  })
-  .transform((value) => ({
-    id: value.id,
-    /* CONDITIONAL-SPREAD: Omit absent byteLength from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
-    /* CONDITIONAL-SPREAD: Omit absent version from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.version !== undefined ? { version: value.version } : {}),
-    /* CONDITIONAL-SPREAD: Omit absent integrity from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
-  }));
 const checkpointStoredJsonSchema = z.discriminatedUnion("storage", [
   z.strictObject({ storage: z.literal("inline"), value: z.json() }),
-  z.strictObject({ storage: z.literal("reference"), reference: checkpointReferenceSchema }),
+  z.strictObject({ storage: z.literal("reference"), reference: durableReferenceSchema }),
 ]);
 const checkpointProgramSchema = z.strictObject({
   id: checkpointTextSchema,
@@ -47,7 +30,7 @@ const parkedTaskCheckpointSchema = z
     program: checkpointProgramSchema,
     input: checkpointStoredJsonSchema,
     route: z.json(),
-    replayHead: z.union([checkpointReferenceSchema, z.null()]),
+    replayHead: z.union([durableReferenceSchema, z.null()]),
     parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
     actionIndex: z.number().int().nonnegative().safe(),
   })
@@ -83,7 +66,7 @@ const recoveryCheckpointSchema = z.strictObject({
     .max(16_384),
   projection: z.strictObject({
     throughSequence: z.number().int().nonnegative().safe(),
-    facts: z.union([checkpointReferenceSchema, z.null()]),
+    facts: z.union([durableReferenceSchema, z.null()]),
   }),
 });
 

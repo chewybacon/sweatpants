@@ -430,10 +430,8 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
         const result = yield* operations.readFile(
           {
             path: request.path,
-            /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-            ...(request.startLine === undefined ? {} : { startLine: request.startLine }),
-            /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-            ...(request.endLine === undefined ? {} : { endLine: request.endLine }),
+            startLine: request.startLine,
+            endLine: request.endLine,
           },
           execution,
         );
@@ -752,10 +750,8 @@ export function installRemoteWorkspaceFilesProvider(options: {
         fence: binding.fence,
         operationId: execution.operationId("workspace.read-file"),
         path: input.path,
-        /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-        ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
-        /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-        ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+        startLine: input.startLine,
+        endLine: input.endLine,
       });
       if (response.type !== "read-result") {
         throw wrongWorkspaceResponse("readFile");
@@ -896,17 +892,14 @@ function normalizeWorkspaceRequest(
   input: z.infer<typeof workspaceRequestSchema>,
 ): WorkspaceRequest {
   if (input.type === "read") {
-    return {
-      protocolVersion: 1,
-      type: "read",
-      fence: input.fence,
-      operationId: input.operationId,
-      path: safeRelativePath(input.path),
-      /* CONDITIONAL-SPREAD: Omit absent startLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-      ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
-      /* CONDITIONAL-SPREAD: Omit absent endLine from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */
-      ...(input.endLine !== undefined ? { endLine: input.endLine } : {}),
-    };
+    const value = { ...input, path: safeRelativePath(input.path) };
+    if (value.startLine === undefined) {
+      delete value.startLine;
+    }
+    if (value.endLine === undefined) {
+      delete value.endLine;
+    }
+    return value;
   }
   if (input.type === "list") {
     return { ...input, path: safeRelativePath(input.path) };

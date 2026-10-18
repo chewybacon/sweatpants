@@ -1,3 +1,4 @@
+import { durableReferenceSchema } from "./reference-schema.ts";
 import { sortStrings, cloneJson } from "@sweatpants/foundation";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
@@ -12,22 +13,6 @@ import {
 } from "./contract.ts";
 
 const nonemptySchema = z.string().min(1).max(4_096);
-const durableReferenceSchema = z
-  .strictObject({
-    id: nonemptySchema,
-    byteLength: z.number().int().nonnegative().safe().optional(),
-    version: z.string().min(1).max(256).optional(),
-    integrity: z.strictObject({ algorithm: nonemptySchema, value: nonemptySchema }).optional(),
-  })
-  .transform((value) => ({
-    id: value.id,
-    /* CONDITIONAL-SPREAD: Omit absent byteLength from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
-    /* CONDITIONAL-SPREAD: Omit absent version from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.version !== undefined ? { version: value.version } : {}),
-    /* CONDITIONAL-SPREAD: Omit absent integrity from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
-  }));
 const storedJsonSchema = z.discriminatedUnion("storage", [
   z.strictObject({ storage: z.literal("inline"), value: z.json() }),
   z.strictObject({ storage: z.literal("reference"), reference: durableReferenceSchema }),
