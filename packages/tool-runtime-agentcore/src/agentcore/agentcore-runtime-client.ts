@@ -56,6 +56,7 @@ function baseInput(
     region: handle.region,
     runtimeSessionId: handle.runtimeSessionId,
     payload,
+    /* CONDITIONAL-SPREAD: Omit absent options from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(options !== undefined && { options }),
   };
 }
@@ -154,6 +155,7 @@ export function createAgentCoreRemoteToolRuntimeClient(
         endpointName: handle.endpointName,
         region: handle.region,
         runtimeSessionId: handle.runtimeSessionId,
+        /* CONDITIONAL-SPREAD: Omit absent options from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(options !== undefined && { options }),
       });
     },
@@ -183,6 +185,7 @@ export function protocolErrorStream(
   return singleResponseStream({
     type: "protocol_error",
     message,
+    /* CONDITIONAL-SPREAD: Omit absent details from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(details !== undefined && { details }),
   });
 }

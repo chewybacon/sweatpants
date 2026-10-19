@@ -165,11 +165,13 @@ export function createPluginBuilder<TCapabilities, TContract extends PluginToolC
             const binding: ClientElicitBinding<unknown, TCapabilities> = {
               binding: interactionBinding,
               responseContract: artifact.response,
+              /* CONDITIONAL-SPREAD: Omit absent contextContract from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(artifact.context ? { contextContract: artifact.context } : {}),
               metadata: assertJson(definition.metadata ?? null),
               toolName: tool.name,
               key,
               responseSchema: definition.response,
+              /* CONDITIONAL-SPREAD: Omit absent contextSchema from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(wireContextSchema ? { contextSchema: wireContextSchema } : {}),
               artifacts: artifact,
               handler: boundHandler,

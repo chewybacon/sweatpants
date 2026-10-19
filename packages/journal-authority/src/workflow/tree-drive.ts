@@ -94,7 +94,9 @@ function* driveNode(
       );
       // undefined means the group resolved: re-run the parent so ordinary
       // replay consumes the committed Terminal value.
-      if (parked === undefined) continue;
+      if (parked === undefined) {
+        continue;
+      }
       return parked;
     }
     if (operation.descriptor.kind !== "invoke") {
@@ -127,6 +129,7 @@ function* driveNode(
         input: child.input,
         route,
         executionEpoch: attach.executionEpoch,
+        /* CONDITIONAL-SPREAD: Omit absent affinity from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
       });
       if (childOutcome.state === "parked") {
@@ -185,13 +188,17 @@ function* driveForkGroup(
       // Peers advance under their own authority: the local row is structural
       // evidence, never a recipe (REQ-037), and never enters the prepared
       // set for local activation (REQ-075).
-      if (descriptor.children[index]!.durability?.kind === "peer_hosted") continue;
+      if (descriptor.children[index]!.durability?.kind === "peer_hosted") {
+        continue;
+      }
       const lifecycle = yield* authority.query({
         type: "task.lifecycle",
         sessionId: attach.sessionId,
         taskId: memberTaskId,
       });
-      if (lifecycle.status !== "active") continue;
+      if (lifecycle.status !== "active") {
+        continue;
+      }
       const member = members[index]!;
       const childOutcome = yield* driveNode(authority, rootScope, {
         sessionId: attach.sessionId,
@@ -204,6 +211,7 @@ function* driveForkGroup(
         input: member.child.input,
         route: member.route,
         executionEpoch: attach.executionEpoch,
+        /* CONDITIONAL-SPREAD: Omit absent affinity from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
       });
       if (childOutcome.state === "parked") {
@@ -222,7 +230,9 @@ function* driveForkGroup(
       taskId: attach.taskId,
       pullId,
     });
-    if (state.status === "found" && state.outcome !== undefined) return undefined;
+    if (state.status === "found" && state.outcome !== undefined) {
+      return undefined;
+    }
     if (!progressed) {
       return { state: "parked", pullId, reason: "child", slots };
     }

@@ -10,7 +10,7 @@ import {
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
 } from "@sweatpants/model-sampling";
-import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, digestCanonicalJson } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
 
@@ -203,7 +203,7 @@ export function createPlacementModelSamplingService(options: {
           "Execution-local sampling release is unavailable",
         );
       }
-      const requestDigest = canonicalDigest(request);
+      const requestDigest = digestCanonicalJson(request as unknown as Json);
       const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
       if (context.effectContractDigest !== contractDigest) {
         throw new CrankError(
@@ -241,6 +241,7 @@ export function createPlacementModelSamplingService(options: {
           yield* options.sampler.cancel({
             version: AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
             attachment,
+            /* CONDITIONAL-SPREAD: Omit absent reason from AgentCore request and session records; explicit undefined is not a portable JSON value. */
             ...(reason ? { reason } : {}),
           });
         }
@@ -255,6 +256,7 @@ export function createPlacementModelSamplingService(options: {
             sessionId: identity.sessionId,
             taskId: identity.taskId,
             pullId: identity.pullId,
+            /* CONDITIONAL-SPREAD: Omit absent messageId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
             ...(remote.messageId ? { messageId: remote.messageId } : {}),
             origin: {
               kind: "agentcore-model-sample",

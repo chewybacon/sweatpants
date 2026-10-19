@@ -41,7 +41,9 @@ const elicitExchangeCompletionSchema = z.discriminatedUnion("action", [
 /** Owns structural restoration of an elicitation completion at JSON boundaries. */
 export const elicitExchangeCompletionParser = parser(elicitExchangeCompletionSchema).map(
   (parsed): ElicitExchangeCompletion<Json> => {
-    if (parsed.action === "accept") return parsed;
+    if (parsed.action === "accept") {
+      return parsed;
+    }
     if (parsed.action === "decline") {
       return parsed.reason === undefined
         ? { action: "decline" }
@@ -65,9 +67,11 @@ export const SCHEMA_TOOL_NAME = "__schema__";
 export function projectModelSampleCompletion(result: ModelSampleResult): SampleExchangeCompletion {
   const base = {
     text: assistantText(result.message),
+    /* CONDITIONAL-SPREAD: Omit absent model from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(result.message.source === null
       ? {}
       : { model: result.message.source.responseModel ?? result.message.source.model }),
+    /* CONDITIONAL-SPREAD: Omit absent stopReason from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(result.message.stopReason !== null ? { stopReason: result.message.stopReason } : {}),
   };
   if (result.output.type === "json") {
@@ -182,7 +186,9 @@ export function completeSampleExchange(
     return { ...completion, exchange };
   }
   const exchange = createRawSampleExchange(options.promptText, completion.text);
-  if ("toolCalls" in completion) return { ...completion, exchange };
+  if ("toolCalls" in completion) {
+    return { ...completion, exchange };
+  }
   return { ...completion, exchange };
 }
 

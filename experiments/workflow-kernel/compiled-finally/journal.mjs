@@ -17,7 +17,9 @@ const canonical = (x) =>
 export const hash = (x) => createHash("sha256").update(canonical(x)).digest("hex");
 export const copy = (x) => JSON.parse(JSON.stringify(x));
 const check = (ok, message) => {
-    if (!ok) throw Error(message);
+    if (!ok) {
+        throw Error(message);
+    }
 };
 const equal = (a, b) => hash(a) === hash(b);
 export const COMPLETION_POLICY = "validated-output-v1";
@@ -58,7 +60,9 @@ function validateValue(schemas, digest, value, role) {
     check(equal(checked.value, value), "Schema normalization is unsupported in this spike");
 }
 function settleCompletion(ctx) {
-    if (!ctx.artifact.boundary || ctx.output?.outcome?.kind !== "returned") return;
+    if (!ctx.artifact.boundary || ctx.output?.outcome?.kind !== "returned") {
+        return;
+    }
     const digest = ctx.artifact.boundary.output;
     const checked = parseRegisteredSchema(ctx.schemas, digest, ctx.output.outcome.value);
     if (checked.status === "invalid") {
@@ -84,7 +88,9 @@ function validateInput(ctx, input) {
                 input.cancel === true),
         "Invalid resume command",
     );
-    if (input.cancel === true) return;
+    if (input.cancel === true) {
+        return;
+    }
     const role = Object.hasOwn(input, "reply") ? "reply" : "error";
     const contract = ctx.artifact.contracts[ctx.pending?.site];
     check(contract, "Missing pending effect contract");
@@ -119,7 +125,9 @@ function checkpoint(record, ctx) {
     record.checkpoint = { ...copy(body), checksum: hash(body) };
 }
 function publish(record, ctx) {
-    if (!ctx.output) return;
+    if (!ctx.output) {
+        return;
+    }
     if (ctx.state.status === "done") {
         settleCompletion(ctx);
         append(record, { kind: "done", outcome: ctx.output.outcome });
@@ -164,12 +172,13 @@ export function recover(record, registry, schemas = defaultSchemas) {
             "Invalid checkpoint cursor",
         );
         check(c.journalHash === record.events[c.cursor - 1].hash, "Checkpoint journal mismatch");
-        if (c.pending)
+        if (c.pending) {
             check(
                 c.pending.site === c.state.site &&
                     equal(c.pending.contract, a.contracts[c.pending.site]),
                 "Checkpoint effect contract mismatch",
             );
+        }
         ctx = { artifact: a, schemas, state: copy(c.state), pending: copy(c.pending) };
         cursor = c.cursor;
     } else {
@@ -211,7 +220,9 @@ export function recover(record, registry, schemas = defaultSchemas) {
                 "Replay completion mismatch",
             );
             delete ctx.output;
-        } else throw Error("Unknown journal event");
+        } else {
+            throw Error("Unknown journal event");
+        }
     }
     return ctx;
 }

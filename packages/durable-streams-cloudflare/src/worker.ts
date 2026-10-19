@@ -45,27 +45,36 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
   }
   private requireState(): StateRow {
     const state = this.state();
-    if (!state) throw new Error("Response buffer does not exist");
+    if (!state) {
+      throw new Error("Response buffer does not exist");
+    }
     return state;
   }
   private writer(fence: Fence): StateRow {
     const state = this.requireState();
-    if (state.owner !== fence.ownerId || state.epoch !== fence.activationEpoch)
+    if (state.owner !== fence.ownerId || state.epoch !== fence.activationEpoch) {
       throw new StaleTokenWriterError();
+    }
     return state;
   }
   async waitForChange(readerId: string, after: number): Promise<Reply<void>> {
     const result = await this.bufferState();
-    if (!result.ok) return result;
-    if (!result.value)
+    if (!result.ok) {
+      return result;
+    }
+    if (!result.value) {
       return {
         ok: false,
         code: "response_stream_error",
         message: "Response buffer does not exist",
       };
-    if (result.value.lsn > after || result.value.complete) return { ok: true, value: undefined };
-    if (this.waiters.has(readerId))
+    }
+    if (result.value.lsn > after || result.value.complete) {
+      return { ok: true, value: undefined };
+    }
+    if (this.waiters.has(readerId)) {
       return { ok: false, code: "response_stream_error", message: "Duplicate response waiter" };
+    }
     return new Promise((resolve) => {
       // A dead host cannot leave an unbounded waiter. Live clients recheck the
       // persisted tail after the bounded wait, so no notification is authority.
@@ -80,7 +89,9 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
       // Register, then recheck without yielding: append between the first
       // status read and registration must not lose a wakeup.
       const state = this.state();
-      if (!state || state.tail > after || state.completed) finish();
+      if (!state || state.tail > after || state.completed) {
+        finish();
+      }
     });
   }
   cancelWait(readerId: string): Promise<Reply<void>> {
@@ -88,11 +99,15 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
     return Promise.resolve({ ok: true, value: undefined });
   }
   private notifyReaders(): void {
-    for (const finish of this.waiters.values()) finish();
+    for (const finish of this.waiters.values()) {
+      finish();
+    }
   }
   createBuffer(): Promise<Reply<void>> {
     return this.execute(() => {
-      if (this.state()) throw new Error("Response buffer already exists");
+      if (this.state()) {
+        throw new Error("Response buffer already exists");
+      }
       this.ctx.storage.sql.exec("INSERT INTO buffer(id,tail,completed) VALUES(1,0,0)");
     });
   }
@@ -123,15 +138,17 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
         !fence.ownerId ||
         !Number.isSafeInteger(fence.activationEpoch) ||
         fence.activationEpoch < 0
-      )
+      ) {
         throw new Error("Writer owner and nonnegative activation epoch are required");
+      }
       const state = this.requireState();
       if (
         state.epoch !== null &&
         (fence.activationEpoch < state.epoch ||
           (fence.activationEpoch === state.epoch && fence.ownerId !== state.owner))
-      )
+      ) {
         throw new StaleTokenWriterError();
+      }
       this.ctx.storage.sql.exec(
         "UPDATE buffer SET owner=?,epoch=? WHERE id=1",
         fence.ownerId,
@@ -142,16 +159,20 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
   append(fence: Fence, tokens: string[]): Promise<Reply<number>> {
     return this.execute(() => {
       const state = this.writer(fence);
-      if (state.completed) throw new Error("Buffer is closed");
+      if (state.completed) {
+        throw new Error("Buffer is closed");
+      }
       const tail = state.tail + tokens.length;
-      if (!Number.isSafeInteger(tail))
+      if (!Number.isSafeInteger(tail)) {
         throw new Error("Response stream offset exceeds safe integer range");
-      for (const [index, token] of tokens.entries())
+      }
+      for (const [index, token] of tokens.entries()) {
         this.ctx.storage.sql.exec(
           "INSERT INTO tokens(lsn,value) VALUES(?,?)",
           state.tail + index + 1,
           token,
         );
+      }
       this.ctx.storage.sql.exec("UPDATE buffer SET tail=? WHERE id=1", tail);
       this.notifyReaders();
       return tail;
@@ -160,7 +181,9 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
   closeBuffer(fence: Fence, error: BufferState["error"]): Promise<Reply<void>> {
     return this.execute(() => {
       const state = this.writer(fence);
-      if (state.completed) return;
+      if (state.completed) {
+        return;
+      }
       this.ctx.storage.sql.exec(
         "UPDATE buffer SET completed=1,error_name=?,error_message=? WHERE id=1",
         error?.name ?? null,
@@ -175,8 +198,9 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
         !Number.isSafeInteger(after) ||
         after < 0 ||
         (limit !== null && (!Number.isSafeInteger(limit) || limit < 0))
-      )
+      ) {
         throw new Error("Invalid response stream read bounds");
+      }
       const state = this.requireState();
       const rows = this.ctx.storage.sql
         .exec<{ value: string }>(
@@ -223,14 +247,18 @@ export class ResponseStream extends DurableObject<unknown> implements ResponseSt
   }
   updateRefCount(delta: number): Promise<Reply<number>> {
     return this.execute(() => {
-      if (!Number.isSafeInteger(delta)) throw new Error("Reference delta must be an integer");
+      if (!Number.isSafeInteger(delta)) {
+        throw new Error("Reference delta must be an integer");
+      }
       const row = this.ctx.storage.sql
         .exec<{ ref_count: number }>(
           "UPDATE registry SET ref_count=ref_count+? WHERE id=1 RETURNING ref_count",
           delta,
         )
         .toArray()[0];
-      if (!row) throw new Error("Session not found");
+      if (!row) {
+        throw new Error("Session not found");
+      }
       return row.ref_count;
     });
   }

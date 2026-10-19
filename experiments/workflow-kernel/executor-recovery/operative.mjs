@@ -16,8 +16,12 @@ import {
 import { createHootDriver } from "../hoot-composition/fixture-driver.mjs";
 
 function boundary(step) {
-    if (step.type === "completed") return { kind: "completed", value: step.value };
-    if (step.type === "failed") return { kind: "failed", error: step.error };
+    if (step.type === "completed") {
+        return { kind: "completed", value: step.value };
+    }
+    if (step.type === "failed") {
+        return { kind: "failed", error: step.error };
+    }
     return { kind: "suspended", suspensionId: String(step.actionIndex), request: step };
 }
 
@@ -74,7 +78,9 @@ export function connectHoot() {
                         },
                     });
                 }
-                if (!program.recovery) return yield* next(program.attach, input);
+                if (!program.recovery) {
+                    return yield* next(program.attach, input);
+                }
                 const restored = yield* recoverProgram(program.recovery);
                 attachment = restored.attachment;
                 return activate(restored.frontier);
@@ -122,17 +128,23 @@ export function connectHoot() {
             const result = withResolvers();
             inbox.add({ ...message, result });
             const response = yield* result.operation;
-            if ("error" in response) throw response.error;
+            if ("error" in response) {
+                throw response.error;
+            }
             return response.value;
         }
         try {
             yield* provide({
                 *exchange(command) {
-                    if (closed) throw Error("connection_closed");
+                    if (closed) {
+                        throw Error("connection_closed");
+                    }
                     return yield* dispatch({ command });
                 },
                 *close() {
-                    if (closed) return;
+                    if (closed) {
+                        return;
+                    }
                     closed = true;
                     yield* dispatch({ close: true });
                 },
@@ -142,7 +154,9 @@ export function connectHoot() {
             yield* pump.halt();
             yield* operative.close();
             // Also release an attachment if start failed before returning a handle.
-            if (attachment) yield* ProgramPeer.operations.shutdown(attachment, "scope_exit");
+            if (attachment) {
+                yield* ProgramPeer.operations.shutdown(attachment, "scope_exit");
+            }
         }
     });
 }

@@ -43,7 +43,9 @@ export function encodePiToolChoice(
   model: Model,
   choice: "auto" | "none" | "required",
 ): "auto" | "none" | "required" | "any" {
-  if (choice !== "required") return choice;
+  if (choice !== "required") {
+    return choice;
+  }
   switch (model.api) {
     case "anthropic-messages":
     case "bedrock-converse-stream":
@@ -83,6 +85,7 @@ export function encodePiContext(context: ModelContext, model: Model): PiAi.Conte
 
   const output: PiAi.Context = {
     messages,
+    /* CONDITIONAL-SPREAD: Omit absent systemPrompt from provider requests and response metadata; explicit undefined is not a portable JSON value. */
     ...(instructions.length > 0 ? { systemPrompt: instructions.join("\n\n") } : {}),
   };
   if (context.tools.length > 0) {
@@ -109,6 +112,7 @@ export function appendPiStructuredResponseTool(
         },
         "$.responseFormat.schema",
       ),
+
       ...(context.tools ?? []),
     ],
   };
@@ -231,7 +235,9 @@ export function encodePiImageContext(context: ImageGenerationContext): PiAi.Imag
 /** Decodes Pi-AI image output into the canonical Model image envelope. */
 export function decodePiImages(images: PiAi.AssistantImages): AssistantImages {
   const output = images.output.map((part, index): ChatContentPart => {
-    if (part.type === "text") return { type: "text", text: part.text };
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
     if (part.type === "image") {
       return {
         type: "image",
@@ -267,7 +273,9 @@ export function decodePiImages(images: PiAi.AssistantImages): AssistantImages {
 /** Projects the adapter-owned structured-output control call into canonical text. */
 export function projectStructuredModelResponse(response: ModelResponse): ModelResponse {
   const projected = projectStructuredAssistantMessage(response.message);
-  if (!projected.consumed) return response;
+  if (!projected.consumed) {
+    return response;
+  }
   return {
     ...response,
     message: projected.message,
@@ -340,7 +348,9 @@ function encodePiContent(
   content: ChatContent,
   path: string,
 ): string | Array<PiAi.TextContent | PiAi.ImageContent> {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
   return content.map((part, index) => encodePiContentPart(part, `${path}[${index}]`));
 }
 
@@ -348,7 +358,9 @@ function encodePiToolResultContent(
   content: ChatContent,
   path: string,
 ): Array<PiAi.TextContent | PiAi.ImageContent> {
-  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (typeof content === "string") {
+    return [{ type: "text", text: content }];
+  }
   return content.map((part, index) => encodePiContentPart(part, `${path}[${index}]`));
 }
 
@@ -394,7 +406,9 @@ function encodePiAssistantPart(
       return {
         type: "thinking",
         thinking: part.text,
+        /* CONDITIONAL-SPREAD: Omit absent thinkingSignature from provider requests and response metadata; explicit undefined is not a portable JSON value. */
         ...(part.signature !== null ? { thinkingSignature: part.signature } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent redacted from provider requests and response metadata; explicit undefined is not a portable JSON value. */
         ...(part.redacted ? { redacted: true } : {}),
       };
     case "tool-call":
@@ -415,6 +429,7 @@ function encodePiToolCall(call: ChatToolCall, path: string): PiAi.ToolCall {
     id: call.id,
     name: call.name,
     arguments: call.input,
+    /* CONDITIONAL-SPREAD: Omit absent thoughtSignature from provider requests and response metadata; explicit undefined is not a portable JSON value. */
     ...(call.thoughtSignature !== null ? { thoughtSignature: call.thoughtSignature } : {}),
   };
 }
@@ -441,7 +456,9 @@ function decodePiAssistantMessage(
   const content: ChatMessagePart[] = [];
   for (const [index, part] of message.content.entries()) {
     const decoded = decodePiAssistantPart(part, settled, `${path}.content[${index}]`);
-    if (decoded !== null) content.push(decoded);
+    if (decoded !== null) {
+      content.push(decoded);
+    }
   }
   try {
     return decodeChatAssistantMessage({ role: "assistant", content }, path);
@@ -546,7 +563,9 @@ function assertSettledToolHistory(messages: readonly ChatMessage[]): void {
     const path = `$.messages[${messageIndex}]`;
     if (message.role === "assistant") {
       for (const [partIndex, part] of message.content.entries()) {
-        if (part.type !== "tool-call") continue;
+        if (part.type !== "tool-call") {
+          continue;
+        }
         const callPath = `${path}.content[${partIndex}].toolCall`;
         if (seen.has(part.toolCall.id)) {
           unsupported(
@@ -560,7 +579,9 @@ function assertSettledToolHistory(messages: readonly ChatMessage[]): void {
       }
       continue;
     }
-    if (message.role !== "tool") continue;
+    if (message.role !== "tool") {
+      continue;
+    }
 
     const call = unsettled.get(message.toolCallId);
     if (call === undefined) {
@@ -606,7 +627,9 @@ function projectStructuredAssistantMessage(message: ChatAssistantMessage): {
     }
     content.push(part);
   }
-  if (!consumed) return { message, consumed };
+  if (!consumed) {
+    return { message, consumed };
+  }
   try {
     return {
       message: decodeChatAssistantMessage({ role: "assistant", content }, "$.structuredResponse"),
@@ -622,7 +645,9 @@ function projectStructuredAssistantMessage(message: ChatAssistantMessage): {
 }
 
 function redactProviderError(message: string | undefined): string | undefined {
-  if (!message) return undefined;
+  if (!message) {
+    return undefined;
+  }
   return message
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-[redacted]")

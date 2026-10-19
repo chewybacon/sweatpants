@@ -37,7 +37,7 @@ import {
 function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
   const scope = yield* useScope();
   const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>({
-    ...(retentionPolicy ? { retentionPolicy } : {}),
+    retentionPolicy: retentionPolicy ? retentionPolicy : undefined,
     owner: { scope, register: () => undefined },
   });
   return { registry, bufferStore, registryStore };

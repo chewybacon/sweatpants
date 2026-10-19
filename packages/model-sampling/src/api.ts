@@ -72,7 +72,9 @@ export const ModelSamplingApi = createApi("model-sampling", {
     attempt: ModelSampleAttempt,
   ): Operation<ModelSampleDisposition> {
     const service = yield* ModelSamplingServiceContext.get();
-    if (!service) throw new ModelSamplingUnavailable();
+    if (!service) {
+      throw new ModelSamplingUnavailable();
+    }
     return yield* service.sample(request, attempt);
   },
 });

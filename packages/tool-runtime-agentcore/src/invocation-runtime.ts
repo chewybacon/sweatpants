@@ -92,6 +92,7 @@ export function* createAgentCoreToolInvocationResourceFactory(
     *create(request: StartToolInvocation) {
       const session = yield* resources.create(request.tool, request.input, {
         sessionId: request.invocationId,
+        /* CONDITIONAL-SPREAD: Omit absent model from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(request.model === undefined ? {} : { model: request.model }),
       });
       return remoteResource(session, request.tool.bindings.elicits, (id) => resources.dispose(id));

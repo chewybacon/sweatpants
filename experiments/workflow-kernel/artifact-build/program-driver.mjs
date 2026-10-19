@@ -18,11 +18,13 @@ export function createCompiledProgramDriver(
     };
     function view(h) {
         const next = h.machine.frontier();
-        if (next.type === "pull")
+        if (next.type === "pull") {
             return { type: "operation", actionIndex: h.index, descriptor: next.descriptor };
+        }
         const outcome = next.outcome;
-        if (outcome.kind === "returned")
+        if (outcome.kind === "returned") {
             return { type: "completed", actionIndex: h.index, value: outcome.value };
+        }
         return {
             type: "failed",
             actionIndex: h.index,
@@ -38,11 +40,15 @@ export function createCompiledProgramDriver(
         evaluatorKind: "program",
         capabilities: { replay: { kind: "replay", version: 1 } },
         *manifest(program) {
-            if (hash(program) !== hash(pinned)) throw Error("Pinned program unavailable");
+            if (hash(program) !== hash(pinned)) {
+                throw Error("Pinned program unavailable");
+            }
             return tool.manifest;
         },
         *attach(request) {
-            if (hash(request.program) !== hash(pinned)) throw Error("Pinned program unavailable");
+            if (hash(request.program) !== hash(pinned)) {
+                throw Error("Pinned program unavailable");
+            }
             const h = {
                 request: copy(request),
                 index: 0,
@@ -67,18 +73,22 @@ export function createCompiledProgramDriver(
         },
         *step(attachment, command) {
             const h = attachment.handle;
-            if (!active.has(h)) throw Error("Attachment released");
+            if (!active.has(h)) {
+                throw Error("Attachment released");
+            }
             if (command.type === "start") {
-                if (h.machine || hash(command.input) !== hash(h.request.input))
+                if (h.machine || hash(command.input) !== hash(h.request.input)) {
                     throw Error("Invalid start");
+                }
                 h.machine = createPullMachine(bundle, command.input);
             } else if (command.type === "resume") {
                 if (
                     !h.machine ||
                     command.actionIndex !== h.index ||
                     h.machine.frontier().type !== "pull"
-                )
+                ) {
                     throw Error("Out-of-order resume");
+                }
                 const r = command.receipt;
                 if (
                     !r ||
@@ -88,8 +98,9 @@ export function createCompiledProgramDriver(
                     !r.resolutionOffset ||
                     !["accepted", "duplicate"].includes(r.status) ||
                     r.outcomeDigest !== canonicalDigest(command.outcome)
-                )
+                ) {
                     throw Error("Invalid accepted resolution receipt");
+                }
                 const key = hash({
                     previous: h.chain,
                     index: h.index,
@@ -102,11 +113,15 @@ export function createCompiledProgramDriver(
                     h.machine = createPullMachine(bundle, h.request.input, saved);
                     observe({ type: "checkpoint-restored", index: h.index });
                 } else {
-                    if (command.outcome.status === "ok") h.machine.resume(command.outcome.value);
-                    else if (command.outcome.status === "cancelled") h.machine.cancel();
-                    else if (command.outcome.status === "error")
+                    if (command.outcome.status === "ok") {
+                        h.machine.resume(command.outcome.value);
+                    } else if (command.outcome.status === "cancelled") {
+                        h.machine.cancel();
+                    } else if (command.outcome.status === "error") {
                         h.machine.raise(command.outcome.error.message);
-                    else throw Error("Unsupported resolution outcome");
+                    } else {
+                        throw Error("Unsupported resolution outcome");
+                    }
                     if (h.cacheable) {
                         cache.set(key, h.machine.capture());
                         observe({ type: "checkpoint-saved", index: h.index });
@@ -115,16 +130,22 @@ export function createCompiledProgramDriver(
                 h.chain = key;
                 h.index++;
             } else if (command.type === "cancel") {
-                if (!h.machine) throw Error("Program not started");
+                if (!h.machine) {
+                    throw Error("Program not started");
+                }
                 h.machine.cancel();
                 h.cacheable = false;
                 // Unaccepted live cancellation must never poison a receipt-keyed checkpoint.
                 observe({ type: "logical-cancel" });
-            } else throw Error("Unsupported driver command: " + command.type);
+            } else {
+                throw Error("Unsupported driver command: " + command.type);
+            }
             return view(h);
         },
         *shutdown(attachment, reason) {
-            if (active.delete(attachment.handle)) observe({ type: "attachment-disposed", reason });
+            if (active.delete(attachment.handle)) {
+                observe({ type: "attachment-disposed", reason });
+            }
             // No stepping and no cleanup here: cancellation is an explicit command.
         },
     };

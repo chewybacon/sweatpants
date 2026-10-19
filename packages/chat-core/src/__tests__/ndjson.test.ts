@@ -8,8 +8,11 @@ function streamOf(chunks: readonly string[]): ReadableStream<Uint8Array> {
   return new ReadableStream({
     pull(controller) {
       const chunk = chunks[index++];
-      if (chunk === undefined) controller.close();
-      else controller.enqueue(encoder.encode(chunk));
+      if (chunk === undefined) {
+        controller.close();
+      } else {
+        controller.enqueue(encoder.encode(chunk));
+      }
     },
   });
 }
@@ -20,7 +23,9 @@ async function collect<T>(body: ReadableStream<Uint8Array>, signal?: AbortSignal
     const subscription = yield* parseNDJSON<T>(body, signal ? { signal } : undefined);
     while (true) {
       const next = yield* subscription.next();
-      if (next.done) return values;
+      if (next.done) {
+        return values;
+      }
       values.push(next.value);
     }
   });

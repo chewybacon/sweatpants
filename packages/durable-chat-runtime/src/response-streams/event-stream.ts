@@ -40,7 +40,9 @@ export function createSerializedEventStream(
       }
       registerInterruptsFromRunFinished(rawEvent);
       const event = toStrictPublicEvent(rawEvent);
-      if (event) yield* options.responseTokenBuffer.append([event]);
+      if (event) {
+        yield* options.responseTokenBuffer.append([event]);
+      }
     };
     const selectedEngine = typeof engine === "function" ? engine(turnEventSink) : engine;
     const subscription = yield* selectedEngine;
@@ -51,15 +53,21 @@ export function createSerializedEventStream(
           const rawEvent = initialEvents[initialIndex++]!;
           registerInterruptsFromRunFinished(rawEvent);
           const event = toStrictPublicEvent(rawEvent);
-          if (event) return { done: false, value: event };
+          if (event) {
+            return { done: false, value: event };
+          }
         }
 
         while (true) {
           const result = yield* subscription.next();
-          if (result.done) return { done: true, value: undefined };
+          if (result.done) {
+            return { done: true, value: undefined };
+          }
           registerInterruptsFromRunFinished(result.value);
           const event = toStrictPublicEvent(result.value);
-          if (event) return { done: false, value: event };
+          if (event) {
+            return { done: false, value: event };
+          }
         }
       },
     });

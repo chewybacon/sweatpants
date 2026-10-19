@@ -30,13 +30,12 @@ export function createProjectionTokenKeyring(
   };
   return {
     activeKey: key(activeSecret, "active projection-token secret"),
-    ...(verificationSecrets.length === 0
-      ? {}
-      : {
-          verificationKeys: verificationSecrets.map((secret, index) =>
+    verificationKeys:
+      verificationSecrets.length === 0
+        ? undefined
+        : verificationSecrets.map((secret, index) =>
             key(secret, `projection-token verification secret ${index}`),
           ),
-        }),
   };
 }
 

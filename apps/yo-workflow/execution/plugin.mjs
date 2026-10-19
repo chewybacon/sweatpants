@@ -10,15 +10,18 @@ export function executionPlayground() {
             let service;
             server.middlewares.use(async (request, response, next) => {
                 const url = new URL(request.url ?? "/", "http://localhost");
-                if (url.pathname !== "/api/execution") return next();
+                if (url.pathname !== "/api/execution") {
+                    return next();
+                }
                 response.setHeader("Content-Type", "application/json");
                 response.setHeader("Cache-Control", "no-store");
                 try {
                     if (
                         request.headers.origin &&
                         new URL(request.headers.origin).host !== request.headers.host
-                    )
+                    ) {
                         throw Error("Execution inspector requires a same-origin request");
+                    }
                     if (!service) {
                         const module = require(
                             resolve(server.config.root, "execution/service.mjs"),
@@ -47,24 +50,28 @@ export function executionPlayground() {
                         });
                     }
                     let result;
-                    if (request.method === "GET")
+                    if (request.method === "GET") {
                         result = await service.get(url.searchParams.get("id"));
-                    else if (request.method === "POST") {
-                        if (!request.headers["content-type"]?.startsWith("application/json"))
+                    } else if (request.method === "POST") {
+                        if (!request.headers["content-type"]?.startsWith("application/json")) {
                             throw Error("Expected JSON request");
+                        }
                         const chunks = [];
                         let size = 0;
                         for await (const chunk of request) {
                             size += chunk.length;
-                            if (size > 16384) throw Error("Request too large");
+                            if (size > 16384) {
+                                throw Error("Request too large");
+                            }
                             chunks.push(chunk);
                         }
                         const command = JSON.parse(Buffer.concat(chunks).toString("utf8"));
                         if (
                             !command ||
                             !["start", "reply", "restore", "cancel"].includes(command.action)
-                        )
+                        ) {
                             throw Error("Invalid command");
+                        }
                         result = await service.command(command);
                     } else {
                         response.statusCode = 405;

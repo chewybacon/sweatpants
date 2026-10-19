@@ -141,8 +141,9 @@ async function runDurableToolScenario(
       const suspended = transcript.events.find(
         (event) => event.type === EventType.RUN_FINISHED && event.outcome?.type === "interrupt",
       );
-      if (suspended?.type !== EventType.RUN_FINISHED || suspended.outcome?.type !== "interrupt")
+      if (suspended?.type !== EventType.RUN_FINISHED || suspended.outcome?.type !== "interrupt") {
         throw new Error("Expected durable child interrupt");
+      }
       const interrupt = suspended.outcome.interrupts[0];
       expect(interrupt.subagentRunId).toMatch(/^[a-f0-9]{64}$/);
       const childActivity = transcript.events.filter(
@@ -151,8 +152,9 @@ async function runDurableToolScenario(
           event.messageId === `elicit:${interrupt.id}`,
       );
       expect(childActivity.length).toBeGreaterThanOrEqual(2);
-      for (const event of childActivity)
+      for (const event of childActivity) {
         expect(event).toMatchObject({ subagentRunId: interrupt.subagentRunId });
+      }
 
       const journal = yield* inspection.journalStore.withJournal(
         conversation.conversationId,

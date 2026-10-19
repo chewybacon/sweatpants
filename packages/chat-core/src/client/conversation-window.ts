@@ -207,9 +207,11 @@ function decodeArtifact(value: unknown, path: string): PublicArtifactReference {
   exactKeys(input, ["uri"], ["mediaType", "digest"], path);
   return {
     uri: identity(input["uri"], `${path}.uri`),
+    /* CONDITIONAL-SPREAD: Omit absent mediaType from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["mediaType"] === undefined
       ? {}
       : { mediaType: identity(input["mediaType"], `${path}.mediaType`) }),
+    /* CONDITIONAL-SPREAD: Omit absent digest from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["digest"] === undefined
       ? {}
       : { digest: identity(input["digest"], `${path}.digest`) }),
@@ -220,12 +222,15 @@ function decodeAttribution(value: unknown, path: string): PublicAttribution {
   const input = record(value, path);
   exactKeys(input, [], ["participantId", "displayName", "avatar"], path);
   return {
+    /* CONDITIONAL-SPREAD: Omit absent participantId from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["participantId"] === undefined
       ? {}
       : { participantId: identity(input["participantId"], `${path}.participantId`) }),
+    /* CONDITIONAL-SPREAD: Omit absent displayName from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["displayName"] === undefined
       ? {}
       : { displayName: identity(input["displayName"], `${path}.displayName`) }),
+    /* CONDITIONAL-SPREAD: Omit absent avatar from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["avatar"] === undefined
       ? {}
       : { avatar: decodeArtifact(input["avatar"], `${path}.avatar`) }),
@@ -303,6 +308,7 @@ function decodeAnchor(value: unknown, path: string): PublicPlacementAnchor {
     return invalid(`${path}.publicData.kind does not match anchor kind`);
   }
   return {
+    /* CONDITIONAL-SPREAD: Omit absent messagePosition from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["messagePosition"] === undefined
       ? {}
       : {
@@ -399,7 +405,9 @@ export function decodePublicProjectionRoot(value: unknown, path = "$.root"): Pub
     position: decodeDurablePosition(input["position"], `${path}.position`),
     state,
     attribution: decodeAttribution(input["attribution"], `${path}.attribution`),
+    /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(logicalTurnId === undefined ? {} : { logicalTurnId }),
+    /* CONDITIONAL-SPREAD: Omit absent executionId from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(executionId === undefined ? {} : { executionId }),
   };
   if (input["kind"] === "message") {

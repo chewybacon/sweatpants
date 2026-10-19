@@ -56,14 +56,18 @@ if (process.argv[2] === "repair") {
                 );
             }
             let input = { reply: "released" };
-            if (request[1] === "acquire")
+            if (request[1] === "acquire") {
                 input =
                     mode === "cancel-mid" && holds === 2
                         ? { cancel: true }
                         : { reply: `hold-${++holds}` };
-            if (request[1] === "ready" && mode === "cancel") input = { cancel: true };
-            if (request[1] === "hold-3" && mode === "cleanup-error")
+            }
+            if (request[1] === "ready" && mode === "cancel") {
+                input = { cancel: true };
+            }
+            if (request[1] === "hold-3" && mode === "cleanup-error") {
                 input = { error: "release failed" };
+            }
             const accepted = appendCommand(record, registry, {
                 id: `step-${record.events.length}`,
                 requestId: ctx.pending.id,
@@ -99,9 +103,9 @@ if (process.argv[2] === "repair") {
         );
         checks++;
         const outcome = record.events.at(-1).outcome;
-        if (mode === "cancel" || mode === "cancel-mid")
+        if (mode === "cancel" || mode === "cancel-mid") {
             assert.deepEqual(outcome, { kind: "cancelled" });
-        else {
+        } else {
             const nativeTrace = [];
             let nativeHolds = 0;
             const workflow = vm.runInNewContext(

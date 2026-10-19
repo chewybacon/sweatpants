@@ -291,6 +291,7 @@ export function resolveAuthorizedResource(
       mount,
       package: pkg,
       file,
+      /* CONDITIONAL-SPREAD: The classification fields belong only to the mount.access.kind === "model_readable" variant. */
       ...(mount.access.kind === "model_readable"
         ? { classification: mount.access.classification }
         : {}),

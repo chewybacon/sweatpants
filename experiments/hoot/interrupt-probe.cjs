@@ -27,7 +27,9 @@ worker.once("error", (error) => {
 });
 worker.once("message", (message) => {
     clearTimeout(startupDeadline);
-    if (message !== "entering-unbounded-program") throw new Error(message);
+    if (message !== "entering-unbounded-program") {
+        throw new Error(message);
+    }
     setTimeout(async () => {
         const exitCode = await worker.terminate();
         console.log(

@@ -1,5 +1,9 @@
 import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
-import { createKernelProgramBackend, createKernelProgramBundle, loadKernelProgram } from "../../../packages/program-backend-kernel/dist/index.js";
+import {
+    createKernelProgramBackend,
+    createKernelProgramBundle,
+    loadKernelProgram,
+} from "../../../packages/program-backend-kernel/dist/index.js";
 import {
     assertKernelCompatibility,
     createKernelExecution,
@@ -116,8 +120,14 @@ export function createPortableHootProgram(
     { source, contract, bindOperation },
     { loadMachine, identity },
 ) {
-    if (identity.programFormat !== HOOT_PROGRAM_FORMAT) throw Error("Incompatible Hoot program format");
-    const bundle = createKernelProgramBundle({ format: identity.programFormat, payload: source }, identity, contract);
+    if (identity.programFormat !== HOOT_PROGRAM_FORMAT) {
+        throw Error("Incompatible Hoot program format");
+    }
+    const bundle = createKernelProgramBundle(
+        { format: identity.programFormat, payload: source },
+        identity,
+        contract,
+    );
     const { manifest, artifact } = bundle;
     const digest = artifact.digest;
     return {
@@ -130,7 +140,9 @@ export function createPortableHootProgram(
             const driver = createWorkflowProgramDriver(
                 createKernelProgramBackend({
                     *manifest(program) {
-                        if (program.digest !== digest) throw Error("Manifest unavailable");
+                        if (program.digest !== digest) {
+                            throw Error("Manifest unavailable");
+                        }
                         loadKernelProgram(bundle, program.digest);
                         return structuredClone(manifest);
                     },

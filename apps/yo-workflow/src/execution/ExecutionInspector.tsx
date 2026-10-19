@@ -30,18 +30,20 @@ export function ExecutionInspector() {
                 choice,
                 id,
                 revision: view?.revision,
+                /* CONDITIONAL-SPREAD: Omit absent prompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(author ? { prompt } : {}),
               }),
             }
           : undefined,
       );
       const data: unknown = await response.json();
-      if (!response.ok)
+      if (!response.ok) {
         throw Error(
           typeof data === "object" && data && "error" in data
             ? String(data.error)
             : "Execution request failed",
         );
+      }
       const next = executionViewSchema.parse(data);
       setView(next);
       const url = new URL(location.href);
@@ -55,7 +57,9 @@ export function ExecutionInspector() {
     }
   }
   useEffect(() => {
-    if (new URL(location.href).searchParams.has("run")) void request();
+    if (new URL(location.href).searchParams.has("run")) {
+      void request();
+    }
   }, []);
   const state = view?.inspection;
   const execution = state?.execution;
@@ -345,7 +349,7 @@ export function ExecutionInspector() {
               <h2>Boundary timeline</h2>
               <span className="execution-muted">Latest first · bounded to 100 events</span>
             </header>
-            {[...view.trace].reverse().map((event) => (
+            {[...view.trace].toReversed().map((event) => (
               <details key={event.sequence}>
                 <summary>
                   <span className="execution-event-index">{event.sequence}</span>

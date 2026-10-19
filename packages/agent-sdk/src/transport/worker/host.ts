@@ -146,7 +146,7 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
     const workerOptions: WorkerOptions & { data: TInitData; execArgv?: string[] } = {
       type: "module",
       data: initData,
-      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+      execArgv: execArgv && execArgv.length > 0 ? execArgv : undefined,
     };
     const worker: WorkerResource<never, never, WorkerResult<T>> = yield* useWorker<
       never,

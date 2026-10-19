@@ -117,6 +117,7 @@ async function main(): Promise<void> {
   const common = {
     agentRuntimeArtifact: { containerConfiguration: { containerUri: imageUri } },
     roleArn,
+    /* CONDITIONAL-SPREAD: Omit absent environmentVariables from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
     ...(Object.keys(environmentVariables).length > 0 ? { environmentVariables } : {}),
     networkConfiguration: { networkMode: "PUBLIC" as const },
     protocolConfiguration: { serverProtocol: "HTTP" as const },

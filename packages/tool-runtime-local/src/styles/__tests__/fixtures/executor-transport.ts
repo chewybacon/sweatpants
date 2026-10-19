@@ -44,18 +44,26 @@ export function createOperative(kernel: Kernel): Connection {
   let busy = false;
   return {
     *exchange(command) {
-      if (closed) throw new Error("connection_closed");
-      if (busy) throw new Error("execution_command_in_progress");
+      if (closed) {
+        throw new Error("connection_closed");
+      }
+      if (busy) {
+        throw new Error("execution_command_in_progress");
+      }
       busy = true;
       try {
         if (command.kind === "start") {
-          if (started) throw new Error("execution_already_started");
+          if (started) {
+            throw new Error("execution_already_started");
+          }
           started = true;
           const executionState = yield* kernel.start(command.program, command.input);
           execution = executionState.execution;
           return { kind: "boundary", boundary: executionState.boundary };
         }
-        if (!execution) throw new Error("execution_not_started");
+        if (!execution) {
+          throw new Error("execution_not_started");
+        }
         if (command.kind === "dispose") {
           yield* execution.dispose();
           execution = undefined;
@@ -72,9 +80,13 @@ export function createOperative(kernel: Kernel): Connection {
       }
     },
     *close() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
-      if (execution) yield* execution.dispose();
+      if (execution) {
+        yield* execution.dispose();
+      }
     },
   };
 }
@@ -115,14 +127,18 @@ export function createWorkerTransport(workerUrl: URL): Transport {
         const { value: worker } = yield* ready.next();
         let closed = false;
         function* close(): Operation<void> {
-          if (closed) return;
+          if (closed) {
+            return;
+          }
           closed = true;
           yield* task.halt();
         }
         try {
           yield* provide({
             *exchange(command) {
-              if (closed) throw new Error("connection_closed");
+              if (closed) {
+                throw new Error("connection_closed");
+              }
               return yield* worker.send(command);
             },
             close,
@@ -142,8 +158,12 @@ export function createExecutor(transport: Transport): Kernel {
       const connection = yield* transport.connect();
       function* boundary(command: Command): Operation<Boundary> {
         const response = yield* connection.exchange(command);
-        if (response.kind === "rejected") throw new Error(response.message);
-        if (response.kind !== "boundary") throw new Error("Expected execution boundary");
+        if (response.kind === "rejected") {
+          throw new Error(response.message);
+        }
+        if (response.kind !== "boundary") {
+          throw new Error("Expected execution boundary");
+        }
         return response.boundary;
       }
       try {
@@ -153,9 +173,12 @@ export function createExecutor(transport: Transport): Kernel {
           *dispose() {
             try {
               const response = yield* connection.exchange({ kind: "dispose" });
-              if (response.kind === "rejected") throw new Error(response.message);
-              if (response.kind !== "disposed")
+              if (response.kind === "rejected") {
+                throw new Error(response.message);
+              }
+              if (response.kind !== "disposed") {
                 throw new Error("Expected disposal acknowledgement");
+              }
             } finally {
               yield* connection.close();
             }

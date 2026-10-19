@@ -4,17 +4,27 @@ import { parse } from "../scheme-data/read.mjs";
 // Debug projection of evaluator-owned state. Never used to authorize recovery.
 function display(value) {
     if (Array.isArray(value)) {
-        if (value[0]?.sym === "closure") return `λ ${value[4]?.sym} → environment ${value[3]}`;
-        if (value[0]?.sym === "tool") return `registered tool ${value[1]?.sym}`;
-        if (value[0]?.sym === "primitive") return `built-in ${value[1]?.sym}`;
+        if (value[0]?.sym === "closure") {
+            return `λ ${value[4]?.sym} → environment ${value[3]}`;
+        }
+        if (value[0]?.sym === "tool") {
+            return `registered tool ${value[1]?.sym}`;
+        }
+        if (value[0]?.sym === "primitive") {
+            return `built-in ${value[1]?.sym}`;
+        }
         return `(${value.map(display).join(" ")})`;
     }
-    if (value && typeof value === "object" && "sym" in value) return value.sym;
+    if (value && typeof value === "object" && "sym" in value) {
+        return value.sym;
+    }
     return JSON.stringify(value);
 }
 export function inspectSnapshot(snapshot, boundary) {
     const state = parse(snapshot)[0];
-    if (state?.[0]?.sym !== "workflow-state-v3") throw Error("Unknown inspection format");
+    if (state?.[0]?.sym !== "workflow-state-v3") {
+        throw Error("Unknown inspection format");
+    }
     const frames = state[4].map((frame, index) => ({
         index,
         kind: frame[0].sym,
@@ -31,7 +41,7 @@ export function inspectSnapshot(snapshot, boundary) {
         calls: state[4]
             .filter((f) => f[0].sym === "call")
             .map((f) => f[1].sym)
-            .reverse(),
+            .toReversed(),
         frames,
         environments: state[2].map(([id, parent, bindings]) => ({
             id,
@@ -42,7 +52,7 @@ export function inspectSnapshot(snapshot, boundary) {
             })),
         })),
         cleanups: state[4].flatMap((frame) => {
-            if (frame[0].sym === "scope")
+            if (frame[0].sym === "scope") {
                 return [
                     {
                         kind: "registered",
@@ -51,7 +61,8 @@ export function inspectSnapshot(snapshot, boundary) {
                         completion: null,
                     },
                 ];
-            if (frame[0].sym === "cleanup")
+            }
+            if (frame[0].sym === "cleanup") {
                 return [
                     {
                         kind: "running",
@@ -60,7 +71,8 @@ export function inspectSnapshot(snapshot, boundary) {
                         completion: `${display(frame[2])}: ${display(frame[3])}`,
                     },
                 ];
-            if (frame[0].sym === "after-finally")
+            }
+            if (frame[0].sym === "after-finally") {
                 return [
                     {
                         kind: "finally",
@@ -69,6 +81,7 @@ export function inspectSnapshot(snapshot, boundary) {
                         completion: `${display(frame[1])}: ${display(frame[2])}`,
                     },
                 ];
+            }
             return [];
         }),
     };

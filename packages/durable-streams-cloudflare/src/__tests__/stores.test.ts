@@ -63,7 +63,9 @@ beforeAll(async () => {
                 method: "POST",
                 body: JSON.stringify({ id, method, args }),
               });
-              if (!response.ok) throw new Error(await response.text());
+              if (!response.ok) {
+                throw new Error(await response.text());
+              }
               return await response.json();
             } finally {
               pending--;
@@ -174,11 +176,12 @@ describe("Durable Object delivery state", () => {
       const fast = yield* createPullStream(buffer, 599);
       expect(yield* fast.next()).toEqual({ done: false, value: { token: "599", lsn: 600 } });
       const reads = calls.filter((c) => c === "read").length;
-      for (let i = 1; i < 256; i++)
+      for (let i = 1; i < 256; i++) {
         expect(yield* slow.next()).toEqual({
           done: false,
           value: { token: String(i), lsn: i + 1 },
         });
+      }
       expect(calls.filter((c) => c === "read")).toHaveLength(reads);
       expect(yield* slow.next()).toEqual({ done: false, value: { token: "256", lsn: 257 } });
       expect(calls.filter((c) => c === "read")).toHaveLength(reads + 1);

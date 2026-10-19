@@ -190,7 +190,9 @@ describe.each(["in-process", "http"] as const)("execution boundaries over %s", (
         yield* booking.failure();
 
         const runtime = inspection!.toolInvocationRuntime;
-        if (!runtime) throw new Error("Expected the worker-backed invocation runtime");
+        if (!runtime) {
+          throw new Error("Expected the worker-backed invocation runtime");
+        }
         yield* runtime.drained();
         expect(runtime.activeIds()).toEqual([]);
 

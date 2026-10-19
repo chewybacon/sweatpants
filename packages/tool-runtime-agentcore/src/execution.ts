@@ -33,8 +33,9 @@ export function agentCore(options: AgentCoreExecutionOptions): ToolExecutionAdap
       const durable = tools.filter(isChatDurableTool);
       const ordinary = tools.filter((tool) => !isChatDurableTool(tool));
       const deployment = options.durable;
-      if (durable.length && !deployment)
+      if (durable.length && !deployment) {
         throw new Error("AgentCore durable tools require a pinned release and driver");
+      }
       for (const tool of durable) {
         const identity = {
           id: tool.manifest.programId,
@@ -51,10 +52,11 @@ export function agentCore(options: AgentCoreExecutionOptions): ToolExecutionAdap
           schemaDigests: deployment!.availableSchemaDigests,
           manifest: tool.manifest,
         });
-        if (!readiness.ready)
+        if (!readiness.ready) {
           throw new Error(
             `AgentCore tool ${tool.name} is not ready: ${JSON.stringify(readiness.missing)}`,
           );
+        }
       }
       return {
         runtimeId: "agentcore",
@@ -63,16 +65,22 @@ export function agentCore(options: AgentCoreExecutionOptions): ToolExecutionAdap
               const runtime =
                 typeof options.runtime === "function" ? yield* options.runtime() : options.runtime;
               const advertised = new Set(runtime.profiles.flatMap((profile) => profile.toolNames));
-              for (const tool of ordinary)
-                if (!advertised.has(tool.name))
+              for (const tool of ordinary) {
+                if (!advertised.has(tool.name)) {
                   throw new Error(`AgentCore profile does not expose tool: ${tool.name}`);
+                }
+              }
               return yield* createAgentCoreToolInvocationResourceFactory(runtime);
             }
           : undefined,
         bindings: durable.map((tool) => {
           const extra = deployment!.route?.(tool.name);
-          if (extra !== undefined && (!extra || typeof extra !== "object" || Array.isArray(extra)))
+          if (
+            extra !== undefined &&
+            (!extra || typeof extra !== "object" || Array.isArray(extra))
+          ) {
             throw new Error("AgentCore route must be an object");
+          }
           return {
             publicName: tool.name,
             tool,

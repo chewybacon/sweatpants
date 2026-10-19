@@ -66,7 +66,9 @@ for (const placement of ["local", "worker"]) {
                 return {
                     *exchange(command) {
                         const response = yield* connection.exchange(command);
-                        if (response.kind === "boundary") envelopes.push(response);
+                        if (response.kind === "boundary") {
+                            envelopes.push(response);
+                        }
                         return response;
                     },
                     close: () => connection.close(),

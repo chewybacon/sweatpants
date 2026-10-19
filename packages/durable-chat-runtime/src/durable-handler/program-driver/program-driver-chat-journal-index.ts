@@ -36,9 +36,13 @@ export function indexChatJournal(records: readonly DurableSemanticRecord[]): Cha
 }
 
 export function pendingElicit(index: ChatJournalIndex, pullId: string): PendingElicit | undefined {
-  if (index.resolvedPullIds.has(pullId)) return undefined;
+  if (index.resolvedPullIds.has(pullId)) {
+    return undefined;
+  }
   const request = index.pullRequests.get(pullId);
-  if (request?.descriptor.kind !== "elicit") return undefined;
+  if (request?.descriptor.kind !== "elicit") {
+    return undefined;
+  }
   return { ...request, descriptor: request.descriptor };
 }
 
@@ -47,7 +51,9 @@ export function parentToolStart(
   taskId: string,
 ): ToolStartFact | undefined {
   const task = index.tasks.get(taskId);
-  if (!task?.parentPullId) return undefined;
+  if (!task?.parentPullId) {
+    return undefined;
+  }
   const parentPull = index.pullRequests.get(task.parentPullId);
   if (!parentPull) {
     throw new CrankError("invalid_journal", `Task ${taskId} refers to an absent parent pull`);
@@ -101,14 +107,18 @@ const projectionRelationsFold: Fold<
       }
       if (payload.type === "PullRequested") {
         const preceding = latestToolStartByTask.get(payload.taskId);
-        if (preceding) toolStartBeforePull.set(payload.pullId, preceding);
+        if (preceding) {
+          toolStartBeforePull.set(payload.pullId, preceding);
+        }
         return;
       }
       if (payload.type !== "DurableEmission" || payload.descriptor.eventType !== "tool_started") {
         return;
       }
       const value = jsonRecord(payload.descriptor.payload);
-      if (typeof value?.["callId"] !== "string" || typeof value["tool"] !== "string") return;
+      if (typeof value?.["callId"] !== "string" || typeof value["tool"] !== "string") {
+        return;
+      }
       const fact = { callId: value["callId"], tool: value["tool"], payload: value };
       latestToolStartByTask.set(payload.taskId, fact);
       publicToolCallIds.add(fact.callId);
@@ -132,9 +142,13 @@ const toolLifecycleFold: Fold<
   const toolMessageIds = new Map<string, string>();
   return {
     step(record) {
-      if (record.payload.type !== "DurableEmission") return;
+      if (record.payload.type !== "DurableEmission") {
+        return;
+      }
       const payload = jsonRecord(record.payload.descriptor.payload);
-      if (!payload || typeof payload["callId"] !== "string") return;
+      if (!payload || typeof payload["callId"] !== "string") {
+        return;
+      }
       if (
         record.payload.descriptor.eventType === "tool_started" &&
         typeof payload["tool"] === "string"
@@ -168,7 +182,9 @@ const cancellationLinksFold: Fold<
   return {
     step(record) {
       const payload = record.payload;
-      if (payload.type !== "PullResolved" || payload.outcome.status !== "cancelled") return;
+      if (payload.type !== "PullResolved" || payload.outcome.status !== "cancelled") {
+        return;
+      }
       if (payload.outcome.partial !== undefined) {
         links.push({ pullId: payload.pullId, partial: payload.outcome.partial });
       }

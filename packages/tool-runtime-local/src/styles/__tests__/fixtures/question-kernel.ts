@@ -5,7 +5,9 @@ import type { Kernel, Boundary } from "./executor-transport.ts";
 export function createQuestionKernel(): Kernel {
   return {
     *start(program, input) {
-      if (!Array.isArray(program)) throw new Error("Expected a request list");
+      if (!Array.isArray(program)) {
+        throw new Error("Expected a request list");
+      }
       const requests: Json[] = program;
       const answers: Json[] = [];
       let index = 0;
@@ -21,7 +23,9 @@ export function createQuestionKernel(): Kernel {
             cleaning = true;
             return { kind: "suspended", suspensionId: "cleanup", request: { release: input } };
           }
-          if (cleaning) return { kind: "cancelled" };
+          if (cleaning) {
+            return { kind: "cancelled" };
+          }
           answers.push(command.reply);
           index++;
           return next();

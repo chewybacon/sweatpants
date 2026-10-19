@@ -190,6 +190,7 @@ export function createAgentCoreToolSession(
       const current = yield* getHandle();
       const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0);
       const updated = yield* stores.handles.update(sessionId, {
+        /* CONDITIONAL-SPREAD: Stale or terminal responses must not overwrite the current status and pending request. */
         ...(!isTerminalStatus(current.status) && isNewerOrEqual
           ? {
               status: response.status,
@@ -367,12 +368,15 @@ export function createAgentCoreToolSession(
         return;
       }
 
-      if (isTerminalStatus(handle.status)) return;
+      if (isTerminalStatus(handle.status)) {
+        return;
+      }
       const stream = yield* runtimeClient.cancel(handle, {
         op: "cancel_tool_session",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
         commandId: stableCommandId("cancel_tool_session", sessionId),
         toolSessionId: sessionId,
+        /* CONDITIONAL-SPREAD: Omit absent reason from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(resume.reason !== undefined && { reason: resume.reason }),
       });
       yield* ingestStream(stream);

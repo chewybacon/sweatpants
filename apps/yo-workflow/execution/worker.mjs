@@ -17,10 +17,12 @@ const identity = {
     programFormat: "workflow-scheme-spike-1",
     snapshotFormat: "workflow-state-v3",
 };
-const { createExecutionService, validateCaller } = executionServiceFactory(createHootAuthoring({
-    loadMachine,
-    createProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
-}));
+const { createExecutionService, validateCaller } = executionServiceFactory(
+    createHootAuthoring({
+        loadMachine,
+        createProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
+    }),
+);
 
 export class ExecutionLab extends DurableObject {
     queue = Promise.resolve();
@@ -41,10 +43,9 @@ export class ExecutionLab extends DurableObject {
                 },
                 author: async (prompt) => {
                     const credentials = new InMemoryCredentialStore();
-                    for (const [id, credential] of Object.entries(
-                        JSON.parse(this.env.MODEL_CREDENTIALS),
-                    ))
+                    for (const [id, credential] of Object.entries(JSON.parse(this.env.MODEL_CREDENTIALS))) {
                         await credentials.modify(id, async () => credential);
+                    }
                     return authorCaller(prompt, validateCaller, {
                         models: createWorkflowModels(credentials),
                         provider: this.env.DEFAULT_CHAT_MODEL_PROVIDER,
@@ -73,30 +74,37 @@ export async function executionFetch(request, env) {
     if (
         request.headers.get("origin") &&
         new URL(request.headers.get("origin")).origin !== url.origin
-    )
+    ) {
         return Response.json({ error: "Same-origin request required" }, { status: 403 });
+    }
     let id = url.searchParams.get("id");
     if (request.method === "POST") {
-        if (!request.headers.get("content-type")?.startsWith("application/json"))
+        if (!request.headers.get("content-type")?.startsWith("application/json")) {
             return Response.json({ error: "Expected JSON" }, { status: 400 });
+        }
         const body = await request.text();
-        if (body.length > 16384)
+        if (body.length > 16384) {
             return Response.json({ error: "Request too large" }, { status: 413 });
+        }
         let command;
         try {
             command = JSON.parse(body);
         } catch {
             return Response.json({ error: "Invalid JSON" }, { status: 400 });
         }
-        if (!command || !["start", "reply", "restore", "cancel"].includes(command.action))
+        if (!command || !["start", "reply", "restore", "cancel"].includes(command.action)) {
             return Response.json({ error: "Invalid command" }, { status: 400 });
+        }
         id = command.action === "start" ? crypto.randomUUID() : command.id;
         request = new Request(request, {
             method: "POST",
             body: JSON.stringify({ ...command, id }),
         });
-    } else if (request.method !== "GET") return new Response(null, { status: 405 });
-    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id))
+    } else if (request.method !== "GET") {
+        return new Response(null, { status: 405 });
+    }
+    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id)) {
         return Response.json({ error: "Invalid run ID" }, { status: 400 });
+    }
     return env.EXECUTION_LABS.get(env.EXECUTION_LABS.idFromName(id)).fetch(request);
 }

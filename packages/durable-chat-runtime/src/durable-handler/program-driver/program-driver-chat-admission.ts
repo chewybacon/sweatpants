@@ -88,9 +88,11 @@ export function* admitProgramDriverChatTurn(
     contextSource: modelContextSource,
     maxIterations: request.maxIterations,
     catalog: createChatToolCatalog(request),
+    /* CONDITIONAL-SPREAD: Omit absent systemPrompt from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(request.inputPolicy.systemPrompt !== undefined
       ? { systemPrompt: request.inputPolicy.systemPrompt }
       : {}),
+    /* CONDITIONAL-SPREAD: Omit absent toolChoice from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(request.inputPolicy.initialToolChoice !== undefined
       ? { toolChoice: request.inputPolicy.initialToolChoice }
       : {}),
@@ -147,6 +149,7 @@ export function* admitProgramDriverChatTurn(
   request.onTaskReady?.(taskId);
   return {
     journal,
+    /* CONDITIONAL-SPREAD: Omit absent active from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(active === undefined ? {} : { active }),
     taskId,
     before,

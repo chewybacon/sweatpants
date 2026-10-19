@@ -91,6 +91,7 @@ export function defineAgent(options: DefineAgentOptions): AgentDefinition {
     format: AGENT_MANIFEST_FORMAT,
     identity: { name, version },
     description,
+    /* CONDITIONAL-SPREAD: Omit absent conversation from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(conversation ? { conversation: pinned(conversation.program) } : {}),
     programs: Object.fromEntries(
       Object.entries(programs).map(([alias, binding]) => [alias, pinned(binding.program)]),
@@ -105,6 +106,7 @@ export function defineAgent(options: DefineAgentOptions): AgentDefinition {
     }) as unknown as AgentManifestV1,
   );
   const bindings = Object.freeze({
+    /* CONDITIONAL-SPREAD: Omit absent conversation from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(conversation ? { conversation } : {}),
     programs: Object.freeze(programs),
     effects: Object.freeze(effects),
@@ -167,6 +169,7 @@ export function parseAgentManifest(value: unknown): AgentManifestV1 {
     format: AGENT_MANIFEST_FORMAT,
     identity: { name, version },
     description,
+    /* CONDITIONAL-SPREAD: Omit absent conversation from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(conversation ? { conversation } : {}),
     programs,
     advertisedCapabilities,
@@ -217,9 +220,7 @@ function normalizeBinding(input: AgentProgramInput, releaseStrict = false): Agen
     program: candidate,
     schemas: Object.freeze(schemas),
     resources: Object.freeze(resources),
-    ...(isProgramBinding(input) && input.readers
-      ? { readers: input.readers }
-      : programReaders(candidate)),
+    readers: isProgramBinding(input) && input.readers ? input.readers : programReaders(candidate),
   });
 }
 
@@ -231,11 +232,13 @@ function assertSchemaCoverage(program: ErasedDurableTool, schemas: readonly Sche
     manifest.outputSchema,
     ...Object.values(manifest.elicits).flatMap((declaration) => [
       declaration.response,
+
       ...(declaration.context ? [declaration.context] : []),
     ]),
     ...Object.values(manifest.effects).flatMap((definition) => [
       definition.inputSchema,
       definition.outputSchema,
+
       ...(definition.cancellation ? [definition.cancellation.partialSchema] : []),
     ]),
   ];
@@ -424,7 +427,7 @@ function programReaders(program: ErasedDurableTool) {
   const value = program as ErasedDurableTool & {
     readonly resourceReaders?: AgentProgramBinding["readers"];
   };
-  return value.resourceReaders ? { readers: value.resourceReaders } : {};
+  return value.resourceReaders;
 }
 
 function stringList(

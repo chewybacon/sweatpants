@@ -26,7 +26,9 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
     case "message":
       return part.message.parts.flatMap((child) => activeWork(child, path));
     case "tool-call": {
-      if (part.state === "output-available" || part.state === "output-error") return [];
+      if (part.state === "output-available" || part.state === "output-error") {
+        return [];
+      }
       const next = [...path, toolLabel(part.name)];
       const children = part.parts.flatMap((child) => activeWork(child, next));
       return children.length
@@ -40,13 +42,17 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
           ];
     }
     case "activity": {
-      if (part.presentation === "opaque" || part.state !== "running") return [];
+      if (part.presentation === "opaque" || part.state !== "running") {
+        return [];
+      }
       const next = [...path, part.activityType];
       const children = part.parts.flatMap((child) => activeWork(child, next));
       return children.length ? children : [{ id: part.id, path: next, label: "In progress" }];
     }
     case "elicit":
-      if (part.state !== "pending") return [];
+      if (part.state !== "pending") {
+        return [];
+      }
       return [
         {
           id: part.id,
@@ -71,10 +77,16 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
 
 /** Workflow failures are successful tool deliveries carrying a diagnostic outcome. */
 export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-call" }>) {
-  if (part.state !== "output-available" || part.name !== "scheme") return;
+  if (part.state !== "output-available" || part.name !== "scheme") {
+    return;
+  }
   const output = part.output;
-  if (!output || typeof output !== "object" || Array.isArray(output)) return;
-  if (output.status !== "invalid" && output.status !== "failed") return;
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    return;
+  }
+  if (output.status !== "invalid" && output.status !== "failed") {
+    return;
+  }
   const diagnostic = output.diagnostic;
   const message =
     typeof diagnostic === "string"
@@ -85,17 +97,29 @@ export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-cal
           typeof diagnostic.message === "string"
         ? diagnostic.message
         : undefined;
-  if (message === undefined) return;
+  if (message === undefined) {
+    return;
+  }
   return { label: output.status === "invalid" ? "Invalid program" : "Program failed", message };
 }
 
 export function toolStatus(part: Extract<ReactChatUIPart, { type: "tool-call" }>): string {
   const failure = workflowFailure(part);
-  if (failure) return failure.label;
-  if (part.state === "output-available") return "Completed";
-  if (part.state === "output-error") return "Failed";
-  if (part.state === "input-streaming") return "Preparing call";
+  if (failure) {
+    return failure.label;
+  }
+  if (part.state === "output-available") {
+    return "Completed";
+  }
+  if (part.state === "output-error") {
+    return "Failed";
+  }
+  if (part.state === "input-streaming") {
+    return "Preparing call";
+  }
   const children = part.parts.flatMap((child) => activeWork(child));
-  if (children.length > 1) return `${children.length} active activities`;
+  if (children.length > 1) {
+    return `${children.length} active activities`;
+  }
   return children[0]?.label ?? "Awaiting result";
 }

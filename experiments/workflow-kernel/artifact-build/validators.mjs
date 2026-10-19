@@ -7,17 +7,31 @@ const { z } = require("zod");
 export const ZOD_VERSION = require("zod/package.json").version;
 export function encodeSchema(schema) {
     const d = schema?._zod?.def;
-    if (!d) throw Error("Validator is not supported Zod");
+    if (!d) {
+        throw Error("Validator is not supported Zod");
+    }
     const checks = (d.checks ?? []).map((c) => {
         const x = c._zod.def;
-        if (x.check === "min_length") return ["min", x.minimum];
-        if (x.check === "max_length") return ["max", x.maximum];
-        if (x.check === "greater_than" && x.inclusive) return ["min", x.value];
-        if (x.check === "less_than" && x.inclusive) return ["max", x.value];
-        if (x.check === "number_format" && x.format === "safeint") return ["int"];
+        if (x.check === "min_length") {
+            return ["min", x.minimum];
+        }
+        if (x.check === "max_length") {
+            return ["max", x.maximum];
+        }
+        if (x.check === "greater_than" && x.inclusive) {
+            return ["min", x.value];
+        }
+        if (x.check === "less_than" && x.inclusive) {
+            return ["max", x.value];
+        }
+        if (x.check === "number_format" && x.format === "safeint") {
+            return ["int"];
+        }
         throw Error("Unsupported portable validator check: " + x.check);
     });
-    if (d.coerce) throw Error("Schema coercion is not portable in this subset");
+    if (d.coerce) {
+        throw Error("Schema coercion is not portable in this subset");
+    }
     let recipe;
     switch (d.type) {
         case "string":
@@ -45,8 +59,9 @@ export function encodeSchema(schema) {
             recipe = { type: d.type, options: d.options.map(encodeSchema) };
             break;
         case "object": {
-            if (d.catchall?._zod?.def.type !== "never")
+            if (d.catchall?._zod?.def.type !== "never") {
                 throw Error("Only strict object validators are portable in this subset");
+            }
             recipe = {
                 type: d.type,
                 shape: Object.fromEntries(
@@ -59,8 +74,9 @@ export function encodeSchema(schema) {
             throw Error("Unsupported portable validator type: " + d.type);
     }
     // Checks on wrappers/objects/unions must never disappear unnoticed.
-    if (checks.length && !["string", "number", "array"].includes(d.type))
+    if (checks.length && !["string", "number", "array"].includes(d.type)) {
         throw Error("Unsupported wrapper checks");
+    }
     return recipe;
 }
 export function decodeSchema(r) {
@@ -105,8 +121,9 @@ export function decodeSchema(r) {
             throw Error("Unknown validator recipe");
     }
     for (const [op, value] of r.checks ?? []) {
-        if (!["min", "max", "int"].includes(op) || typeof s[op] !== "function")
+        if (!["min", "max", "int"].includes(op) || typeof s[op] !== "function") {
             throw Error("Invalid validator recipe operation");
+        }
         s = op === "int" ? s.int() : s[op](value);
     }
     return s;

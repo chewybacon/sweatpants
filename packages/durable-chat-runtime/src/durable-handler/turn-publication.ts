@@ -62,6 +62,7 @@ export function createTurnPublishers(
       });
       return {
         authority: conversationAuthority(requestedConversationId, persisted.head),
+        /* CONDITIONAL-SPREAD: Expose window only when its backing capability exists; callers inspect supported methods. */
         ...(projectionTokens
           ? {
               window: yield* buildConversationWindow({
@@ -105,6 +106,7 @@ export function createTurnPublishers(
         : null;
       return {
         authority: conversationAuthority(requestedConversationId, terminalHead),
+        /* CONDITIONAL-SPREAD: Expose window only when its backing capability exists; callers inspect supported methods. */
         ...(terminalHead && terminalCheckpoint
           ? {
               window: yield* buildConversationWindow({

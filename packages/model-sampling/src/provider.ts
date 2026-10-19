@@ -40,7 +40,9 @@ export function parseStructuredSampleText(text: string): unknown {
   // fallow-ignore-next-line complexity
   const extractBalancedJson = (value: string): string | undefined => {
     const start = value.search(/[[{]/);
-    if (start < 0) return undefined;
+    if (start < 0) {
+      return undefined;
+    }
     const opener = value[start]!;
     const closer = opener === "{" ? "}" : "]";
     let depth = 0;
@@ -60,10 +62,18 @@ export function parseStructuredSampleText(text: string): unknown {
         inString = !inString;
         continue;
       }
-      if (inString) continue;
-      if (char === opener) depth += 1;
-      if (char === closer) depth -= 1;
-      if (depth === 0) return value.slice(start, index + 1);
+      if (inString) {
+        continue;
+      }
+      if (char === opener) {
+        depth += 1;
+      }
+      if (char === closer) {
+        depth -= 1;
+      }
+      if (depth === 0) {
+        return value.slice(start, index + 1);
+      }
     }
     return undefined;
   };

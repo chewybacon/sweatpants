@@ -33,6 +33,7 @@ function discover(method = "server/discover", params: Record<string, unknown> = 
       accept: "application/json, text/event-stream",
       "MCP-Protocol-Version": "2026-07-28",
       "Mcp-Method": method,
+      /* CONDITIONAL-SPREAD: HTTP headers must omit absent "Mcp-Name"; undefined is not a header value. */
       ...(typeof params.name === "string" ? { "Mcp-Name": params.name } : {}),
     },
     body: JSON.stringify({

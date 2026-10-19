@@ -644,7 +644,7 @@ export async function startModelSimulator(
           return Promise.resolve(buffered);
         }
         const wait = deferred<PendingModelRequest>();
-        arrivalWaiters.push({ ...(expectation !== undefined ? { expectation } : {}), wait });
+        arrivalWaiters.push({ expectation: expectation, wait });
         return wait.promise;
       } catch (e) {
         return Promise.reject(e);

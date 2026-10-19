@@ -59,6 +59,7 @@ function effect(
     version,
     inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
     outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
+    /* CONDITIONAL-SPREAD: Omit absent cancellation from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(cancellation ? { cancellation: { partialSchema: ANY_JSON_SCHEMA_DESCRIPTOR } } : {}),
     retrySafety,
   };

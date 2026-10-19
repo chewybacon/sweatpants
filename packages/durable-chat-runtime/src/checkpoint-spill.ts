@@ -17,7 +17,9 @@ export function spillRoots(
   const over = () => {
     // Count pressure needs no encoding. Only measure the survivors once byte
     // pressure matters; roots do not change during this synchronous operation.
-    if (hot.length > target.maxRoots) return true;
+    if (hot.length > target.maxRoots) {
+      return true;
+    }
     if (sizes === undefined) {
       sizes = hot.map((root) => new TextEncoder().encode(canonicalJson(root)).byteLength);
       bytes = sizes.reduce((sum, size) => sum + size, 0);
@@ -26,7 +28,9 @@ export function spillRoots(
   };
   while (over()) {
     const index = hot.findIndex((root) => root.state === "sealed");
-    if (index < 0) break;
+    if (index < 0) {
+      break;
+    }
     spilled.push(hot[index]!);
     hot.splice(index, 1);
     if (sizes !== undefined) {

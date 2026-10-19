@@ -1,7 +1,7 @@
 /**
  * Sweatpants lint rules.
  *
- * These enforce two invariants the type system cannot express, and that greps
+ * These enforce invariants the type system cannot express, and that greps
  * previously enforced with path-and-filename allowlists — a mechanism that
  * broke on ordinary refactors.
  *
@@ -12,8 +12,10 @@
  *                     pinning a port to a foreign scope must say why the work
  *                     is not a child of the scope that configured it
  *   no-nested-yield   effectful intermediate values must have names
+ *   no-conditional-spread
+ *                     conditional object composition must explain its contract
  *
- * Both are syntax-only. Oxlint JS plugins do not yet have type information, so
+ * These are syntax-only. Oxlint JS plugins do not yet have type information, so
  * anything requiring types belongs in the built-in typescript-eslint rules
  * instead.
  */
@@ -317,6 +319,60 @@ const noNestedYield = {
     },
 };
 
+const noConditionalSpread = {
+    meta: {
+        type: "suggestion",
+        docs: {
+            description:
+                "conditional object spreads must explain why omission or precedence is required",
+        },
+        schema: [],
+    },
+    create(context) {
+        const source = context.sourceCode ?? context.getSourceCode();
+        const text = source.getText();
+        const comments = source.getAllComments?.() ?? [];
+
+        function check(node) {
+            if (node.type === "SpreadElement" && node.parent?.type !== "ObjectExpression") {
+                return;
+            }
+            let argument = node.argument;
+            while (
+                argument &&
+                [
+                    "ParenthesizedExpression",
+                    "TSAsExpression",
+                    "TSTypeAssertion",
+                    "TSNonNullExpression",
+                    "TSSatisfiesExpression",
+                ].includes(argument.type)
+            ) {
+                argument = argument.expression;
+            }
+            if (
+                argument?.type !== "ConditionalExpression" &&
+                argument?.type !== "LogicalExpression"
+            ) {
+                return;
+            }
+            if (
+                documentedBy(text, comments, node, (comment) =>
+                    /CONDITIONAL-SPREAD:\s*\S/.test(comment.value),
+                )
+            ) {
+                return;
+            }
+            context.report({
+                node,
+                message:
+                    "Use direct optional fields in live objects. When omission or precedence is required, add an adjacent `// CONDITIONAL-SPREAD: <reason>` explaining that contract. Normalize JSON at its boundary; do not hide the conditional in a helper.",
+            });
+        }
+        return { SpreadElement: check, JSXSpreadAttribute: check };
+    },
+};
+
 export default {
     meta: { name: "sweatpants" },
     rules: {
@@ -324,5 +380,6 @@ export default {
         "documented-weld": documentedWeld,
         "documented-scope-crossing": documentedScopeCrossing,
         "no-nested-yield": noNestedYield,
+        "no-conditional-spread": noConditionalSpread,
     },
 };

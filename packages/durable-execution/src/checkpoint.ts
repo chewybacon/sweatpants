@@ -1,4 +1,5 @@
-import { parser, cloneJson } from "@sweatpants/foundation";
+import { durableReferenceSchema } from "./reference-schema.ts";
+import { parser, type Parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   InvalidExecutionTransition,
@@ -13,51 +14,25 @@ import {
 } from "./contract.ts";
 
 const checkpointTextSchema = z.string().min(1).max(4_096);
-const checkpointReferenceSchema = z
-  .strictObject({
-    id: checkpointTextSchema,
-    byteLength: z.number().int().nonnegative().safe().optional(),
-    version: z.string().min(1).max(256).optional(),
-    integrity: z
-      .strictObject({ algorithm: checkpointTextSchema, value: checkpointTextSchema })
-      .optional(),
-  })
-  .transform((value) => ({
-    id: value.id,
-    ...(value.byteLength !== undefined ? { byteLength: value.byteLength } : {}),
-    ...(value.version !== undefined ? { version: value.version } : {}),
-    ...(value.integrity !== undefined ? { integrity: value.integrity } : {}),
-  }));
 const checkpointStoredJsonSchema = z.discriminatedUnion("storage", [
   z.strictObject({ storage: z.literal("inline"), value: z.json() }),
-  z.strictObject({ storage: z.literal("reference"), reference: checkpointReferenceSchema }),
+  z.strictObject({ storage: z.literal("reference"), reference: durableReferenceSchema }),
 ]);
 const checkpointProgramSchema = z.strictObject({
   id: checkpointTextSchema,
   version: checkpointTextSchema,
   digest: checkpointTextSchema,
 });
-const parkedTaskCheckpointSchema = z
-  .strictObject({
-    taskId: checkpointTextSchema,
-    parentTaskId: checkpointTextSchema.optional(),
-    program: checkpointProgramSchema,
-    input: checkpointStoredJsonSchema,
-    route: z.json(),
-    replayHead: z.union([checkpointReferenceSchema, z.null()]),
-    parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
-    actionIndex: z.number().int().nonnegative().safe(),
-  })
-  .transform((value) => ({
-    taskId: value.taskId,
-    ...(value.parentTaskId !== undefined ? { parentTaskId: value.parentTaskId } : {}),
-    program: value.program,
-    input: value.input,
-    route: value.route,
-    replayHead: value.replayHead,
-    parkedFrontier: value.parkedFrontier,
-    actionIndex: value.actionIndex,
-  }));
+const parkedTaskCheckpointSchema = z.strictObject({
+  taskId: checkpointTextSchema,
+  parentTaskId: checkpointTextSchema.optional(),
+  program: checkpointProgramSchema,
+  input: checkpointStoredJsonSchema,
+  route: z.json(),
+  replayHead: z.union([durableReferenceSchema, z.null()]),
+  parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
+  actionIndex: z.number().int().nonnegative().safe(),
+});
 const recoveryCheckpointSchema = z.strictObject({
   format: z.literal("sweatpants.recovery-checkpoint.v1"),
   executionId: checkpointTextSchema,
@@ -79,7 +54,7 @@ const recoveryCheckpointSchema = z.strictObject({
     .max(16_384),
   projection: z.strictObject({
     throughSequence: z.number().int().nonnegative().safe(),
-    facts: z.union([checkpointReferenceSchema, z.null()]),
+    facts: z.union([durableReferenceSchema, z.null()]),
   }),
 });
 
@@ -160,7 +135,7 @@ export function proposeQuiescentCut(
 
   const parkedTasks = current.tasks.map((task) => ({
     taskId: task.taskId,
-    ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+    parentTaskId: task.parentTaskId,
     program: task.program,
     input: task.input,
     route: task.route,
@@ -189,13 +164,12 @@ export function proposeQuiescentCut(
     projection: current.unpublishedProjection,
   };
 
-  return { status: "checkpointed", checkpoint: cloneJson(checkpoint) };
+  return { status: "checkpointed", checkpoint: structuredClone(checkpoint) };
 }
 
 /** Result-oriented parser for malformed or incomplete persisted checkpoints. */
-export const recoveryCheckpointParser = parser(recoveryCheckpointSchema).map(
-  (value): RecoveryCheckpoint => cloneJson(value),
-);
+export const recoveryCheckpointParser: Parser<RecoveryCheckpoint> =
+  parser(recoveryCheckpointSchema);
 
 /** Caller-owned throwing mapping for the checkpoint restoration boundary. */
 export function parseRecoveryCheckpoint(value: unknown): RecoveryCheckpoint {

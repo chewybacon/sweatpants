@@ -15,6 +15,7 @@ async function rpc(
       "content-type": "application/json",
       "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
       "Mcp-Method": method,
+      /* CONDITIONAL-SPREAD: HTTP headers must omit absent "Mcp-Name"; undefined is not a header value. */
       ...(typeof params.name === "string" ? { "Mcp-Name": params.name } : {}),
     },
     body: JSON.stringify({
@@ -105,7 +106,10 @@ describe("yo-mcp modern HTTP composition", () => {
           ...params,
           requestState: result.requestState,
           inputResponses: {
-            [requestId]: { action, ...(action === "accept" ? { content: { cardNumber: 1 } } : {}) },
+            [requestId]: {
+              action /* CONDITIONAL-SPREAD: Omit absent content from MCP request and interaction payloads; explicit undefined is not a portable JSON value. */,
+              ...(action === "accept" ? { content: { cardNumber: 1 } } : {}),
+            },
           },
         };
         const completed = await rpc(server.origin, "tools/call", retry);

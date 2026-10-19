@@ -62,6 +62,7 @@ export function serializeDurableError(error: unknown): SerializedApplicationErro
     return {
       code: error.code,
       message: error.message,
+      /* CONDITIONAL-SPREAD: Omit absent details from durable execution records; explicit undefined is not a portable JSON value. */
       ...(error.details === undefined ? {} : { details: error.details }),
     };
   }

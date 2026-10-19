@@ -34,6 +34,7 @@ const deterministicBrowserSmokeSpecs = [
 
 export default defineConfig({
   testDir: "./e2e",
+  /* CONDITIONAL-SPREAD: Choose mutually exclusive globalSetup, testMatch fields for runFullE2E; both branches cannot be present. */
   ...(runFullE2E
     ? { globalSetup: "./e2e/global-setup.ts" }
     : { testMatch: deterministicBrowserSmokeSpecs }),

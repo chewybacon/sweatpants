@@ -164,6 +164,7 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
     .execute(function* ({ invocationId, input }, context) {
       const validatedInput = assertManifestInput<I>(input);
       return yield* runFacadeProgram(options, invocationId, validatedInput, {
+        /* CONDITIONAL-SPREAD: Expose sample only when its backing capability exists; callers inspect supported methods. */
         ...(context.sample === undefined
           ? {}
           : {
@@ -473,6 +474,7 @@ function facadePullResolvers(
           context: {
             key: d.key,
             responseSchema: d.response.inputProjection,
+            /* CONDITIONAL-SPREAD: Omit absent context from worker and tool-session messages; explicit undefined is not a portable JSON value. */
             ...(d.context !== undefined ? { context: d.context } : {}),
           },
         });
@@ -481,6 +483,7 @@ function facadePullResolvers(
             ? { action: "accept", content: assertJson(elicitResponse.content) }
             : {
                 action: elicitResponse.action,
+                /* CONDITIONAL-SPREAD: Omit absent reason from worker and tool-session messages; explicit undefined is not a portable JSON value. */
                 ...(elicitResponse.reason !== undefined ? { reason: elicitResponse.reason } : {}),
               };
         return { status: "ok" as const, value };

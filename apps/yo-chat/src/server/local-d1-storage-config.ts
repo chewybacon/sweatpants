@@ -15,7 +15,9 @@ const platform = await getPlatformProxy<{
   configPath: new URL("../../wrangler.journal.jsonc", import.meta.url).pathname,
 });
 await initializeD1Storage(platform.env.JOURNAL);
-if (import.meta.hot) import.meta.hot.dispose(() => platform.dispose());
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => platform.dispose());
+}
 
 export function createYoChatStorageConfig() {
   return createD1Storage(platform.env.JOURNAL);

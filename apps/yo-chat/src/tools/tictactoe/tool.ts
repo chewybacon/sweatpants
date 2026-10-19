@@ -206,6 +206,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
           context: {
             board,
             moveHistory,
+            /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
             ...(lastMove ? { lastMove } : {}),
             modelSymbol,
             userSymbol,
@@ -257,7 +258,9 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
           context: {
             board,
             moveHistory,
+            /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
             ...(lastMove ? { lastMove } : {}),
+            /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
             ...(winningLine ? { winningLine } : {}),
             gameOver: true,
             resultMessage,
@@ -275,6 +278,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
               (status === "o_wins" && modelSymbol === "O")),
           board,
           boardDisplay: formatBoard(board),
+          /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
           ...(winningLine ? { winningLine } : {}),
         };
         break;
@@ -306,6 +310,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
       winner: clientResult.winner,
       board: clientResult.board,
       boardDisplay: clientResult.boardDisplay,
+      /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(clientResult.winningLine ? { winningLine: clientResult.winningLine } : {}),
       message:
         clientResult.status === "draw"

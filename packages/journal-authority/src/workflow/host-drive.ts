@@ -15,7 +15,7 @@ import {
   type ProgramShutdownReason,
   type ProgramStep,
 } from "@sweatpants/durable-execution";
-import { type Json, canonicalDigest } from "@sweatpants/foundation";
+import { type Json, digestCanonicalJson } from "@sweatpants/foundation";
 
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import { InstalledEffectPort } from "./runtime.ts";
@@ -70,6 +70,7 @@ export function driveActivation(request: DriveActivationRequest): Operation<Adva
           *executeHost() {
             throw new CrankError("effect_placement_unavailable");
           },
+          /* CONDITIONAL-SPREAD: Expose acknowledge only when its backing capability exists; callers inspect supported methods. */
           ...(request.onEffectResolved === undefined
             ? {}
             : {
@@ -77,7 +78,7 @@ export function driveActivation(request: DriveActivationRequest): Operation<Adva
                   yield* request.onEffectResolved!({
                     pullId: authorization.pullId,
                     attemptId: authorization.attemptId,
-                    outcomeDigest: canonicalDigest(outcome),
+                    outcomeDigest: digestCanonicalJson(outcome),
                     effect: {
                       name: authorization.descriptor.name,
                       version: authorization.descriptor.version,
@@ -133,6 +134,7 @@ function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
           pullId: command.pullId,
           attemptId: command.attemptId,
           descriptor: command.descriptor,
+          /* CONDITIONAL-SPREAD: Omit absent placement from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(command.placement === undefined ? {} : { placement: command.placement }),
         };
         const event = yield* handle.exchange(runtimeCommand);
@@ -159,6 +161,7 @@ function workflowFactoryDriver(workflow: () => Workflow<Json>): ProgramDriver {
         return toStep(
           yield* handle.exchange({
             type: "cancel",
+            /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
             ...(command.reason === undefined ? {} : { reason: command.reason }),
           }),
         );
@@ -234,8 +237,12 @@ export function* installEffectRegistrations(
         cancellation: attempt.cancellation,
         resolver: descriptor.resolver,
       });
-      if (outcome.status === "ok") return outcome.value;
-      if (outcome.status === "cancelled") throw new DurableProgramCancellation();
+      if (outcome.status === "ok") {
+        return outcome.value;
+      }
+      if (outcome.status === "cancelled") {
+        throw new DurableProgramCancellation();
+      }
       throw new CrankError(outcome.error.code, outcome.error.message, outcome.error.details);
     },
   });

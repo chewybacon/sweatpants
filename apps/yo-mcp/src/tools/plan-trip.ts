@@ -27,21 +27,28 @@ export const planTripTool = createTool("plan_trip")
     const destination = yield* ctx.elicit("destination", {
       message: `${traveler}, which city would you like to visit?`,
     });
-    if (destination.action !== "accept")
+    if (destination.action !== "accept") {
       return { status: destination.action, stage: "destination" };
+    }
 
     const city = destination.content.city;
     while (true) {
       const choice = yield* ctx.elicit("activity", {
         message: `What would you like to do in ${city}?`,
       });
-      if (choice.action !== "accept") return { status: choice.action, stage: "activity" };
+      if (choice.action !== "accept") {
+        return { status: choice.action, stage: "activity" };
+      }
 
       const activity = choice.content.activity;
       const review = yield* ctx.elicit("review", {
         message: `Day trip for ${traveler}: ${city}, with a ${activity}. Confirm this plan, or submit with confirmed unchecked to choose another activity. Nothing will be booked.`,
       });
-      if (review.action !== "accept") return { status: review.action, stage: "review" };
-      if (review.content.confirmed) return { status: "planned", traveler, city, activity };
+      if (review.action !== "accept") {
+        return { status: review.action, stage: "review" };
+      }
+      if (review.content.confirmed) {
+        return { status: "planned", traveler, city, activity };
+      }
     }
   });

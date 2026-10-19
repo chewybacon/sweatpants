@@ -163,7 +163,9 @@ export const chatMessagesParser: Parser<readonly ChatMessage[]> =
     const output: ChatMessage[] = [];
     for (const [index, value] of values.entries()) {
       const parsed = normalizeMessageResult(value, `$.${index}`);
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       output.push(parsed.value);
     }
     return success(freeze(output) as readonly ChatMessage[]);
@@ -180,7 +182,9 @@ export const chatToolDefinitionParser: Parser<ChatToolDefinition> =
 
 export function decodeChatMessage(value: unknown, path = "$"): ChatMessage {
   const parsed = chatMessageStructureParser.parse(value);
-  if (!parsed.ok) throw messageErrorFromIssues(parsed.issues, path, "message");
+  if (!parsed.ok) {
+    throw messageErrorFromIssues(parsed.issues, path, "message");
+  }
   return requireMessage(normalizeMessageResult(parsed.value, path));
 }
 
@@ -198,7 +202,9 @@ export function decodeChatAssistantMessage(value: unknown, path = "$"): ChatAssi
 
 export function decodeChatMessages(value: unknown, path = "$"): readonly ChatMessage[] {
   const parsed = chatMessagesStructureParser.parse(value);
-  if (!parsed.ok) throw messageErrorFromIssues(parsed.issues, path, "messages");
+  if (!parsed.ok) {
+    throw messageErrorFromIssues(parsed.issues, path, "messages");
+  }
   const output: ChatMessage[] = [];
   for (const [index, entry] of parsed.value.entries()) {
     output.push(requireMessage(normalizeMessageResult(entry, `${path}[${index}]`)));
@@ -226,7 +232,9 @@ export function decodeChatToolCall(value: unknown, path = "$"): ChatToolCall {
 
 export function decodeChatToolDefinition(value: unknown, path = "$"): ChatToolDefinition {
   const parsed = chatToolDefinitionStructureParser.parse(value);
-  if (!parsed.ok) throw messageErrorFromIssues(parsed.issues, path, "tool-definition");
+  if (!parsed.ok) {
+    throw messageErrorFromIssues(parsed.issues, path, "tool-definition");
+  }
   return normalizeToolDefinition(parsed.value);
 }
 
@@ -288,7 +296,9 @@ function normalizeAssistantPart(value: StructuralAssistantPart, path: string): C
       try {
         return freeze({ type: "tool-call", toolCall: normalizeToolCall(value.toolCall) });
       } catch (error) {
-        if (error instanceof ChatMessageDecodeError) throw error;
+        if (error instanceof ChatMessageDecodeError) {
+          throw error;
+        }
         throw new ChatMessageDecodeError(
           "invalid-tool-call",
           `${path}.toolCall`,
@@ -328,7 +338,9 @@ function decodeContent(value: unknown, path: string): ChatContent {
 }
 
 function requireMessage(result: ParseResult<ChatMessage>): ChatMessage {
-  if (result.ok) return result.value;
+  if (result.ok) {
+    return result.value;
+  }
   throw messageErrorFromIssues(result.issues, "$", "message");
 }
 
@@ -341,8 +353,9 @@ function messageErrorFromIssues(
   const relative = issue.path.map(String).join(".");
   const path = relative.length === 0 ? basePath : `${basePath}.${relative}`;
   let code: ChatMessageDecodeErrorCode = "invalid-value";
-  if (issue.code === "unrecognized_keys") code = "unknown-field";
-  else if (context === "tool-call") {
+  if (issue.code === "unrecognized_keys") {
+    code = "unknown-field";
+  } else if (context === "tool-call") {
     code =
       issue.path.at(-1) === "input" &&
       (issue.code === "invalid_type" || issue.code === "invalid_union")
@@ -374,7 +387,9 @@ function issueFromMessageError(error: ChatMessageDecodeError): ParseIssue {
 }
 
 function decodePath(path: string): Array<string | number> {
-  if (path === "$" || path.length === 0) return [];
+  if (path === "$" || path.length === 0) {
+    return [];
+  }
   return path
     .replace(/^\$\.?/u, "")
     .split(/[.[\]]+/u)
@@ -385,7 +400,9 @@ function decodePath(path: string): Array<string | number> {
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
-    for (const child of Object.values(value)) freeze(child);
+    for (const child of Object.values(value)) {
+      freeze(child);
+    }
   }
   return value;
 }

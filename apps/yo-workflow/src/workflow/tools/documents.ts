@@ -34,6 +34,7 @@ export const documentRead = createDurableTool("document_read", { version: "1" })
     return yield* ctx.effect(documentEffect, {
       operation: "read",
       document: input.document,
+      /* CONDITIONAL-SPREAD: Omit absent sinceRevision from workflow requests and execution events; explicit undefined is not a portable JSON value. */
       ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
     });
   });
@@ -113,13 +114,15 @@ export const presentChoices = createDurableTool("present_choices", { version: "1
     const document = yield* ctx.effect(documentEffect, {
       operation: "read",
       document: input.document,
+      /* CONDITIONAL-SPREAD: Omit absent sinceRevision from workflow requests and execution events; explicit undefined is not a portable JSON value. */
       ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
     });
-    if (document.status !== "ok")
+    if (document.status !== "ok") {
       return {
         action: "error" as const,
         diagnostic: { code: document.status === "error" ? document.code : "document_unavailable" },
       };
+    }
     const exchangeId = yield* ctx.record(
       { key: "choices.exchange-id", retrySafety: { mode: "repeatable" } },
       function* (attempt) {
@@ -137,6 +140,7 @@ export const presentChoices = createDurableTool("present_choices", { version: "1
       documents: {
         content: {
           ...input.document,
+          /* CONDITIONAL-SPREAD: Omit absent sinceRevision from workflow requests and execution events; explicit undefined is not a portable JSON value. */
           ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
         },
       },
@@ -197,13 +201,15 @@ export const displayDocument = createDurableTool("display_document", { version: 
     const document = yield* ctx.effect(documentEffect, {
       operation: "read",
       document: input.document,
+      /* CONDITIONAL-SPREAD: Omit absent sinceRevision from workflow requests and execution events; explicit undefined is not a portable JSON value. */
       ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
     });
-    if (document.status !== "ok")
+    if (document.status !== "ok") {
       return {
         status: "error" as const,
         diagnostic: { code: document.status === "error" ? document.code : "document_unavailable" },
       };
+    }
     const response = yield* ctx.elicit("display", {
       message: input.message,
       context: {
@@ -215,6 +221,7 @@ export const displayDocument = createDurableTool("display_document", { version: 
       documents: {
         content: {
           ...input.document,
+          /* CONDITIONAL-SPREAD: Omit absent sinceRevision from workflow requests and execution events; explicit undefined is not a portable JSON value. */
           ...(input.sinceRevision === undefined ? {} : { sinceRevision: input.sinceRevision }),
         },
       },

@@ -31,19 +31,26 @@ const randomUUID = () => crypto.randomUUID();
 
 export function executionServiceFactory({ linker, sourceValidator, createProgram }) {
     async function validateCaller(source) {
-        if (typeof source !== "string" || source.length > 12000)
+        if (typeof source !== "string" || source.length > 12000) {
             return "Expected Scheme source of at most 12000 characters";
+        }
         try {
             return await run(function* () {
-                const diagnostic = yield* sourceValidator.validate({ language: sourceValidator.language, text: source });
-                if (diagnostic) return diagnostic;
+                const diagnostic = yield* sourceValidator.validate({
+                    language: sourceValidator.language,
+                    text: source,
+                });
+                if (diagnostic) {
+                    return diagnostic;
+                }
                 const program = buildProgram(source);
                 const kernel = program.createKernel();
                 try {
                     // Preflight runs through the same kernel seam without dispatching effects.
                     const { boundary } = yield* kernel.start(program.artifact, confirmationInput);
-                    if (boundary.kind !== "suspended" || boundary.request.site !== "review_draft/answer")
+                    if (boundary.kind !== "suspended" || boundary.request.site !== "review_draft/answer") {
                         return "The caller must first request approval through review_draft(input)";
+                    }
                     return "";
                 } finally {
                     yield* kernel.close();
@@ -65,7 +72,12 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
         const linked = linker.link({
             caller: { language: sourceValidator.language, text: callerSource },
             bindings: [
-                { kind: "compiled", name: "review_draft", definition: reviewDraft, prefixArguments: [false] },
+                {
+                    kind: "compiled",
+                    name: "review_draft",
+                    definition: reviewDraft,
+                    prefixArguments: [false],
+                },
                 { kind: "host", name: sendDefinition.name, version: sendDefinition.version },
             ],
         });
@@ -106,8 +118,9 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                     !Array.isArray(request) ||
                     request[0] !== "elicit" ||
                     !["approval", "cleanup"].includes(request[1])
-                )
+                ) {
                     throw Error("Unsupported inspection workflow effect");
+                }
                 return {
                     kind: "elicit",
                     key: request[1],
@@ -128,18 +141,22 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
         secret = randomUUID().repeat(2),
     } = {}) {
         const sessions = new Map();
-        const keyring = createCapabilityKeyring("execution-playground", [
-            { keyId: "local", secret },
-        ]);
+        const keyring = createCapabilityKeyring("execution-playground", [{ keyId: "local", secret }]);
         async function saveSession(session) {
-            if (!persistence) return;
+            if (!persistence) {
+                return;
+            }
             const { program, store, busy, outbox, ...state } = session;
             await persistence.save(session.id, { ...state, outbox: [...outbox] });
         }
         async function loadSession(id) {
-            if (sessions.has(id)) return sessions.get(id);
+            if (sessions.has(id)) {
+                return sessions.get(id);
+            }
             const saved = await persistence?.load(id);
-            if (!saved) return undefined;
+            if (!saved) {
+                return undefined;
+            }
             const session = {
                 ...saved,
                 program: buildProgram(saved.authored),
@@ -157,14 +174,22 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                 kind,
                 ...data,
             });
-            if (session.trace.length > 100) session.trace.shift();
+            if (session.trace.length > 100) {
+                session.trace.shift();
+            }
         }
         function observe(session, kind, data) {
-            if (data?.inspection) session.inspection = data.inspection;
+            if (data?.inspection) {
+                session.inspection = data.inspection;
+            }
             trace(session, `kernel.${kind}`, {
+                /* CONDITIONAL-SPREAD: Omit absent durationMs from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(data?.durationMs === undefined ? {} : { durationMs: data.durationMs }),
+                /* CONDITIONAL-SPREAD: Only present boundary/snapshot/reply data may override the preceding event data. */
                 ...(data?.boundary ? { data: data.boundary } : {}),
+                /* CONDITIONAL-SPREAD: Only present boundary/snapshot/reply data may override the preceding event data. */
                 ...(data?.snapshot ? { data: data.snapshot } : {}),
+                /* CONDITIONAL-SPREAD: Only present boundary/snapshot/reply data may override the preceding event data. */
                 ...(data?.reply ? { data: data.reply } : {}),
             });
         }
@@ -187,25 +212,26 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
         }
         return {
             get(id) {
-                if (sessions.has(id)) return view(sessions.get(id));
+                if (sessions.has(id)) {
+                    return view(sessions.get(id));
+                }
                 return loadSession(id).then((session) => {
-                    if (!session)
-                        throw Error(
-                            "Execution not found. Local runs expire when the dev server restarts.",
-                        );
+                    if (!session) {
+                        throw Error("Execution not found. Local runs expire when the dev server restarts.");
+                    }
                     return view(session);
                 });
             },
             async command(command) {
                 let session;
                 if (command.action === "start") {
-                    if (sessions.size >= 32)
-                        throw Error(
-                            "Local execution limit reached. Restart the dev server to clear runs.",
-                        );
+                    if (sessions.size >= 32) {
+                        throw Error("Local execution limit reached. Restart the dev server to clear runs.");
+                    }
                     const authored = command.prompt ? await author?.(command.prompt) : caller;
-                    if (typeof authored !== "string" || !authored.trim())
+                    if (typeof authored !== "string" || !authored.trim()) {
                         throw Error("Model authoring is unavailable or returned no Scheme");
+                    }
                     const program = buildProgram(authored);
                     session = {
                         program,
@@ -222,12 +248,17 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                     await saveSession(session);
                 } else {
                     session = await loadSession(command.id);
-                    if (!session) throw Error("Execution not found");
-                    if (command.revision !== session.revision)
+                    if (!session) {
+                        throw Error("Execution not found");
+                    }
+                    if (command.revision !== session.revision) {
                         throw Error("Execution changed. Reload before continuing.");
+                    }
                 }
                 const program = session.program;
-                if (session.busy) throw Error("Execution is busy");
+                if (session.busy) {
+                    throw Error("Execution is busy");
+                }
                 session.busy = true;
                 try {
                     await run(function* () {
@@ -247,9 +278,7 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                             input: confirmationInput,
                             route: { driverKind: "hoot-composition" },
                         };
-                        const driver = program.createDriver((kind, data) =>
-                            observe(session, kind, data),
-                        );
+                        const driver = program.createDriver((kind, data) => observe(session, kind, data));
                         yield* ProgramDriverRegistryContext.with(
                             new Map([["hoot-composition", driver]]),
                             function* () {
@@ -266,18 +295,18 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                     });
                                     trace(session, "host.start", { data: attach.input });
                                 } else {
-                                    if (session.result?.state !== "parked")
+                                    if (session.result?.state !== "parked") {
                                         throw Error("Execution is not waiting");
+                                    }
                                     if (command.action === "restore") {
                                         const saved = yield* journal.exportSnapshot();
                                         const task = saved.sessions
                                             .find(([id]) => id === session.id)?.[1]
-                                            .execution.tasks.find(
-                                                (task) => task.taskId === attach.taskId,
-                                            );
+                                            .execution.tasks.find((task) => task.taskId === attach.taskId);
                                         const checkpoint = task?.execution.checkpoint;
-                                        if (checkpoint?.kind !== "continuation")
+                                        if (checkpoint?.kind !== "continuation") {
                                             throw Error("No accepted checkpoint is available");
+                                        }
                                         trace(session, "host.restore-requested");
                                         const kernel = program.createKernel((kind, data) =>
                                             observe(session, kind, data),
@@ -288,10 +317,9 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                                 program.artifact,
                                                 checkpoint.state.backend,
                                             );
-                                            if (session.inspection.steps !== before)
-                                                throw Error(
-                                                    "Restoration changed the evaluator step count",
-                                                );
+                                            if (session.inspection.steps !== before) {
+                                                throw Error("Restoration changed the evaluator step count");
+                                            }
                                             session.restoration = {
                                                 stepsBefore: before,
                                                 stepsAfter: session.inspection.steps,
@@ -323,13 +351,12 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                         if (
                                             session.pending.key === "approval" &&
                                             !["approve", "decline"].includes(command.choice)
-                                        )
+                                        ) {
                                             throw Error("Choose approve or decline");
-                                        if (
-                                            session.pending.key === "cleanup" &&
-                                            command.choice !== "release"
-                                        )
+                                        }
+                                        if (session.pending.key === "cleanup" && command.choice !== "release") {
                                             throw Error("Choose release");
+                                        }
                                         const value = {
                                             action: "accept",
                                             content: { approved: command.choice === "approve" },
@@ -348,12 +375,15 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                                 outcome: { status: "ok", value },
                                             },
                                         });
-                                        if (accepted.status === "rejected")
+                                        if (accepted.status === "rejected") {
                                             throw Error(
                                                 `Reply rejected by journal authority: ${JSON.stringify(accepted)}`,
                                             );
+                                        }
                                         trace(session, "authority.reply-accepted", { data: value });
-                                    } else throw Error("Unknown execution command");
+                                    } else {
+                                        throw Error("Unknown execution command");
+                                    }
                                 }
                                 session.result = yield* driveProgramDriverActivation({
                                     authority: {
@@ -383,14 +413,11 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                                                     status: "error",
                                                                     error: {
                                                                         code: "invalid_announcement",
-                                                                        message:
-                                                                            "Expected title and recipient strings",
+                                                                        message: "Expected title and recipient strings",
                                                                     },
                                                                 };
                                                             }
-                                                            let item = session.outbox.get(
-                                                                ctx.pullId,
-                                                            );
+                                                            let item = session.outbox.get(ctx.pullId);
                                                             if (!item) {
                                                                 item = {
                                                                     announcementId: randomUUID(),
@@ -398,36 +425,19 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                                                     title: input.title,
                                                                     recipient: input.recipient,
                                                                 };
-                                                                session.outbox.set(
-                                                                    ctx.pullId,
-                                                                    item,
-                                                                );
-                                                                yield* call(() =>
-                                                                    saveSession(session),
-                                                                );
-                                                                trace(
-                                                                    session,
-                                                                    "host.announcement-queued",
-                                                                    { data: item },
-                                                                );
+                                                                session.outbox.set(ctx.pullId, item);
+                                                                yield* call(() => saveSession(session));
+                                                                trace(session, "host.announcement-queued", { data: item });
                                                             }
                                                             return { status: "ok", value: item };
                                                         },
                                                     ),
                                                 ]);
-                                                return yield* DurableEffectRegistryContext.with(
-                                                    registry,
-                                                    function* () {
-                                                        return yield* ProgramPlacementContext.with(
-                                                            placement,
-                                                            function* () {
-                                                                return yield* DurableEffects.operations.execute(
-                                                                    authorization,
-                                                                );
-                                                            },
-                                                        );
-                                                    },
-                                                );
+                                                return yield* DurableEffectRegistryContext.with(registry, function* () {
+                                                    return yield* ProgramPlacementContext.with(placement, function* () {
+                                                        return yield* DurableEffects.operations.execute(authorization);
+                                                    });
+                                                });
                                             },
                                         },
                                     },
@@ -436,25 +446,24 @@ export function executionServiceFactory({ linker, sourceValidator, createProgram
                                 session.checkpoint =
                                     saved.sessions
                                         .find(([id]) => id === session.id)?.[1]
-                                        .execution.tasks.find(
-                                            (task) => task.taskId === attach.taskId,
-                                        )?.execution.checkpoint ?? null;
+                                        .execution.tasks.find((task) => task.taskId === attach.taskId)?.execution
+                                        .checkpoint ?? null;
                                 session.restoration = null;
                                 const records = yield* journal.readSession(session.id);
                                 const pull =
                                     session.result.state === "parked"
                                         ? records.find(
-                                              (record) =>
-                                                  record.payload.type === "PullRequested" &&
-                                                  record.payload.pullId === session.result.pullId,
-                                          )?.payload
+                                                (record) =>
+                                                    record.payload.type === "PullRequested" &&
+                                                    record.payload.pullId === session.result.pullId,
+                                            )?.payload
                                         : null;
                                 session.pending = pull
                                     ? {
-                                          key: pull.descriptor.key,
-                                          message: pull.descriptor.message,
-                                          pullId: pull.pullId,
-                                      }
+                                            key: pull.descriptor.key,
+                                            message: pull.descriptor.message,
+                                            pullId: pull.pullId,
+                                        }
                                     : null;
                                 trace(session, `host.${session.result.state}`, {
                                     data: session.result,

@@ -5,7 +5,9 @@ import type { TestApplication } from "@sweatpants/test-rig";
 function routeConversationId(pathname: string, suffix = ""): string | null {
   const pattern = new RegExp(`^/api/chat/([^/]+)${suffix}/?$`);
   const match = pattern.exec(pathname);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   try {
     return decodeURIComponent(match[1]!);
   } catch {

@@ -5,14 +5,7 @@ import {
   type DurableProgramManifest,
   type Mandate,
 } from "@sweatpants/durable-execution";
-import {
-  stableTupleHash,
-  type Json,
-  sha256,
-  encodeCanonicalJson,
-  canonicalJson,
-  cloneJson,
-} from "@sweatpants/foundation";
+import { stableTupleHash, type Json, sha256, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { AuthorityState, TaskState } from "../contract/authority-contract.ts";
 import { parseDurableProgramManifest } from "../store/durable-authority-snapshot-schema.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
@@ -60,7 +53,7 @@ export function openTask(
       "Catalog and catalog digest must be supplied together",
     );
   }
-  const catalog = request.catalog === undefined ? undefined : cloneJson(request.catalog);
+  const catalog = request.catalog;
   if (
     catalog !== undefined &&
     (typeof catalog !== "object" ||
@@ -95,6 +88,7 @@ export function openTask(
     taskId: request.taskId,
     turnId: request.turnId,
     origin,
+    /* CONDITIONAL-SPREAD: Omit absent deadlineMs from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(deadlineMs === undefined ? {} : { deadlineMs }),
     program: {
       artifact: {
@@ -110,6 +104,7 @@ export function openTask(
     nextActionIndex: 0,
     nextPullIndex: 0,
     nextEmissionIndex: 0,
+    /* CONDITIONAL-SPREAD: Omit absent emissionPolicy from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(draft.emissionPolicy === undefined
       ? {}
       : {
@@ -136,9 +131,13 @@ export function openTask(
     programDigest: request.manifest.digest,
     input,
     inputDigest: sha256(encodedInput),
+    /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
+    /* CONDITIONAL-SPREAD: Omit absent parentTaskId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.parentTaskId === undefined ? {} : { parentTaskId: request.parentTaskId }),
+    /* CONDITIONAL-SPREAD: Omit absent parentPullId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.parentPullId === undefined ? {} : { parentPullId: request.parentPullId }),
+    /* CONDITIONAL-SPREAD: Omit absent elicitAudience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.elicitAudience === undefined ? {} : { elicitAudience: request.elicitAudience }),
   });
   session.control.runnable = true;
@@ -371,7 +370,7 @@ export function ensureChild(
     expected.id !== request.child.id ||
     expected.version !== request.child.version ||
     expected.digest !== request.child.digest ||
-    encodeCanonicalJson(expected.input) !== canonicalJson(request.child.input)
+    encodeCanonicalJson(expected.input) !== encodeCanonicalJson(request.child.input)
   ) {
     throw new CrankError("nondeterminism_detected", "Child descriptor differs from parent pull");
   }
@@ -422,8 +421,11 @@ function taskExecution(
     epoch: request.executionEpoch,
     attachmentId: request.attachmentId,
     audience: request.audience,
+    /* CONDITIONAL-SPREAD: Omit absent elicitAudience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.elicitAudience === undefined ? {} : { elicitAudience: request.elicitAudience }),
+    /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(request.route === undefined ? {} : { route: structuredClone(request.route) }),
+    /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(catalog === undefined ? {} : { catalog, catalogDigest: request.catalogDigest! }),
   };
 }
@@ -433,12 +435,15 @@ function inheritedChildExecutionOptions(
   route: OpenDurableTaskRequest["route"],
 ): Pick<OpenDurableTaskRequest, "elicitAudience" | "catalog" | "catalogDigest" | "route"> {
   return {
+    /* CONDITIONAL-SPREAD: Omit absent elicitAudience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(parent.execution.elicitAudience === undefined
       ? {}
       : { elicitAudience: parent.execution.elicitAudience }),
+    /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(parent.execution.catalog === undefined
       ? {}
       : { catalog: parent.execution.catalog, catalogDigest: parent.execution.catalogDigest! }),
+    /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(route === undefined ? {} : { route }),
   };
 }

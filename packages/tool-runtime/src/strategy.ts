@@ -58,8 +58,8 @@ export function createToolExecutionRef(input: {
     executionId: input.executionId ?? input.sessionId ?? input.callId,
     callId: input.callId,
     toolName: input.toolName,
-    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+    sessionId: input.sessionId ? input.sessionId : undefined,
+    cursor: input.cursor,
   };
 }
 
@@ -77,9 +77,9 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
     *execute(request: ToolExecuteRequest): Operation<ToolExecution> {
       const ctx: ToolExecutionContext = {
         runtimeId,
-        ...(request.request !== undefined ? { request: request.request } : {}),
-        ...(request.signal ? { signal: request.signal } : {}),
-        ...(request.metadata ? { metadata: request.metadata } : {}),
+        request: request.request,
+        signal: request.signal ? request.signal : undefined,
+        metadata: request.metadata ? request.metadata : undefined,
       };
 
       for (const strategy of strategies) {
@@ -98,16 +98,20 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *resume(request: ToolResumeRequest): Operation<ToolExecution> {
       for (const strategy of strategies) {
-        if (!strategy.resume) continue;
+        if (!strategy.resume) {
+          continue;
+        }
         try {
           return yield* strategy.resume(request.ref, request.input, {
             runtimeId,
-            ...(request.request !== undefined ? { request: request.request } : {}),
-            ...(request.signal ? { signal: request.signal } : {}),
-            ...(request.metadata ? { metadata: request.metadata } : {}),
+            request: request.request,
+            signal: request.signal ? request.signal : undefined,
+            metadata: request.metadata ? request.metadata : undefined,
           });
         } catch (error) {
-          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") continue;
+          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") {
+            continue;
+          }
           throw error;
         }
       }
@@ -119,12 +123,16 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
     *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
       for (const strategy of strategies) {
-        if (!strategy.abort) continue;
+        if (!strategy.abort) {
+          continue;
+        }
         try {
           yield* strategy.abort(ref, reason, { runtimeId });
           return;
         } catch (error) {
-          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") continue;
+          if (error instanceof ToolRuntimeError && error.code === "EXECUTION_NOT_FOUND") {
+            continue;
+          }
           throw error;
         }
       }

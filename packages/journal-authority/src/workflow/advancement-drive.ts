@@ -63,6 +63,7 @@ export function* advanceCaughtUpLeaf(request: {
     input: caughtUp.item.input,
     route: caughtUp.item.route,
     executionEpoch: execution.mandate.lease.epoch,
+    /* CONDITIONAL-SPREAD: Omit absent affinity from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(execution.mandate.placement.sandbox.mode === "reuse"
       ? { affinity: execution.mandate.placement.sandbox.affinity }
       : {}),
@@ -79,11 +80,14 @@ export function* advanceCaughtUpLeaf(request: {
       continue;
     }
     if (!cancellationInjected && isCancellationInProgress(cancellation)) {
-      if (cancellation.type !== "unwinding") yield* execution.beginCancellationUnwind();
+      if (cancellation.type !== "unwinding") {
+        yield* execution.beginCancellationUnwind();
+      }
       const reason = "reason" in cancellation ? cancellation.reason : undefined;
       try {
         step = yield* ProgramPeer.operations.step(attachment, {
           type: "cancel",
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason === undefined ? {} : { reason }),
         });
       } catch (error) {
@@ -188,7 +192,9 @@ export function* advanceCaughtUpLeaf(request: {
           outcome: committedOutcome,
         });
       }
-      if (resolution.status === "rejected") throw new CrankError(resolution.code);
+      if (resolution.status === "rejected") {
+        throw new CrankError(resolution.code);
+      }
       return {
         state: "settled",
         actionIndex: step.actionIndex,
@@ -218,7 +224,9 @@ export function* advanceCaughtUpLeaf(request: {
         throw new CrankError("runtime_error", "Installed effect authorization is malformed");
       }
       const definition = reservation.effectDefinition;
-      if (!definition) throw new CrankError("invalid_manifest", "Effect definition unavailable");
+      if (!definition) {
+        throw new CrankError("invalid_manifest", "Effect definition unavailable");
+      }
       const journal = yield* execution.identity();
       const authorization: DurableEffectAuthorization = {
         sessionId: execution.mandate.address.sessionId,
@@ -263,12 +271,16 @@ export function* advanceCaughtUpLeaf(request: {
         audience: composed.descriptor.resolver.audience,
         outcome,
       });
-      if (resolution.status === "rejected") throw new CrankError(resolution.code);
+      if (resolution.status === "rejected") {
+        throw new CrankError(resolution.code);
+      }
       if (request.services.effects.acknowledge) {
         try {
           yield* request.services.effects.acknowledge({ authorization, outcome });
         } catch (error) {
-          if (!(error instanceof RetryableEffectAcknowledgement)) throw error;
+          if (!(error instanceof RetryableEffectAcknowledgement)) {
+            throw error;
+          }
           // The port explicitly classified this post-commit cleanup as retryable.
         }
       }
@@ -291,7 +303,9 @@ function* composeStep(
   attach: AttachProgramRequest,
   stage: JournalSamplingService | undefined,
 ): Operation<Extract<ProgramStep, { type: "operation" }>> {
-  if (!stage || step.descriptor.kind !== "sample") return step;
+  if (!stage || step.descriptor.kind !== "sample") {
+    return step;
+  }
   return {
     ...step,
     descriptor: { ...step.descriptor, input: yield* stage(step.descriptor.input, attach) },

@@ -128,6 +128,7 @@ export class DecisionDraft {
       offset,
       eventId: `journal:${sessionId}:${offset}`,
       sessionId,
+      /* CONDITIONAL-SPREAD: Omit absent ownerEpoch from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(ownerEpoch === undefined ? {} : { ownerEpoch }),
       payload,
     });
@@ -166,6 +167,7 @@ export class DecisionDraft {
       state: this.state,
       task,
       pull,
+      /* CONDITIONAL-SPREAD: Omit absent attemptId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(attemptId === undefined ? {} : { attemptId }),
       nonce: this.nonce(),
     });

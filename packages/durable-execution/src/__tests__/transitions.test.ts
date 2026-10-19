@@ -122,7 +122,9 @@ describe("pure durable execution transitions", () => {
     expect(terminalCapsuleParser.parse({ ...valid, tasks: [] }).ok).toBe(false);
     const parsed = terminalCapsuleParser.parse(valid);
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     const { outcome: _outcome, ...missingOutcome } = parsed.value;
     expect(terminalCapsuleParser.parse(missingOutcome).ok).toBe(false);
   });

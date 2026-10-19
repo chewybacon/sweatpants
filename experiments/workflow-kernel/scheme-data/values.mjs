@@ -2,7 +2,9 @@ import { encodeNumber } from "./numbers.mjs";
 import { parse } from "./read.mjs";
 
 export function schemeString(value) {
-    if (!value.isWellFormed()) throw Error("Invalid Unicode string");
+    if (!value.isWellFormed()) {
+        throw Error("Invalid Unicode string");
+    }
     return (
         '"' +
         value.replace(/["\\\x00-\x1f\x7f]/g, (c) =>
@@ -17,41 +19,60 @@ export function encodeValue(value) {
     const active = new Set();
     let count = 0;
     function encode(value, depth) {
-        if (++count > 10000 || depth > 128) throw Error("Portable value budget exceeded");
-        if (value === null) return "json-null";
+        if (++count > 10000 || depth > 128) {
+            throw Error("Portable value budget exceeded");
+        }
+        if (value === null) {
+            return "json-null";
+        }
         if (typeof value === "string") {
-            if (!value.isWellFormed()) throw Error("Invalid Unicode string");
+            if (!value.isWellFormed()) {
+                throw Error("Invalid Unicode string");
+            }
             return schemeString(value);
         }
-        if (typeof value === "boolean") return value ? "#t" : "#f";
-        if (typeof value === "number" && Number.isFinite(value)) return encodeNumber(value);
-        if (typeof value !== "object" || active.has(value))
+        if (typeof value === "boolean") {
+            return value ? "#t" : "#f";
+        }
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return encodeNumber(value);
+        }
+        if (typeof value !== "object" || active.has(value)) {
             throw Error("Unsupported portable value");
+        }
         if (
             !Array.isArray(value) &&
             ![Object.prototype, null].includes(Object.getPrototypeOf(value))
-        )
+        ) {
             throw Error("Unsupported host object");
+        }
         active.add(value);
         const descriptors = Object.getOwnPropertyDescriptors(value);
-        if (Object.getOwnPropertySymbols(value).length)
+        if (Object.getOwnPropertySymbols(value).length) {
             throw Error("Symbol properties are not portable");
+        }
         const read = (key) => {
             const property = descriptors[key];
-            if (!property || !("value" in property) || !property.enumerable)
+            if (!property || !("value" in property) || !property.enumerable) {
                 throw Error("Unsupported value property");
+            }
             return encode(property.value, depth + 1);
         };
         let result;
         if (Array.isArray(value)) {
-            if (value.length > 10000) throw Error("Portable value budget exceeded");
-            if (Object.keys(descriptors).length !== value.length + 1)
+            if (value.length > 10000) {
+                throw Error("Portable value budget exceeded");
+            }
+            if (Object.keys(descriptors).length !== value.length + 1) {
                 throw Error("Unsupported array properties");
+            }
             result = `(${Array.from({ length: value.length }, (_, i) => read(String(i))).join(" ")})`;
         } else {
             result = `(json-object ${Object.keys(descriptors)
                 .map((key) => {
-                    if (!key.isWellFormed()) throw Error("Invalid Unicode key");
+                    if (!key.isWellFormed()) {
+                        throw Error("Invalid Unicode key");
+                    }
                     return `(${schemeString(key)} ${read(key)})`;
                 })
                 .join(" ")})`;
@@ -64,17 +85,28 @@ export function encodeValue(value) {
 
 export function decodeValue(source) {
     const forms = parse(source);
-    if (forms.length !== 1) throw Error("Expected one boundary value");
+    if (forms.length !== 1) {
+        throw Error("Expected one boundary value");
+    }
     let count = 0;
     function decode(value, depth) {
-        if (++count > 10000 || depth > 128) throw Error("Portable value budget exceeded");
-        if (value?.sym === "json-null") return null;
+        if (++count > 10000 || depth > 128) {
+            throw Error("Portable value budget exceeded");
+        }
+        if (value?.sym === "json-null") {
+            return null;
+        }
         if (Array.isArray(value)) {
             if (value[0]?.sym === "json-object") {
                 const result = {};
                 for (const entry of value.slice(1)) {
-                    if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string")
+                    if (
+                        !Array.isArray(entry) ||
+                        entry.length !== 2 ||
+                        typeof entry[0] !== "string"
+                    ) {
                         throw Error("Invalid object entry");
+                    }
                     Object.defineProperty(result, entry[0], {
                         value: decode(entry[1], depth + 1),
                         enumerable: true,
@@ -90,8 +122,9 @@ export function decodeValue(source) {
             typeof value === "string" ||
             typeof value === "boolean" ||
             (typeof value === "number" && Number.isFinite(value))
-        )
+        ) {
             return value;
+        }
         throw Error("Nonportable kernel value");
     }
     return decode(forms[0], 0);

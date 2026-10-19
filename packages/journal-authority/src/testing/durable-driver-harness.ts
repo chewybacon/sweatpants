@@ -269,6 +269,7 @@ export function* runDurableDriverRecoveryFixture(
         activeAttachments -= 1;
       }
     },
+    /* CONDITIONAL-SPREAD: Expose restoreContext only when its backing capability exists; callers inspect supported methods. */
     ...(concreteDriver.restoreContext
       ? {
           *restoreContext(request) {
@@ -338,6 +339,7 @@ export function* runDurableDriverRecoveryFixture(
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* driveInstalledTestProgramTree({
               attach: { ...attach, executionEpoch },
+              /* CONDITIONAL-SPREAD: The activationOwnerId fields belong only to the claim?.status === "claimed" variant. */
               ...(claim?.status === "claimed" ? { activationOwnerId: ownerId } : {}),
             });
           });

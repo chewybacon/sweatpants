@@ -281,16 +281,11 @@ export const modelSampleRequestParser: Parser<ModelSampleRequest> =
     }
 
     return success({
-      invocation: {
-        context: context.value,
-        ...(value.invocation.options === undefined
-          ? {}
-          : { options: normalizeOptions(value.invocation.options) }),
-      },
+      invocation: { context: context.value, options: value.invocation.options },
       tools,
       response: value.response as ModelResponseMode,
-      ...(value.modelPreferences === undefined ? {} : { modelPreferences: value.modelPreferences }),
-      ...(value.classifications === undefined ? {} : { classifications: value.classifications }),
+      modelPreferences: value.modelPreferences,
+      classifications: value.classifications,
     });
   });
 
@@ -334,7 +329,7 @@ export function resolveModelSampleSourceRequest(
     ...request,
     invocation: {
       context,
-      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
+      options: request.invocation.options,
     },
   });
 }
@@ -342,22 +337,11 @@ export function resolveModelSampleSourceRequest(
 export function encodeModelSampleSourceRequest(
   request: ModelSampleSourceRequest,
 ): ModelSampleWireRequest {
-  return assertJson(request) as JsonObject;
+  return JSON.parse(JSON.stringify(request)) as JsonObject;
 }
 
 export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSampleWireRequest {
-  return assertJson({
-    invocation: {
-      context: request.invocation.context,
-      ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
-    },
-    tools: request.tools,
-    response: request.response,
-    ...(request.modelPreferences === undefined
-      ? {}
-      : { modelPreferences: request.modelPreferences }),
-    ...(request.classifications === undefined ? {} : { classifications: request.classifications }),
-  }) as JsonObject;
+  return JSON.parse(JSON.stringify(request)) as JsonObject;
 }
 
 export function decodeModelSampleResult(value: unknown): ModelSampleResult {
@@ -365,18 +349,9 @@ export function decodeModelSampleResult(value: unknown): ModelSampleResult {
 }
 
 export function encodeModelSampleResult(result: ModelSampleResult): ModelSampleWireResult {
-  return assertJson({ message: result.message, output: result.output }) as JsonObject;
-}
-
-function normalizeOptions(value: z.output<typeof optionsSchema>): ModelSampleInvocationOptions {
-  return {
-    ...(value.toolChoice === undefined ? {} : { toolChoice: value.toolChoice }),
-    ...(value.maxTokens === undefined ? {} : { maxTokens: value.maxTokens }),
-    ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
-    ...(value.topP === undefined ? {} : { topP: value.topP }),
-    ...(value.topK === undefined ? {} : { topK: value.topK }),
-    ...(value.thinking === undefined ? {} : { thinking: value.thinking }),
-  };
+  return JSON.parse(
+    JSON.stringify({ message: result.message, output: result.output }),
+  ) as JsonObject;
 }
 
 function requireParsed<T>(

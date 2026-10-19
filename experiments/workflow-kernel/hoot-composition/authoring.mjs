@@ -7,7 +7,9 @@ export function createHootAuthoring({ loadMachine, createProgram }) {
     const sourceValidator = {
         language: "scheme",
         *validate(source) {
-            if (source.language !== "scheme") return "Hoot requires Scheme caller source";
+            if (source.language !== "scheme") {
+                return "Hoot requires Scheme caller source";
+            }
             const machine = yield* call(loadMachine);
             return machine.validate(source.text);
         },
@@ -16,8 +18,12 @@ export function createHootAuthoring({ loadMachine, createProgram }) {
         linker: hootLinker,
         sourceValidator,
         createProgram({ implementation, ...options }) {
-            if (implementation.format !== HOOT_PROGRAM_FORMAT || typeof implementation.payload !== "string")
+            if (
+                implementation.format !== HOOT_PROGRAM_FORMAT ||
+                typeof implementation.payload !== "string"
+            ) {
                 throw Error("Incompatible Hoot program implementation");
+            }
             return createProgram({ ...options, source: implementation.payload });
         },
     };

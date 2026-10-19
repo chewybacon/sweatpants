@@ -178,7 +178,10 @@ export function createMemoryDurableKernel(): DurableKernel {
           fingerprint: ensure.fingerprint,
           value: cloneValue(ensure.value),
         };
-        const entry = { record, aliases: [ensure.key, ...(ensure.alternateKeys ?? [])] };
+        const entry = {
+          record,
+          aliases: [ensure.key, ...(ensure.alternateKeys ?? [])],
+        };
         return { name: ensure.name, entry, positions: positions(entry) };
       });
 

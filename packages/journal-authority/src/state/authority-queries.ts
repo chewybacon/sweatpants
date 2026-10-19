@@ -246,7 +246,11 @@ function validateElicitResponse(
     const reason = sanitizeCancellationReason(
       typeof envelope.reason === "string" ? envelope.reason : undefined,
     );
-    value = { action: envelope.action, ...(reason === undefined ? {} : { reason }) };
+    value = {
+      action:
+        envelope.action /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+      ...(reason === undefined ? {} : { reason }),
+    };
   }
   try {
     assertInlineSize({ status: "ok", value }, pull.request.maxOutcomeBytes);
@@ -321,7 +325,9 @@ function taskExecutionState(
   const task = taskFor(state, sessionId, taskId);
   return {
     executionEpoch: task.execution.epoch,
+    /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(task.execution.route === undefined ? {} : { route: structuredClone(task.execution.route) }),
+    /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(task.execution.catalog === undefined
       ? {}
       : {
@@ -348,6 +354,7 @@ function operationState(
     status: "found",
     descriptor: structuredClone(action.pull.request.proposedDescriptor),
     audience: pullAudience(action.pull),
+    /* CONDITIONAL-SPREAD: The outcome fields belong only to the action.pull.resolution.status === "settled" variant. */
     ...(action.pull.resolution.status === "settled"
       ? { outcome: structuredClone(action.pull.resolution.settlement.outcome) }
       : {}),

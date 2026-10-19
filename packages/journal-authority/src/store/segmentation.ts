@@ -40,6 +40,8 @@ export function segmentPrivateEntries(
     entries.push(value);
     encodedBytes += valueBytes;
   }
-  if (entries.length > 0) segments.push({ entries, encodedBytes });
+  if (entries.length > 0) {
+    segments.push({ entries, encodedBytes });
+  }
   return segments;
 }

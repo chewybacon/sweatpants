@@ -9,7 +9,9 @@ describe("model semantic barriers", () => {
       const simulator = await startModelSimulator();
       try {
         const result = listen.mock.results[0];
-        if (!result || result.type !== "return") throw new Error("Simulator did not listen");
+        if (!result || result.type !== "return") {
+          throw new Error("Simulator did not listen");
+        }
         // On macOS a wildcard IPv6 listener can overlap another IPv4 service's
         // port. Checking the real bound address catches that before HTTP routing.
         expect(result.value.address()).toEqual({

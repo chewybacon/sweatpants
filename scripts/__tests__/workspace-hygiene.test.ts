@@ -43,7 +43,9 @@ function ledgerWith(root: string, rows: string): void {
 }
 
 afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  for (const root of roots) {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 describe("workspace hygiene gate", () => {

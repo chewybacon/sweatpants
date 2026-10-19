@@ -82,8 +82,9 @@ for (const reply of [{ action: "cancel" }, { action: "cancel" }]) {
         },
         broken.schemas,
     );
-    if (bad.events.filter((e) => e.kind === "command").length === 1)
+    if (bad.events.filter((e) => e.kind === "command").length === 1) {
         bad = repair(bad, reg, broken.schemas);
+    }
 }
 const before = JSON.stringify(bad);
 const failed = repair(bad, reg, broken.schemas);
@@ -176,7 +177,9 @@ checks++;
 const brokenValidator = {
     get(digest) {
         const entry = broken.schemas.get(digest);
-        if (digest !== broken.artifact.boundary.output) return entry;
+        if (digest !== broken.artifact.boundary.output) {
+            return entry;
+        }
         return {
             ...entry,
             schema: {

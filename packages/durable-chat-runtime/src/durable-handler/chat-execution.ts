@@ -304,6 +304,7 @@ export function* executeChatTurn(
     const agUiRun = {
       threadId: agUiThreadId,
       runId: agUiRunId,
+      /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
     };
     const recoveredPublicationCandidate = yield* recoverTerminalPublication(
@@ -344,6 +345,7 @@ export function* executeChatTurn(
         })),
         context: body.context ?? [],
         forwardedProps: body.forwardedProps ?? {},
+        /* CONDITIONAL-SPREAD: Omit absent resume from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(body.resume ? { resume: body.resume } : {}),
       },
     };
@@ -382,10 +384,12 @@ export function* executeChatTurn(
             selectedHead?.activeExecutionId ?? `chat-turn:${requestedConversationId}:${agUiRunId}`,
           targets: checkpointTargets,
           expectedRevision: body.command?.basisRevision ?? selectedHead?.revision ?? null,
+          /* CONDITIONAL-SPREAD: Omit absent expectedOwnerEpoch from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(selectedHead?.ownerEpoch ? { expectedOwnerEpoch: selectedHead.ownerEpoch } : {}),
           expectedExecutionId: selectedHead?.activeExecutionId ?? null,
         });
       },
+      /* CONDITIONAL-SPREAD: The expectedLogicalTurnId, expectedExecutionId fields belong only to the body.command?.type === "respond-to-elicit" variant. */
       ...(body.command?.type === "respond-to-elicit"
         ? {
             expectedLogicalTurnId: body.command.logicalTurnId,
@@ -610,6 +614,7 @@ export function* executeChatTurn(
         : authorityTurn?.commandId;
     const engineParams: WorkflowChatEngineParams = {
       messages: authoritativeMessages,
+      /* CONDITIONAL-SPREAD: Omit absent modelContextSource from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(sourceCheckpoint && authorityTurn && activeCommandId
         ? {
             modelContextSource: {
@@ -620,6 +625,7 @@ export function* executeChatTurn(
               executionId: authorityTurn.executionId,
               taskId: authorityTurn.rootTaskId,
               taskJournalFrontier: "current",
+              /* CONDITIONAL-SPREAD: Omit absent systemPrompt from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
               ...(systemPrompt !== undefined ? { systemPrompt } : {}),
             },
           }
@@ -648,10 +654,13 @@ export function* executeChatTurn(
           liveProgramActivations.delete(requestedConversationId);
         }
       },
+      /* CONDITIONAL-SPREAD: Omit absent recoveryOnly from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(resolvedHead !== null ? { recoveryOnly: true } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent elicitResponses from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(plan.effectiveElicitResponses.length > 0 && {
         elicitResponses: plan.effectiveElicitResponses,
       }),
+      /* CONDITIONAL-SPREAD: Expose onResumeAccepted only when its backing capability exists; callers inspect supported methods. */
       ...(respondCommand
         ? {
             onResumeAccepted: function* (): Operation<void> {
@@ -663,6 +672,7 @@ export function* executeChatTurn(
             },
           }
         : {}),
+      /* CONDITIONAL-SPREAD: Omit absent pluginAbort from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(plan.effectivePluginAbort && { pluginAbort: plan.effectivePluginAbort }),
       ...createTurnPublishers(execution, context, authorityTurn, liveActivation),
     };

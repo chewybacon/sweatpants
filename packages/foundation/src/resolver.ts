@@ -52,8 +52,12 @@ export function defineResolver<TInput, TOutput>(
   const api = createApi<ResolverHandler<TInput, TOutput>>(name, {
     *resolve(input: TInput): Operation<TOutput> {
       const implementation = yield* rawImplementation.get();
-      if (implementation) return yield* implementation(input);
-      if (fallback) return yield* fallback(input);
+      if (implementation) {
+        return yield* implementation(input);
+      }
+      if (fallback) {
+        return yield* fallback(input);
+      }
       const error = new Error(`Resolver "${name}" is not installed`);
       Object.assign(error, { code: "resolver_unavailable" });
       throw error;

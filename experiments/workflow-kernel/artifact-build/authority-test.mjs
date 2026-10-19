@@ -122,17 +122,23 @@ for (const mode of ["complete", "complete-uncached", "cancel-acquire", "cancel-c
                 ...options,
                 snapshot: authority.exportSnapshot(),
             });
-            if (i === 9) throw Error("Did not settle");
+            if (i === 9) {
+                throw Error("Did not settle");
+            }
         }
         check(() => assert.ok(observations.some((x) => x.type === "attachment-disposed")));
         if (mode.startsWith("complete")) {
             check(() => assert.deepEqual(seen, ["acquire", "release", "acquire", "release"]));
-            if (mode === "complete")
+            if (mode === "complete") {
                 check(() => assert.ok(observations.some((x) => x.type === "checkpoint-restored")));
+            }
         }
-        if (mode === "cancel-acquire") check(() => assert.deepEqual(seen, ["acquire"]));
-        if (mode === "cancel-cleanup")
+        if (mode === "cancel-acquire") {
+            check(() => assert.deepEqual(seen, ["acquire"]));
+        }
+        if (mode === "cancel-cleanup") {
             check(() => assert.deepEqual(seen, ["acquire", "release", "release"]));
+        }
         console.log("PASS real authority", mode, JSON.stringify(seen));
     });
 }

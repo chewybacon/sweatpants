@@ -57,8 +57,10 @@ function createNodeProcess(renderer: NodeRendererDefinition<unknown>): ProcessFn
         nodes ??= [...document.nodes];
         nodes[index] = {
           ...node,
+          /* CONDITIONAL-SPREAD: Retain the previous rendered block's rendered when this renderer provides no replacement. */
           ...(typeof result === "string" && { rendered: result }),
           settled: node.complete && !unavailable,
+          /* CONDITIONAL-SPREAD: The error fields belong only to the typeof result !== "string" && result.status === "error" variant. */
           ...(typeof result !== "string" && result.status === "error" && { error: result.reason }),
         };
         current = addTrace(

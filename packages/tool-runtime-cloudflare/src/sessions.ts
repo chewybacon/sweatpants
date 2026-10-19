@@ -19,13 +19,18 @@ export function createToolSessions(options: {
   maxLifetimeMs?: number;
 }): ToolSessionsClass {
   const lifetime = options.maxLifetimeMs ?? 600_000;
-  if (!Number.isSafeInteger(lifetime) || lifetime < 1 || lifetime > 600_000)
+  if (!Number.isSafeInteger(lifetime) || lifetime < 1 || lifetime > 600_000) {
     throw new Error("maxLifetimeMs must be between 1 and 600000");
+  }
   const tools = new Map(options.tools.map((tool) => [tool.name, tool]));
-  if (tools.size !== options.tools.length) throw new Error("Duplicate session tool name");
-  for (const tool of tools.values())
-    if (!isExecutableToolContract(tool))
+  if (tools.size !== options.tools.length) {
+    throw new Error("Duplicate session tool name");
+  }
+  for (const tool of tools.values()) {
+    if (!isExecutableToolContract(tool)) {
       throw new Error(`Session tool is not executable: ${tool.name}`);
+    }
+  }
 
   return class ToolSessions extends DurableObject<unknown> implements ToolSessionRpc {
     private session?: ToolSession;
@@ -33,8 +38,9 @@ export function createToolSessions(options: {
     private readonly reads = new Map<string, Task<IteratorResult<ToolSessionEvent, void>>>();
 
     private requireSession(): ToolSession {
-      if (!this.session)
+      if (!this.session) {
         throw new Error("tool_session_lost: live generator is unavailable; start a new invocation");
+      }
       return this.session;
     }
 
@@ -46,7 +52,9 @@ export function createToolSessions(options: {
           return { error };
         }
       });
-      if ("error" in result) throw result.error;
+      if ("error" in result) {
+        throw result.error;
+      }
       return result.value;
     }
 
@@ -57,14 +65,16 @@ export function createToolSessions(options: {
         "invocation",
       );
       if (previous) {
-        if (previous.digest !== digest)
+        if (previous.digest !== digest) {
           throw new Error("invocation_conflict: invocation already started with different input");
+        }
         this.requireSession();
         return JSON.stringify(previous.metadata);
       }
       const tool = tools.get(request.toolName);
-      if (!tool || !isExecutableToolContract(tool))
+      if (!tool || !isExecutableToolContract(tool)) {
         throw new Error(`Unknown session tool: ${request.toolName}`);
+      }
       const metadata: SessionMetadata = {
         id: request.invocationId,
         toolName: tool.name,
@@ -100,13 +110,17 @@ export function createToolSessions(options: {
 
     async inspect(): Promise<string> {
       const stored = await this.ctx.storage.get<{ metadata: SessionMetadata }>("invocation");
-      if (!stored) return "null";
+      if (!stored) {
+        return "null";
+      }
       this.requireSession();
       return JSON.stringify(stored.metadata);
     }
 
     async next(readerId: string, cursor: number): Promise<string> {
-      if (this.reads.has(readerId)) throw new Error("Concurrent session read");
+      if (this.reads.has(readerId)) {
+        throw new Error("Concurrent session read");
+      }
       const session = this.requireSession();
       const task = run(function* () {
         const subscription = yield* session.projection.events(cursor);

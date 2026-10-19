@@ -276,27 +276,39 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       interruptedRunId: runId,
       interruptId: candidate["id"],
       reason: typeof candidate["reason"] === "string" ? candidate["reason"] : "input_required",
+      /* CONDITIONAL-SPREAD: Omit absent message from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(typeof candidate["message"] === "string" ? { message: candidate["message"] } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent toolCallId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(toolCallId ? { toolCallId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent toolName from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(toolName ? { toolName } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent sessionId, executionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(sessionId ? { sessionId, executionId: sessionId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent responseSchema from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(responseSchemaSchema.safeParse(candidate["responseSchema"]).success
         ? { responseSchema: candidate["responseSchema"] as Record<string, unknown> }
         : {}),
+      /* CONDITIONAL-SPREAD: Omit absent bindingId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(typeof candidate["bindingId"] === "string"
         ? { bindingId: candidate["bindingId"] }
         : typeof elicitationFacts["bindingId"] === "string"
           ? { bindingId: elicitationFacts["bindingId"] }
           : {}),
+      /* CONDITIONAL-SPREAD: Omit absent context from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(context !== undefined ? { context } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent responseContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(responseContract ? { responseContract } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(contextContract ? { contextContract } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent placement from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(isPlacement(candidate["placement"])
         ? { placement: candidate["placement"] }
         : isPlacement(elicitationFacts["placement"])
           ? { placement: elicitationFacts["placement"] }
           : {}),
+      /* CONDITIONAL-SPREAD: Omit absent publicMetadata from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(Object.keys(metadata).length > 0 ? { publicMetadata: metadata } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent expiresAt from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(typeof candidate["expiresAt"] === "string" ? { expiresAt: candidate["expiresAt"] } : {}),
       createdAt: new Date().toISOString(),
       status: "open",

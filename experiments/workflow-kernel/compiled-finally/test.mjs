@@ -121,10 +121,13 @@ if (process.argv[2] === "step") {
             assert.deepEqual(r.outcome, JSON.parse(JSON.stringify(outcome)), c.name);
         } else {
             assert.deepEqual(r.outcome, { kind: "cancelled" }, c.name);
-            if (c.cancelAt !== "parent continued")
+            if (c.cancelAt !== "parent continued") {
                 assert.equal(trace.includes("parent continued"), false, c.name);
+            }
             assert.equal(trace.at(-1), "parent cleanup");
-            if (c.cancelAt !== "parent continued") assert.ok(trace.includes("child cleanup 2"));
+            if (c.cancelAt !== "parent continued") {
+                assert.ok(trace.includes("child cleanup 2"));
+            }
         }
         if (c.name === "normal") {
             fs.writeFileSync(dir + "artifact.json", JSON.stringify(artifact, null, 2));

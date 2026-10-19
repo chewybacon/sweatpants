@@ -81,13 +81,16 @@ it("checks known lexical arities after expansion without confusing shadowed name
     ]) {
       const result = yield* driver.validate(source);
       expect(result.valid).toBe(false);
-      if (!result.valid) expect(result.message).toContain("E_ARITY");
+      if (!result.valid) {
+        expect(result.message).toContain("E_ARITY");
+      }
     }
     for (const source of [
       "(let ((ask (lambda (x y) (+ x y)))) (ask 1 2))",
       "(let () (define (sum . xs) (apply + xs)) (sum 1 2 3))",
       "(let ((call (lambda (f) (f 1)))) (call (lambda (x) x)))",
-    ])
+    ]) {
       expect(yield* driver.validate(source)).toEqual({ valid: true });
+    }
   });
 });

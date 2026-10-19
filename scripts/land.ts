@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         command: "pnpm",
         args: ["-C", packageDir, "test"],
         timeoutMs: test.includes("playwright") ? 15 * 60_000 : 10 * 60_000,
-        ...(test.includes("playwright") ? { forbidSkips: true } : {}),
+        forbidSkips: test.includes("playwright") ? true : undefined,
       });
     }
     return stages;
@@ -170,6 +170,7 @@ async function main(): Promise<void> {
   const appTests = mode === "live" ? [] : await appTestStages();
   const stages = [
     ...(mode === "live" ? [] : deterministicStages(appTests)),
+
     ...(mode === "deterministic" ? [] : liveStages()),
   ];
 

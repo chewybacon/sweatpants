@@ -47,8 +47,8 @@ import {
   type Json,
   type Parser,
   type SerializedApplicationError,
-  canonicalDigest,
-  canonicalJson,
+  digestCanonicalJson,
+  encodeCanonicalJson,
 } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
@@ -219,33 +219,12 @@ const elicitOptionsSchema = z.strictObject({
 });
 
 /** Result-oriented parser for elicitation authoring. */
-export const elicitOptionsParser: Parser<DurableElicitDescriptor> = parser(elicitOptionsSchema).map(
-  (options) => ({
-    kind: "elicit" as const,
-    key: options.key,
-    message: options.message,
-    response: normalizePortableSchema(options.response),
-    ...(options.contextContract === undefined
-      ? {}
-      : { contextContract: normalizePortableSchema(options.contextContract) }),
-    ...(options.context === undefined ? {} : { context: asJson(options.context) }),
-    ...(options.binding === undefined ? {} : { binding: options.binding }),
-  }),
-);
+export const elicitOptionsParser: Parser<DurableElicitDescriptor> =
+  parser(elicitOptionsSchema).map(normalizeElicitDescriptor);
 
 /** Result-oriented parser for installed-effect authoring. */
 export const effectOptionsParser: Parser<EffectDescriptor> = parser(effectOptionsSchema).map(
-  (options) =>
-    Object.freeze({
-      kind: "effect" as const,
-      name: options.name,
-      version: options.version,
-      input: options.input,
-      resolver: {
-        audience: options.resolver.audience,
-        ...(options.resolver.route === undefined ? {} : { route: options.resolver.route }),
-      },
-    }),
+  (options) => Object.freeze(normalizeEffectDescriptor(options)),
 );
 
 const invokeOptionsSchema = z.strictObject({
@@ -265,7 +244,7 @@ export const invokeOptionsParser: Parser<DurableInvokeDescriptor> = parser(invok
       id: options.child.id,
       version: options.child.version,
       digest: options.child.digest,
-      input: asJson(options.child.input),
+      input: options.child.input,
     },
   }),
 );
@@ -278,12 +257,7 @@ const waitOptionsSchema = z.strictObject({
 
 /** Result-oriented parser for wait authoring. */
 export const waitOptionsParser: Parser<WaitDescriptor> = parser(waitOptionsSchema).map((options) =>
-  Object.freeze({
-    kind: "wait" as const,
-    key: options.key,
-    ...(options.notBefore === undefined ? {} : { notBefore: options.notBefore }),
-    ...(options.durationMs === undefined ? {} : { durationMs: options.durationMs }),
-  }),
+  Object.freeze(normalizeWaitDescriptor(options)),
 );
 
 function requireParsed<T>(
@@ -869,130 +843,31 @@ const shutdownReasonSchema = z.enum([
 
 const programCommandStructureParser = parser(programCommandSchema);
 
-/**
- * Zod's JSON algebra and Foundation's Json are two spellings of one closed
- * structure; the authority re-validates through assertJson at commit, so this
- * boundary conversion cannot admit non-JSON data.
- */
-function asJson(value: z.infer<ReturnType<typeof z.json>>): Json {
-  return value as unknown as Json;
+function normalizeElicitDescriptor(options: z.output<typeof elicitOptionsSchema>) {
+  return { kind: "elicit" as const, ...options };
 }
 
-function normalizePortableSchema(
-  value: z.infer<typeof portableSchemaDescriptorSchema>,
-): PortableSchemaDescriptor {
-  return {
-    identity: value.identity,
-    role: value.role,
-    version: value.version,
-    vendor: value.vendor,
-    inputProjection: asJson(value.inputProjection),
-    outputProjection: asJson(value.outputProjection),
-    fidelity: value.fidelity,
-    digest: value.digest,
-  };
+function normalizeEffectDescriptor(options: z.output<typeof effectOptionsSchema>) {
+  return { kind: "effect" as const, ...options };
+}
+
+function normalizeWaitDescriptor(options: z.output<typeof waitOptionsSchema>) {
+  return { kind: "wait" as const, ...options };
 }
 
 function normalizeParsedDescriptor(
   descriptor: z.infer<typeof proposableOperationDescriptorSchema>,
 ): DurableOperationDescriptor {
-  switch (descriptor.kind) {
-    case "record":
-      return { kind: "record", key: descriptor.key, retrySafety: descriptor.retrySafety };
-    case "effect":
-      return {
-        kind: "effect",
-        name: descriptor.name,
-        version: descriptor.version,
-        input: asJson(descriptor.input),
-        resolver: {
-          audience: descriptor.resolver.audience,
-          ...(descriptor.resolver.route === undefined ? {} : { route: descriptor.resolver.route }),
-        },
-      };
-    case "elicit":
-      return {
-        kind: "elicit",
-        key: descriptor.key,
-        message: descriptor.message,
-        response: normalizePortableSchema(descriptor.response),
-        ...(descriptor.contextContract === undefined
-          ? {}
-          : { contextContract: normalizePortableSchema(descriptor.contextContract) }),
-        ...(descriptor.context === undefined ? {} : { context: asJson(descriptor.context) }),
-        ...(descriptor.binding === undefined ? {} : { binding: descriptor.binding }),
-      };
-    case "wait":
-      return {
-        kind: "wait",
-        key: descriptor.key,
-        ...(descriptor.notBefore === undefined ? {} : { notBefore: descriptor.notBefore }),
-        ...(descriptor.durationMs === undefined ? {} : { durationMs: descriptor.durationMs }),
-      };
-    case "invoke":
-      return {
-        kind: "invoke",
-        child: {
-          id: descriptor.child.id,
-          version: descriptor.child.version,
-          digest: descriptor.child.digest,
-          input: asJson(descriptor.child.input),
-        },
-      };
-    case "all":
-      return {
-        kind: "all",
-        supervision: descriptor.supervision,
-        children: descriptor.children.map((child) => ({
-          id: child.id,
-          version: child.version,
-          digest: child.digest,
-          input: asJson(child.input),
-          ...(child.durability === undefined ? {} : { durability: child.durability }),
-        })),
-        expiry: descriptor.expiry,
-      };
-    case "race":
-      return {
-        kind: "race",
-        supervision: descriptor.supervision,
-        children: descriptor.children.map((child) => ({
-          id: child.id,
-          version: child.version,
-          digest: child.digest,
-          input: asJson(child.input),
-          ...(child.durability === undefined ? {} : { durability: child.durability }),
-        })),
-        expiry: descriptor.expiry,
-      };
-    case "sample":
-      return { kind: "sample", input: asJson(descriptor.input) };
-    case "ephemeral":
-      return {
-        kind: "ephemeral",
-        driver: descriptor.driver,
-        tool: descriptor.tool,
-        input: asJson(descriptor.input),
-        durability: descriptor.durability,
-      };
-  }
-}
-
-function normalizeParsedOutcome(value: z.infer<typeof operationOutcomeSchema>): OperationOutcome {
-  if (value.status === "ok") {
-    return { status: "ok", value: value.value };
-  }
-  if (value.status === "cancelled") {
-    return value.partial === undefined
-      ? { status: "cancelled" }
-      : { status: "cancelled", partial: value.partial };
+  if (descriptor.kind !== "invoke") {
+    return descriptor;
   }
   return {
-    status: "error",
-    error: {
-      code: value.error.code,
-      message: value.error.message,
-      ...(value.error.details === undefined ? {} : { details: value.error.details }),
+    kind: "invoke",
+    child: {
+      id: descriptor.child.id,
+      version: descriptor.child.version,
+      digest: descriptor.child.digest,
+      input: descriptor.child.input,
     },
   };
 }
@@ -1015,14 +890,12 @@ export const programCommandParser: Parser<ProgramCommand> = programCommandStruct
         return {
           type: "resume-record",
           actionIndex: command.actionIndex,
-          outcome: normalizeParsedOutcome(command.outcome),
+          outcome: command.outcome,
           receipt: command.receipt,
           replayed: command.replayed,
         };
       case "cancel":
-        return command.reason === undefined
-          ? { type: "cancel" }
-          : { type: "cancel", reason: command.reason };
+        return command;
       case "ack-emission":
         return {
           type: "ack-emission",
@@ -1236,7 +1109,9 @@ function stale(): CrankError {
 }
 
 function sameCanonical<T>(left: T, right: T): boolean {
-  return canonicalJson(left) === canonicalJson(right);
+  return (
+    encodeCanonicalJson(left as unknown as Json) === encodeCanonicalJson(right as unknown as Json)
+  );
 }
 
 function verifyResumeReceipt(
@@ -1246,7 +1121,7 @@ function verifyResumeReceipt(
   if (
     command.receipt.sessionId !== state.request.sessionId ||
     command.receipt.taskId !== state.request.taskId ||
-    command.receipt.outcomeDigest !== canonicalDigest(command.outcome)
+    command.receipt.outcomeDigest !== digestCanonicalJson(command.outcome)
   ) {
     throw protocol("resume receipt mismatch");
   }
@@ -1629,7 +1504,9 @@ export function openProgramAttachment(
         state.disposition = acceptedReason;
       },
       *close(reason: ProgramShutdownReason): Operation<void> {
-        if (state.phase === "disposed") return;
+        if (state.phase === "disposed") {
+          return;
+        }
         state.disposition = requireParsed(
           programShutdownReasonParser,
           reason,

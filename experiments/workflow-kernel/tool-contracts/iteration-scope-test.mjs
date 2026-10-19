@@ -80,9 +80,12 @@ for (const mode of ["normal", "cancel-cleanup", "cleanup-error", "cancel-acquire
             request[1] === "acquire"
                 ? { reply: { action: "accept", content: { id: `hold-${++acquired}` } } }
                 : { reply: { action: "accept", content: "released" } };
-        if (mode === "cleanup-error" && request[1] === "release")
+        if (mode === "cleanup-error" && request[1] === "release") {
             input = { error: "release failed" };
-        if (mode === "cancel-acquire") input = { cancel: true };
+        }
+        if (mode === "cancel-acquire") {
+            input = { cancel: true };
+        }
         const accepted = appendCommand(
             record,
             registry,
@@ -135,8 +138,9 @@ for (const mode of ["normal", "cleanup-error"]) {
                 {
                     pull: function* (request) {
                         trace.push([request.key, request.message]);
-                        if (mode === "cleanup-error" && request.key === "release")
+                        if (mode === "cleanup-error" && request.key === "release") {
                             throw "release failed";
+                        }
                         return request.key === "acquire"
                             ? { action: "accept", content: { id: `hold-${++acquired}` } }
                             : { action: "accept", content: "released" };

@@ -78,7 +78,9 @@ const pullsFold = prefilter(
     return {
       step(record) {
         const key = pullKey(record.taskId, record.pullId);
-        if (!pulls.has(key)) pulls.set(key, record);
+        if (!pulls.has(key)) {
+          pulls.set(key, record);
+        }
       },
       done: () => pulls,
     };
@@ -93,9 +95,15 @@ const unfinishedFold = prefilter(
     const completed = new Set<string>();
     return {
       step(record) {
-        if (record.callId === null) return;
-        if (record.event === "started") started.push(record.callId);
-        if (record.event === "completed") completed.add(record.callId);
+        if (record.callId === null) {
+          return;
+        }
+        if (record.event === "started") {
+          started.push(record.callId);
+        }
+        if (record.event === "completed") {
+          completed.add(record.callId);
+        }
       },
       done: () => started.filter((callId) => !completed.has(callId)),
     };
@@ -138,7 +146,9 @@ const emissionLinksFold: Fold<DurableRecord, ReadonlyMap<number, string | null>>
         lastModelPull.set(record.taskId, pullKey(record.taskId, record.pullId));
         return;
       }
-      if (record.kind !== "emission") return;
+      if (record.kind !== "emission") {
+        return;
+      }
       links.set(ordinal, lastModelPull.get(record.taskId) ?? null);
       ordinal += 1;
     },
@@ -180,27 +190,41 @@ export function indexRecords(records: Iterable<DurableRecord>): RecordIndex {
 export function indexRecordsByHand(records: readonly DurableRecord[]): RecordIndex {
   const pulls = new Map<string, PullRecord>();
   for (const record of records) {
-    if (record.kind !== "pull") continue;
+    if (record.kind !== "pull") {
+      continue;
+    }
     const key = pullKey(record.taskId, record.pullId);
-    if (!pulls.has(key)) pulls.set(key, record);
+    if (!pulls.has(key)) {
+      pulls.set(key, record);
+    }
   }
 
   const started: string[] = [];
   const completed = new Set<string>();
   for (const record of records) {
-    if (record.kind !== "emission" || record.callId === null) continue;
-    if (record.event === "started") started.push(record.callId);
-    if (record.event === "completed") completed.add(record.callId);
+    if (record.kind !== "emission" || record.callId === null) {
+      continue;
+    }
+    if (record.event === "started") {
+      started.push(record.callId);
+    }
+    if (record.event === "completed") {
+      completed.add(record.callId);
+    }
   }
 
   let terminal: ClosedRecord["status"] | null = null;
   for (const record of records) {
-    if (record.kind === "closed") terminal = record.status;
+    if (record.kind === "closed") {
+      terminal = record.status;
+    }
   }
 
   const prepared = new Map<string, string>();
   for (const record of records) {
-    if (record.kind !== "prepared") continue;
+    if (record.kind !== "prepared") {
+      continue;
+    }
     prepared.set(pullKey(record.taskId, record.pullId), record.messageId);
   }
 
@@ -212,7 +236,9 @@ export function indexRecordsByHand(records: readonly DurableRecord[]): RecordInd
       lastModelPull.set(record.taskId, pullKey(record.taskId, record.pullId));
       continue;
     }
-    if (record.kind !== "emission") continue;
+    if (record.kind !== "emission") {
+      continue;
+    }
     const key = lastModelPull.get(record.taskId);
     messageIds.set(ordinal, key === undefined ? null : (prepared.get(key) ?? null));
     ordinal += 1;

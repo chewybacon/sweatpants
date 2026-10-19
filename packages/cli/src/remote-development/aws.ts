@@ -132,6 +132,7 @@ export class AwsS3ActiveCollectionStore implements ActiveCollectionStore {
           Body: JSON.stringify(record),
           ContentType: "application/vnd.sweatpants.active-collection+json",
           ServerSideEncryption: "AES256",
+          /* CONDITIONAL-SPREAD: Choose mutually exclusive IfNoneMatch, IfMatch fields for expectedRevision === undefined; both branches cannot be present. */
           ...(expectedRevision === undefined
             ? { IfNoneMatch: "*" }
             : { IfMatch: expectedRevision }),

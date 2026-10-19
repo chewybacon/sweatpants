@@ -214,6 +214,7 @@ export class TerminalInteractionRuntime implements ChatInteractionRuntime<Termin
           ? Object.freeze({
               ...part,
               state: "completed" as const,
+              /* CONDITIONAL-SPREAD: The response fields belong only to the result.action === "accept" variant. */
               ...(result.action === "accept" ? { response: result.value } : {}),
             })
           : part,

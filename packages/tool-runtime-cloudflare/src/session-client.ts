@@ -23,7 +23,9 @@ export function createCloudflareSessionResources(
                 *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
                   const wire = yield* call(() => rpc.next(readerId, cursor));
                   const result = JSON.parse(wire) as IteratorResult<ToolSessionEvent, void>;
-                  if (!result.done) cursor = result.value.lsn;
+                  if (!result.done) {
+                    cursor = result.value.lsn;
+                  }
                   return result;
                 },
               });

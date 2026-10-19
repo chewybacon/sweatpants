@@ -120,7 +120,9 @@ function* sealedCatchupRoots(
   ) {
     return null;
   }
-  if (sameBasis(previous, current)) return [];
+  if (sameBasis(previous, current)) {
+    return [];
+  }
   const previousHot = new Set(previous.hotRootPositions);
   const currentHot = new Set(current.hotRootPositions);
   const missedPreviousHot = previous.hotRootPositions.filter(
@@ -147,10 +149,14 @@ function* sealedCatchupRoots(
       }),
     );
     for (const position of missedPreviousHot) {
-      if (!previousHot.has(position)) continue;
+      if (!previousHot.has(position)) {
+        continue;
+      }
       const root = byPosition.get(position);
       if (!root) {
-        if (page.nextBeforePosition !== null) return null;
+        if (page.nextBeforePosition !== null) {
+          return null;
+        }
         throw new ConversationStoreError(
           "public_root_conflict",
           `Previously hot public position ${position} is absent from current authority`,
@@ -171,7 +177,9 @@ function* sealedCatchupRoots(
   if (currentNext > previousNext) {
     // At most 256 current-hot positions can account for newly allocated roots.
     // A larger gap cannot produce a complete <=256-root catch-up.
-    if (currentNext - previousNext > 512n) return null;
+    if (currentNext - previousNext > 512n) {
+      return null;
+    }
     const page = yield* store.readPublicHistoryBefore({
       conversationId,
       basis: current,
@@ -180,7 +188,9 @@ function* sealedCatchupRoots(
       maxRoots: 256,
       maxBytes: 8 * 1024 * 1024,
     });
-    if (page.nextBeforePosition !== null) return null;
+    if (page.nextBeforePosition !== null) {
+      return null;
+    }
     for (const value of page.roots) {
       const root = decodePublicProjectionRoot(value);
       if (root.state !== "sealed") {
@@ -343,7 +353,9 @@ function eventRoot(value: Json): value is Json & { readonly type: string } {
 }
 
 function acceptedPublicMessage(value: Json): Message | null {
-  if (!eventRoot(value) || value.type !== PUBLIC_MESSAGE_ACCEPTED_FACT) return null;
+  if (!eventRoot(value) || value.type !== PUBLIC_MESSAGE_ACCEPTED_FACT) {
+    return null;
+  }
   const keys = Object.keys(value);
   if (keys.length !== 2 || !keys.includes("message")) {
     throw new Error("Accepted public message fact has an invalid shape");
@@ -463,7 +475,9 @@ function assignPositions(
       ...root,
       position: prior?.position ?? next.toString(10),
     } as PublicProjectionRoot;
-    if (!prior) next += 1n;
+    if (!prior) {
+      next += 1n;
+    }
     result.push(decodePublicProjectionRoot(positioned));
   }
   result.sort((left, right) => {
@@ -545,7 +559,9 @@ function* compactPublicRoots(params: {
     ...projectedMessages,
     ...acceptedMessages,
   ]) {
-    if (seenMessageIds.has(message.id)) continue;
+    if (seenMessageIds.has(message.id)) {
+      continue;
+    }
     seenMessageIds.add(message.id);
     messages.push(message);
   }
@@ -560,7 +576,9 @@ function* compactPublicRoots(params: {
     ),
     // Tool-only messages have no text-end event. Their owned activity closes them.
     ...snapshots.flatMap((event) => {
-      if (event.type !== EventType.ACTIVITY_SNAPSHOT) return [];
+      if (event.type !== EventType.ACTIVITY_SNAPSHOT) {
+        return [];
+      }
       const { node } = decodePublicActivity(event.content);
       return node.publicData?.kind === "message" && node.state === "done"
         ? [node.publicData.messageId]
@@ -590,7 +608,9 @@ function* compactPublicRoots(params: {
         kind: "message",
         state: sealed ? "sealed" : "mutable",
         attribution: {},
+        /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.logicalTurnId ? { logicalTurnId: params.logicalTurnId } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent executionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.executionId ? { executionId: params.executionId } : {}),
         message,
         placement:
@@ -631,7 +651,9 @@ function* compactPublicRoots(params: {
         kind: "activity-subtree",
         state: prior?.state === "sealed" || activityTerminal(event) ? "sealed" : "mutable",
         attribution: {},
+        /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.logicalTurnId ? { logicalTurnId: params.logicalTurnId } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent executionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.executionId ? { executionId: params.executionId } : {}),
         rootNodeId: activity.node.nodeId,
         producerSequence,
@@ -790,7 +812,9 @@ export function* persistConversationCheckpoint(
   const store = yield* useConversationStore();
   const targets = request.targets ?? DEFAULT_CHECKPOINT_TARGETS;
   const head = yield* store.loadHead(request.conversationId);
-  if (!head) throw new Error(`Conversation ${request.conversationId} has no admitted head`);
+  if (!head) {
+    throw new Error(`Conversation ${request.conversationId} has no admitted head`);
+  }
   if (
     (request.expectedRevision !== undefined && head.revision !== request.expectedRevision) ||
     (request.expectedOwnerEpoch !== undefined && head.ownerEpoch !== request.expectedOwnerEpoch) ||
@@ -866,6 +890,7 @@ export function* persistConversationCheckpoint(
     publicArchiveSegments: archive.segments,
     publicArchiveRootIndex: archive.index,
     checkpoint,
+    /* CONDITIONAL-SPREAD: Omit absent terminalHistorySegment from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(request.terminalHistorySegment
       ? { terminalHistorySegment: request.terminalHistorySegment }
       : {}),
@@ -954,7 +979,9 @@ export function* readAllPublicRootsForModel(
       }
     }
     archived.unshift(...pageMessages);
-    if (page.nextBeforePosition === null) break;
+    if (page.nextBeforePosition === null) {
+      break;
+    }
     beforePosition = page.nextBeforePosition;
   }
   return [...archived, ...hotMessages];

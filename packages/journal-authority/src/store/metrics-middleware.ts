@@ -67,7 +67,9 @@ export function* installStorageMetrics(): Operation<StorageMetricsRecorder> {
       executionsTouched.add(segment.executionId);
       mutationBytes += segment.encodedBytes;
       const pointer = yield* next(segment);
-      if (replayObjects.has(pointer.segmentId)) replayObjectsRewritten += 1;
+      if (replayObjects.has(pointer.segmentId)) {
+        replayObjectsRewritten += 1;
+      }
       replayObjects.add(pointer.segmentId);
       return pointer;
     },

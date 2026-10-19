@@ -18,8 +18,9 @@ describe("execution dependency boundary", () => {
       const directory = fileURLToPath(new URL("../../../../", import.meta.url));
       const manifests = new Map<string, Manifest>();
       for (const name of readdirSync(directory, { withFileTypes: true })) {
-        if (!name.isDirectory() || !existsSync(resolve(directory, name.name, "package.json")))
+        if (!name.isDirectory() || !existsSync(resolve(directory, name.name, "package.json"))) {
           continue;
+        }
         const manifest = JSON.parse(
           readFileSync(resolve(directory, name.name, "package.json"), "utf8"),
         ) as Manifest;
@@ -31,7 +32,9 @@ describe("execution dependency boundary", () => {
       while (pending.length) {
         const path = pending.pop()!;
         const name = path[path.length - 1];
-        if (seen.has(name)) continue;
+        if (seen.has(name)) {
+          continue;
+        }
         seen.add(name);
         expect(path, "Concrete execution belongs in adapter packages").not.toContain(
           "@sweatpants/tool-runtime-local",

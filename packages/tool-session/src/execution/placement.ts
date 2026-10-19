@@ -65,24 +65,30 @@ export function routeTools(options: ToolRoutes): ToolExecutionAdapter {
       options.routes.forEach((route) => {
         const name = route.name ?? canonicalDigest(route.tools.map((tool) => tool.name).sort());
         for (const tool of route.tools) {
-          if (!known.has(tool)) throw new Error(`Route references unregistered tool: ${tool.name}`);
-          if (!remaining.delete(tool))
+          if (!known.has(tool)) {
+            throw new Error(`Route references unregistered tool: ${tool.name}`);
+          }
+          if (!remaining.delete(tool)) {
             throw new Error(`Multiple execution routes for tool: ${tool.name}`);
+          }
         }
-        if (!name || routeNames.has(name))
+        if (!name || routeNames.has(name)) {
           throw new Error(`Duplicate or empty execution route name: ${name}`);
+        }
         routeNames.add(name);
-        if (route.tools.length)
+        if (route.tools.length) {
           prepared.push({
             tools: route.tools,
             execution: route.runtime.prepare(route.tools, `${routeId}:${name}`),
           });
+        }
       });
       if (remaining.size) {
-        if (!options.default)
+        if (!options.default) {
           throw new Error(
             `No execution route for: ${[...remaining].map((t) => t.name).join(", ")}`,
           );
+        }
         const defaults = [...remaining];
         prepared.push({
           tools: defaults,
@@ -100,7 +106,11 @@ function combineExecutions(
   return {
     runtimeId: entries.length === 1 ? entries[0].execution.runtimeId : "tools",
     setup: function* () {
-      for (const entry of entries) if (entry.execution.setup) yield* entry.execution.setup();
+      for (const entry of entries) {
+        if (entry.execution.setup) {
+          yield* entry.execution.setup();
+        }
+      }
     },
     bindings: entries.flatMap((e) => e.execution.bindings ?? []),
     drivers: entries.flatMap((e) => e.execution.drivers ?? []),
@@ -108,16 +118,19 @@ function combineExecutions(
     *createResources() {
       const factories: { names: Set<string>; factory: ToolInvocationResourceFactory }[] = [];
       for (const entry of entries) {
-        if (entry.execution.createResources)
+        if (entry.execution.createResources) {
           factories.push({
             names: new Set(entry.tools.filter((t) => !isChatDurableTool(t)).map((t) => t.name)),
             factory: yield* entry.execution.createResources(),
           });
+        }
       }
       return {
         *create(request) {
           const owner = factories.find((f) => f.names.has(request.tool.name));
-          if (!owner) throw new Error(`No invocation runtime for tool: ${request.tool.name}`);
+          if (!owner) {
+            throw new Error(`No invocation runtime for tool: ${request.tool.name}`);
+          }
           return yield* owner.factory.create(request);
         },
         *open(id) {
@@ -125,11 +138,14 @@ function combineExecutions(
           for (const entry of factories) {
             const resource = yield* entry.factory.open(id);
             if (resource) {
-              if (found) throw new Error(`Invocation exists in multiple runtimes: ${id}`);
-              if (!entry.names.has(resource.toolName))
+              if (found) {
+                throw new Error(`Invocation exists in multiple runtimes: ${id}`);
+              }
+              if (!entry.names.has(resource.toolName)) {
                 throw new Error(
                   `Invocation belongs to a different tool route: ${resource.toolName}`,
                 );
+              }
               found = resource;
             }
           }

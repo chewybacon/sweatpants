@@ -40,14 +40,18 @@ if (process.argv[2] === "repair") {
             seenRequests = new Set();
         for (let i = 0; i < 25; i++) {
             const ctx = recover(record, registry);
-            if (ctx.state.status === "done") break;
+            if (ctx.state.status === "done") {
+                break;
+            }
             const label = ctx.pending.request[1];
             const cancel = label === scenario.cancelAt && !cancelled;
             if (!seenRequests.has(ctx.pending.id)) {
                 trace.push(label);
                 seenRequests.add(ctx.pending.id);
             }
-            if (cancel) cancelled = true;
+            if (cancel) {
+                cancelled = true;
+            }
             const input = cancel
                 ? { cancel: true }
                 : label === scenario.errorAt
@@ -108,7 +112,7 @@ if (process.argv[2] === "repair") {
                 () => appendCommand(canonical, registry, { ...command, id: "new", revision: -1 }),
                 /Revision conflict/,
             );
-            if (recover(canonical, registry).pending?.id !== command.requestId)
+            if (recover(canonical, registry).pending?.id !== command.requestId) {
                 assert.throws(
                     () =>
                         appendCommand(canonical, registry, {
@@ -118,6 +122,7 @@ if (process.argv[2] === "repair") {
                         }),
                     /Stale effect/,
                 );
+            }
             record = canonical;
         }
         const completed = recover(record, registry);
@@ -128,8 +133,9 @@ if (process.argv[2] === "repair") {
             assert.equal(completed.state.outcome.kind, "cancelled");
             assert.ok(!trace.includes("after inner scope"));
         }
-        if (scenario.errorAt)
+        if (scenario.errorAt) {
             assert.deepEqual(completed.state.outcome, { kind: "thrown", value: "failure" });
+        }
         if (scenario.name === "normal") {
             assert.deepEqual(completed.state.outcome, { kind: "returned", value: "answer" });
             fs.writeFileSync(dir + "journal-record.json", JSON.stringify(record, null, 2));

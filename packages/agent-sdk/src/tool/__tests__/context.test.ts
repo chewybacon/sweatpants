@@ -12,7 +12,10 @@ describe("ToolCtx integration", () => {
       signal: new AbortController().signal,
       messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
       notify: function* (message, progress) {
-        notifications.push({ message, ...(progress !== undefined ? { progress } : {}) });
+        notifications.push({
+          message /* CONDITIONAL-SPREAD: Omit absent progress from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */,
+          ...(progress !== undefined ? { progress } : {}),
+        });
       },
       log: function* (level, message) {
         logs.push({ level, message });

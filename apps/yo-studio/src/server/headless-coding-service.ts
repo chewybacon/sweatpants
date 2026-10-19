@@ -147,6 +147,7 @@ export function createHeadlessCodingService(options: {
         sessionId: opened.sessionId,
         taskId: opened.taskId,
         state: outcome.state,
+        /* CONDITIONAL-SPREAD: The value fields belong only to the outcome.state === "completed" variant. */
         ...(outcome.state === "completed" ? { value: outcome.value } : {}),
         trace: yield* host.trace(opened.sessionId),
       };

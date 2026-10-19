@@ -92,7 +92,7 @@ export function resolveDurableChatComposition(
           programs.flatMap((program) => [...program.artifacts.catalog]),
         ),
         executionStore,
-        ...(dataDirectory ? { dataDirectory } : {}),
+        dataDirectory: dataDirectory ? dataDirectory : undefined,
       }));
 
   return {

@@ -89,7 +89,9 @@ export function* bindCaughtUpLeaf(
   leaseDurationMs = 30_000,
 ): Operation<Mandate | null> {
   const selection = yield* policy.select([{ kind: "crank_native", caughtUp }]);
-  if (selection === null || selection.target.kind !== "crank_native") return null;
+  if (selection === null || selection.target.kind !== "crank_native") {
+    return null;
+  }
   const item = selection.target.caughtUp.item;
   const checkpoint = yield* ProgramRecovery.operations.checkpoint(
     selection.target.caughtUp.restored.attachment,
@@ -97,6 +99,7 @@ export function* bindCaughtUpLeaf(
   const bound = yield* authority.command({
     type: "execution.bind-mandate",
     request: {
+      /* CONDITIONAL-SPREAD: The checkpoint fields belong only to the checkpoint.kind === "continuation" variant. */
       ...(checkpoint.kind === "continuation" ? { checkpoint } : {}),
       address: item.address,
       strand: item.strand,
@@ -113,7 +116,9 @@ export function* bindCaughtUpLeaf(
       frontierProof: selection.target.caughtUp.frontierProof,
     },
   });
-  if (bound.status === "stale") return null;
+  if (bound.status === "stale") {
+    return null;
+  }
   return bound.mandate;
 }
 

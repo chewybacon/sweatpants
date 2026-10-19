@@ -36,12 +36,16 @@ function combineAbortSignals(
 ): CombinedAbortController {
   const controller = new AbortController();
   const abort = () => {
-    if (!controller.signal.aborted) controller.abort();
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
   };
 
   scopeSignal.addEventListener("abort", abort, { once: true });
   callerSignal?.addEventListener("abort", abort, { once: true });
-  if (scopeSignal.aborted || callerSignal?.aborted) abort();
+  if (scopeSignal.aborted || callerSignal?.aborted) {
+    abort();
+  }
 
   return {
     controller,
@@ -100,7 +104,9 @@ function assertResponseFormatToolPolicy(
   context: ModelContext,
   options: StreamOptions | undefined,
 ): void {
-  if (!options?.responseFormat || context.tools.length === 0) return;
+  if (!options?.responseFormat || context.tools.length === 0) {
+    return;
+  }
   if (context.tools.some((tool) => tool.name === STRUCTURED_RESPONSE_TOOL_NAME)) {
     throw new Error(
       `Tool name "${STRUCTURED_RESPONSE_TOOL_NAME}" is reserved for structured response output`,
@@ -117,9 +123,13 @@ function toPiContextWithResponseFormat(
   options: StreamOptions | undefined,
 ): PiAi.Context {
   const piContext = encodePiContext(context, model);
-  if (options?.responseFormat === undefined) return piContext;
+  if (options?.responseFormat === undefined) {
+    return piContext;
+  }
   const structured = appendPiStructuredResponseTool(piContext, options.responseFormat.schema);
-  if (!usesReasonedStructuredOutput(options)) return structured;
+  if (!usesReasonedStructuredOutput(options)) {
+    return structured;
+  }
   return {
     ...structured,
     systemPrompt: [
@@ -144,7 +154,9 @@ function usesDirectPiStream(options: StreamOptions | undefined): boolean {
   // schema-tool selection is incompatible with thinking on some providers.
   // Auto selection can fail to produce the requested shape; schema validation
   // remains authoritative and reports that failure to the caller.
-  if (usesReasonedStructuredOutput(options)) return false;
+  if (usesReasonedStructuredOutput(options)) {
+    return false;
+  }
   return options?.toolChoice !== undefined || options?.responseFormat !== undefined;
 }
 
@@ -196,18 +208,29 @@ function toPiStreamOptions(
     // Omitted canonical options must preserve provider-specific defaults.
     ...options?.providerOptions,
     signal,
+    /* CONDITIONAL-SPREAD: Absent apiKey must preserve the value already supplied by providerOptions. */
     ...(apiKey ? { apiKey } : {}),
+    /* CONDITIONAL-SPREAD: Absent env must preserve the value already supplied by providerOptions. */
     ...(options?.env ? { env: options.env as Record<string, string> } : {}),
+    /* CONDITIONAL-SPREAD: Absent sessionId must preserve the value already supplied by providerOptions. */
     ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
+    /* CONDITIONAL-SPREAD: Absent maxTokens must preserve the value already supplied by providerOptions. */
     ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+    /* CONDITIONAL-SPREAD: Absent temperature must preserve the value already supplied by providerOptions. */
     ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
+    /* CONDITIONAL-SPREAD: Absent topP must preserve the value already supplied by providerOptions. */
     ...(options?.topP !== undefined ? { topP: options.topP } : {}),
+    /* CONDITIONAL-SPREAD: Absent topK must preserve the value already supplied by providerOptions. */
     ...(options?.topK !== undefined ? { topK: options.topK } : {}),
+    /* CONDITIONAL-SPREAD: Absent onPayload must preserve the value already supplied by providerOptions. */
     ...(options?.onPayload
       ? { onPayload: (payload: unknown) => options.onPayload?.(payload) }
       : {}),
+    /* CONDITIONAL-SPREAD: Absent reasoning must preserve the value already supplied by providerOptions. */
     ...(reasoning !== undefined ? { reasoning } : {}),
+    /* CONDITIONAL-SPREAD: Absent reasoningEffort must preserve the value already supplied by providerOptions. */
     ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    /* CONDITIONAL-SPREAD: Absent thinkingBudgets must preserve the value already supplied by providerOptions. */
     ...(options?.thinkingBudgets ? { thinkingBudgets: options.thinkingBudgets } : {}),
   };
 }
@@ -220,11 +243,15 @@ function toPiImageOptions(
     // Omitted canonical options must preserve provider-specific defaults.
     ...options?.providerOptions,
     signal,
+    /* CONDITIONAL-SPREAD: Absent apiKey must preserve the value already supplied by providerOptions. */
     ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
+    /* CONDITIONAL-SPREAD: Absent headers must preserve the value already supplied by providerOptions. */
     ...(options?.headers ? { headers: options.headers } : {}),
+    /* CONDITIONAL-SPREAD: Absent onPayload must preserve the value already supplied by providerOptions. */
     ...(options?.onPayload
       ? { onPayload: (payload: unknown) => options.onPayload?.(payload) }
       : {}),
+    /* CONDITIONAL-SPREAD: Absent onResponse must preserve the value already supplied by providerOptions. */
     ...(options?.onResponse
       ? { onResponse: (response: unknown) => options.onResponse?.(response) }
       : {}),
@@ -285,7 +312,9 @@ export function createPiAiRuntime(options: AdapterRuntimeOptions): Runtime {
                 const next = yield* call(() => iterator.next());
                 if (!next.done) {
                   const event = decodeStreamEvent(next.value, streamOptions);
-                  if (event !== undefined) return { done: false, value: event };
+                  if (event !== undefined) {
+                    return { done: false, value: event };
+                  }
                   continue;
                 }
                 const response = decodePiModelResponse(yield* call(() => stream.result()));

@@ -27,7 +27,9 @@ function nextAuthorityRevision(conversationId: string): string {
 }
 
 function observeAuthorityRevision(conversationId: string, revision: string | null): void {
-  if (revision === null) return;
+  if (revision === null) {
+    return;
+  }
   const value = BigInt(revision);
   if (value > (authorityRevisions.get(conversationId) ?? 0n)) {
     authorityRevisions.set(conversationId, value);
@@ -192,7 +194,9 @@ interface Deferred<T> {
 }
 
 function isCommandRequest(init: RequestInit | undefined): boolean {
-  if (typeof init?.body !== "string") return false;
+  if (typeof init?.body !== "string") {
+    return false;
+  }
   try {
     const value = JSON.parse(init.body) as Record<string, unknown>;
     return value["command"] !== undefined;
@@ -311,9 +315,12 @@ it("drains terminal events that arrive while a lazy renderer is suspended", asyn
                 transportEnded.resolve();
                 return { done: true as const, value: undefined };
               }
-              if (event.type === EventType.TEXT_MESSAGE_CONTENT) contentReady.resolve();
-              if (event.type === EventType.TEXT_MESSAGE_END)
+              if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
+                contentReady.resolve();
+              }
+              if (event.type === EventType.TEXT_MESSAGE_END) {
                 yield* call(() => renderingStarted.promise);
+              }
               return { done: false as const, value: event };
             },
           };
@@ -486,6 +493,7 @@ describe("headless ChatClient", () => {
         return frameStream([
           {
             ...windowFrame(conversationId, String(reconnects)),
+            /* CONDITIONAL-SPREAD: This fixture intentionally omits the history cursor after the first reconnect to exercise cursor removal. */
             ...(reconnects === 1 ? { olderHistoryCursor: "cursor-1" } : {}),
           },
           idleAuthorityFrame(conversationId, String(reconnects)),
@@ -620,7 +628,9 @@ describe("headless ChatClient", () => {
       context: [{ description: "tenant", value: "test" }],
       forwardedProps: { mode: "preview" },
       fetcher: async (_input, init) => {
-        if (!isCommandRequest(init)) return new Response(null, { status: 404 });
+        if (!isCommandRequest(init)) {
+          return new Response(null, { status: 404 });
+        }
         if (typeof init?.body !== "string") {
           throw new Error("expected JSON request body");
         }
@@ -706,7 +716,9 @@ describe("headless ChatClient", () => {
       const conversationId = String(body["conversationId"] ?? "unknown");
       requests.push({ url: String(input), method: init?.method ?? "GET", body });
       if (!("command" in body)) {
-        if (!completed.has(conversationId)) return new Response(null, { status: 404 });
+        if (!completed.has(conversationId)) {
+          return new Response(null, { status: 404 });
+        }
         const events = [windowFrame(conversationId, "3"), idleAuthorityFrame(conversationId, "3")];
         return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
           headers: { "content-type": "application/x-ndjson" },
@@ -763,7 +775,9 @@ describe("headless ChatClient", () => {
       const body =
         typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
       if (!("command" in body)) {
-        if (!seeded) return new Response(null, { status: 404 });
+        if (!seeded) {
+          return new Response(null, { status: 404 });
+        }
         const events = [windowFrame("restart", "3"), idleAuthorityFrame("restart", "3")];
         return new Response(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`, {
           headers: { "content-type": "application/x-ndjson" },

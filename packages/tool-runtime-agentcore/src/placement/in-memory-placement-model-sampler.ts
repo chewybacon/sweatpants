@@ -2,7 +2,12 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
 import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
-import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  digestCanonicalJson,
+} from "@sweatpants/foundation";
 
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
@@ -64,6 +69,7 @@ function attachment(sample: MutableSample): RemoteSampleAttachment {
     streamId: record.streamId,
     producerEpoch: record.producerEpoch,
     state: record.state,
+    /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(record.terminalLsn === undefined ? {} : { terminalLsn: record.terminalLsn }),
   };
 }
@@ -143,7 +149,7 @@ export function createInMemoryPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalDigest(request.request) !== request.requestDigest) {
+      if (digestCanonicalJson(request.request as unknown as Json) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];
@@ -211,6 +217,7 @@ export function createInMemoryPlacementModelSampler(options: {
         events: sample.events.slice(afterLsn),
         lsn: sample.events.length,
         state: sample.record.state,
+        /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(sample.record.terminalLsn === undefined
           ? {}
           : { terminalLsn: sample.record.terminalLsn }),
@@ -318,6 +325,7 @@ export function createInMemoryPlacementModelSampler(options: {
           producerEpoch: fence.producerEpoch,
           taskId: identity.taskId,
           pullId: identity.pullId,
+          /* CONDITIONAL-SPREAD: Omit absent messageId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(value.messageId ? { messageId: value.messageId } : {}),
           event: value.event,
         });

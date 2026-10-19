@@ -338,7 +338,7 @@ function buildChatRequest(
   return new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    ...(signal ? { signal } : {}),
+    signal,
     body: JSON.stringify({
       command: resume
         ? {
@@ -364,10 +364,12 @@ function buildChatRequest(
       clientId: "play-ttt-acceptance",
       conversationId,
       runId,
+      /* CONDITIONAL-SPREAD: Omit absent userMessage from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(!resume && messages.at(-1) ? { userMessage: messages.at(-1) } : {}),
       state: {},
       context: [],
       forwardedProps: {},
+      /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(resume?.parentRunId ? { parentRunId: resume.parentRunId } : {}),
     }),
   });
@@ -481,6 +483,7 @@ export function publicInterrupt(events: PublicEvent[]):
         basisRevision,
         logicalTurnId,
         executionId,
+        /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
         ...(typeof runId === "string" ? { parentRunId: runId } : {}),
       };
     }

@@ -86,7 +86,9 @@ describe("bounded execution storage semantics", () => {
       });
       const values = yield* call(async () => {
         const entries: Json[] = [];
-        for await (const chunk of stream) entries.push(...chunk);
+        for await (const chunk of stream) {
+          entries.push(...chunk);
+        }
         return entries;
       });
       expect(values).toEqual([{ index: 0 }, { index: 1 }]);

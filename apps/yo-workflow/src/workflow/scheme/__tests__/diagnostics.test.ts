@@ -20,8 +20,9 @@ describe("Scheme source hints", () => {
     );
   });
   it("leaves reader extensions to Hoot", () => {
-    for (const source of ["#; (ignored) (ok)", "#\\( ", "#| ( |#", "#(1)", "|symbol)|", "#true"])
+    for (const source of ["#; (ignored) (ok)", "#\\( ", "#| ( |#", "#(1)", "|symbol)|", "#true"]) {
       expect(schemeSourceHint(source)).toBeUndefined();
+    }
   });
   it("does not diagnose balanced code or quoted code", () => {
     expect(schemeSourceHint("(let () (define (f x) x) (f '(a b)))")).toBeUndefined();

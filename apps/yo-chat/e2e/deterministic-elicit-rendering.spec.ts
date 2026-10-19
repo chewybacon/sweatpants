@@ -120,6 +120,7 @@ function resumeWindow(conversationId: string, revision: string): Record<string, 
       message: "Select a flight from NYC to LAX",
       context: { flights },
       responseContract: pickFlightBinding.responseContract,
+      /* CONDITIONAL-SPREAD: Omit absent contextContract from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
       ...(pickFlightBinding.contextContract
         ? { contextContract: pickFlightBinding.contextContract }
         : {}),
@@ -363,6 +364,7 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                   message: "Select a flight from NYC to LAX",
                   context: { flights },
                   responseContract: pickFlightBinding.responseContract,
+                  /* CONDITIONAL-SPREAD: Omit absent contextContract from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
                   ...(pickFlightBinding.contextContract
                     ? { contextContract: pickFlightBinding.contextContract }
                     : {}),

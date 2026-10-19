@@ -16,8 +16,9 @@ import {
 const directories: string[] = [];
 
 afterEach(() => {
-  for (const directory of directories.splice(0))
+  for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 function authPath(): string {
@@ -62,6 +63,7 @@ describe("file-backed model credentials", () => {
         accountId: "account",
       })),
       store.modify("openai-codex", async (current) => ({
+        /* CONDITIONAL-SPREAD: Omit absent type, access, refresh, expires from provider requests and response metadata; explicit undefined is not a portable JSON value. */
         ...(current ?? { type: "oauth", access: "", refresh: "", expires: 0 }),
         access: "access-two",
       })),

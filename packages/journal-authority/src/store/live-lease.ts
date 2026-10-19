@@ -9,7 +9,9 @@ export function endLiveLease(
   reason: "parked" | "settled" | "terminal" | "failed" | "scope_exit",
 ): void {
   const lease = task.execution.liveLease;
-  if (lease === undefined) return;
+  if (lease === undefined) {
+    return;
+  }
   delete task.execution.liveLease;
   draft.append(sessionId, lease.epoch, {
     type: "AdvancementReleased",

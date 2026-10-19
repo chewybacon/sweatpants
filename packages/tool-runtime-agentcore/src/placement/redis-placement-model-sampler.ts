@@ -18,6 +18,7 @@ import {
   type ParseResult,
   type Parser,
   canonicalDigest,
+  digestCanonicalJson,
   cloneJson,
 } from "@sweatpants/foundation";
 
@@ -176,6 +177,7 @@ function attachment(record: RemoteSampleRecord): RemoteSampleAttachment {
     streamId: record.streamId,
     producerEpoch: record.producerEpoch,
     state: record.state,
+    /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(record.terminalLsn === undefined ? {} : { terminalLsn: record.terminalLsn }),
   };
 }
@@ -263,7 +265,7 @@ export function createRedisPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalDigest(request.request) !== request.requestDigest) {
+      if (digestCanonicalJson(request.request as unknown as Json) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];
@@ -351,6 +353,7 @@ export function createRedisPlacementModelSampler(options: {
         events: page.tokens,
         lsn: page.lsn,
         state: record.state,
+        /* CONDITIONAL-SPREAD: Omit absent terminalLsn from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(record.terminalLsn === undefined ? {} : { terminalLsn: record.terminalLsn }),
       };
     },
@@ -470,6 +473,7 @@ export function createRedisPlacementModelSampler(options: {
           producerEpoch: fence.producerEpoch,
           taskId: identity.taskId,
           pullId: identity.pullId,
+          /* CONDITIONAL-SPREAD: Omit absent messageId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
           ...(value.messageId ? { messageId: value.messageId } : {}),
           event: value.event,
         })),

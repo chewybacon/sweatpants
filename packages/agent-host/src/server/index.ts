@@ -307,8 +307,9 @@ export function createChatApp(config: ChatAppConfig): ChatApp {
   } = config;
   const composition =
     tools !== undefined ? prepareChatTools(tools, execution, effects ?? []) : undefined;
-  if (!composition && (execution || effects))
+  if (!composition && (execution || effects)) {
     throw new Error("execution and effects require tools");
+  }
   // JavaScript callers also receive a composition error for an invalid setup shape.
   // oxlint-disable-next-line typescript/no-unnecessary-condition
   if (setup !== undefined && (setup === null || typeof setup !== "object")) {
@@ -337,10 +338,16 @@ export function createChatApp(config: ChatAppConfig): ChatApp {
       if (model) {
         yield* installModelProvider(model.driver);
         yield* ModelProviderModelContext.set(model.model);
-        if (model.streamOptions) yield* ModelProviderStreamOptionsContext.set(model.streamOptions);
+        if (model.streamOptions) {
+          yield* ModelProviderStreamOptionsContext.set(model.streamOptions);
+        }
       }
-      if (setup?.application) yield* setup.application(ctx);
-      if (composition) yield* composition.install(createModelSamplingProvider());
+      if (setup?.application) {
+        yield* setup.application(ctx);
+      }
+      if (composition) {
+        yield* composition.install(createModelSamplingProvider());
+      }
     },
     shutdownDeadlineMs,
   });

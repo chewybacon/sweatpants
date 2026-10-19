@@ -51,7 +51,9 @@ beforeAll(async () => {
           body: JSON.stringify({ id, method, args }),
         });
         const result = (await response.json()) as { error?: string; value: string };
-        if (!response.ok) throw new Error(result.error);
+        if (!response.ok) {
+          throw new Error(result.error);
+        }
         return result.value;
       }
       return {
@@ -105,8 +107,9 @@ describe("Durable Object ordinary tool placement", () => {
       done: false,
       value: { type: "elicit_request", message: "Second" },
     });
-    if (next.done || next.value.type !== "elicit_request")
+    if (next.done || next.value.type !== "elicit_request") {
       throw new Error("Expected second elicit");
+    }
     await rpc.resume(
       JSON.stringify({
         kind: "elicit",

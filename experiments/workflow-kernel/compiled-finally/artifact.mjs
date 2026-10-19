@@ -3,7 +3,9 @@ import { compile } from "./engine.mjs";
 import { hash, copy, ENGINE_ID, COMPLETION_POLICY } from "./journal.mjs";
 import { schemas as defaultSchemas, textV1 } from "./schemas.mjs";
 const check = (ok, message) => {
-    if (!ok) throw Error(message);
+    if (!ok) {
+        throw Error(message);
+    }
 };
 export function artifact(source, contracts, schemas = defaultSchemas, boundary) {
     const compiled = compileWorkflow(source, {
@@ -40,13 +42,15 @@ export function artifact(source, contracts, schemas = defaultSchemas, boundary) 
             schemaDescriptors[digest] = entry.descriptor;
         }
     }
-    if (boundary)
+    if (boundary) {
         for (const digest of Object.values(boundary)) {
             const entry = schemas.get(digest);
             check(entry, "Missing boundary schema validator");
             schemaDescriptors[digest] = entry.descriptor;
         }
+    }
     const body = {
+        /* CONDITIONAL-SPREAD: Snapshot JSON has no boundary field until the evaluator reaches a boundary. */
         ...(boundary ? { boundary } : {}),
         format: 2,
         completionPolicy: COMPLETION_POLICY,

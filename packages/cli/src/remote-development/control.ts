@@ -79,6 +79,7 @@ export async function publishDevelopmentCollection(
     collectionDigest: input.manifest.collectionDigest,
     bytes: input.archiveBytes.byteLength,
     publishedAt: now.toISOString(),
+    /* CONDITIONAL-SPREAD: Signed remote-development records must omit absent expiresAt before canonical hashing. */
     ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt.toISOString() }),
   });
 }
@@ -175,6 +176,7 @@ export async function activateReadyCollection(input: {
     evaluatorAbi: input.readiness.evaluatorAbi,
     readinessDigest: input.readiness.readinessDigest,
     activatedAt: (input.now?.() ?? new Date()).toISOString(),
+    /* CONDITIONAL-SPREAD: Signed remote-development records must omit absent previousCollectionDigest before canonical hashing. */
     ...(current === undefined
       ? {}
       : { previousCollectionDigest: current.collection.collectionDigest }),

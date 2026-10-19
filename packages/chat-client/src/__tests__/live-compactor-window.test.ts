@@ -183,7 +183,9 @@ describe("LiveChatCompactor window layers", () => {
     let factoryCalls = 0;
     const compactor = new LiveChatCompactor(() => {
       const suspended = [oldSuspended, replacementSuspended][factoryCalls++];
-      if (!suspended) throw new Error("unexpected presentation pipeline");
+      if (!suspended) {
+        throw new Error("unexpected presentation pipeline");
+      }
       return suspended.pipeline;
     });
     compactor.ingest({

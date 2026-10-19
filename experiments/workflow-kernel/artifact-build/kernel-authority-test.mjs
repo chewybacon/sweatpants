@@ -127,7 +127,9 @@ for (const mode of ["complete", "complete-replay", "cancel-acquire", "cancel-cle
                 );
             }
             authority = yield* createStoredScenarioDriver(store, options);
-            if (i === 9) throw Error("Did not settle");
+            if (i === 9) {
+                throw Error("Did not settle");
+            }
         }
         check(() => assert.ok(observations.includes("close")));
         if (mode.startsWith("complete")) {
@@ -145,9 +147,12 @@ for (const mode of ["complete", "complete-replay", "cancel-acquire", "cancel-cle
                 ),
             );
         }
-        if (mode === "cancel-acquire") check(() => assert.deepEqual(seen, ["acquire"]));
-        if (mode === "cancel-cleanup")
+        if (mode === "cancel-acquire") {
+            check(() => assert.deepEqual(seen, ["acquire"]));
+        }
+        if (mode === "cancel-cleanup") {
             check(() => assert.deepEqual(seen, ["acquire", "release", "release"]));
+        }
         console.log("PASS kernel driver with real authority", mode, JSON.stringify(seen));
     });
 }

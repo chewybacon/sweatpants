@@ -4,6 +4,7 @@ import type { Json } from "@sweatpants/foundation";
 import { expect, it } from "vitest";
 import { createCapabilityKeyring } from "../contract/capabilities.ts";
 import { createJournal } from "../shell/journal.ts";
+import { createInMemoryJournal } from "../shell/in-memory-journal.ts";
 import { createMemoryExecutionStore } from "../store/memory.ts";
 import type { AuthorityCommand } from "../contract/authority-contract.ts";
 import type { ExecutionStore } from "../store/store.ts";
@@ -378,3 +379,149 @@ it("does not promote a persisted draft when its caller is halted before acknowle
     expect(JSON.stringify(restored)).toContain("persisted before halt");
   });
 });
+
+it.each(["memory", "stored"])(
+  "%s journal owns descriptors and preserves replay identity",
+  async (kind) => {
+    await run(function* () {
+      const store = createMemoryExecutionStore();
+      const journal =
+        kind === "stored"
+          ? yield* createJournal(store, options)
+          : yield* createInMemoryJournal(options);
+      const opened = yield* journal.advance({
+        type: "execution.open-task",
+        request: {
+          ...request,
+          manifest: {
+            ...request.manifest,
+            elicits: { card: { response: ANY_JSON_SCHEMA_DESCRIPTOR } },
+          },
+        },
+      });
+      const payload = { value: "accepted" };
+      const emission = {
+        sessionId: "session",
+        taskId: "root",
+        actionIndex: 0,
+        descriptor: { eventType: "progress", payload },
+        programCapability: opened.programCapability,
+      };
+      const receipt = yield* journal.advance({
+        type: "execution.append-emission",
+        request: emission,
+      });
+      payload.value = "changed";
+      const duplicate = yield* journal.advance({
+        type: "execution.append-emission",
+        request: {
+          ...emission,
+          descriptor: { eventType: "progress", payload: { value: "accepted" } },
+        },
+      });
+      expect(duplicate).toEqual({ ...receipt, duplicate: true });
+      const descriptor = {
+        kind: "elicit" as const,
+        key: "card",
+        message: "Choose",
+        response: ANY_JSON_SCHEMA_DESCRIPTOR,
+        binding: undefined,
+      };
+      const reservation = {
+        sessionId: "session",
+        taskId: "root",
+        turnId: "turn",
+        actionIndex: 1,
+        pullIndex: 0,
+        descriptor,
+        programCapability: opened.programCapability,
+      };
+      const reserved = yield* journal.advance({
+        type: "execution.reserve-pull",
+        request: reservation,
+      });
+      expect(reserved.status).toBe("pending");
+      if (reserved.status !== "pending") {
+        throw new Error("expected a parked elicitation");
+      }
+      descriptor.message = "changed";
+      const query = {
+        type: "pull.state" as const,
+        sessionId: "session",
+        taskId: "root",
+        pullId: reserved.pullId,
+      };
+      const observed = yield* journal.query(query);
+      expect(observed.status).toBe("found");
+      if (observed.status !== "found") {
+        throw new Error("expected the accepted descriptor");
+      }
+      expect(observed.descriptor).toMatchObject({ message: "Choose" });
+      Object.assign(observed.descriptor, { message: "changed through query" });
+      expect(yield* journal.query(query)).toMatchObject({ descriptor: { message: "Choose" } });
+      const { binding: _binding, ...withoutBinding } = { ...descriptor, message: "Choose" };
+      expect(
+        yield* journal.advance({
+          type: "execution.reserve-pull",
+          request: { ...reservation, descriptor: withoutBinding },
+        }),
+      ).toEqual(reserved);
+      const snapshot = yield* journal.exportSnapshot();
+      const restored =
+        kind === "stored"
+          ? yield* createJournal(store, options)
+          : yield* createInMemoryJournal({ ...options, snapshot });
+      expect(yield* restored.query(query)).toMatchObject({ descriptor: { message: "Choose" } });
+      expect(JSON.stringify(yield* restored.readSession("session"))).toContain(
+        '"value":"accepted"',
+      );
+      expect(JSON.stringify(yield* restored.readSession("session"))).not.toContain("changed");
+    });
+  },
+);
+
+it.each(["memory", "stored"])(
+  "%s journal owns terminal errors without policing absent details",
+  async (kind) => {
+    await run(function* () {
+      const store = createMemoryExecutionStore();
+      const journal =
+        kind === "stored"
+          ? yield* createJournal(store, options)
+          : yield* createInMemoryJournal(options);
+      const opened = yield* journal.advance({ type: "execution.open-task", request });
+      const error = { code: "failed", message: "Original failure", details: undefined };
+      const completion = {
+        sessionId: "session",
+        taskId: "root",
+        actionIndex: 0,
+        outcome: { status: "error" as const, error },
+        programCapability: opened.programCapability,
+      };
+      const completed = yield* journal.advance({
+        type: "execution.complete-task",
+        request: completion,
+      });
+      expect(completed.status).toBe("accepted");
+      error.message = "changed";
+      const duplicate = yield* journal.advance({
+        type: "execution.complete-task",
+        request: {
+          ...completion,
+          outcome: { status: "error", error: { code: "failed", message: "Original failure" } },
+        },
+      });
+      expect(duplicate.status).toBe("duplicate");
+      const snapshot = yield* journal.exportSnapshot();
+      const restored =
+        kind === "stored"
+          ? yield* createJournal(store, options)
+          : yield* createInMemoryJournal({ ...options, snapshot });
+      const records = yield* restored.readSession("session");
+      expect(records.at(-1)?.payload).toMatchObject({
+        type: "TaskClosed",
+        outcome: { status: "error", error: { code: "failed", message: "Original failure" } },
+      });
+    });
+  },
+);

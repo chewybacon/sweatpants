@@ -190,6 +190,7 @@ export function decodeSamplingResponse(
   const result: SampleExchangeCompletionBase = {
     text,
     model: mcpResult.model,
+    /* CONDITIONAL-SPREAD: Omit absent stopReason from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(mcpResult.stopReason !== undefined && { stopReason: mcpResult.stopReason }),
   };
 
@@ -480,6 +481,7 @@ function parseToolCallRequest(
     method: "tools/call",
     params: {
       name: params.value.name,
+      /* CONDITIONAL-SPREAD: Omit absent arguments from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(params.value.arguments !== undefined ? { arguments: params.value.arguments } : {}),
     },
   };

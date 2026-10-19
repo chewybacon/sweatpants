@@ -30,7 +30,7 @@ for (const { child, action, fault } of [
     (["accept", "decline", "cancel"] as const).map((action) => ({ child, action, fault: false })),
   ),
   { child: false, action: "accept", fault: true },
-])
+]) {
   test(`real journal restores Scheme in fresh WASM: ${action}, child=${child}, fault=${fault}`, async () => {
     let draws = 0;
     const original = crypto.getRandomValues.bind(crypto);
@@ -215,3 +215,4 @@ for (const { child, action, fault } of [
       );
     });
   });
+}

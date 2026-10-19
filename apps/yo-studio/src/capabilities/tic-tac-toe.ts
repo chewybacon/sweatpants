@@ -168,6 +168,7 @@ export const playTttTool = createDurableTool("play_ttt")
             context: {
               board,
               moveHistory: moves,
+              /* CONDITIONAL-SPREAD: Omit absent lastMove from authored tool results; explicit undefined is not a portable JSON value. */
               ...(lastMove
                 ? { lastMove: { position: lastMove.position, player: lastMove.player } }
                 : {}),
@@ -193,6 +194,7 @@ export const playTttTool = createDurableTool("play_ttt")
         position,
         isModel: currentPlayer === modelSymbol,
         boardAfter: [...board],
+        /* CONDITIONAL-SPREAD: Omit absent reasoning from authored tool results; explicit undefined is not a portable JSON value. */
         ...(reasoning ? { reasoning } : {}),
       });
 

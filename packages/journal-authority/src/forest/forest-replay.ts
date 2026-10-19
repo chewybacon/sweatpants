@@ -57,6 +57,7 @@ export function planForestReplay(
       head,
       program: structuredClone(task.program.artifact),
       classification,
+      /* CONDITIONAL-SPREAD: Omit absent parked from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(parked === undefined
         ? {}
         : {
@@ -74,7 +75,9 @@ export function planForestReplay(
       replay.push(buildReplayItem(task, row));
     } else if (classification === "peer_hosted") {
       const member = relations.memberByTask.get(task.taskId);
-      if (!peerInvariantHolds(task, member)) continue;
+      if (!peerInvariantHolds(task, member)) {
+        continue;
+      }
       peers.push({
         address: row.address,
         strand: row.strand,
@@ -86,6 +89,7 @@ export function planForestReplay(
           groupRevision: groupContext.groupRevision,
         },
         deliveryCursor: {
+          /* CONDITIONAL-SPREAD: Omit absent correlator from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(member?.delegationCorrelator === undefined
             ? {}
             : { correlator: member.delegationCorrelator }),
@@ -160,14 +164,18 @@ function breadthFirstTasks(session: AuthoritySessionState): TaskState[] {
   }
   const compare = (left: TaskState, right: TaskState) => left.taskId.localeCompare(right.taskId);
   roots.sort(compare);
-  for (const siblings of children.values()) siblings.sort(compare);
+  for (const siblings of children.values()) {
+    siblings.sort(compare);
+  }
 
   const result: TaskState[] = [];
   const queue = [...roots];
   const seen = new Set<string>();
   while (queue.length > 0) {
     const task = queue.shift()!;
-    if (seen.has(task.taskId)) throw new CrankError("invalid_journal", "Forest contains a cycle");
+    if (seen.has(task.taskId)) {
+      throw new CrankError("invalid_journal", "Forest contains a cycle");
+    }
     seen.add(task.taskId);
     result.push(task);
     queue.push(...(children.get(task.taskId) ?? []));
@@ -184,11 +192,15 @@ function classifyTask(
   nowMs: number,
   relations: ForestRelations,
 ): PlannedForestRow["classification"] {
-  if (task.lifecycle.status !== "active") return "terminal";
+  if (task.lifecycle.status !== "active") {
+    return "terminal";
+  }
   if (task.execution.liveLease !== undefined && task.execution.liveLease.expiresAtMs > nowMs) {
     return "structurally_blocked";
   }
-  if (durability === "peer_hosted") return "peer_hosted";
+  if (durability === "peer_hosted") {
+    return "peer_hosted";
+  }
   if (task.forkGroup !== undefined && task.forkGroup.status !== "resolved") {
     return "structurally_blocked";
   }
@@ -213,9 +225,15 @@ function peerInvariantHolds(task: TaskState, member: ForkGroupMember | undefined
     return false;
   }
   return !task.actions.some((action) => {
-    if (action.kind !== "pull") return false;
-    if (action.pull.attempts.some((attempt) => attempt.status === "started")) return true;
-    if (action.pull.resolution.status === "settled") return false;
+    if (action.kind !== "pull") {
+      return false;
+    }
+    if (action.pull.attempts.some((attempt) => attempt.status === "started")) {
+      return true;
+    }
+    if (action.pull.resolution.status === "settled") {
+      return false;
+    }
     return !(
       member.sampling === "delegated" &&
       member.delegationCorrelator !== undefined &&
@@ -247,7 +265,9 @@ function indexForestRelations(session: AuthoritySessionState): ForestRelations {
       activeChildByParent.add(task.origin.invokedBy.taskId);
     }
     const group = task.forkGroup;
-    if (!group) continue;
+    if (!group) {
+      continue;
+    }
     for (const member of group.members) {
       const existing = memberGroupByTask.get(member.taskId);
       if (existing && existing.parentTaskId !== task.taskId) {
@@ -350,6 +370,7 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
     route: structuredClone(task.execution.route ?? { driverKind: "program" }),
     executionEpoch: task.execution.epoch,
     groupContext: row.groupContext,
+    /* CONDITIONAL-SPREAD: Omit absent checkpoint from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(task.execution.checkpoint === undefined
       ? {}
       : { checkpoint: structuredClone(task.execution.checkpoint) }),
@@ -363,7 +384,9 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
 /** Used by bind CAS to compare the current materialized row with a plan. */
 export function currentForkGroupRevision(session: AuthoritySessionState, taskId: string): number {
   const task = session.execution.tasks.get(taskId);
-  if (task === undefined) throw new CrankError("unknown_target", `Unknown task ${taskId}`);
+  if (task === undefined) {
+    throw new CrankError("unknown_target", `Unknown task ${taskId}`);
+  }
   return forkContext(task, indexForestRelations(session)).groupRevision;
 }
 
@@ -371,8 +394,12 @@ export function currentForkGroupRevision(session: AuthoritySessionState, taskId:
 export function replayPrefixIsClosed(task: TaskState): boolean {
   for (let index = 0; index < task.nextActionIndex; index += 1) {
     const action = task.actions[index];
-    if (action === undefined) return false;
-    if (action.kind === "pull" && action.pull.resolution.status !== "settled") return false;
+    if (action === undefined) {
+      return false;
+    }
+    if (action.kind === "pull" && action.pull.resolution.status !== "settled") {
+      return false;
+    }
   }
   return true;
 }

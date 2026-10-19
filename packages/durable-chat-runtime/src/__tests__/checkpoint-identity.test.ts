@@ -67,9 +67,13 @@ describe("conversation checkpoint identity", () => {
       }
       expect(failure).toMatchObject({ message: "checkpoint acknowledgement lost" });
       const acceptedHead = yield* store.loadHead("checkpoint-identity");
-      if (!acceptedHead?.checkpoint) throw new Error("checkpoint was not committed");
+      if (!acceptedHead?.checkpoint) {
+        throw new Error("checkpoint was not committed");
+      }
       const accepted = yield* store.getCheckpoint(acceptedHead.checkpoint);
-      if (!accepted) throw new Error("committed checkpoint is absent");
+      if (!accepted) {
+        throw new Error("committed checkpoint is absent");
+      }
       expect(accepted.checkpointId).toMatch(uuidPattern);
       expect(accepted.lineageId).toMatch(uuidPattern);
       expect(accepted.contentHash).toBe(canonicalDigest(accepted.payload));
@@ -97,7 +101,9 @@ describe("conversation checkpoint identity", () => {
     const staged: ConversationStore = {
       ...store,
       *commitConversation(command) {
-        if (!command.checkpoint) throw new Error("checkpoint is missing");
+        if (!command.checkpoint) {
+          throw new Error("checkpoint is missing");
+        }
         yield* store.putCheckpoint({
           ...command.checkpoint,
           checkpointId: acceptedId,

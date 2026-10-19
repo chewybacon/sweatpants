@@ -38,7 +38,9 @@ export function projectTrustedHttpRequest(input: {
     scheme:
       forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : input.localScheme,
     host: forwardedHost ?? input.localHost,
+    /* CONDITIONAL-SPREAD: HTTP headers must omit absent traceparent; undefined is not a header value. */
     ...(trace.traceparent ? { traceparent: trace.traceparent } : {}),
+    /* CONDITIONAL-SPREAD: HTTP headers must omit absent tracestate; undefined is not a header value. */
     ...(trace.tracestate ? { tracestate: trace.tracestate } : {}),
   });
 }
@@ -65,7 +67,9 @@ export function parseTraceContext(headers: Headers): {
       ? tracestateValue
       : undefined;
   return Object.freeze({
+    /* CONDITIONAL-SPREAD: HTTP headers must omit absent traceparent; undefined is not a header value. */
     ...(validParent ? { traceparent: validParent } : {}),
+    /* CONDITIONAL-SPREAD: HTTP headers must omit absent tracestate; undefined is not a header value. */
     ...(tracestate ? { tracestate } : {}),
   });
 }

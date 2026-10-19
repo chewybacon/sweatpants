@@ -5,12 +5,16 @@ import { isYoChatAuthProvider, readStoredModelSelection } from "@sweatpants/mode
 export default async function globalSetup(): Promise<void> {
   // Default Playwright runs are deterministic smoke only. Full live-model E2E
   // checks and refreshes the selected provider before the web server starts.
-  if (process.env["E2E_FULL"] !== "1") return;
+  if (process.env["E2E_FULL"] !== "1") {
+    return;
+  }
 
   const selected = readStoredModelSelection();
   const provider =
     process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selected?.provider ?? "github-copilot";
-  if (!isYoChatAuthProvider(provider)) return;
+  if (!isYoChatAuthProvider(provider)) {
+    return;
+  }
 
   const repoRoot = resolve(process.cwd(), "../..");
   try {

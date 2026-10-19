@@ -520,9 +520,7 @@ function normalizeProgramBinding(input: AgentProgramInput): AgentProgramBinding 
     program,
     schemas: Object.freeze(schemas),
     resources: Object.freeze([...(binding?.resources ?? extended.resourcePackages ?? [])]),
-    ...((binding?.readers ?? extended.resourceReaders)
-      ? { readers: binding?.readers ?? extended.resourceReaders }
-      : {}),
+    readers: binding?.readers ?? extended.resourceReaders,
   });
 }
 function readerBinding(program: ResourceReaderPrograms["read"]): AgentProgramBinding {
@@ -566,7 +564,9 @@ function normalizeSampling(value: AuthoredChatSamplingPolicy): Json {
     invalid("invalid sampling requirements");
   }
   return assertJson({
+    /* CONDITIONAL-SPREAD: Omit absent maxTokens from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(value.maxTokens !== undefined ? { maxTokens: value.maxTokens } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent toolChoice from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(value.toolChoice ? { toolChoice: value.toolChoice } : {}),
     requirements,
   });
@@ -586,7 +586,11 @@ function normalizeElicitations(
   for (const key of sortedKeys(value)) {
     stableId(key, "elicitation key");
     const item = value[key]!;
-    result[key] = { response: item.response, ...(item.context ? { context: item.context } : {}) };
+    result[key] = {
+      response:
+        item.response /* CONDITIONAL-SPREAD: Omit absent context from portable chat history and projection records; explicit undefined is not a portable JSON value. */,
+      ...(item.context ? { context: item.context } : {}),
+    };
   }
   return Object.freeze(result);
 }
@@ -750,10 +754,12 @@ function requireOperationSchemaCoverage(
     ...Object.values(effects).flatMap((definition) => [
       definition.inputSchema,
       definition.outputSchema,
+
       ...(definition.cancellation ? [definition.cancellation.partialSchema] : []),
     ]),
     ...Object.values(elicitations).flatMap((declaration) => [
       declaration.response,
+
       ...(declaration.context ? [declaration.context] : []),
     ]),
   ];

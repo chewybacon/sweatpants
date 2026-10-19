@@ -284,7 +284,9 @@ describe("database-backed durability-spine regression probes", () => {
       const store = handle.storage.conversationStore;
       const head = yield* store.loadHead(conversation.conversationId);
       const checkpoint = head?.checkpoint ? yield* store.getCheckpoint(head.checkpoint) : null;
-      if (!checkpoint) throw new Error("missing selected checkpoint");
+      if (!checkpoint) {
+        throw new Error("missing selected checkpoint");
+      }
       const basis = {
         lineageId: checkpoint.lineageId,
         basisRevision: head!.revision,

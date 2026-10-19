@@ -27,7 +27,9 @@ export type { ToolExecutorEntrypoint, ToolExecutorRpc, ToolExecutorNamespace } f
 
 function unwrap<T>(wire: string): T {
   const result = JSON.parse(wire) as ExecutorResult<T>;
-  if (!result.ok) throw new CrankError(result.error.code, result.error.message);
+  if (!result.ok) {
+    throw new CrankError(result.error.code, result.error.message);
+  }
   return result.value;
 }
 
@@ -45,8 +47,9 @@ export function createCloudflareProgramDriver(
   registry: DurableToolRegistry,
 ): ProgramDriver {
   function handle(attachment: ProgramAttachment): AttachmentHandle {
-    if (!(attachment.handle instanceof AttachmentHandle))
+    if (!(attachment.handle instanceof AttachmentHandle)) {
       throw new CrankError("program_protocol_error", "Attachment belongs to another driver");
+    }
     return attachment.handle;
   }
   return {
@@ -79,7 +82,9 @@ export function createCloudflareProgramDriver(
     },
     *step(attachment, command) {
       const owner = handle(attachment);
-      if (owner.closed) throw new CrankError("stale_program_capability", "Attachment is closed");
+      if (owner.closed) {
+        throw new CrankError("stale_program_capability", "Attachment is closed");
+      }
       const response = yield* call(() =>
         owner.rpc.step(attachment.attachmentId, JSON.stringify(command)),
       );
@@ -87,15 +92,18 @@ export function createCloudflareProgramDriver(
     },
     *shutdown(attachment, reason) {
       const owner = handle(attachment);
-      if (owner.closed) return;
+      if (owner.closed) {
+        return;
+      }
       const response = yield* call(() => owner.rpc.shutdown(attachment.attachmentId, reason));
       unwrap(response);
       owner.closed = true;
     },
     *manifest(program) {
       const tool = registry.get(exactProgramKey(program));
-      if (!tool)
+      if (!tool) {
         throw new CrankError("program_version_unavailable", `Program unavailable: ${program.id}`);
+      }
       return tool.manifest;
     },
   };
@@ -107,8 +115,9 @@ export function cloudflare(options: {
   executors?: ToolExecutorNamespace;
   sessions?: ToolSessionNamespace;
 }): ToolExecutionAdapter {
-  if (options.worker && options.executors)
+  if (options.worker && options.executors) {
     throw new Error("Choose either a worker entrypoint or an executors DO binding");
+  }
   const entrypoint =
     options.worker ??
     (options.executors
@@ -120,12 +129,14 @@ export function cloudflare(options: {
     prepare(tools, routeId) {
       const durable = tools.filter(isChatDurableTool);
       const ordinary = tools.filter((tool) => !isChatDurableTool(tool));
-      if (ordinary.length && !options.sessions)
+      if (ordinary.length && !options.sessions) {
         throw new Error("Cloudflare ordinary tools require a sessions DO binding");
-      if (durable.length && !entrypoint)
+      }
+      if (durable.length && !entrypoint) {
         throw new Error(
           "Cloudflare durable tools require a worker entrypoint or executors DO binding",
         );
+      }
       const driverKind = `cloudflare:${routeId}`;
       return {
         runtimeId: "cloudflare",

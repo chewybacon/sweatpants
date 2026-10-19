@@ -161,6 +161,7 @@ function* installResourceHost(resources: AgentCoreToolInvocationResources): Oper
     *create(request: StartToolInvocation) {
       const session = yield* resources.create(request.tool, request.input, {
         sessionId: request.invocationId,
+        /* CONDITIONAL-SPREAD: Omit absent model from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(request.model === undefined ? {} : { model: request.model }),
       });
       return invocationResource(session, request.tool.bindings.elicits, resources);

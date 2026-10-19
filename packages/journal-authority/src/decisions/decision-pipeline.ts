@@ -55,12 +55,8 @@ function dispatch<C extends AuthorityCommand>(
   sink?.({ phase: "enter", stage: "exhaustive-dispatcher", command: frame.command.type });
   try {
     const transition = decideAuthorityCommand(frame, {
-      ...(frame.context.maxOutcomeBytes === undefined
-        ? {}
-        : { maxOutcomeBytes: frame.context.maxOutcomeBytes }),
-      ...(frame.context.emissionPolicy === undefined
-        ? {}
-        : { emissionPolicy: frame.context.emissionPolicy }),
+      maxOutcomeBytes: frame.context.maxOutcomeBytes,
+      emissionPolicy: frame.context.emissionPolicy,
     });
     sink?.({ phase: "complete", stage: "exhaustive-dispatcher", command: frame.command.type });
     return transition;

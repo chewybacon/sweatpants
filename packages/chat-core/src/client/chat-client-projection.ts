@@ -201,8 +201,10 @@ function nodeImmutable(node: PublicActivityNode): string {
       bindingId: data.bindingId,
       key: data.key,
       message: data.message,
+      /* CONDITIONAL-SPREAD: Omitting context preserves existing projection fields when this partial update is merged. */
       ...(data.context !== undefined ? { context: data.context } : {}),
       responseContract: data.responseContract as unknown as Json,
+      /* CONDITIONAL-SPREAD: Omitting contextContract preserves existing projection fields when this partial update is merged. */
       ...(data.contextContract !== undefined
         ? { contextContract: data.contextContract as unknown as Json }
         : {}),
@@ -217,6 +219,7 @@ function nodeImmutable(node: PublicActivityNode): string {
     sequence: node.sequence,
     kind: node.kind,
     presentation: node.presentation,
+    /* CONDITIONAL-SPREAD: Omitting publicData preserves existing projection fields when this partial update is merged. */
     ...(immutableData !== undefined ? { publicData: immutableData } : {}),
   });
 }
@@ -231,6 +234,7 @@ function cloneNodeWithMutable(
   return {
     ...previous,
     state: terminalElicit ? previous.state : incoming.state,
+    /* CONDITIONAL-SPREAD: Omitting publicData preserves existing projection fields when this partial update is merged. */
     ...(incoming.publicData !== undefined ? { publicData: incoming.publicData } : {}),
   } as PublicActivityNode;
 }
@@ -254,7 +258,9 @@ function preserveSettledToolResult(
     state: previous.state,
     publicData: {
       ...incoming.publicData,
+      /* CONDITIONAL-SPREAD: Omitting output preserves existing projection fields when this partial update is merged. */
       ...(prior.output !== undefined ? { output: prior.output } : {}),
+      /* CONDITIONAL-SPREAD: Omitting errorText preserves existing projection fields when this partial update is merged. */
       ...(prior.errorText !== undefined ? { errorText: prior.errorText } : {}),
     },
   };
@@ -273,9 +279,13 @@ function refreshDerivedState(state: ChatProjectionState): ChatProjectionState {
   const authoritative = new Map<string, string>();
   for (const [nodeId, entry] of state.nodes) {
     const data = entry.node.publicData;
-    if (data?.kind !== "message") continue;
+    if (data?.kind !== "message") {
+      continue;
+    }
     if (entry.synthetic) {
-      if (!messageNodeById.has(data.messageId)) messageNodeById.set(data.messageId, nodeId);
+      if (!messageNodeById.has(data.messageId)) {
+        messageNodeById.set(data.messageId, nodeId);
+      }
     } else {
       authoritative.set(data.messageId, nodeId);
     }
@@ -331,8 +341,11 @@ function refreshDerivedState(state: ChatProjectionState): ChatProjectionState {
   for (const [parentId, nodeId] of edges) {
     const bucket = nodes.has(parentId) ? attachedChildren : pendingChildren;
     const list = bucket.get(parentId);
-    if (list) list.push(nodeId);
-    else bucket.set(parentId, [nodeId]);
+    if (list) {
+      list.push(nodeId);
+    } else {
+      bucket.set(parentId, [nodeId]);
+    }
   }
 
   for (const [parentId, children] of attachedChildren) {
@@ -694,6 +707,7 @@ function appendStructuredOutput(
     parts[active.index] = {
       ...active.part,
       raw,
+      /* CONDITIONAL-SPREAD: Omitting partial preserves existing projection fields when this partial update is merged. */
       ...(partial !== undefined ? { partial } : {}),
     };
     return { ...message, parts };
@@ -1029,7 +1043,9 @@ function activityDelta(state: ChatProjectionState, event: ActivityDeltaEvent): C
 function wireMediaPart(value: unknown): ChatContentPart | undefined {
   try {
     const decoded = decodeChatContent([value]);
-    if (typeof decoded === "string") return undefined;
+    if (typeof decoded === "string") {
+      return undefined;
+    }
     return decoded[0];
   } catch {
     return undefined;
@@ -1060,6 +1076,7 @@ function appendMediaPart(
     id: `${messageId}:${input.type}:${next.nextSequence}`,
     media: input.type,
     source: input.source,
+    /* CONDITIONAL-SPREAD: Omitting metadata preserves existing projection fields when this partial update is merged. */
     ...(input.metadata !== null ? { metadata: input.metadata } : {}),
     sequence: next.nextSequence,
   };
@@ -1162,6 +1179,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
         {
           type: part.type,
           source: part.source,
+          /* CONDITIONAL-SPREAD: Omitting metadata preserves existing projection fields when this partial update is merged. */
           ...(part.metadata === undefined ? {} : { metadata: part.metadata }),
         },
       ];
@@ -1186,6 +1204,7 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
     return {
       id: message.id,
       role: message.role,
+      /* CONDITIONAL-SPREAD: Omitting subagentRunId preserves existing projection fields when this partial update is merged. */
       ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
       content: message.role === "user" && hasMedia ? contentParts : text,
     } as Extract<ChatTransportRequestMessage, { role: "user" | "system" }>;
@@ -1193,8 +1212,11 @@ function messageToWire<TLocalPart extends ChatLocalPart>(
   return {
     id: message.id,
     role: "assistant",
+    /* CONDITIONAL-SPREAD: Omitting subagentRunId preserves existing projection fields when this partial update is merged. */
     ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
+    /* CONDITIONAL-SPREAD: Omitting content preserves existing projection fields when this partial update is merged. */
     ...(text.length > 0 ? { content: text } : {}),
+    /* CONDITIONAL-SPREAD: Omitting toolCalls preserves existing projection fields when this partial update is merged. */
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
   };
 }
@@ -1488,7 +1510,10 @@ function foldEventContent(state: ChatProjectionState, event: AGUIEvent): ChatPro
         return {
           ...node,
           state: "input-available",
-          publicData: { ...data, ...(parsed !== undefined ? { input: parsed } : {}) },
+          publicData: {
+            ...data /* CONDITIONAL-SPREAD: Omitting input preserves existing projection fields when this partial update is merged. */,
+            ...(parsed !== undefined ? { input: parsed } : {}),
+          },
         };
       });
     }
@@ -1558,8 +1583,10 @@ function elicitFact(node: PublicElicitActivityNode): ClientElicitFact {
     message: data.message,
     callId: data.callId,
     seq: data.producerSequence,
+    /* CONDITIONAL-SPREAD: Omitting context preserves existing projection fields when this partial update is merged. */
     ...(data.context !== undefined ? { context: data.context } : {}),
     responseContract: data.responseContract,
+    /* CONDITIONAL-SPREAD: Omitting contextContract preserves existing projection fields when this partial update is merged. */
     ...(data.contextContract !== undefined ? { contextContract: data.contextContract } : {}),
     placement: {
       nodeId: node.nodeId,
@@ -1664,6 +1691,7 @@ export function updateTextPartFrame(
             ...part,
             frame,
             rendered,
+            /* CONDITIONAL-SPREAD: Omitting state preserves existing projection fields when this partial update is merged. */
             ...(done === undefined
               ? {}
               : { state: done ? ("done" as const) : ("streaming" as const) }),
@@ -1709,6 +1737,7 @@ function materializeToolCallPart<TLocalPart extends { readonly type: string; rea
     id: node.nodeId,
     callId: data.callId,
     name: data.name,
+    /* CONDITIONAL-SPREAD: Omitting rawInput preserves existing projection fields when this partial update is merged. */
     ...(data.rawInput !== undefined ? { rawInput: data.rawInput } : {}),
     parts,
   };
@@ -1729,6 +1758,7 @@ function materializeToolCallPart<TLocalPart extends { readonly type: string; rea
         : {
             ...base,
             state: "output-error",
+            /* CONDITIONAL-SPREAD: Omitting input preserves existing projection fields when this partial update is merged. */
             ...(data.input === undefined ? {} : { input: data.input }),
             errorText: data.errorText,
           };
@@ -1778,6 +1808,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
       id: node.nodeId,
       activityType: activity?.activityType ?? "opaque-execution",
       state: stateValue,
+      /* CONDITIONAL-SPREAD: Omitting data preserves existing projection fields when this partial update is merged. */
       ...(activity?.data !== undefined ? { data: activity.data } : {}),
       presentation: node.presentation,
       parts: children.flatMap((child) => {
@@ -1799,6 +1830,7 @@ function materializeNode<TLocalPart extends { readonly type: string; readonly id
     bindingId: data.bindingId,
     key: data.key,
     message: data.message,
+    /* CONDITIONAL-SPREAD: Omitting context preserves existing projection fields when this partial update is merged. */
     ...(data.context !== undefined ? { context: data.context } : {}),
     state: elicitState,
     parts: children.flatMap((child) => {
@@ -1816,6 +1848,7 @@ function materializeStructuredOutputPart(
     type: "structured-output" as const,
     id: part.id,
     raw: part.raw,
+    /* CONDITIONAL-SPREAD: Omitting partial preserves existing projection fields when this partial update is merged. */
     ...(part.partial !== undefined ? { partial: part.partial } : {}),
   };
   switch (part.status) {
@@ -1849,6 +1882,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
                 type: part.media,
                 id: part.id,
                 source: part.source,
+                /* CONDITIONAL-SPREAD: Omitting metadata preserves existing projection fields when this partial update is merged. */
                 ...(part.metadata !== undefined ? { metadata: part.metadata } : {}),
               } as ChatUIMediaPart)
             : part.kind === "text"
@@ -1878,6 +1912,7 @@ function materializeMessage<TLocalPart extends { readonly type: string; readonly
     role: message.role,
     parts: Object.freeze(parts.map((part) => part.value)),
     metadata: Object.freeze({}),
+    /* CONDITIONAL-SPREAD: Omitting subagentRunId preserves existing projection fields when this partial update is merged. */
     ...(message.subagentRunId === undefined ? {} : { subagentRunId: message.subagentRunId }),
   });
 }

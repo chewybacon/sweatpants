@@ -23,9 +23,15 @@ function environmentValues(): Record<string, string> {
   const name = process.env["AGENTCORE_RUNTIME_NAME"];
   const region = process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"];
   const endpointName = process.env["AGENTCORE_ENDPOINT_NAME"];
-  if (name !== undefined) values["name"] = name;
-  if (region !== undefined) values["region"] = region;
-  if (endpointName !== undefined) values["endpointName"] = endpointName;
+  if (name !== undefined) {
+    values["name"] = name;
+  }
+  if (region !== undefined) {
+    values["region"] = region;
+  }
+  if (endpointName !== undefined) {
+    values["endpointName"] = endpointName;
+  }
   return values;
 }
 

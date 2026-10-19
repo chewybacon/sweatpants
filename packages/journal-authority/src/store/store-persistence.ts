@@ -134,8 +134,10 @@ export async function createPrivateSegment(
   entries: readonly Json[],
 ): Promise<StoredPrivateSegment> {
   const metadata = structuredClone(fields);
-  const owned = assertJson(entries) as Json[];
-  const canonical = encodeCanonicalJson(owned);
+  const canonical = encodeCanonicalJson(entries);
+  // Retain exactly the serialized representation, including omission of undefined
+  // object properties, before hashing can suspend.
+  const owned = JSON.parse(canonical) as Json[];
   const bytes = privateEnvelopeEncoder.encode(canonical);
   const contentHash = await digestBytes(bytes);
   const pending: object[] = [owned];

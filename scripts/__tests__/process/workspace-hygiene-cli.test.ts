@@ -27,7 +27,9 @@ function createCurrentSnapshot(): string {
     .filter((file) => file !== "" && !file.startsWith(".pi/"));
   for (const file of files) {
     const source = join(repoRoot, file);
-    if (!existsSync(source)) continue;
+    if (!existsSync(source)) {
+      continue;
+    }
     const destination = join(snapshot, file);
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(source, destination, { recursive: true });

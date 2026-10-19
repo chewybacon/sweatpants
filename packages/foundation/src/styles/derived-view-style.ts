@@ -126,7 +126,9 @@ function assertSiblingSequence(
   excluding?: string,
 ): void {
   for (const siblingId of state.attached.get(parentId) ?? []) {
-    if (siblingId === excluding) continue;
+    if (siblingId === excluding) {
+      continue;
+    }
     if (state.nodes.get(siblingId)!.sequence === sequence) {
       throw new GraphConflictError(`sibling sequence ${sequence} occupied under ${parentId}`);
     }
@@ -295,6 +297,7 @@ export function materializeMaintained(state: MaintainedState): readonly TreeNode
       .map((child) => build(child.nodeId));
     return {
       id: `${node.kind}:${node.ref}`,
+      /* CONDITIONAL-SPREAD: The text fields belong only to the node.kind === "message" variant. */
       ...(node.kind === "message" ? { text: state.text.get(node.ref) ?? "" } : {}),
       children,
     };
@@ -420,7 +423,9 @@ export interface DerivedGraphView {
 export function deriveGraphView(nodes: ReadonlyMap<string, DerivedNode>): DerivedGraphView {
   const messageNode = new Map<string, string>();
   for (const node of nodes.values()) {
-    if (node.kind !== "message") continue;
+    if (node.kind !== "message") {
+      continue;
+    }
     const currentId = messageNode.get(node.ref);
     if (currentId === undefined) {
       messageNode.set(node.ref, node.nodeId);
@@ -445,7 +450,9 @@ export function deriveGraphView(nodes: ReadonlyMap<string, DerivedNode>): Derive
   const pending = new Map<string, string[]>();
   const roots: string[] = [];
   for (const node of nodes.values()) {
-    if (shadowed.has(node.nodeId)) continue;
+    if (shadowed.has(node.nodeId)) {
+      continue;
+    }
     if (node.parent.kind === "root") {
       roots.push(node.nodeId);
       continue;
@@ -493,7 +500,9 @@ export function createGraphViewCache(onDerive?: () => void): {
   return {
     view(nodes) {
       const hit = cache.get(nodes);
-      if (hit) return hit;
+      if (hit) {
+        return hit;
+      }
       onDerive?.();
       const view = deriveGraphView(nodes);
       cache.set(nodes, view);
@@ -508,6 +517,7 @@ export function materializeDerived(state: DerivedState): readonly TreeNode[] {
     const node = state.nodes.get(nodeId)!;
     return {
       id: `${node.kind}:${node.ref}`,
+      /* CONDITIONAL-SPREAD: The text fields belong only to the node.kind === "message" variant. */
       ...(node.kind === "message" ? { text: state.text.get(node.ref) ?? "" } : {}),
       children: (view.children.get(nodeId) ?? []).map(build),
     };

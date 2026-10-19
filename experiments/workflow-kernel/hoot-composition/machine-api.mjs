@@ -7,9 +7,7 @@ export function machineApi(procedures) {
             return procedures[index]
                 .call(...args)
                 .map((value) =>
-                    value &&
-                    typeof value === "object" &&
-                    typeof value.reflector?.string_value === "function"
+                    value && typeof value === "object" && typeof value.reflector?.string_value === "function"
                         ? value.reflector.string_value(value)
                         : value,
                 );
@@ -17,15 +15,11 @@ export function machineApi(procedures) {
             procedures.fuel.value = 100_000_000n;
             const value = procedures[6].call()[0];
             const diagnostic =
-                value &&
-                typeof value === "object" &&
-                typeof value.reflector?.string_value === "function"
+                value && typeof value === "object" && typeof value.reflector?.string_value === "function"
                     ? value.reflector.string_value(value)
                     : value;
             throw new Error(
-                typeof diagnostic === "string" && diagnostic
-                    ? diagnostic
-                    : "Workflow evaluator failed",
+                typeof diagnostic === "string" && diagnostic ? diagnostic : "Workflow evaluator failed",
                 { cause },
             );
         }

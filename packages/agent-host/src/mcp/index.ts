@@ -30,16 +30,21 @@ export function createMcpApp(config: McpAppConfig): McpApp {
   const { execution, setup, ...options } = config;
   const names = new Set<string>();
   for (const tool of options.tools) {
-    if (names.has(tool.name)) throw new Error(`Duplicate MCP tool name: ${tool.name}`);
+    if (names.has(tool.name)) {
+      throw new Error(`Duplicate MCP tool name: ${tool.name}`);
+    }
     names.add(tool.name);
-    if (tool.execution === "crank_native")
+    if (tool.execution === "crank_native") {
       throw new Error(
         "McpApp requires invocation tools; durable programs require a journal-backed host",
       );
+    }
   }
   const prepared = execution.prepare(options.tools, "tools");
   const { createResources } = prepared;
-  if (!createResources) throw new Error("MCP execution adapter must provide invocation resources");
+  if (!createResources) {
+    throw new Error("MCP execution adapter must provide invocation resources");
+  }
 
   let ready: Promise<McpHttpHandler> | undefined;
   let destroy: (() => Promise<void>) | undefined;
@@ -57,8 +62,12 @@ export function createMcpApp(config: McpAppConfig): McpApp {
         scope
           .run(function* () {
             const signal = yield* useAbortSignal();
-            if (setup?.application) yield* setup.application({ signal });
-            if (prepared.setup) yield* prepared.setup();
+            if (setup?.application) {
+              yield* setup.application({ signal });
+            }
+            if (prepared.setup) {
+              yield* prepared.setup();
+            }
             const factory = yield* createResources();
             yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
             yield* ToolInvocationEventSourcePort.installDriver({
@@ -82,10 +91,16 @@ export function createMcpApp(config: McpAppConfig): McpApp {
 
   return {
     async handler(request) {
-      if (closed) throw new Error("McpApp is closed");
-      if (failed) throw failed.error;
+      if (closed) {
+        throw new Error("McpApp is closed");
+      }
+      if (failed) {
+        throw failed.error;
+      }
       const handler = await initialize();
-      if (closed) throw new Error("McpApp is closed");
+      if (closed) {
+        throw new Error("McpApp is closed");
+      }
       return handler(request);
     },
     close() {

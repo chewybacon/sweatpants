@@ -376,7 +376,9 @@ function estimateTokensFromText(text: string): number {
 
 /** Extract text-like facts for token estimation without changing message authority. */
 function getContentText(content: ChatContent): string {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
   return content
     .map((part) => {
       switch (part.type) {
@@ -572,6 +574,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             type: "sample",
             messages,
             responseSignal,
+            /* CONDITIONAL-SPREAD: Omit absent options from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
           };
           yield* state.eventChannel.send(event);
@@ -733,6 +736,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               type: "sample",
               messages,
               responseSignal,
+              /* CONDITIONAL-SPREAD: Omit absent options from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
             };
             yield* state.eventChannel.send(event);
@@ -759,6 +763,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
             // Track token usage
             const estimatedTokens = estimateTokensFromConversation({
+              /* CONDITIONAL-SPREAD: Omit absent systemPrompt from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(sampleOptions.systemPrompt !== undefined
                 ? { systemPrompt: sampleOptions.systemPrompt }
                 : {}),
@@ -848,6 +853,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               type: "sample",
               messages,
               responseSignal,
+              /* CONDITIONAL-SPREAD: Omit absent options from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
             };
             yield* state.eventChannel.send(event);
@@ -862,6 +868,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
             // Track token usage
             const estimatedTokens = estimateTokensFromConversation({
+              /* CONDITIONAL-SPREAD: Omit absent systemPrompt from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
               ...(sampleOptions.systemPrompt !== undefined
                 ? { systemPrompt: sampleOptions.systemPrompt }
                 : {}),
@@ -1013,6 +1020,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               standard: responseSchema,
               json: baseSchema,
             },
+            /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(contextData !== undefined ? { context: contextData } : {}),
           };
 
@@ -1066,6 +1074,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
       return state.eventChannel.send({
         type: "notify",
         message,
+        /* CONDITIONAL-SPREAD: Omit absent progress from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
         ...(progress !== undefined ? { progress } : {}),
       });
     },

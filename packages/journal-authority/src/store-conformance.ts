@@ -56,7 +56,9 @@ export function describeExecutionStoreConformance(
             };
             const accepted: CommitExecutionResult = yield* handle.store.commitExecution(request);
             expect(accepted.status).toBe("committed");
-            if (accepted.status !== "committed") throw new Error("Expected commit");
+            if (accepted.status !== "committed") {
+              throw new Error("Expected commit");
+            }
             revision = accepted.control.controlRevision;
             // A stale replay cannot remove the winning snapshot or resurrect old data.
             expect((yield* handle.store.commitExecution(request)).status).toBe("control_conflict");
@@ -108,11 +110,15 @@ export function describeExecutionStoreConformance(
             const stored = yield* handle.store.getObject({
               objectId: request.objects![0]!.objectId,
             });
-            if (outcomes[index]!.status === "committed") expect(stored).not.toBeNull();
-            else expect(stored).toBeNull();
+            if (outcomes[index]!.status === "committed") {
+              expect(stored).not.toBeNull();
+            } else {
+              expect(stored).toBeNull();
+            }
           }
-          for (const objectId of ids)
+          for (const objectId of ids) {
             expect(yield* handle.store.getObject({ objectId })).toBeNull();
+          }
         });
       } finally {
         await handle.close();

@@ -181,7 +181,9 @@ describe.each(["worker", "durable-object"] as const)("%s conversation host", (pl
           while (true) {
             const request = yield* s.model.request();
             expect(JSON.stringify(request.body.input)).toContain("Empty positions:");
-            if (holdNextSample) return request;
+            if (holdNextSample) {
+              return request;
+            }
             // If the recorded coin flip puts the model first, choose the center.
             yield* request.respond.text('{"cell":4}');
           }

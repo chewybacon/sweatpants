@@ -96,12 +96,16 @@ function toWorkerMessage(message: ChatMessage): WorkerMessage {
 }
 
 function workerContent(content: ChatContent, path: string): WorkerMessage["content"] {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
   return content.map((part, index) => workerContentPart(part, `${path}[${index}]`));
 }
 
 function workerContentPart(part: ChatContentPart, path: string): WorkerContentBlock {
-  if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "text") {
+    return { type: "text", text: part.text };
+  }
   throw new UnsupportedModelCapabilityError(
     path,
     part.type,
@@ -111,7 +115,9 @@ function workerContentPart(part: ChatContentPart, path: string): WorkerContentBl
 
 function workerAssistantContent(parts: readonly ChatMessagePart[]): WorkerContentBlock[] {
   return parts.map((part, index) => {
-    if (part.type === "text") return { type: "text", text: part.text };
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
     if (part.type === "tool-call") {
       return {
         type: "tool_use",
@@ -132,9 +138,13 @@ function workerTextContent(
   content: ChatContent,
   path: string,
 ): Array<{ type: "text"; text: string }> {
-  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (typeof content === "string") {
+    return [{ type: "text", text: content }];
+  }
   return content.map((part, index) => {
-    if (part.type === "text") return { type: "text", text: part.text };
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
     throw new UnsupportedModelCapabilityError(
       path + `[${index}]`,
       part.type,
@@ -298,6 +308,7 @@ function createMcpWorkerContext(
       return completeSampleExchange({
         promptText,
         completion: schemaCompletion,
+        /* CONDITIONAL-SPREAD: Omit absent exchangeId from worker and tool-session messages; explicit undefined is not a portable JSON value. */
         ...(schemaCompletion.parsed !== null ? { exchangeId: generateToolCallId() } : {}),
       });
     }
@@ -319,7 +330,9 @@ function createMcpWorkerContext(
     },
 
     notify(message: string, progressValue?: number, level?: LogLevel): Operation<void> {
-      if (level) return ctx.log(level, message);
+      if (level) {
+        return ctx.log(level, message);
+      }
       coreCtx.progress(message, progressValue);
       return {
         *[Symbol.iterator]() {
