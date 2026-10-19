@@ -220,6 +220,8 @@ it("traces every domain identity, scan direction, and mutation read on SQLite", 
   }
 });
 
+// Real workerd execution plus 207 sequential plan checks takes about six seconds;
+// timing probes confirmed plan checks were still progressing at the default deadline.
 it("traces every D1 identity, scan and atomic guard against real workerd billing metadata", async () => {
   const mf = new Miniflare({
     workers: [
@@ -300,7 +302,7 @@ it("traces every D1 identity, scan and atomic guard against real workerd billing
   } finally {
     await mf.dispose();
   }
-});
+}, 10_000);
 
 async function saveTrace(engine: string, trace: unknown[]) {
   const directory = process.env.STORAGE_QUERY_TRACE_DIR;
