@@ -4,7 +4,10 @@ import type {
   WorkflowLinker,
 } from "../../../packages/workflow-kernel/src/index.ts";
 import { parse } from "../scheme-data/read.mjs";
-import { assertWorkflowLink } from "../../../packages/workflow-kernel/dist/index.js";
+import {
+  assertWorkflowLink,
+  createWorkflowLinker,
+} from "../../../packages/workflow-kernel/dist/index.js";
 
 export const HOOT_DEFINITION_FORMAT = "workflow-scheme-definitions-v1";
 export const HOOT_PROGRAM_FORMAT = "workflow-scheme-spike-1";
@@ -18,13 +21,15 @@ function name(value: string): string {
 }
 
 /** Hoot's definition format and registration syntax are owned by this adapter. */
-export const hootLinker: WorkflowLinker = {
-  definitionFormat: HOOT_DEFINITION_FORMAT,
-  programFormat: HOOT_PROGRAM_FORMAT,
-  *link(input) {
-    return linkHootProgram(input);
+export const hootLinker: WorkflowLinker = createWorkflowLinker({
+  driver: {
+    definitionFormat: HOOT_DEFINITION_FORMAT,
+    programFormat: HOOT_PROGRAM_FORMAT,
+    *link(input) {
+      return linkHootProgram(input);
+    },
   },
-};
+});
 
 /** Pure target transform; no worker, scope, or effect dispatch. */
 function linkHootProgram({

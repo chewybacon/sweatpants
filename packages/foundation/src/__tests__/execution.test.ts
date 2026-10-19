@@ -4,11 +4,14 @@ import { createExecution } from "../execution.ts";
 
 it("keeps advancement closed while the owner retries a failed release", async () => {
   let attempts = 0;
-  const { execution } = createExecution(
-    { kind: "suspended", suspensionId: "question", request: null },
-    {
-      *turn() {
+  const { execution } = createExecution({
+    initial: { kind: "suspended", suspensionId: "question", request: null },
+    driver: {
+      *resume() {
         throw new Error("closed computation must not advance");
+      },
+      *cancel() {
+        throw Error("Unexpected cancellation");
       },
       *dispose() {
         attempts++;
@@ -17,7 +20,7 @@ it("keeps advancement closed while the owner retries a failed release", async ()
         }
       },
     },
-  );
+  });
 
   await expect(run(() => execution.dispose())).rejects.toThrow("release failed");
   await expect(run(() => execution.resume("question", null))).rejects.toThrow("execution_closed");
@@ -32,11 +35,14 @@ it("allows the owner to finish an interrupted release without overlapping dispos
     const releasing = createQueue<void, never>();
     let attempts = 0;
     let released = false;
-    const { execution } = createExecution(
-      { kind: "completed", value: "finished" },
-      {
-        *turn() {
+    const { execution } = createExecution({
+      initial: { kind: "completed", value: "finished" },
+      driver: {
+        *resume() {
           throw new Error("terminal computation must not advance");
+        },
+        *cancel() {
+          throw Error("Unexpected cancellation");
         },
         *dispose() {
           attempts++;
@@ -47,7 +53,7 @@ it("allows the owner to finish an interrupted release without overlapping dispos
           released = true;
         },
       },
-    );
+    });
 
     const firstRelease = yield* spawn(() => execution.dispose());
     yield* releasing.next();

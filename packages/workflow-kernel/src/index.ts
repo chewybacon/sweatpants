@@ -1,6 +1,7 @@
 import type { Operation } from "effection";
 import type {
-  Execution,
+  CheckpointExecution,
+  ExecutionState,
   ExecutionBoundary,
   Executor,
   Exchange,
@@ -49,15 +50,15 @@ export interface KernelSnapshot {
  * implementation. Operations on one execution must be serialized by the host.
  * resume stops at the next effect/terminal boundary; it does not execute effects.
  */
-export interface WorkflowExecution extends Execution<ExchangeRequest, ExchangeReply, Json, Json> {
-  capture(): Operation<KernelSnapshot>;
-}
+export type WorkflowExecution = CheckpointExecution<
+  ExchangeRequest,
+  ExchangeReply,
+  Json,
+  Json,
+  KernelSnapshot
+>;
 
-/** Execution/boundary pair with capture on the handle; no separate lifecycle. */
-export interface WorkflowExecutionState {
-  readonly execution: WorkflowExecution;
-  readonly boundary: WorkflowBoundary;
-}
+export type WorkflowExecutionState = ExecutionState<WorkflowExecution, WorkflowBoundary>;
 
 /**
  * Instance-local evaluator. Operations may suspend for transport or scheduling.
@@ -107,7 +108,12 @@ export function assertKernelCompatibility(
   }
 }
 
-export { createKernelExecution, KernelExecutor } from "./execution.ts";
+export {
+  createKernelExecution,
+  KernelExecutor,
+  type WorkflowExecutionDriver,
+  type WorkflowExecutionOptions,
+} from "./execution.ts";
 export { createWorkflowFlow, WorkflowFailure } from "./flow.ts";
 
 export type {
@@ -124,4 +130,5 @@ export type {
 export type * from "./authoring.ts";
 export { assertWorkflowLink, requireCompiledWorkflow } from "./link.ts";
 
-export { createWorkflowAuthoring } from "./guidance.ts";
+export { createWorkflowGuidance } from "./guidance.ts";
+export * from "./composition.ts";

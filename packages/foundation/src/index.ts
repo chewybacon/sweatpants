@@ -38,10 +38,14 @@ export type {
   ExecutionBoundary,
   Execution,
   ExecutionState,
+  Checkpointing,
+  CheckpointExecution,
+  ExecutionOptions,
+  CheckpointExecutionOptions,
   Executor,
 } from "./execution.ts";
 
-export { createExecution } from "./execution.ts";
+export { createExecution, createCheckpointExecution } from "./execution.ts";
 export type { ExecutionCommand, ExecutionDriver } from "./execution.ts";
 
 export type {
@@ -52,3 +56,10 @@ export type {
   TypedExchangeRequest,
   TypedExchange,
 } from "./exchange.ts";
+
+export {
+  composeOperation,
+  installOperationMiddleware,
+  type OperationMiddleware,
+  type OperationOptions,
+} from "./operation.ts";

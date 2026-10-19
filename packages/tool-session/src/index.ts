@@ -1,7 +1,7 @@
 export * from "./contract.ts";
 export * from "./invocation.ts";
 export { modelSelectionFromMetadata, type ToolSessionModelSelection } from "./model-selection.ts";
-export { createToolInvocationHost } from "./invocation-host.ts";
+export { createToolInvocationHost, type ToolInvocationHostOptions } from "./invocation-host.ts";
 export {
   createToolSessionEventLog,
   isTerminalToolSessionStatus,
@@ -12,6 +12,7 @@ export {
 export * from "./ephemeral.ts";
 export {
   createToolInvocationExecutor,
+  type ToolInvocationExecutorOptions,
   ToolInvocationExecutor,
   advanceToolInvocation,
   type ToolInvocationBoundary,

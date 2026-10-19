@@ -90,24 +90,30 @@ export const EffectionKernel: Executor<Program, Json, Request, Reply, Json> = {
       }
       try {
         const initial = yield* next();
-        const state = createExecution(initial, {
+        const state = createExecution({
+          initial,
           validateReply(request: Request, reply: Reply) {
             if (request.kind !== reply.kind) {
               throw new Error("kernel_reply_mismatch");
             }
           },
-          *turn(command) {
-            if (!pending) {
-              throw new Error("kernel_not_suspended");
-            }
-            if (command.kind === "cancel") {
-              pending.reject(new DurableProgramCancellation(command.reason));
-            } else {
-              pending.resolve(command.reply);
-            }
-            return yield* next();
+          driver: {
+            *resume(_suspensionId, reply) {
+              if (!pending) {
+                throw new Error("kernel_not_suspended");
+              }
+              pending.resolve(reply);
+              return yield* next();
+            },
+            *cancel(reason) {
+              if (!pending) {
+                throw new Error("kernel_not_suspended");
+              }
+              pending.reject(new DurableProgramCancellation(reason));
+              return yield* next();
+            },
+            dispose,
           },
-          dispose,
         });
         yield* provide(state);
       } finally {

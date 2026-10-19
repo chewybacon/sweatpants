@@ -2,11 +2,11 @@ import {
   createContext,
   useScope,
   type Api,
-  type Around,
   type Context,
   type Operation,
   type Scope,
 } from "effection";
+import type { OperationMiddleware } from "./operation.ts";
 import { createApi } from "effection/experimental";
 
 /**
@@ -144,7 +144,7 @@ export function definePort<T extends object>(name: string, declaration: T): Port
       // SAFETY: middleware is derived from the declaration's own keys and
       // forwards the exact argument tuple to the adapter, so it satisfies
       // Around<T> for every declared operation.
-      yield* api.around(middleware as unknown as Partial<Around<T>>, { at: "min" });
+      yield* api.around(middleware as unknown as OperationMiddleware<T>, { at: "min" });
       yield* presence.around(
         {
           *installed() {

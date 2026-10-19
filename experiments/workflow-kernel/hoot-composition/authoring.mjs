@@ -1,10 +1,11 @@
+import { createWorkflowCompiler } from "../../../packages/workflow-kernel/dist/index.js";
 import { call } from "effection";
 import { hootLinker, HOOT_PROGRAM_FORMAT } from "./linker.mts";
 
 /** Current Hoot composition root. The app consumes validation, linking and preparation seams. */
 export function createHootAuthoring({ loadMachine, createProgram }) {
   /** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
-  const compiler = {
+  const compiler = createWorkflowCompiler({ driver: {
     sourceLanguage: "scheme",
     definitionFormat: hootLinker.definitionFormat,
     *compile({ source, entry, exports, bindings }) {
@@ -38,7 +39,7 @@ export function createHootAuthoring({ loadMachine, createProgram }) {
         },
       };
     },
-  };
+  }});
   return {
     linker: hootLinker,
     compiler,

@@ -8,6 +8,7 @@ import {
 import {
   assertKernelCompatibility,
   createKernelExecution,
+  createWorkflowKernel,
 } from "../../../packages/workflow-kernel/dist/index.js";
 import { CrankError } from "../../../packages/durable-execution/dist/index.js";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
@@ -89,15 +90,12 @@ function kernel(observe, source, digest, loadMachine, identity) {
       throw Error("Wrong program");
     }
   }
-  return {
+  return createWorkflowKernel({ driver: {
     identity,
     *start(program, input) {
       validate(program);
       machine = yield* call(loadMachine);
-      return createKernelExecution(
-        transition("start", () => machine.start(source, input)),
-        driver,
-      );
+      return createKernelExecution({ initial: transition("start", () => machine.start(source, input)), driver: driver });
     },
     *restore(program, snapshot) {
       validate(program, snapshot);
@@ -106,16 +104,13 @@ function kernel(observe, source, digest, loadMachine, identity) {
       }
       observe("checkpoint-selected", { snapshot });
       machine = yield* call(loadMachine);
-      return createKernelExecution(
-        transition("restore", () => machine.restore(source, snapshot.state)),
-        driver,
-      );
+      return createKernelExecution({ initial: transition("restore", () => machine.restore(source, snapshot.state)), driver: driver });
     },
     *close() {
       yield* driver.dispose();
       closed = true;
     },
-  };
+  }});
 }
 export function createPortableHootProgram(
   { source, contract, bindOperation, bindings = [] },

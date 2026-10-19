@@ -1,3 +1,4 @@
+import { installOperationMiddleware } from "@sweatpants/foundation";
 import { EventType } from "@ag-ui/core";
 import {
   call,
@@ -9,7 +10,6 @@ import {
   useAbortSignal,
   useScope,
   withResolvers,
-  type Around,
   type Operation,
   type Scope,
   type Stream,
@@ -405,17 +405,6 @@ function normalizeQueueOption(option: ChatQueueOption | undefined): ResolvedQueu
   };
 }
 
-function installMiddleware<T extends object>(
-  api: { around(middleware: Partial<Around<T>>): Operation<void> },
-  middleware: readonly Partial<Around<T>>[],
-): Operation<void> {
-  return (function* (): Operation<void> {
-    for (const item of middleware) {
-      yield* api.around(item);
-    }
-  })();
-}
-
 class ChatClientController<
   TLocalPart extends { readonly type: string; readonly id: string } = never,
 > implements ChatClient<ChatUIMessage<TLocalPart>> {
@@ -724,13 +713,13 @@ class ChatClientController<
     }
 
     if (this.options.middleware) {
-      yield* installMiddleware(ChatClientApi, this.options.middleware);
+      yield* installOperationMiddleware(ChatClientApi, this.options.middleware);
     }
     if (this.options.eventMiddleware) {
-      yield* installMiddleware(ChatEventApi, this.options.eventMiddleware);
+      yield* installOperationMiddleware(ChatEventApi, this.options.eventMiddleware);
     }
     if (this.options.transport?.middleware) {
-      yield* installMiddleware(ChatTransportPort.api, this.options.transport.middleware);
+      yield* installOperationMiddleware(ChatTransportPort.api, this.options.transport.middleware);
     }
 
     const connection = this.options.connection ?? this.options.transport?.driver;

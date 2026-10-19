@@ -1,9 +1,9 @@
-import { createWorkflowAuthoring } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowGuidance } from "../../../packages/workflow-kernel/dist/index.js";
 import { reviewDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.artifact.mjs";
 export function schemeStack(authoring) {
   return {
     ...authoring,
-    authoring: createWorkflowAuthoring(
+    authoring: createWorkflowGuidance(
       "scheme",
       `Write a Scheme caller for a durable workflow evaluator. Return only Scheme source, without Markdown.
 Available compiled developer function: (review_draft input). input is a JSON object with title (string), recipient (string), metadata (JSON value). It asks the human for approval, registers cleanup that asks the human to release the reservation, and returns the string "Draft approved" or "Draft declined". Call it; do not redefine it or simulate its effects.

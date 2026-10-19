@@ -4,6 +4,8 @@ import { assertJson, type Json } from "../../../packages/foundation/dist/index.j
 import {
   assertKernelCompatibility,
   createKernelExecution,
+  createWorkflowKernel,
+  createWorkflowRuntime,
   type WorkflowBoundary,
   type KernelIdentity,
   type KernelSnapshot,
@@ -42,12 +44,14 @@ export function createLuaProgramBundle(
 }
 
 export function createLuaRuntime(invoke: LuaInvoker): WorkflowRuntime {
-  return {
-    kernelIdentity: luaIdentity,
-    *createKernel() {
-      return createLuaKernel(invoke);
+  return createWorkflowRuntime({
+    driver: {
+      kernelIdentity: luaIdentity,
+      *createKernel() {
+        return createLuaKernel(invoke);
+      },
     },
-  };
+  });
 }
 
 /** Portable Lua kernel. Snapshots must come from trusted kernel persistence. */
@@ -141,7 +145,7 @@ export function createLuaKernel(
     used = true;
   }
   const driver = {
-    *turn(command: Parameters<Parameters<typeof createKernelExecution>[1]["turn"]>[0]) {
+    *turn(command: Parameters<Parameters<typeof createKernelExecution>[0]["driver"]["turn"]>[0]) {
       if (command.kind === "cancel") {
         return yield* transition("cancel", {
           state,
@@ -168,23 +172,25 @@ export function createLuaKernel(
       closed = true;
     },
   };
-  return {
-    identity: luaIdentity,
-    *start(next, input) {
-      prepare(next);
-      const boundary = yield* transition("start", { input });
-      return createKernelExecution(boundary, driver);
+  return createWorkflowKernel({
+    driver: {
+      identity: luaIdentity,
+      *start(next, input) {
+        prepare(next);
+        const boundary = yield* transition("start", { input });
+        return createKernelExecution({ initial: boundary, driver: driver });
+      },
+      *restore(next, snapshot) {
+        prepare(next, snapshot);
+        const saved = record(snapshot.state);
+        const boundary = yield* transition("restore", { state: saved });
+        return createKernelExecution({ initial: boundary, driver: driver });
+      },
+      *close() {
+        yield* driver.dispose();
+      },
     },
-    *restore(next, snapshot) {
-      prepare(next, snapshot);
-      const saved = record(snapshot.state);
-      const boundary = yield* transition("restore", { state: saved });
-      return createKernelExecution(boundary, driver);
-    },
-    *close() {
-      yield* driver.dispose();
-    },
-  };
+  });
 }
 
 function inspectLua(state: LuaState, boundary: WorkflowBoundary) {

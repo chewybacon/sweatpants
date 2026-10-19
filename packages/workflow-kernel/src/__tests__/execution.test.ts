@@ -1,15 +1,9 @@
-import type { ExecutionDriver, Json } from "@sweatpants/foundation";
-type Driver = ExecutionDriver<ExchangeRequest, ExchangeReply, Json, Json> & {
-  capture(): Operation<KernelSnapshot>;
-};
+import type { WorkflowExecutionDriver as Driver } from "../index.ts";
 import { expect, it } from "vitest";
-import { run, action, spawn, createQueue, type Operation } from "effection";
+import { run, action, spawn, createQueue } from "effection";
 import {
   createKernelExecution,
   type WorkflowBoundary,
-  type ExchangeRequest,
-  type ExchangeReply,
-  type KernelSnapshot,
 } from "../index.ts";
 
 const effect: WorkflowBoundary = {
@@ -40,7 +34,7 @@ it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", a
       disposed++;
     },
   };
-  const { execution, boundary } = createKernelExecution(effect, kernel);
+  const { execution, boundary } = createKernelExecution({ initial: effect, driver: kernel });
   expect(boundary).toMatchObject({ kind: "suspended", suspensionId: "1" });
   expect(await run(() => execution.resume("1", { kind: "value", value: true }))).toMatchObject({
     kind: "suspended",
@@ -79,7 +73,7 @@ it("fails closed after an unknown advance outcome but still releases compute", a
       disposed = true;
     },
   };
-  const { execution } = createKernelExecution(effect, kernel);
+  const { execution } = createKernelExecution({ initial: effect, driver: kernel });
   await expect(run(() => execution.resume("1", { kind: "value", value: null }))).rejects.toThrow(
     "connection lost",
   );
@@ -106,7 +100,7 @@ it("rejects overlapping commands while an advance is in progress", async () => {
       },
       *dispose() {},
     };
-    const { execution } = createKernelExecution(effect, kernel);
+    const { execution } = createKernelExecution({ initial: effect, driver: kernel });
     const pending = yield* spawn(() => execution.resume("1", { kind: "value", value: null }));
     yield* entered.next();
     let failure: unknown;
@@ -141,7 +135,7 @@ it("does not send another command after the caller abandons an in-flight resume"
         disposed = true;
       },
     };
-    const { execution } = createKernelExecution(effect, kernel);
+    const { execution } = createKernelExecution({ initial: effect, driver: kernel });
     const advancing = yield* spawn(() => execution.resume("1", { kind: "value", value: null }));
     yield* entered.next();
 
@@ -167,17 +161,20 @@ it("captures on the same shared handle without an executor lookup or forwarding 
     state: { waiting: true },
   };
   const events: string[] = [];
-  const executionState = createKernelExecution(effect, {
-    *turn(command) {
-      events.push(command.kind);
-      return { kind: "completed", value: true };
-    },
-    *capture() {
-      events.push("capture");
-      return snapshot;
-    },
-    *dispose() {
-      events.push("dispose");
+  const executionState = createKernelExecution({
+    initial: effect,
+    driver: {
+      *turn(command) {
+        events.push(command.kind);
+        return { kind: "completed", value: true };
+      },
+      *capture() {
+        events.push("capture");
+        return snapshot;
+      },
+      *dispose() {
+        events.push("dispose");
+      },
     },
   });
   await run(function* () {

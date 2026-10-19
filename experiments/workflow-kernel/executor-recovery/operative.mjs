@@ -37,21 +37,26 @@ export function connectHoot() {
         let attachment;
 
         function activate(step) {
-            return createExecution(boundary(step), {
-                *turn(command) {
-                    const next =
-                        command.kind === "cancel"
-                            ? { type: "cancel", reason: command.reason }
-                            : {
-                                  type: "resume",
-                                  actionIndex: Number(command.suspensionId),
-                                  ...command.reply,
-                              };
-                    return boundary(yield* ProgramPeer.operations.step(attachment, next));
-                },
-                *dispose() {
-                    yield* ProgramPeer.operations.shutdown(attachment, "parked");
-                    attachment = undefined;
+            return createExecution({
+                initial: boundary(step),
+                driver: {
+                    *resume(suspensionId, reply) {
+                        return boundary(yield* ProgramPeer.operations.step(attachment, {
+                            type: "resume",
+                            actionIndex: Number(suspensionId),
+                            ...reply,
+                        }));
+                    },
+                    *cancel(reason) {
+                        return boundary(yield* ProgramPeer.operations.step(attachment, {
+                            type: "cancel",
+                            reason,
+                        }));
+                    },
+                    *dispose() {
+                        yield* ProgramPeer.operations.shutdown(attachment, "parked");
+                        attachment = undefined;
+                    },
                 },
             });
         }

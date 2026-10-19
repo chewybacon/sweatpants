@@ -14,9 +14,9 @@ const identity = { kind: "fixture", version: "1", programFormat: "1", snapshotFo
 it("passes input and exchange replies through, leaving completed state available to its owner", async () => {
   const replies: ExchangeReply[] = [];
   let disposed = false;
-  const state = createKernelExecution(
-    { kind: "suspended", suspensionId: "guest-17", request },
-    {
+  const state = createKernelExecution({
+    initial: { kind: "suspended", suspensionId: "guest-17", request },
+    driver: {
       *turn(command) {
         if (command.kind !== "resume") {
           throw Error("Unexpected cancellation");
@@ -31,7 +31,7 @@ it("passes input and exchange replies through, leaving completed state available
         disposed = true;
       },
     },
-  );
+  });
   const flow = createWorkflowFlow(function* (input) {
     expect(input).toEqual({ title: "Draft" });
     return state;
@@ -53,9 +53,9 @@ it("passes input and exchange replies through, leaving completed state available
 it("delivers guest throw replies and preserves the uncaught guest JSON failure", async () => {
   const failure = { code: "declined", detail: [1, false] };
   const flow = createWorkflowFlow(function* () {
-    return createKernelExecution(
-      { kind: "suspended", suspensionId: "1", request },
-      {
+    return createKernelExecution({
+      initial: { kind: "suspended", suspensionId: "1", request },
+      driver: {
         *turn(command) {
           expect(command).toEqual({
             kind: "resume",
@@ -69,7 +69,7 @@ it("delivers guest throw replies and preserves the uncaught guest JSON failure",
         },
         *dispose() {},
       },
-    );
+    });
   });
   const result = run(() =>
     flow(null, function* () {
@@ -84,9 +84,9 @@ it("propagates infrastructure failures without injecting a reply or cancelling t
   const transport = new Error("transport unavailable");
   let turns = 0;
   const flow = createWorkflowFlow(function* () {
-    return createKernelExecution(
-      { kind: "suspended", suspensionId: "1", request },
-      {
+    return createKernelExecution({
+      initial: { kind: "suspended", suspensionId: "1", request },
+      driver: {
         *turn() {
           turns++;
           throw Error("Unexpected guest turn");
@@ -96,7 +96,7 @@ it("propagates infrastructure failures without injecting a reply or cancelling t
         },
         *dispose() {},
       },
-    );
+    });
   });
   await expect(
     run(() =>
@@ -110,9 +110,9 @@ it("propagates infrastructure failures without injecting a reply or cancelling t
 
 it("runs cleanup exchanges after logical cancellation and preserves the cancellation reason", async () => {
   const requests: string[] = [];
-  const state = createKernelExecution(
-    { kind: "suspended", suspensionId: "1", request },
-    {
+  const state = createKernelExecution({
+    initial: { kind: "suspended", suspensionId: "1", request },
+    driver: {
       *turn(command) {
         if (command.kind === "cancel") {
           expect(command.reason).toBe("stop");
@@ -134,7 +134,7 @@ it("runs cleanup exchanges after logical cancellation and preserves the cancella
       },
       *dispose() {},
     },
-  );
+  });
   const flow = createWorkflowFlow(function* () {
     return state;
   });

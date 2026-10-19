@@ -23,6 +23,13 @@ The existing execution state machine serializes command discipline and rejects
 stale suspension IDs. Callers must serialize operations on a handle. Effection
 operations do not make synchronous Wasm interruptible: kernels must bound compute.
 
+`createKernelExecution` delegates to foundation's `createCheckpointExecution`.
+Its handle is a `CheckpointExecution` with a typed `capture` capability. Replay
+executors use `createExecution` and expose no capture method. Both factories
+accept construction-time middleware using Effection's `Around` types, surrounding
+the mandatory per-execution discipline. Capture uses the same guard as resume,
+cancel and dispose; the factory exposes no arbitrary `observe(callback)` method.
+
 Program code and snapshot state are `Json` at this seam; their owning
 kernel validates their formats. Compatibility checks do not establish content
 integrity, authorization or accepted journal provenance. Fresh restoration may
@@ -129,3 +136,37 @@ imports retain the SDK `DurableTool`. A separate `.artifact.mjs` exports the
 `CompiledWorkflow`, with declarations inferred from the tool's input/output types.
 The linker and yo-workflow import that artifact explicitly. The compiler never
 executes arbitrary author modules to discover their declarations.
+
+## Operation composition
+
+Effectful factories share foundation's `OperationOptions<Driver, Operations>`:
+
+```ts
+const compiler = createWorkflowCompiler({
+  driver: languageCompiler,
+  middleware: [{
+    *compile([request], next) {
+      const result = yield* next(request);
+      return result;
+    },
+  }],
+});
+```
+
+`createWorkflowAuthoring`, `createWorkflowCompiler`, `createWorkflowLinker`,
+`createWorkflowRuntime`, and `createWorkflowKernel` use this shape. Metadata stays
+on the driver; middleware keys describe only operations. The first middleware
+entry is outermost. These wrappers preserve the calling Effection scope and do
+not acquire resources until the wrapped operation runs.
+
+The same foundation `OperationMiddleware<Operations>` type is used by execution,
+durable storage, chat APIs, and tool invocation hosts/executors. Existing scoped
+Ports keep scope inheritance and driver installation. `installOperationMiddleware`
+installs the shared middleware shape through their existing `api.around` mechanism;
+it does not turn scoped capabilities into globally retained handles.
+
+Middleware is trusted live code and is not serialized. It may intercept results,
+so it is not an authorization boundary. Execution command discipline and storage
+transaction checks remain inside the driver path, present without middleware.
+Replay executions need no capture capability; checkpoint executions coordinate
+capture with advancement and disposal through their shared instance guard.

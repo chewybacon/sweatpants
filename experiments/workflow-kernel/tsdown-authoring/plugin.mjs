@@ -1,3 +1,4 @@
+import { createWorkflowCompiler } from "../../../packages/workflow-kernel/dist/index.js";
 import { basename, resolve } from "node:path";
 import ts from "typescript";
 import { call, run } from "effection";
@@ -253,7 +254,7 @@ function typeDiagnostics(source) {
 }
 
 /** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
-export const workflowCompiler = {
+export const workflowCompiler = createWorkflowCompiler({ driver: {
   sourceLanguage: "typescript",
   definitionFormat: HOOT_DEFINITION_FORMAT,
   *compile({ source, entry, exports, bindings }) {
@@ -281,7 +282,7 @@ export const workflowCompiler = {
       };
     }
   },
-};
+}});
 
 /** Bundler representation is separate from the portable compiler output.
  * @returns {import("effection").Operation<string>}

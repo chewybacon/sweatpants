@@ -7,6 +7,7 @@ import { createKernelProgramBackend } from "../../../packages/program-backend-ke
 import {
   assertKernelCompatibility,
   createKernelExecution,
+  createWorkflowKernel,
 } from "../../../packages/workflow-kernel/dist/index.js";
 
 export const referenceIdentity = {
@@ -94,12 +95,12 @@ export function createReferenceKernel(bundle, observe = () => {}) {
         }
       },
     };
-    const executionState = createKernelExecution(boundary(), driver);
+    const executionState = createKernelExecution({ initial: boundary(), driver: driver });
     const execution = executionState.execution;
     executions.add(execution);
     return executionState;
   }
-  return {
+  return createWorkflowKernel({ driver: {
     identity: referenceIdentity,
     *start(program, input) {
       validate(program);
@@ -125,7 +126,7 @@ export function createReferenceKernel(bundle, observe = () => {}) {
       closed = true;
       observe("close");
     },
-  };
+  }});
 }
 
 export function createReferenceWorkflowDriver(bundle, observe = () => {}) {

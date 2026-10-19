@@ -43,21 +43,24 @@ function fixture(
     request: { site: "approval", binding: "approval", input: null },
   };
   function executionState(): WorkflowExecutionState {
-    return createKernelExecution(boundary, {
-      *turn(command) {
-        if (command.kind === "cancel") {
-          events.push("cancel");
-          return { kind: "cancelled" };
-        }
-        const reply = command.reply;
-        events.push("resume");
-        return { kind: "completed", value: reply.value };
-      },
-      *capture() {
-        return { kernel: identity, programDigest: "digest", state: { waiting: true } };
-      },
-      *dispose() {
-        events.push("dispose");
+    return createKernelExecution({
+      initial: boundary,
+      driver: {
+        *turn(command) {
+          if (command.kind === "cancel") {
+            events.push("cancel");
+            return { kind: "cancelled" };
+          }
+          const reply = command.reply;
+          events.push("resume");
+          return { kind: "completed", value: reply.value };
+        },
+        *capture() {
+          return { kernel: identity, programDigest: "digest", state: { waiting: true } };
+        },
+        *dispose() {
+          events.push("dispose");
+        },
       },
     });
   }

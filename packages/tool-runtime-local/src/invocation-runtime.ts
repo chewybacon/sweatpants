@@ -243,7 +243,7 @@ export function* createLocalToolInvocationRuntime(
   options: LocalToolInvocationRuntimeOptions,
 ): Operation<LocalToolInvocationRuntime> {
   const factory = yield* createLocalToolInvocationResourceFactory(options);
-  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost({ driver: factory }));
   yield* ToolInvocationEventSourcePort.installDriver({
     *open(invocationId) {
       const resource = yield* factory.open(invocationId);

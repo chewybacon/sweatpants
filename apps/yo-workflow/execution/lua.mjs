@@ -1,5 +1,5 @@
 import {
-  createWorkflowAuthoring,
+  createWorkflowGuidance,
   requireCompiledWorkflow,
 } from "../../../packages/workflow-kernel/dist/index.js";
 import {
@@ -22,7 +22,7 @@ return review_draft`;
 export function createLuaStack(invoke) {
   const { luaCompiler, luaLinker } = createLuaAuthoring(invoke);
   return {
-    authoring: createWorkflowAuthoring(
+    authoring: createWorkflowGuidance(
       "lua",
       `Write a Lua caller for Piccolo. Return only Lua source without Markdown. The local input is a JSON object with title, recipient and metadata. Call review_draft(input), a compiled developer function that asks for approval, then asks to release a reservation during cleanup. It returns "Draft approved" or "Draft declined". After approval only, call send_announcement(input) and return its receipt. On decline return an explanation string. Do not redefine these functions or call workflow.effect directly. Use local variables, functions, if, tables, arithmetic and ordinary calls. No imports, IO, eval, coroutine or standard library beyond assert, type, pcall, error. JSON null is workflow.null. Empty arrays use workflow.array({}). Return one JSON-compatible result. The outbox is local; no email is sent.`,
     ),

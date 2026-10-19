@@ -1,3 +1,4 @@
+import { createDurableKernel, type DurableKernelOptions } from "./middleware.ts";
 import { call, sleep, type Operation } from "effection";
 import type {
   BoundedScan,
@@ -54,7 +55,9 @@ function scanPayloadBytes(record: StoredImmutableRecord): number {
   return (record.value as { encodedBytes: number }).encodedBytes;
 }
 
-export function createMemoryDurableKernel(): DurableKernel {
+export function createMemoryDurableKernel(
+  options: Pick<DurableKernelOptions, "middleware"> = {},
+): DurableKernel {
   const authorities = new Map<string, StoredAuthorityRecord>();
   const immutableAliases = new Map<string, ImmutableEntry>();
   type IndexedRecord = { record: StoredImmutableRecord; position: string; numeric: bigint };
@@ -289,23 +292,26 @@ export function createMemoryDurableKernel(): DurableKernel {
     };
   }
 
-  return {
-    *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
-      return yield* call(() => readAuthority(collection, key));
+  return createDurableKernel({
+    middleware: options.middleware,
+    driver: {
+      *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
+        return yield* call(() => readAuthority(collection, key));
+      },
+      *readImmutable(collection, key): Operation<StoredImmutableRecord | null> {
+        return yield* call(() => readImmutable(collection, key));
+      },
+      *scan(request): Operation<StoredScanPage> {
+        return yield* call(() => scan(request));
+      },
+      *waitForChange(request): Operation<void> {
+        parseCounter(request.afterRevision, "wait revision");
+        // The caller rechecks authority after the wait; no timer-driven payload clones.
+        yield* sleep(Math.max(0, request.timeoutMs));
+      },
+      *apply(mutation): Operation<DurableMutationOutcome> {
+        return yield* call(() => apply(mutation));
+      },
     },
-    *readImmutable(collection, key): Operation<StoredImmutableRecord | null> {
-      return yield* call(() => readImmutable(collection, key));
-    },
-    *scan(request): Operation<StoredScanPage> {
-      return yield* call(() => scan(request));
-    },
-    *waitForChange(request): Operation<void> {
-      parseCounter(request.afterRevision, "wait revision");
-      // The caller rechecks authority after the wait; no timer-driven payload clones.
-      yield* sleep(Math.max(0, request.timeoutMs));
-    },
-    *apply(mutation): Operation<DurableMutationOutcome> {
-      return yield* call(() => apply(mutation));
-    },
-  };
+  });
 }

@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import type { Json, ExecutionState } from "@sweatpants/foundation";
+import type { Json, Execution, ExecutionBoundary, ExecutionState } from "@sweatpants/foundation";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { DurableProgramCancellation, type EmissionDescriptor } from "@sweatpants/durable-execution";
 import {
@@ -14,7 +14,10 @@ export type ProgramRequest =
 export type ProgramReply =
   | { kind: "record"; outcome: OperationOutcome }
   | { kind: "emission"; value: Json };
-export type ProgramExecutionState = ExecutionState<ProgramRequest, ProgramReply, Json>;
+export type ProgramExecutionState = ExecutionState<
+  Execution<ProgramRequest, ProgramReply, Json>,
+  ExecutionBoundary<ProgramRequest, Json>
+>;
 
 /** The attachment drives every evaluator through this one loop. */
 export function* driveProgramExecution(

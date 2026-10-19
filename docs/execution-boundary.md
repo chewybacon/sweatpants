@@ -16,11 +16,32 @@ the collaborator responsibilities and the reasoning behind these names.
 
 ## Shared live command primitive
 
-`createExecution(initialBoundary, driver)` owns the live state machine for both
-adapters. The principal sends `resume(suspensionId, reply)` or `cancel(reason)`;
-the driver receives an `ExecutionCommand` through `turn(command)`. The primitive
-validates correlation before dispatch, rejects overlapping commands, retains the
-current boundary, and handles terminal cancellation and idempotent disposal.
+`createExecution({ initial, driver, middleware })` constructs a replay execution.
+The driver implements `resume`, `cancel`, and `dispose`; the factory validates
+suspension correlation, rejects overlapping commands, retains the current boundary,
+and handles terminal cancellation and idempotent disposal. An optional
+`validateReply` checks domain-specific reply correlation before advancement.
+
+`createCheckpointExecution` accepts the same options with a driver that also
+implements `capture`. It returns `CheckpointExecution`, which extends `Execution`
+and `Checkpointing<Snapshot>`. Capture shares the execution's guard; it cannot
+race with advancement or disposal. Failed/interrupted read-only capture releases
+that guard without poisoning guest state. Replay handles expose no capture method.
+
+Both factories return `ExecutionState<E, B>`: an explicitly typed execution handle
+and its initial boundary. They expose no generic observation callback or controller.
+
+Middleware uses Effection's `Partial<Around<Api>>` shape. The first supplied
+entry is outermost. Construction composes each named operation around the built-in
+state machine, with no captured scope or new resource lifetime. These are per-instance,
+construction-time decorators, not a dynamically installed scoped Port. Every
+forwarded driver operation passes through execution discipline even with no user
+middleware. Middleware is trusted code: short-circuiting or changing an operation's
+result can change caller semantics, so observation middleware should forward the
+original arguments and preserve results. Middleware functions are never checkpointed.
+
+Kernel adapters can still translate `resume`/`cancel` into their transport's
+`ExecutionCommand` and `turn(command)` mechanics inside the driver.
 
 A dispatched command that throws or is abandoned leaves the handle in the
 unknown-outcome state. Only disposal remains available. This includes Effection
@@ -39,7 +60,7 @@ consumers still use `advanceToolInvocation` with journal-owned command identitie
 - `WorkflowKernel` directly implements `Executor.start(program, input)` and adds
   snapshot restoration. Fresh and restored executions return the same
   `WorkflowExecution`: the shared execution handle with a `capture()` capability.
-  Evaluators use `createKernelExecution(boundary, driver)` to install the shared
+  Evaluators use `createKernelExecution({ initial, driver, middleware })` to install the shared
   command state machine once. There is no forwarding executor or WeakMap of handles.
   The evaluator supplies suspension IDs and converts its internal machine result
   into the shared boundary at its edge; the backend performs no boundary conversion.

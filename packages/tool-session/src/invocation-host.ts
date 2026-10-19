@@ -1,4 +1,4 @@
-import { canonicalDigest } from "@sweatpants/foundation";
+import { canonicalDigest, composeOperation, type OperationOptions } from "@sweatpants/foundation";
 import { action, spawn, type Operation, type Task } from "effection";
 import type { ToolSessionEvent } from "./contract.ts";
 import type { InteractionBinding } from "@sweatpants/agent-sdk";
@@ -37,14 +37,20 @@ interface InvocationEntry {
   active: ActiveCommand | undefined;
 }
 
+export type ToolInvocationHostOptions = OperationOptions<
+  ToolInvocationResourceFactory,
+  ToolInvocationHost
+>;
+
 /**
  * Adapts the existing live ToolSession transport to the pull-based invocation
  * control plane. The registry and event stream stay behind this boundary. A
  * durable caller sees only start, turn, and dispose.
  */
-export function createToolInvocationHost(
-  factory: ToolInvocationResourceFactory,
-): ToolInvocationHost {
+export function createToolInvocationHost({
+  driver: factory,
+  middleware = [],
+}: ToolInvocationHostOptions): ToolInvocationHost {
   const invocations = new Map<ToolInvocationId, InvocationEntry>();
 
   function hostError(code: ToolInvocationHostErrorCode, message: string): never {
@@ -115,7 +121,7 @@ export function createToolInvocationHost(
     });
   }
 
-  return {
+  const host: ToolInvocationHost = {
     *start(request): Operation<void> {
       const digest = startDigest(request);
       const existing = invocations.get(request.invocationId);
@@ -215,6 +221,20 @@ export function createToolInvocationHost(
         settleCommand(active.command, { type: "error", error });
       }
     },
+  };
+  return {
+    start: composeOperation(
+      (request) => host.start(request),
+      middleware.map((m) => m.start),
+    ),
+    turn: composeOperation(
+      (request) => host.turn(request),
+      middleware.map((m) => m.turn),
+    ),
+    dispose: composeOperation(
+      (id) => host.dispose(id),
+      middleware.map((m) => m.dispose),
+    ),
   };
 }
 

@@ -20,8 +20,10 @@ import {
   assertKernelCompatibility,
   KernelExecutor,
   createWorkflowFlow,
+  createWorkflowRuntime,
   WorkflowFailure,
   type WorkflowExchange,
+  type WorkflowRuntimeOptions,
   type WorkflowExecutionState,
   type ExchangeRequest,
   type KernelSnapshot,
@@ -31,6 +33,7 @@ import { prepareWorkflow, type KernelBackendDependencies } from "./prepare.ts";
 const checkpointFormat = "sweatpants.kernel-backend.v1";
 
 export interface KernelProgramBackendOptions extends KernelBackendDependencies {
+  runtimeMiddleware?: WorkflowRuntimeOptions["middleware"];
   manifest(program: PinnedProgram): Operation<DurableProgramManifest>;
   /** Bind portable kernel requests to existing installed operation contracts. */
   bindOperation(request: ExchangeRequest): DurableOperationDescriptor;
@@ -38,6 +41,7 @@ export interface KernelProgramBackendOptions extends KernelBackendDependencies {
 
 /** Adapts a kernel to the existing attachment runtime, not a second ProgramDriver. */
 export function createKernelProgramBackend(options: KernelProgramBackendOptions): ProgramBackend {
+  const runtime = createWorkflowRuntime({ driver: options, middleware: options.runtimeMiddleware });
   return {
     capabilities: {
       replay: { kind: "replay", version: 1 },
@@ -69,7 +73,15 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
             state: value.state,
           };
         }
-        const prepared = yield* prepareWorkflow(options, request.program.digest, saved);
+        const prepared = yield* prepareWorkflow(
+          {
+            kernelIdentity: runtime.kernelIdentity,
+            createKernel: () => runtime.createKernel(),
+            loadProgram: (digest) => options.loadProgram(digest),
+          },
+          request.program.digest,
+          saved,
+        );
         const kernelExecutor = prepared.kernel;
         let executionState: WorkflowExecutionState | undefined;
         let flowExecution: ProgramExecutionState["execution"] | undefined;
