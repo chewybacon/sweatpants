@@ -19,8 +19,11 @@ export function pendingCorrelation(
   const evidence = elicitationContextEvidence(pending.descriptor.context, pending.descriptor.key);
   if (evidence.callId || evidence.toolName) {
     return {
+      /* CONDITIONAL-SPREAD: Omit absent callId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(evidence.callId ? { callId: evidence.callId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent elicitId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(evidence.elicitId ? { elicitId: evidence.elicitId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent toolName from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(evidence.toolName ? { toolName: evidence.toolName } : {}),
     };
   }
@@ -48,6 +51,7 @@ export function requiredPendingCorrelation(
   return {
     callId: correlation.callId,
     toolName: correlation.toolName,
+    /* CONDITIONAL-SPREAD: Omit absent elicitId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(correlation.elicitId === undefined ? {} : { elicitId: correlation.elicitId }),
   };
 }

@@ -157,6 +157,7 @@ export function assertDurableProgramSources(options: DurablePurityScanOptions): 
         moduleId: violation.moduleId,
         code: violation.code,
         detail: violation.detail,
+        /* CONDITIONAL-SPREAD: Omit absent index from durable execution records; explicit undefined is not a portable JSON value. */
         ...(violation.index !== undefined ? { index: violation.index } : {}),
       })),
       assurance: result.assurance,

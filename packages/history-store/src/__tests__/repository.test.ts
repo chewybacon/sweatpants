@@ -100,7 +100,9 @@ describe("kernel conversation repository", () => {
         status: "admitted",
         receipt: { commandDigest: "digest-1" },
       });
-      if (admitted.status !== "admitted") throw new Error("command was not admitted");
+      if (admitted.status !== "admitted") {
+        throw new Error("command was not admitted");
+      }
 
       const retried = yield* store.admitCommand(request);
       expect(retried).toMatchObject({

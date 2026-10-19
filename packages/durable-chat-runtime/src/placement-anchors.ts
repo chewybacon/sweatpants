@@ -16,7 +16,9 @@ export function* enrichPlacementAnchors(
   const positions = new Map<string, string>();
   const missing = new Set<string>();
   for (const root of roots) {
-    if (root.kind === "message") positions.set(root.message.id, root.position);
+    if (root.kind === "message") {
+      positions.set(root.message.id, root.position);
+    }
     const anchors =
       root.kind === "activity-subtree"
         ? root.anchors
@@ -24,13 +26,19 @@ export function* enrichPlacementAnchors(
           ? []
           : root.placement.anchors;
     for (const anchor of anchors) {
-      if (anchor.publicData.kind !== "message") continue;
-      if (anchor.messagePosition !== undefined)
+      if (anchor.publicData.kind !== "message") {
+        continue;
+      }
+      if (anchor.messagePosition !== undefined) {
         positions.set(anchor.publicData.messageId, anchor.messagePosition);
-      else missing.add(anchor.publicData.messageId);
+      } else {
+        missing.add(anchor.publicData.messageId);
+      }
     }
   }
-  for (const id of positions.keys()) missing.delete(id);
+  for (const id of positions.keys()) {
+    missing.delete(id);
+  }
   let beforePosition: string | null = basis.nextPublicPosition;
   while (missing.size > 0 && beforePosition !== null) {
     const page: PublicHistoryReadPage = yield* store.readPublicHistoryBefore({
@@ -42,13 +50,15 @@ export function* enrichPlacementAnchors(
     });
     for (const value of page.roots) {
       const root = decodePublicProjectionRoot(value);
-      if (root.kind === "message" && missing.delete(root.message.id))
+      if (root.kind === "message" && missing.delete(root.message.id)) {
         positions.set(root.message.id, root.position);
+      }
     }
     beforePosition = page.nextBeforePosition;
   }
-  if (missing.size > 0)
+  if (missing.size > 0) {
     throw new Error(`Missing archived placement for messages: ${[...missing].join(", ")}`);
+  }
   const enrich = (anchors: import("@sweatpants/chat-core").PublicPlacementAnchor[]) =>
     anchors.map((anchor) => {
       const position =

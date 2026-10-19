@@ -187,6 +187,7 @@ function decodeConversationCommand(command: DecodedCommand): ConversationCommand
         issuedAt: command.issuedAt,
         expiresAt: command.expiresAt,
         basisRevision: command.basisRevision,
+        /* CONDITIONAL-SPREAD: Omit absent targetMessageId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(command.targetMessageId === undefined
           ? {}
           : { targetMessageId: command.targetMessageId }),
@@ -202,6 +203,7 @@ function decodeConversationCommand(command: DecodedCommand): ConversationCommand
         executionId: command.executionId,
         interruptId: command.interruptId,
         status: command.status,
+        /* CONDITIONAL-SPREAD: Omit absent payload from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(command.payload === undefined
           ? {}
           : { payload: assertJson(command.payload, "$.command.payload") }),
@@ -217,34 +219,51 @@ function decodeStreamOptions(value: DecodedStreamOptions | undefined): StreamOpt
   const thinkingBudgets = value.thinkingBudgets;
   const responseFormat = value.responseFormat;
   return {
+    /* CONDITIONAL-SPREAD: Omit absent apiKey from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.apiKey === undefined ? {} : { apiKey: value.apiKey }),
+    /* CONDITIONAL-SPREAD: Omit absent env from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.env === undefined ? {} : { env: value.env }),
+    /* CONDITIONAL-SPREAD: Omit absent sessionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId }),
+    /* CONDITIONAL-SPREAD: Omit absent toolChoice from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.toolChoice === undefined ? {} : { toolChoice: value.toolChoice }),
+    /* CONDITIONAL-SPREAD: Omit absent maxTokens from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.maxTokens === undefined ? {} : { maxTokens: value.maxTokens }),
+    /* CONDITIONAL-SPREAD: Omit absent temperature from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+    /* CONDITIONAL-SPREAD: Omit absent topP from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.topP === undefined ? {} : { topP: value.topP }),
+    /* CONDITIONAL-SPREAD: Omit absent topK from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.topK === undefined ? {} : { topK: value.topK }),
+    /* CONDITIONAL-SPREAD: Omit absent thinking from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.thinking === undefined ? {} : { thinking: value.thinking }),
+    /* CONDITIONAL-SPREAD: Omit absent thinkingBudgets from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(thinkingBudgets === undefined
       ? {}
       : {
           thinkingBudgets: {
+            /* CONDITIONAL-SPREAD: Omit absent minimal from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(thinkingBudgets.minimal === undefined ? {} : { minimal: thinkingBudgets.minimal }),
+            /* CONDITIONAL-SPREAD: Omit absent low from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(thinkingBudgets.low === undefined ? {} : { low: thinkingBudgets.low }),
+            /* CONDITIONAL-SPREAD: Omit absent medium from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(thinkingBudgets.medium === undefined ? {} : { medium: thinkingBudgets.medium }),
+            /* CONDITIONAL-SPREAD: Omit absent high from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(thinkingBudgets.high === undefined ? {} : { high: thinkingBudgets.high }),
           },
         }),
+    /* CONDITIONAL-SPREAD: Omit absent responseFormat from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(responseFormat === undefined
       ? {}
       : {
           responseFormat: {
             type: responseFormat.type,
             schema: responseFormat.schema,
+            /* CONDITIONAL-SPREAD: Omit absent name from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(responseFormat.name === undefined ? {} : { name: responseFormat.name }),
           },
         }),
+    /* CONDITIONAL-SPREAD: Omit absent providerOptions from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(value.providerOptions === undefined ? {} : { providerOptions: value.providerOptions }),
   };
 }
@@ -262,6 +281,7 @@ function normalizeChatRequestBody(
         clientId: controls.clientId,
         conversationId: controls.conversationId,
         threadId: controls.conversationId,
+        /* CONDITIONAL-SPREAD: Omit absent knownWindowToken from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(controls.knownWindowToken === undefined
           ? {}
           : { knownWindowToken: controls.knownWindowToken }),
@@ -286,6 +306,7 @@ function normalizeChatRequestBody(
             {
               interruptId: command.interruptId,
               status: command.status,
+              /* CONDITIONAL-SPREAD: Omit absent payload from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
               ...(command.payload === undefined
                 ? {}
                 : { payload: assertJson(command.payload, "$.command.payload") }),
@@ -336,6 +357,7 @@ function normalizeChatRequestBody(
         : undefined;
     return success({
       command,
+      /* CONDITIONAL-SPREAD: Omit absent knownWindowToken from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.knownWindowToken === undefined
         ? {}
         : { knownWindowToken: controls.knownWindowToken }),
@@ -343,27 +365,40 @@ function normalizeChatRequestBody(
       conversationId: controls.conversationId,
       messageId: command.commandId,
       threadId: controls.conversationId,
+      /* CONDITIONAL-SPREAD: Omit absent runId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.runId === undefined ? {} : { runId: controls.runId }),
+      /* CONDITIONAL-SPREAD: Omit absent parentRunId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.parentRunId === undefined ? {} : { parentRunId: controls.parentRunId }),
       state: controls.state ?? {},
       tools: [],
       context: controls.context ?? [],
       forwardedProps: controls.forwardedProps ?? {},
+      /* CONDITIONAL-SPREAD: Omit absent resume from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(resume === undefined ? {} : { resume }),
       messages,
+      /* CONDITIONAL-SPREAD: Omit absent systemPrompt from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.systemPrompt === undefined ? {} : { systemPrompt: controls.systemPrompt }),
+      /* CONDITIONAL-SPREAD: Omit absent persona from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.persona === undefined ? {} : { persona: controls.persona }),
+      /* CONDITIONAL-SPREAD: Omit absent personaConfig from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.personaConfig === undefined ? {} : { personaConfig: controls.personaConfig }),
+      /* CONDITIONAL-SPREAD: Omit absent enableOptionalTools from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.enableOptionalTools === undefined
         ? {}
         : { enableOptionalTools: controls.enableOptionalTools }),
+      /* CONDITIONAL-SPREAD: Omit absent effort from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.effort === undefined ? {} : { effort: controls.effort }),
+      /* CONDITIONAL-SPREAD: Omit absent streamOptions from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(streamOptions === undefined ? {} : { streamOptions }),
+      /* CONDITIONAL-SPREAD: Omit absent initialToolChoice from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.initialToolChoice === undefined
         ? {}
         : { initialToolChoice: controls.initialToolChoice }),
+      /* CONDITIONAL-SPREAD: Omit absent model from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(controls.model === undefined ? {} : { model: controls.model }),
+      /* CONDITIONAL-SPREAD: Omit absent elicitResponses from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(commandElicitResponses.length === 0 ? {} : { elicitResponses: commandElicitResponses }),
+      /* CONDITIONAL-SPREAD: Omit absent pluginAbort from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(pluginAbort === undefined ? {} : { pluginAbort }),
     });
   } catch (error) {
@@ -436,6 +471,7 @@ export function mapResumeEntriesToElicitResponses(
     mapped.push({
       sessionId,
       callId: record.toolCallId,
+      /* CONDITIONAL-SPREAD: Omit absent toolName, ref from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(record.toolName
         ? {
             toolName: record.toolName,

@@ -148,6 +148,7 @@ export function planExecutionCommit(input: {
     kind: "apply",
     mutation: {
       ensures,
+      /* CONDITIONAL-SPREAD: Omit absent retireExecutionObjects from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(retiredSnapshot
         ? { retireExecutionObjects: [executionKeys.object(retiredSnapshot)] }
         : {}),

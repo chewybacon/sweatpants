@@ -65,6 +65,7 @@ function ToolCard({ part }: { part: ToolPart }) {
         )}
         {reply && (
           <ReplyForm
+            /* CONDITIONAL-SPREAD: Only validated ask input becomes ReplyForm props; failed validation contributes no fields. */
             {...(askInput?.success ? askInput.data : {})}
             prompt={stringField(part.input, "message") ?? "Your reply"}
             response={reply}
@@ -146,7 +147,9 @@ export function hasVisiblePart(part: ReactChatUIPart): boolean {
 }
 
 export function Part({ part }: { part: ReactChatUIPart }) {
-  if (!hasVisiblePart(part)) return null;
+  if (!hasVisiblePart(part)) {
+    return null;
+  }
   switch (part.type) {
     case "text":
       return <div dangerouslySetInnerHTML={{ __html: part.rendered }} />;
@@ -168,7 +171,9 @@ export function Part({ part }: { part: ReactChatUIPart }) {
         </>
       );
     case "activity":
-      if (part.presentation === "opaque") return null;
+      if (part.presentation === "opaque") {
+        return null;
+      }
       return (
         <section className="nested-activity" data-activity-id={part.id}>
           <div className="tool-heading">

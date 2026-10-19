@@ -35,7 +35,9 @@ export function createPullStream<T>(
           }
 
           if (terminal) {
-            if (terminal.error) throw terminal.error;
+            if (terminal.error) {
+              throw terminal.error;
+            }
             return { done: true, value: undefined };
           }
 

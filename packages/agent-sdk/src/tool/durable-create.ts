@@ -368,9 +368,11 @@ export function createDurableTool<N extends string>(
   return builder({
     name,
     version: options.version,
+    /* CONDITIONAL-SPREAD: Omit absent implementationArtifactDigest from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(options.implementationArtifactDigest
       ? { implementationArtifactDigest: options.implementationArtifactDigest }
       : {}),
+    /* CONDITIONAL-SPREAD: Omit absent resourcePackageDigests from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(options.resourcePackageDigests
       ? { resourcePackageDigests: [...options.resourcePackageDigests] }
       : {}),
@@ -513,6 +515,7 @@ function builder(state: BuilderState): unknown {
         }
         const declaration = {
           response: response.descriptor,
+          /* CONDITIONAL-SPREAD: Omit absent context, contextContract from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
           ...(context ? { context: context.descriptor, contextContract: context.descriptor } : {}),
         };
         manifestElicits[key] = declaration;
@@ -548,6 +551,7 @@ function builder(state: BuilderState): unknown {
         outputSchema: outputDescriptor,
         elicits: manifestElicits,
         effects: declaredEffects,
+        /* CONDITIONAL-SPREAD: Only sampling-enabled manifests declare the sample pull contract. */
         ...(state.samples
           ? {
               pulls: {
@@ -578,6 +582,7 @@ function builder(state: BuilderState): unknown {
       );
       const artifacts: ToolSchemaArtifacts = Object.freeze({
         parameters: contractArtifacts.parameters,
+        /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(contractArtifacts.output ? { output: contractArtifacts.output } : {}),
         elicits: contractArtifacts.elicits,
         catalog: Object.freeze([...catalogByDigest.values()]),
@@ -585,6 +590,7 @@ function builder(state: BuilderState): unknown {
       const interfaceDigest = computeToolInterfaceDigest({
         name: state.name,
         parameters: artifacts.parameters,
+        /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(artifacts.output ? { output: artifacts.output } : {}),
         elicits: artifacts.elicits,
         annotations: {},
@@ -623,6 +629,7 @@ function builder(state: BuilderState): unknown {
               {
                 baseDigest,
                 extensions: extensionIdentity,
+                /* CONDITIONAL-SPREAD: Omit absent decisions from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
                 ...(state.decisions ? { decisions: state.decisions } : {}),
               },
             ]);
@@ -656,6 +663,7 @@ function builder(state: BuilderState): unknown {
         name: state.name,
         description,
         parameters,
+        /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(state.output ? { output: state.output } : {}),
         elicits: normalizedElicits,
         samples: Object.freeze({}),
@@ -701,6 +709,7 @@ function contextForDeclarations(
   const adapted = Object.freeze({
     ...context,
     ...aliases,
+    /* CONDITIONAL-SPREAD: Expose decision only when its backing capability exists; callers inspect supported methods. */
     ...(decisions
       ? {
           *decision(request: DecisionRequest): Operation<DecisionResult> {
@@ -732,6 +741,7 @@ function contextForDeclarations(
         resolver ?? { audience: `effect:${definition.name}` },
       );
     },
+    /* CONDITIONAL-SPREAD: Omit absent sample, sampleTools, sampleSchema from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(sampling
       ? {
           sample(request: SamplingRequestBase) {
@@ -777,6 +787,7 @@ function contextForDeclarations(
             key,
             message: requestOrMessage,
             response: response!,
+            /* CONDITIONAL-SPREAD: Omit absent context from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
             ...(rawContext === undefined ? {} : { context: rawContext }),
           }),
         );
@@ -810,6 +821,7 @@ function contextForDeclarations(
             {
               operation: "read",
               document: { id: ref.id },
+              /* CONDITIONAL-SPREAD: Omit absent sinceRevision from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(ref.sinceRevision === undefined ? {} : { sinceRevision: ref.sinceRevision }),
             },
             { audience: `effect:${documentEffect.name}` },
@@ -831,7 +843,9 @@ function contextForDeclarations(
           key,
           message: requestOrMessage.message,
           response: declaration.response,
+          /* CONDITIONAL-SPREAD: Omit absent context from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
           ...(wireContext === undefined ? {} : { context: wireContext }),
+          /* CONDITIONAL-SPREAD: Omit absent contextContract from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
           ...((declaration.contextContract ?? declaration.context)
             ? { contextContract: declaration.contextContract ?? declaration.context }
             : {}),
@@ -872,6 +886,7 @@ function createCanonicalModelSampleRequest(
   assertSamplingRequest(prompt, messages, request.retries);
   const contextMessages: ChatMessage[] = [
     ...(systemPrompt !== undefined ? [{ role: "system" as const, content: systemPrompt }] : []),
+
     ...(prompt === undefined ? [...messages!] : [{ role: "user" as const, content: prompt }]),
   ];
   const context: ModelContext = {
@@ -881,6 +896,7 @@ function createCanonicalModelSampleRequest(
   return {
     invocation: {
       context,
+      /* CONDITIONAL-SPREAD: Omit absent options from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
       ...(maxTokens !== undefined ||
       toolChoice !== undefined ||
       temperature !== undefined ||
@@ -889,11 +905,17 @@ function createCanonicalModelSampleRequest(
       thinking !== undefined
         ? {
             options: {
+              /* CONDITIONAL-SPREAD: Omit absent maxTokens from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(maxTokens !== undefined ? { maxTokens } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent toolChoice from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(toolChoice !== undefined ? { toolChoice } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent temperature from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(temperature !== undefined ? { temperature } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent topP from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(topP !== undefined ? { topP } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent topK from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(topK !== undefined ? { topK } : {}),
+              /* CONDITIONAL-SPREAD: Omit absent thinking from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
               ...(thinking !== undefined ? { thinking } : {}),
             },
           }
@@ -901,7 +923,9 @@ function createCanonicalModelSampleRequest(
     },
     tools: tools ? { type: "embedded", tools } : { type: "none" },
     response: schema ? { type: "json", schema } : { type: "message" },
+    /* CONDITIONAL-SPREAD: Omit absent modelPreferences from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(modelPreferences !== undefined ? { modelPreferences } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent classifications from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(classifications ? { classifications: [...classifications] } : {}),
   };
 }
@@ -923,6 +947,7 @@ function* sampleModel(
       ...canonicalRequest,
       invocation: {
         context: source,
+        /* CONDITIONAL-SPREAD: Omit absent options from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(canonicalRequest.invocation.options === undefined
           ? {}
           : { options: canonicalRequest.invocation.options }),
@@ -964,7 +989,9 @@ function* sampleStructured<T>(
     if (validated.status === "ok") {
       return {
         text: result.text,
+        /* CONDITIONAL-SPREAD: Omit absent model from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(result.model !== undefined ? { model: result.model } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent stopReason from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
         ...(result.stopReason !== undefined ? { stopReason: result.stopReason } : {}),
         parsed: validated.value,
       };

@@ -324,6 +324,7 @@ function mapTask(task: ExecutionTask): RecordTaskIndex {
       pullId: action.pullId,
       descriptor: structuredClone(action.descriptor),
       attempts: action.attempts.map(mapAttempt),
+      /* CONDITIONAL-SPREAD: Omit absent settlement from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(action.settlement
         ? {
             settlement: {

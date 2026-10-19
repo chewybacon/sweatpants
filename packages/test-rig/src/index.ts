@@ -55,7 +55,9 @@ interface EndpointApplication {
 
 function conversationIdAt(pathname: string, suffix = ""): string | null {
   const match = new RegExp(`^/api/chat/([^/]+)${suffix}/?$`).exec(pathname);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   try {
     return decodeURIComponent(match[1]!);
   } catch {
@@ -191,11 +193,14 @@ async function createHttpBinding(
       for await (const chunk of req) {
         chunks.push(Buffer.from(chunk));
       }
-      const request = new Request(`http://127.0.0.1${req.url ?? "/"}`, {
-        ...(req.method ? { method: req.method } : {}),
+      // Node accepts duplex for request bodies; the DOM RequestInit omits it.
+      const init = {
+        method: req.method,
         headers: req.headers as HeadersInit,
-        ...(chunks.length ? { body: Buffer.concat(chunks), duplex: "half" as never } : {}),
-      });
+        body: chunks.length ? Buffer.concat(chunks) : undefined,
+        duplex: chunks.length ? "half" : undefined,
+      } satisfies RequestInit & { duplex?: "half" };
+      const request = new Request(`http://127.0.0.1${req.url ?? "/"}`, init);
       const response = await application.handle(request);
       res.writeHead(response.status, Object.fromEntries(response.headers));
       if (response.body) {

@@ -13,12 +13,21 @@ const originalSecret = process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"];
 afterEach(async () => {
   vi.doUnmock("@/env");
   vi.resetModules();
-  if (originalStorage === undefined) delete process.env["SWEATPANTS_STORAGE"];
-  else process.env["SWEATPANTS_STORAGE"] = originalStorage;
-  if (originalPath === undefined) delete process.env["SWEATPANTS_DB_PATH"];
-  else process.env["SWEATPANTS_DB_PATH"] = originalPath;
-  if (originalSecret === undefined) delete process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"];
-  else process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"] = originalSecret;
+  if (originalStorage === undefined) {
+    delete process.env["SWEATPANTS_STORAGE"];
+  } else {
+    process.env["SWEATPANTS_STORAGE"] = originalStorage;
+  }
+  if (originalPath === undefined) {
+    delete process.env["SWEATPANTS_DB_PATH"];
+  } else {
+    process.env["SWEATPANTS_DB_PATH"] = originalPath;
+  }
+  if (originalSecret === undefined) {
+    delete process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"];
+  } else {
+    process.env["PROGRAM_DRIVER_CAPABILITY_SECRET"] = originalSecret;
+  }
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 

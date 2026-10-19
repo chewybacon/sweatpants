@@ -98,6 +98,7 @@ export function planModelInvocation(input: {
       ? {
           responseFormat: {
             type: "json_schema" as const,
+            /* CONDITIONAL-SPREAD: Omit absent name from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
             ...(input.request.response.name !== undefined
               ? { name: input.request.response.name }
               : {}),
@@ -118,6 +119,7 @@ export function planModelInvocation(input: {
   };
   const decisions: ModelInvocationDecision[] = [
     ...(resolvedTools.decision ? [resolvedTools.decision] : []),
+
     ...(history.decisions.length > 0 && input.historyPolicy
       ? [
           {

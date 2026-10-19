@@ -79,7 +79,9 @@ describe("ProgramWorkflowHost", () => {
       });
       const parked = yield* opened.result;
       expect(parked).toMatchObject({ state: "parked", reason: "elicit" });
-      if (parked.state !== "parked") throw new Error("workflow did not park");
+      if (parked.state !== "parked") {
+        throw new Error("workflow did not park");
+      }
       expect(parked.slots).toEqual([
         { taskId: opened.taskId, pullId: parked.pullId, reason: "elicit" },
       ]);

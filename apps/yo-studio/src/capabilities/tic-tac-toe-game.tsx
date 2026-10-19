@@ -73,7 +73,7 @@ function BoardGrid({
               width={CELL_SIZE}
               height={CELL_SIZE}
               variant={playerVariant(cell)}
-              {...(ringClass ? { className: ringClass } : {})}
+              className={ringClass ? ringClass : undefined}
             >
               <Center height="100%">
                 <Heading level={4} color="inherit">
@@ -211,7 +211,7 @@ export function TicTacToeGame({
                 key={move.moveNumber}
                 move={move}
                 isFinal={index === moveHistory.length - 1}
-                {...(finalResult ? { result: finalResult } : {})}
+                result={finalResult ? finalResult : undefined}
               />
             ))}
           </List>
@@ -230,12 +230,12 @@ export function TicTacToeGame({
           </HStack>
           <BoardGrid
             board={board}
-            {...(lastMove ? { lastPosition: lastMove.position } : {})}
-            {...(winningLine ? { winningLine } : {})}
-            {...(gameOver !== undefined ? { gameOver } : {})}
+            lastPosition={lastMove ? lastMove.position : undefined}
+            winningLine={winningLine ? winningLine : undefined}
+            gameOver={gameOver}
             onRespond={onRespond}
-            {...(disabled !== undefined ? { disabled } : {})}
-            {...(response ? { response } : {})}
+            disabled={disabled}
+            response={response ? response : undefined}
           />
         </VStack>
       </VStack>

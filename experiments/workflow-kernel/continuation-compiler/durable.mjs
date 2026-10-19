@@ -7,8 +7,12 @@ export const ENGINE_ID = createHash("sha256")
 import { compile, start, run } from "./engine.mjs";
 export const copy = (x) => JSON.parse(JSON.stringify(x));
 function canonical(x) {
-    if (x === null || typeof x !== "object") return JSON.stringify(x);
-    if (Array.isArray(x)) return "[" + x.map(canonical).join(",") + "]";
+    if (x === null || typeof x !== "object") {
+        return JSON.stringify(x);
+    }
+    if (Array.isArray(x)) {
+        return "[" + x.map(canonical).join(",") + "]";
+    }
     return (
         "{" +
         Object.keys(x)
@@ -21,7 +25,9 @@ function canonical(x) {
 export const hash = (x) => createHash("sha256").update(canonical(x)).digest("hex");
 const equal = (a, b) => hash(a) === hash(b);
 function check(ok, message) {
-    if (!ok) throw Error(message);
+    if (!ok) {
+        throw Error(message);
+    }
 }
 export function valid(schema, v) {
     switch (schema.type) {
@@ -170,7 +176,9 @@ export function recover(r, registry) {
                 "Replay completion mismatch",
             );
             delete ctx.output;
-        } else throw Error("Unknown journal event");
+        } else {
+            throw Error("Unknown journal event");
+        }
     }
     return ctx;
 }
@@ -211,16 +219,21 @@ function shape(p) {
 }
 export function compatibility(record, registry, target) {
     const ctx = recover(record, registry);
-    if (ctx.a.id === target.id) return { status: "direct" };
-    if (!ctx.pending)
+    if (ctx.a.id === target.id) {
+        return { status: "direct" };
+    }
+    if (!ctx.pending) {
         return { status: "retain-original", reason: "Only waiting boundaries can migrate" };
-    if (!equal(ctx.pending.contract, target.contracts[ctx.pending.site] ?? null))
+    }
+    if (!equal(ctx.pending.contract, target.contracts[ctx.pending.site] ?? null)) {
         return {
             status: "retain-original",
             reason: "Pending reply contract changed or resume point removed",
         };
-    if (!equal(shape(ctx.a.program), shape(target.program)))
+    }
+    if (!equal(shape(ctx.a.program), shape(target.program))) {
         return { status: "retain-original", reason: "Function or continuation layout changed" };
+    }
     return {
         status: "explicit-migration",
         reason: "Compatible layout does not prove equivalent behavior",
@@ -253,17 +266,28 @@ export function migrate(record, registry, target, plan) {
     ctx.state.program = target.program.id;
     // Reject newly introduced unresolved references, including code reachable through closures.
     const contexts = [];
-    for (const f of ctx.state.frames) contexts.push({ fn: f.fn, env: f.env });
+    for (const f of ctx.state.frames) {
+        contexts.push({ fn: f.fn, env: f.env });
+    }
     function scan(v) {
-        if (!v || typeof v !== "object") return;
-        if (Number.isInteger(v.closure)) contexts.push({ fn: v.closure, env: v.env });
-        for (const x of Object.values(v)) scan(x);
+        if (!v || typeof v !== "object") {
+            return;
+        }
+        if (Number.isInteger(v.closure)) {
+            contexts.push({ fn: v.closure, env: v.env });
+        }
+        for (const x of Object.values(v)) {
+            scan(x);
+        }
     }
     scan(ctx.state.heap);
     scan(ctx.state.frames.map((f) => f.stack));
     function reachable(env, key) {
-        for (let e = env; e !== null; e = ctx.state.heap[e].parent)
-            if (Object.hasOwn(ctx.state.heap[e].bindings, key)) return true;
+        for (let e = env; e !== null; e = ctx.state.heap[e].parent) {
+            if (Object.hasOwn(ctx.state.heap[e].bindings, key)) {
+                return true;
+            }
+        }
         return ["+", "-", "=", "list", "string-append"].includes(key);
     }
     target.program.functions.forEach((f, fi) =>

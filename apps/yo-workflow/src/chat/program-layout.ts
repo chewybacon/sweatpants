@@ -38,8 +38,9 @@ export function layoutFlow(flow: Flow) {
     const header = flow.edges.find((e) => !ids.has(e.source) && ids.has(e.target))!.target;
     let lane = 0;
     flow.edges.forEach((e, index) => {
-      if (ids.has(e.source) && e.target === header)
+      if (ids.has(e.source) && e.target === header) {
         returns.set(index, { region: `loop-region-${i}`, lane: lane++ });
+      }
     });
   });
   const regionOf = new Map<string, string>();
@@ -65,7 +66,9 @@ export function layoutFlow(flow: Flow) {
   const blockOf = new Map(flow.nodes.map((n) => [n.id, n.id]));
   const columns = new Map<string, string[]>();
   for (const step of flow.nodes) {
-    if (step.kind !== "branch" || previousBranch(step.id).length !== 0) continue;
+    if (step.kind !== "branch" || previousBranch(step.id).length !== 0) {
+      continue;
+    }
     const members = [step.id];
     let next = nextBranch(step.id);
     while (
@@ -76,7 +79,9 @@ export function layoutFlow(flow: Flow) {
       members.push(next[0].target);
       next = nextBranch(next[0].target);
     }
-    if (members.length < 2) continue;
+    if (members.length < 2) {
+      continue;
+    }
     const id = `branch-column-${columns.size}`;
     columns.set(id, members);
     members.forEach((member) => blockOf.set(member, id));
@@ -91,7 +96,9 @@ export function layoutFlow(flow: Flow) {
         ? { width: 112, height: 48 }
         : { width: 184, height: 88 };
   flow.nodes.forEach((n) => {
-    if (blockOf.get(n.id) === n.id) layout.setNode(n.id, size(n));
+    if (blockOf.get(n.id) === n.id) {
+      layout.setNode(n.id, size(n));
+    }
   });
   columns.forEach((members, id) =>
     layout.setNode(id, { width: 264, height: members.length * 88 + (members.length - 1) * 56 }),
@@ -102,10 +109,14 @@ export function layoutFlow(flow: Flow) {
     members.forEach((member) => layout.setParent(blockOf.get(member)!, id));
   });
   flow.edges.forEach((e, i) => {
-    if (returns.has(i)) return;
+    if (returns.has(i)) {
+      return;
+    }
     const from = blockOf.get(e.source)!,
       to = blockOf.get(e.target)!;
-    if (from === to && columns.has(from)) return;
+    if (from === to && columns.has(from)) {
+      return;
+    }
     layout.setEdge(
       from,
       to,
@@ -147,7 +158,9 @@ export function layoutFlow(flow: Flow) {
   // Align straight sequences independently of the branch-column height.
   const seen = new Set<string>();
   for (const step of flow.nodes) {
-    if (step.kind !== "yield" || seen.has(step.id)) continue;
+    if (step.kind !== "yield" || seen.has(step.id)) {
+      continue;
+    }
     const chain = [step.id];
     let current = step.id;
     while (true) {
@@ -158,7 +171,9 @@ export function layoutFlow(flow: Flow) {
           steps.get(e.target)?.kind === "yield" &&
           regionOf.get(current) === regionOf.get(e.target),
       );
-      if (next.length !== 1 || chain.includes(next[0].target)) break;
+      if (next.length !== 1 || chain.includes(next[0].target)) {
+        break;
+      }
       current = next[0].target;
       chain.push(current);
     }
@@ -172,16 +187,22 @@ export function layoutFlow(flow: Flow) {
     const incoming = flow.edges.filter(
       (e, i) => e.target === members[0] && !members.includes(e.source) && !returns.has(i),
     );
-    if (!incoming.length) return;
+    if (!incoming.length) {
+      return;
+    }
     const row = Math.max(...incoming.map((e) => boxes.get(e.source)!.y));
     members.forEach((id, i) => {
       boxes.get(id)!.y = row + i * 144;
     });
   });
   for (const step of flow.nodes) {
-    if (step.kind !== "entry") continue;
+    if (step.kind !== "entry") {
+      continue;
+    }
     const next = flow.edges.filter((e) => e.source === step.id);
-    if (next.length === 1) boxes.get(step.id)!.y = boxes.get(next[0].target)!.y;
+    if (next.length === 1) {
+      boxes.get(step.id)!.y = boxes.get(next[0].target)!.y;
+    }
   }
   const bodyBottom = Math.max(
     ...flow.nodes
@@ -204,7 +225,9 @@ export function layoutFlow(flow: Flow) {
   let bypassLane = 0;
   const intersectsNode = (points: Point[], sourceId: string, targetId: string) =>
     [...boxes].some(([id, b]) => {
-      if (id === sourceId || id === targetId) return false;
+      if (id === sourceId || id === targetId) {
+        return false;
+      }
       const left = b.x - b.width / 2 - 8,
         right = b.x + b.width / 2 + 8;
       const top = b.y - b.height / 2 - 8,
@@ -290,7 +313,7 @@ export function layoutFlow(flow: Flow) {
       style: {
         stroke: "var(--flow-edge)",
         strokeWidth: 1.5,
-        ...(repeat ? { strokeDasharray: "5 4" } : {}),
+        strokeDasharray: repeat ? "5 4" : undefined,
       },
     };
   });
@@ -304,7 +327,9 @@ export function layoutFlow(flow: Flow) {
       ];
     });
     edges.forEach((e) => {
-      if (members.includes(e.source) && members.includes(e.target)) points.push(...e.data!.points);
+      if (members.includes(e.source) && members.includes(e.target)) {
+        points.push(...e.data!.points);
+      }
     });
     const left = Math.min(...points.map((p) => p.x)) - 36,
       right = Math.max(...points.map((p) => p.x)) + 36;

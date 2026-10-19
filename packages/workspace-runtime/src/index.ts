@@ -4,15 +4,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import {
-  assertJson,
-  canonicalJson,
+  encodeCanonicalJson,
   hasControlCharacter,
   parser,
   sha256,
   sortStrings,
   stableTupleHash,
   type Json,
-  canonicalDigest,
+  digestCanonicalJson,
 } from "@sweatpants/foundation";
 
 import { useProgramExecution } from "@sweatpants/durable-execution";
@@ -256,7 +255,10 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
       if (activeFence.sandboxGeneration !== fence.sandboxGeneration) {
         throw new CrankError("sandbox_generation_stale", "generation cannot change in one service");
       }
-      if (normalizedScripts && canonicalJson(normalizedScripts) !== canonicalJson(scripts)) {
+      if (
+        normalizedScripts &&
+        encodeCanonicalJson(normalizedScripts) !== encodeCanonicalJson(scripts)
+      ) {
         throw new CrankError(
           "nondeterminism_detected",
           "declared scripts cannot change within a sandbox generation",
@@ -416,10 +418,10 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
   };
 
   function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
-    // `WorkspaceService.execute` is itself a public structural boundary; its
-    // interface type cannot prevent arbitrary extension callers constructing
-    // an invalid object.
-    request = parseWorkspaceRequest(request);
+    return yield* executeAccepted(parseWorkspaceRequest(request));
+  }
+
+  function* executeAccepted(request: WorkspaceRequest): Operation<WorkspaceResponse> {
     const execution = { fence: request.fence, operationId: request.operationId };
     switch (request.type) {
       case "inspect": {
@@ -430,8 +432,8 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
         const result = yield* operations.readFile(
           {
             path: request.path,
-            ...(request.startLine === undefined ? {} : { startLine: request.startLine }),
-            ...(request.endLine === undefined ? {} : { endLine: request.endLine }),
+            startLine: request.startLine,
+            endLine: request.endLine,
           },
           execution,
         );
@@ -496,16 +498,16 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
 
   function beginMutation(
     kind: "write" | "run-script",
-    input: unknown,
+    input: Json,
     execution: WorkspaceOperationExecution,
   ): { requestDigest: string; previous?: CommittedOperation } {
     assertExecution(execution);
-    const requestDigest = canonicalDigest(assertJson({ kind, input, execution }));
+    const requestDigest = digestCanonicalJson({ kind, input, execution } as unknown as Json);
     const previous = committed.get(execution.operationId);
     if (previous && previous.requestDigest !== requestDigest) {
       throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");
     }
-    return { requestDigest, ...(previous ? { previous } : {}) };
+    return { requestDigest, previous };
   }
 
   function assertExpectedRevision(expected: string): void {
@@ -541,7 +543,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
     }
     try {
       const body = yield* readBoundedBody(request, MAX_BODY_BYTES);
-      return Response.json(yield* execute(parseWorkspaceRequest(body)));
+      return Response.json(yield* executeAccepted(parseWorkspaceRequest(body)));
     } catch (error) {
       const code = error instanceof CrankError ? error.code : "internal_error";
       const status =
@@ -750,8 +752,8 @@ export function installRemoteWorkspaceFilesProvider(options: {
         fence: binding.fence,
         operationId: execution.operationId("workspace.read-file"),
         path: input.path,
-        ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
-        ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+        startLine: input.startLine,
+        endLine: input.endLine,
       });
       if (response.type !== "read-result") {
         throw wrongWorkspaceResponse("readFile");
@@ -892,18 +894,14 @@ function normalizeWorkspaceRequest(
   input: z.infer<typeof workspaceRequestSchema>,
 ): WorkspaceRequest {
   if (input.type === "read") {
-    return {
-      protocolVersion: 1,
-      type: "read",
-      fence: input.fence,
-      operationId: input.operationId,
-      path: safeRelativePath(input.path),
-      ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
-      ...(input.endLine !== undefined ? { endLine: input.endLine } : {}),
-    };
+    return { ...input, path: safeRelativePath(input.path) };
   }
-  if (input.type === "list") return { ...input, path: safeRelativePath(input.path) };
-  if (input.type === "write") return { ...input, path: safeRelativePath(input.path) };
+  if (input.type === "list") {
+    return { ...input, path: safeRelativePath(input.path) };
+  }
+  if (input.type === "write") {
+    return { ...input, path: safeRelativePath(input.path) };
+  }
   return input;
 }
 
@@ -951,7 +949,12 @@ function parseFence(value: unknown): WorkspaceFence {
 }
 
 function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFence): void {
-  if (!expected || canonicalJson(expected) !== canonicalJson(received)) {
+  if (
+    !expected ||
+    expected.taskId !== received.taskId ||
+    expected.sandboxGeneration !== received.sandboxGeneration ||
+    expected.activationEpoch !== received.activationEpoch
+  ) {
     throw new CrankError("sandbox_generation_stale", "workspace activation fence is stale");
   }
 }
@@ -1151,7 +1154,13 @@ function boundedMessage(error: unknown): string {
 
 function errorResponse(status: number, code: string, message: string, details?: Json): Response {
   return Response.json(
-    { error: { code, message, ...(details === undefined ? {} : { details }) } },
+    {
+      error: {
+        code,
+        message,
+        details,
+      },
+    },
     { status },
   );
 }

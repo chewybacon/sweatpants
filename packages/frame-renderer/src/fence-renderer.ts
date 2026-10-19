@@ -105,6 +105,7 @@ export function createFenceProcess(
           rendered,
           block.status === "complete" && !unavailable ? "full" : "quick",
         ),
+        /* CONDITIONAL-SPREAD: Retain the previous rendered block's fencePresentation when this renderer provides no replacement. */
         ...(!unavailable && {
           fencePresentation: {
             renderer: renderer.name,

@@ -100,7 +100,7 @@ it("disposes at a question, then replays accepted work in a fresh container with
             name: "prepare",
             version: "1",
             input: "draft",
-            resolver: { audience: "program-execution" },
+            resolver: { audience: "program-execution", route: undefined },
           },
           function* () {
             attempts++;
@@ -111,6 +111,9 @@ it("disposes at a question, then replays accepted work in a fresh container with
           key: "confirm",
           message: `Send ${prepared}?`,
           response: answer.descriptor,
+          context: undefined,
+          contextContract: undefined,
+          binding: undefined,
         });
         if (
           !reply ||

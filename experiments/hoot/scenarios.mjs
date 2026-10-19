@@ -2,7 +2,9 @@
 export async function scenarios(load) {
     function safeInteger(value) {
         const number = Number(value);
-        if (!Number.isSafeInteger(number)) throw new Error("Integer exceeds JSON safe range");
+        if (!Number.isSafeInteger(number)) {
+            throw new Error("Integer exceeds JSON safe range");
+        }
         return number;
     }
     const rawLoad = load;

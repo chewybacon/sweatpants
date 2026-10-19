@@ -113,9 +113,11 @@ await main(function* () {
           const payload = yield* readJson(request, 16 * 1024);
           state = {
             sandboxId: randomUUID(),
+            /* CONDITIONAL-SPREAD: Omit absent microvmId from sandbox control responses; explicit undefined is not a portable JSON value. */
             ...(typeof payload["microvmId"] === "string"
               ? { microvmId: payload["microvmId"] }
               : {}),
+            /* CONDITIONAL-SPREAD: Omit absent taskId from sandbox control responses; explicit undefined is not a portable JSON value. */
             ...(typeof payload["taskId"] === "string" ? { taskId: payload["taskId"] } : {}),
             phase: "running",
             resumeCount: 0,

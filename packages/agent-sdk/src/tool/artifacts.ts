@@ -28,7 +28,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
     identity: `${inputs.identity}/parameters`,
     role: "tool_parameters",
     version: inputs.version,
-    ...(inputs.parametersProjections ?? {}),
+    ...inputs.parametersProjections,
   });
   catalog.push(parameters.entry);
 
@@ -38,7 +38,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
       identity: `${inputs.identity}/output`,
       role: "tool_output",
       version: inputs.version,
-      ...(inputs.outputProjections ?? {}),
+      ...inputs.outputProjections,
     });
     catalog.push(output.entry);
   }
@@ -49,7 +49,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
       identity: `${inputs.identity}/elicits/${key}/response`,
       role: "elicit_response",
       version: inputs.version,
-      ...(definition.responseProjections ?? {}),
+      ...definition.responseProjections,
     });
     catalog.push(response.entry);
     let context;
@@ -62,7 +62,7 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
         identity: `${inputs.identity}/elicits/${key}/context`,
         role: "elicit_context",
         version: inputs.version,
-        ...(definition.contextProjections ?? {}),
+        ...definition.contextProjections,
       });
       catalog.push(context.entry);
     }
@@ -78,13 +78,16 @@ export function buildToolSchemaArtifacts(inputs: ToolSchemaArtifactInputs): Tool
     }
     elicits[key] = {
       response: response.descriptor,
+      /* CONDITIONAL-SPREAD: Omit absent documents from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
       ...(Object.keys(documents).length ? { documents } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent context from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
       ...(context ? { context: context.descriptor } : {}),
     };
   }
 
   return Object.freeze({
     parameters: parameters.descriptor,
+    /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(output ? { output: output.descriptor } : {}),
     elicits: Object.freeze(elicits),
     catalog: Object.freeze(catalog),

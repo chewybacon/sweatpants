@@ -29,18 +29,20 @@ export function ExecutionInspector() {
                 choice,
                 id,
                 revision: view?.revision,
+                /* CONDITIONAL-SPREAD: Omit absent prompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(author ? { prompt } : {}),
               }),
             }
           : undefined,
       );
       const data: unknown = await response.json();
-      if (!response.ok)
+      if (!response.ok) {
         throw Error(
           typeof data === "object" && data && "error" in data
             ? String(data.error)
             : "Execution request failed",
         );
+      }
       const next = executionViewSchema.parse(data);
       setView(next);
       const url = new URL(location.href);
@@ -54,7 +56,9 @@ export function ExecutionInspector() {
     }
   }
   useEffect(() => {
-    if (new URL(location.href).searchParams.has("run")) void request();
+    if (new URL(location.href).searchParams.has("run")) {
+      void request();
+    }
   }, []);
   const state = view?.inspection;
   const parked = view?.status === "parked";

@@ -6,10 +6,17 @@ import { createSchemeReference } from "../reference.ts";
 it("documents the built evaluator and the installed capabilities", () => {
   const contract = { name: "custom_lookup", parameters: { type: "object" } };
   const reference = createSchemeReference([contract]);
-  for (const name of language.imports) expect(reference).toContain(name);
-  for (const procedure of language.procedures) expect(reference).toContain(procedure.signature);
-  for (const macro of language.macros)
-    for (const pattern of macro.patterns) expect(reference).toContain(pattern);
+  for (const name of language.imports) {
+    expect(reference).toContain(name);
+  }
+  for (const procedure of language.procedures) {
+    expect(reference).toContain(procedure.signature);
+  }
+  for (const macro of language.macros) {
+    for (const pattern of macro.patterns) {
+      expect(reference).toContain(pattern);
+    }
+  }
   expect(reference).toContain(`${limits.source} source characters`);
   expect(reference).toContain(JSON.stringify([contract]));
   expect(reference).toContain("Omitted input is JSON null");

@@ -100,14 +100,17 @@ export function verifyDurableManifest(manifest: DurableProgramManifest): void {
   for (const [key, declaration] of Object.entries(manifest.elicits)) {
     requireId(key, "elicit key");
     assertDescriptorField(declaration.response, "elicit_response", `elicits.${key}.response`);
-    if (declaration.context !== undefined)
+    if (declaration.context !== undefined) {
       assertDescriptorField(declaration.context, "elicit_context", `elicits.${key}.context`);
+    }
   }
   for (const [key, definition] of Object.entries(manifest.effects) as Array<
     [string, EffectDefinition<Json, Json, Json>]
   >) {
     assertEffectDefinition(definition);
-    if (definition.name !== key) invalidManifest(`effect key ${key} must equal its symbolic name`);
+    if (definition.name !== key) {
+      invalidManifest(`effect key ${key} must equal its symbolic name`);
+    }
   }
   for (const [kind, declaration] of Object.entries(manifest.pulls ?? {})) {
     requireId(kind, "pull kind");
@@ -133,12 +136,14 @@ function assertDescriptorField(
       { cause: error },
     );
   }
-  if (parsed.role !== role && parsed.role !== "builtin")
+  if (parsed.role !== role && parsed.role !== "builtin") {
     invalidManifest(`${path} descriptor role must be ${role}`);
+  }
 }
 function requireId(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0)
+  if (typeof value !== "string" || value.length === 0) {
     invalidManifest(`${field} must be non-empty`);
+  }
   return value;
 }
 function invalidManifest(message: string): never {
@@ -153,7 +158,9 @@ function isAsyncFunction(value: Function): boolean {
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object") {
     Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
   }
   return value;
 }

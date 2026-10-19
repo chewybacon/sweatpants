@@ -168,6 +168,7 @@ export function* createStoredScenarioDriver(
       return yield* query({
         type: "task.recovery-state",
         sessionId,
+        /* CONDITIONAL-SPREAD: Omit absent taskId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(taskId === undefined ? {} : { taskId }),
       });
     },
@@ -219,6 +220,7 @@ export function* createStoredScenarioDriver(
         request: {
           sessionId,
           taskId,
+          /* CONDITIONAL-SPREAD: Omit absent restoredFrontier from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(restoredFrontier === undefined ? {} : { restoredFrontier }),
         },
       });
@@ -264,6 +266,7 @@ export function* createStoredScenarioDriver(
           sessionId,
           taskId,
           attachmentId,
+          /* CONDITIONAL-SPREAD: Omit absent audience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(audience === undefined ? {} : { audience }),
         },
       });
@@ -274,7 +277,9 @@ export function* createStoredScenarioDriver(
         request: {
           sessionId,
           taskId,
+          /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(reason === undefined ? {} : { reason }),
+          /* CONDITIONAL-SPREAD: Omit absent commandId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
           ...(commandId === undefined ? {} : { commandId }),
         },
       });
@@ -282,7 +287,12 @@ export function* createStoredScenarioDriver(
     *detachAttempt(sessionId, taskId, pullId, reason) {
       yield* command({
         type: "execution.detach-attempt",
-        request: { sessionId, taskId, pullId, ...(reason === undefined ? {} : { reason }) },
+        request: {
+          sessionId,
+          taskId,
+          pullId /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */,
+          ...(reason === undefined ? {} : { reason }),
+        },
       });
     },
     *abandonAttempt(sessionId, taskId, pullId, attemptId, reason) {

@@ -29,7 +29,7 @@ function studioApi(): Plugin {
               imageArn: requiredEnvironment("YO_STUDIO_MICROVM_IMAGE_ARN"),
               imageVersion: codingSandbox.image.version,
               executionRoleArn: requiredEnvironment("YO_STUDIO_MICROVM_EXECUTION_ROLE_ARN"),
-              ...(process.env["AWS_PROFILE"] ? { profile: process.env["AWS_PROFILE"] } : {}),
+              profile: process.env["AWS_PROFILE"] ? process.env["AWS_PROFILE"] : undefined,
               region: process.env["AWS_REGION"] ?? "us-east-1",
               scripts: productWorkspace.scripts,
               idle: {

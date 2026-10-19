@@ -18,12 +18,13 @@ it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", a
   let disposed = 0;
   const kernel: Driver = {
     *turn(command) {
-      if (command.kind === "cancel")
+      if (command.kind === "cancel") {
         return {
           kind: "suspended",
           suspensionId: "3",
           request: { site: "cleanup", request: "release" },
         };
+      }
       replies.push(command.reply);
       return replies.length === 1 ? { ...effect, suspensionId: "2" } : { kind: "cancelled" };
     },

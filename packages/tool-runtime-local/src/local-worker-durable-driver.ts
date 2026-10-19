@@ -73,9 +73,12 @@ export function* useLocalWorkerDurableProgramDriver(
     !Number.isSafeInteger(options.idleTimeoutMs) ||
     options.idleTimeoutMs < 0 ||
     options.idleTimeoutMs > 2_147_483_647
-  )
+  ) {
     throw new Error("idleTimeoutMs must be an integer between 0 and 2147483647");
-  if (options.idleTimeoutMs === 0) return createLocalWorkerDurableProgramDriver(options);
+  }
+  if (options.idleTimeoutMs === 0) {
+    return createLocalWorkerDurableProgramDriver(options);
+  }
   const pool = yield* useDurableWorkerPool(options);
   return createDriver(options, () => pool.acquire());
 }

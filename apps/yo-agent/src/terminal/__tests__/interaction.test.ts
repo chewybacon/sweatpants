@@ -15,6 +15,7 @@ function request(elicitId: string): ChatInteractionRequest {
     seq: 0,
     context: { question: "Which branch should I inspect?" },
     responseContract: binding.responseContract,
+    /* CONDITIONAL-SPREAD: Omit absent contextContract from interaction completion payloads; explicit undefined is not a portable JSON value. */
     ...(binding.contextContract ? { contextContract: binding.contextContract } : {}),
     placement: {
       nodeId: `elicit:${elicitId}`,

@@ -113,11 +113,12 @@ export function driveTestProgramTree(
             authority,
             driver,
             attach: activation.attach,
+            /* CONDITIONAL-SPREAD: Omit absent activationOwnerId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
             ...(request.activationOwnerId === undefined
               ? {}
               : { activationOwnerId: request.activationOwnerId }),
             advancement: {
-              ...(stageSampleInput ? { stageSampleInput } : {}),
+              stageSampleInput,
               effects: {
                 *route({ authorization, definition }) {
                   const routed = yield* DurableEffectRouting.operations.route({

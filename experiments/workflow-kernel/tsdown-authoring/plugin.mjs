@@ -23,8 +23,9 @@ export function compileWorkflowModule(source, id) {
                 node.specifiers.length !== 1 ||
                 !t.isImportSpecifier(node.specifiers[0]) ||
                 node.specifiers[0].imported.name !== "defineCompiledWorkflow"
-            )
+            ) {
                 throw Error(`${id}: expected the defineCompiledWorkflow import`);
+            }
             marker = node.specifiers[0].local.name;
             removed.push(node);
         } else if (
@@ -35,8 +36,9 @@ export function compileWorkflowModule(source, id) {
             removed.push(node);
         } else if (t.isExportNamedDeclaration(node)) {
             const declaration = node.declaration;
-            if (!t.isVariableDeclaration(declaration) || declaration.kind !== "const")
+            if (!t.isVariableDeclaration(declaration) || declaration.kind !== "const") {
                 throw Error(`${id}: export a const compiled definition`);
+            }
             for (const binding of declaration.declarations) {
                 const init = binding.init;
                 if (
@@ -45,21 +47,25 @@ export function compileWorkflowModule(source, id) {
                     !t.isIdentifier(init.callee, { name: marker }) ||
                     init.arguments.length !== 1 ||
                     !t.isIdentifier(init.arguments[0])
-                )
+                ) {
                     throw Error(`${id}: expected defineCompiledWorkflow(namedGenerator)`);
+                }
                 definitions.push({ name: binding.id.name, entry: init.arguments[0].name });
             }
             removed.push(node);
         }
     }
-    if (!definitions.length) throw Error(`${id}: no compiled workflow definitions`);
+    if (!definitions.length) {
+        throw Error(`${id}: no compiled workflow definitions`);
+    }
     // Blank removed nodes to preserve original line/column locations for inspection.
     let input = source;
-    for (const node of removed.toReversed())
+    for (const node of removed.toReversed()) {
         input =
             input.slice(0, node.start) +
             input.slice(node.start, node.end).replace(/[^\r\n]/g, " ") +
             input.slice(node.end);
+    }
     const emitted = emitWorkflowScheme(input, {
         entryPoint: null,
         entryInput: true,
@@ -71,7 +77,9 @@ export function compileWorkflowModule(source, id) {
     );
     return definitions
         .map(({ name, entry }) => {
-            if (!functions.has(entry)) throw Error(`${id}: unknown workflow entry ${entry}`);
+            if (!functions.has(entry)) {
+                throw Error(`${id}: unknown workflow entry ${entry}`);
+            }
             return `export const ${name} = ${JSON.stringify({ kind: "compiled-workflow", entry, ...emitted, source })};`;
         })
         .join("\n");
@@ -82,7 +90,9 @@ export function workflowPlugin() {
     return {
         name: "sweatpants-workflow",
         async load(id) {
-            if (!id.endsWith(".workflow.ts")) return null;
+            if (!id.endsWith(".workflow.ts")) {
+                return null;
+            }
             this.addWatchFile(id);
             return { code: compileWorkflowModule(await readFile(id, "utf8"), id), map: null };
         },

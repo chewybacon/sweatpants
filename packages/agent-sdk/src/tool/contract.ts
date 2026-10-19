@@ -76,6 +76,7 @@ export function computeToolInterfaceDigest(input: {
   const value = {
     name: input.name,
     parameters: input.parameters,
+    /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(input.output ? { output: input.output } : {}),
     elicits: input.elicits,
     annotations: input.annotations ?? {},
@@ -127,6 +128,7 @@ export function projectToolContract<
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
+    /* CONDITIONAL-SPREAD: Omit absent output from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(tool.output !== undefined ? { output: tool.output } : {}),
     elicits: tool.elicits,
     samples: tool.samples,

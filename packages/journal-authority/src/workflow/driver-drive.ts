@@ -59,7 +59,9 @@ export function driveProgramDriverActivation(
         sessionId: request.attach.sessionId,
       });
       const row = plan.rows.find((candidate) => candidate.address.taskId === request.attach.taskId);
-      if (row === undefined) throw new CrankError("unknown_target", "Task is absent from forest");
+      if (row === undefined) {
+        throw new CrankError("unknown_target", "Task is absent from forest");
+      }
       if (row.classification === "terminal") {
         const recovery = yield* request.authority.query({
           type: "task.recovery-state",
@@ -102,7 +104,9 @@ export function driveProgramDriverActivation(
         replayItemForAttachment(item, request.attach),
         ownerId,
       );
-      if (disposition.state === "settled") continue;
+      if (disposition.state === "settled") {
+        continue;
+      }
       return disposition;
     }
   });
@@ -193,6 +197,7 @@ function replayItemForAttachment(item: ReplayItem, attach: AttachProgramRequest)
   return {
     ...item,
     route: attach.route,
+    /* CONDITIONAL-SPREAD: Omit absent affinity from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(attach.affinity === undefined ? {} : { affinity: attach.affinity }),
   };
 }
@@ -217,7 +222,9 @@ function* orphanReplayDivergence(
   item: ReplayItem,
   error: unknown,
 ): Operation<void> {
-  if (!(error instanceof CrankError) || error.code !== "replay_diverged") return;
+  if (!(error instanceof CrankError) || error.code !== "replay_diverged") {
+    return;
+  }
   yield* authority.command({
     type: "execution.force-orphan",
     request: {

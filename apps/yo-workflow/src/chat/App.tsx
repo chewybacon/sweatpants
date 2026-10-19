@@ -48,9 +48,13 @@ export function App({ initialThreadId }: AppProps) {
   });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => {
-    if (!authority || renderStatus === "loading") return;
+    if (!authority || renderStatus === "loading") {
+      return;
+    }
     const summary = summarizeThread(messages);
-    if (summary) rememberThreadSummary(threadId, summary);
+    if (summary) {
+      rememberThreadSummary(threadId, summary);
+    }
   }, [messages, authority, renderStatus, threadId]);
   const lastMessage = messages.at(-1);
   const currentWork =

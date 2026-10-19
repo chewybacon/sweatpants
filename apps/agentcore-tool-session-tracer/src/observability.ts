@@ -204,6 +204,7 @@ export function summarizeEvent(event: RuntimeEvent): LogFields {
         message: event.message,
         schemaHash: stableHash(event.schema),
         hasContext: event.context !== undefined,
+        /* CONDITIONAL-SPREAD: Payload logging is opt-in; omit schema, context entirely when payloads are disabled. */
         ...(includePayloads ? { schema: event.schema, context: event.context } : {}),
       };
     case "sample_request":
@@ -215,6 +216,7 @@ export function summarizeEvent(event: RuntimeEvent): LogFields {
         maxTokens: event.maxTokens,
         toolCount: Array.isArray(event.tools) ? event.tools.length : 0,
         hasSchema: event.schema !== undefined,
+        /* CONDITIONAL-SPREAD: Payload logging is opt-in; omit messages, tools, schema entirely when payloads are disabled. */
         ...(includePayloads
           ? { messages: event.messages, tools: event.tools, schema: event.schema }
           : {}),
@@ -223,6 +225,7 @@ export function summarizeEvent(event: RuntimeEvent): LogFields {
       return {
         runtimeEventType: event.type,
         resultHash: stableHash(event.result),
+        /* CONDITIONAL-SPREAD: Payload logging is opt-in; omit result entirely when payloads are disabled. */
         ...(includePayloads ? { result: event.result } : {}),
       };
     case "error":
@@ -230,6 +233,7 @@ export function summarizeEvent(event: RuntimeEvent): LogFields {
         runtimeEventType: event.type,
         errorName: event.name,
         errorMessage: event.message,
+        /* CONDITIONAL-SPREAD: Payload logging is opt-in; omit stack entirely when payloads are disabled. */
         ...(includePayloads ? { stack: event.stack } : {}),
       };
     case "cancelled":
@@ -280,6 +284,7 @@ export function logRequestError(startedAt: number, error: unknown, fields: LogFi
     durationMs: durationMs(startedAt),
     errorName: error instanceof Error ? error.name : "UnknownError",
     errorMessage: error instanceof Error ? error.message : String(error),
+    /* CONDITIONAL-SPREAD: Payload logging is opt-in; omit stack entirely when payloads are disabled. */
     ...(includePayloads && error instanceof Error ? { stack: error.stack } : {}),
   });
 }

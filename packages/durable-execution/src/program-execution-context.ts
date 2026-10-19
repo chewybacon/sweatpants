@@ -82,10 +82,14 @@ export function createProgramExecutionValue(
 }
 
 function acceptedAffinity(request: AttachProgramRequest, route: ProgramRoute): SandboxAffinity {
-  if (request.affinity) return freezeAffinity(request.affinity);
+  if (request.affinity) {
+    return freezeAffinity(request.affinity);
+  }
   if (route && typeof route === "object" && !Array.isArray(route)) {
     const candidate = route["affinity"];
-    if (isAffinity(candidate)) return freezeAffinity(candidate);
+    if (isAffinity(candidate)) {
+      return freezeAffinity(candidate);
+    }
   }
   return freezeAffinity({ kind: "invocation", key: request.taskId });
 }
@@ -110,7 +114,9 @@ function freezeAffinity(value: SandboxAffinity): SandboxAffinity {
 }
 
 function assertNoAuthorityMaterial(value: unknown, path = "route"): void {
-  if (!value || typeof value !== "object") return;
+  if (!value || typeof value !== "object") {
+    return;
+  }
   if (Array.isArray(value)) {
     value.forEach((child, index) => assertNoAuthorityMaterial(child, `${path}[${index}]`));
     return;

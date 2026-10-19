@@ -114,6 +114,7 @@ function statusResponse(session: RuntimeToolSession): RuntimeResponse {
     type: "session_status",
     toolSessionId: session.toolSessionId,
     status: session.status,
+    /* CONDITIONAL-SPREAD: Omit absent pendingRequest from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
     ...(pendingRequest !== undefined ? { pendingRequest } : {}),
     lastRuntimeEventSeq: session.nextSeq - 1,
   };
@@ -140,6 +141,7 @@ function errorEvent(name: string, error: unknown): RuntimeEvent {
     type: "error",
     name,
     message: error instanceof Error ? error.message : String(error),
+    /* CONDITIONAL-SPREAD: Omit absent stack from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
     ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
   };
 }
@@ -563,6 +565,7 @@ export class RuntimeSessionRegistry {
       commandFingerprints: new Map(),
       startFingerprint: fingerprint(request),
       waiters: [],
+      /* CONDITIONAL-SPREAD: Omit absent selectedModel from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
       ...(request.context?.model ? { selectedModel: request.context.model } : {}),
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -684,6 +687,7 @@ export class RuntimeSessionRegistry {
         this.emit(session, {
           type: "progress",
           message: event.message,
+          /* CONDITIONAL-SPREAD: Omit absent progress from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.progress !== undefined ? { progress: event.progress } : {}),
         });
         return;
@@ -717,6 +721,7 @@ export class RuntimeSessionRegistry {
           key: event.request.key,
           message: event.request.message,
           schema,
+          /* CONDITIONAL-SPREAD: Omit absent context from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.request.context !== undefined
             ? { context: assertJson(event.request.context) }
             : {}),
@@ -727,14 +732,19 @@ export class RuntimeSessionRegistry {
       case "sample": {
         const sampleRequest = {
           messages: event.messages,
+          /* CONDITIONAL-SPREAD: Omit absent systemPrompt from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.options?.systemPrompt !== undefined
             ? { systemPrompt: event.options.systemPrompt }
             : {}),
+          /* CONDITIONAL-SPREAD: Omit absent maxTokens from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.options?.maxTokens !== undefined ? { maxTokens: event.options.maxTokens } : {}),
+          /* CONDITIONAL-SPREAD: Omit absent tools from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.options?.tools !== undefined ? { tools: event.options.tools } : {}),
+          /* CONDITIONAL-SPREAD: Omit absent toolChoice from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.options?.toolChoice !== undefined
             ? { toolChoice: event.options.toolChoice }
             : {}),
+          /* CONDITIONAL-SPREAD: Omit absent schema from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(event.options?.schema !== undefined ? { schema: event.options.schema } : {}),
         };
 
@@ -787,6 +797,7 @@ export class RuntimeSessionRegistry {
           params: request.params,
           callId: request.context?.callId ?? request.toolSessionId,
           signal: abortController.signal,
+          /* CONDITIONAL-SPREAD: Omit absent systemPrompt from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
           ...(request.context?.systemPrompt !== undefined
             ? { systemPrompt: request.context.systemPrompt }
             : {}),
@@ -1077,6 +1088,7 @@ export class RuntimeSessionRegistry {
     return [
       this.emit(session, {
         type: "cancelled",
+        /* CONDITIONAL-SPREAD: Omit absent reason from AgentCore deployment and session payloads; explicit undefined is not a portable JSON value. */
         ...(request.reason !== undefined && { reason: request.reason }),
       }),
       statusResponse(session),

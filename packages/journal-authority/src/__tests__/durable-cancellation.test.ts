@@ -147,7 +147,7 @@ function authority(name: string, maxOutcomeBytes?: number) {
       programOutput.entry,
       approvalResponse.entry,
     ]),
-    ...(maxOutcomeBytes !== undefined ? { maxOutcomeBytes } : {}),
+    maxOutcomeBytes,
   });
 }
 

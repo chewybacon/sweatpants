@@ -294,6 +294,7 @@ export function createProgramWorkflowHost(
     const customKinds = new Set(customResolvers.map((resolver) => resolver.kind));
     const pullResolvers = createPullResolverRegistry([
       ...customResolvers,
+
       ...(!customKinds.has(PULL_KIND_SAMPLE) &&
       options.modelSamplingService &&
       options.modelContextSourceResolver
@@ -307,6 +308,7 @@ export function createProgramWorkflowHost(
             }),
           ]
         : []),
+
       ...(!customKinds.has(PULL_KIND_WAIT) ? [createWaitPullResolver()] : []),
     ]);
     const route = function* (child: PinnedProgram, parentRoute: ProgramRoute) {
@@ -338,6 +340,7 @@ export function createProgramWorkflowHost(
             attach: request.attach,
             authority: hostAuthority(authority),
             workflow: durableToolWorkflow(tool, request.attach.input),
+            /* CONDITIONAL-SPREAD: Expose onEffectResolved only when its backing capability exists; callers inspect supported methods. */
             ...(options.effectOutcomeAcknowledger
               ? {
                   *onEffectResolved(info) {
@@ -436,7 +439,9 @@ export function createProgramWorkflowHost(
       const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       return yield* options.journalStore.withJournal(sessionId, function* (journal) {
         const identity = rootTurnIdentity(yield* journal.rootTaskCount(sessionId), {
+          /* CONDITIONAL-SPREAD: Omit absent turnId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(request.turnId === undefined ? {} : { turnId: request.turnId }),
+          /* CONDITIONAL-SPREAD: Omit absent taskId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(request.taskId === undefined ? {} : { taskId: request.taskId }),
         });
         const { turnId, taskId } = identity;
@@ -641,7 +646,9 @@ export function normalizeProgramTrace(
       tasks.set(payload.taskId, {
         taskId: payload.taskId,
         turnId: payload.turnId,
+        /* CONDITIONAL-SPREAD: Omit absent parentTaskId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(payload.parentTaskId ? { parentTaskId: payload.parentTaskId } : {}),
+        /* CONDITIONAL-SPREAD: Omit absent parentPullId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(payload.parentPullId ? { parentPullId: payload.parentPullId } : {}),
         program: {
           id: payload.programId,
@@ -649,6 +656,7 @@ export function normalizeProgramTrace(
           digest: payload.programDigest,
         },
         acceptedInput: structuredClone(payload.input),
+        /* CONDITIONAL-SPREAD: Omit absent catalogDigest from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(payload.catalogDigest ? { catalogDigest: payload.catalogDigest } : {}),
         operations: [],
         semanticEmissions: [],
@@ -682,6 +690,7 @@ export function normalizeProgramTrace(
     if (payload.type === "CancellationRequested") {
       tasks.get(payload.taskId)?.cancellations.push({
         taskId: payload.taskId,
+        /* CONDITIONAL-SPREAD: Omit absent reason from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
       });
       continue;

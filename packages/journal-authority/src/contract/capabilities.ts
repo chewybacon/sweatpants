@@ -198,7 +198,9 @@ export function verifyPrivateAuthorityToken(
 /** Authenticates and parses an exact canonical capability DTO. */
 export function verifyCapability(token: string, keyring: CapabilityKeyring): CapabilityClaims {
   const retained = lastAuthenticated.get(keyring);
-  if (retained?.token === token) return structuredClone(retained.claims);
+  if (retained?.token === token) {
+    return structuredClone(retained.claims);
+  }
   try {
     const [version, keyPart, claimsPart, signaturePart, ...extraParts] = token.split(".");
     if (

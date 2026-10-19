@@ -91,6 +91,7 @@ describe("tool-only message ownership", () => {
           type: EventType.TOOL_CALL_START,
           toolCallId: "ask",
           toolCallName: "ask",
+          /* CONDITIONAL-SPREAD: Omit absent parentMessageId from portable chat history and projection records; explicit undefined is not a portable JSON value. */
           ...(explicit ? { parentMessageId: "parent" } : {}),
         },
         { type: EventType.TOOL_CALL_ARGS, toolCallId: "ask", delta: "{}" },

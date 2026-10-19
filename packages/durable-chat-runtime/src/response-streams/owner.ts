@@ -51,7 +51,9 @@ export function* createDurableTurnOwner(
   });
 
   const finish = (): void => {
-    if (!sealed || active.size > 0 || done || finishing) return;
+    if (!sealed || active.size > 0 || done || finishing) {
+      return;
+    }
     finishing = true;
     void host.scope
       .run(function* () {
@@ -70,7 +72,9 @@ export function* createDurableTurnOwner(
       return scope;
     },
     register(work) {
-      if (done || finishing) throw new Error("Cannot register work after the Turn has closed");
+      if (done || finishing) {
+        throw new Error("Cannot register work after the Turn has closed");
+      }
       active.add(work);
       void host.scope
         .run(function* () {
@@ -85,14 +89,18 @@ export function* createDurableTurnOwner(
     },
     isDone: () => done,
     *waitForDone() {
-      if (!done) yield* call(() => completion);
+      if (!done) {
+        yield* call(() => completion);
+      }
     },
     seal() {
       sealed = true;
       finish();
     },
     *abort() {
-      if (done) return;
+      if (done) {
+        return;
+      }
       sealed = true;
       finishing = true;
       if (active.size === 0) {
@@ -121,7 +129,9 @@ export function* createDurableTurnOwner(
     .run(function* () {
       scope = yield* useScope();
       yield* installDurableStreamsOwner(owner);
-      if (setup) yield* setup();
+      if (setup) {
+        yield* setup();
+      }
       resolveReady();
       yield* suspend();
     })

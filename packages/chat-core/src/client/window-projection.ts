@@ -26,12 +26,24 @@ export class PublicRootConflictError extends Error {
 
 function anchorState(anchor: PublicPlacementAnchor): string {
   const data = anchor.publicData;
-  if (data.kind === "message") return "done";
-  if (data.kind === "elicit") return "pending";
-  if (data.kind === "activity") return "complete";
-  if (data.errorText !== undefined) return "output-error";
-  if (data.output !== undefined) return "output-available";
-  if (data.input !== undefined) return "input-available";
+  if (data.kind === "message") {
+    return "done";
+  }
+  if (data.kind === "elicit") {
+    return "pending";
+  }
+  if (data.kind === "activity") {
+    return "complete";
+  }
+  if (data.errorText !== undefined) {
+    return "output-error";
+  }
+  if (data.output !== undefined) {
+    return "output-available";
+  }
+  if (data.input !== undefined) {
+    return "input-available";
+  }
   return "input-streaming";
 }
 
@@ -57,7 +69,9 @@ function anchorEvent(anchor: PublicPlacementAnchor): ActivitySnapshotEvent {
 }
 
 function rootAnchors(root: PublicProjectionRoot): readonly PublicPlacementAnchor[] {
-  if (root.kind === "activity-subtree") return root.anchors;
+  if (root.kind === "activity-subtree") {
+    return root.anchors;
+  }
   return root.placement.type === "root" ? [] : root.placement.anchors;
 }
 
@@ -161,20 +175,26 @@ function* orderAnchors(
     const visiting = new Set<string>();
     const visited = new Set<string>();
     const visit = (anchor: PublicPlacementAnchor): void => {
-      if (visited.has(anchor.nodeId)) return;
+      if (visited.has(anchor.nodeId)) {
+        return;
+      }
       if (visiting.has(anchor.nodeId)) {
         throw new PublicRootConflictError(`Placement anchor ${anchor.nodeId} is cyclic`);
       }
       visiting.add(anchor.nodeId);
       if (anchor.parentNodeId !== null) {
         const parent = anchors.get(anchor.parentNodeId);
-        if (parent) visit(parent);
+        if (parent) {
+          visit(parent);
+        }
       }
       visiting.delete(anchor.nodeId);
       visited.add(anchor.nodeId);
       ordered.push(anchor);
     };
-    for (const anchor of anchors.values()) visit(anchor);
+    for (const anchor of anchors.values()) {
+      visit(anchor);
+    }
     return ordered;
   });
 }
@@ -246,7 +266,9 @@ export function* publicRootProjection(
     }
   }
   for (const root of indexed.ordered) {
-    if (root.kind !== "message") continue;
+    if (root.kind !== "message") {
+      continue;
+    }
     const position = positions.get(root.message.id);
     if (position !== undefined && position !== root.position) {
       throw new PublicRootConflictError(
@@ -274,6 +296,8 @@ export function projectionFromPublicRoots(
     () => publicRootProjection(roots),
     (error) => error,
   );
-  if (!outcome.ok) throw outcome.error;
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
   return outcome.value;
 }

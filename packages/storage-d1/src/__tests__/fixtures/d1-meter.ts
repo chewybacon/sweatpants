@@ -33,15 +33,17 @@ export function meterD1(database: D1Database) {
   ): D1PreparedStatement {
     const wrapped = new Proxy(inner, {
       get(target, property) {
-        if (property === "bind")
+        if (property === "bind") {
           return (...args: unknown[]) => statement(target.bind(...args), sql, args);
-        if (property === "all" || property === "run")
+        }
+        if (property === "all" || property === "run") {
           return async () => {
             const result = await target.all();
             record(sql, bindings, result);
             return result;
           };
-        if (property === "first")
+        }
+        if (property === "first") {
           return async (column?: string) => {
             const result = await target.all<Record<string, unknown>>();
             record(sql, bindings, result);
@@ -49,6 +51,7 @@ export function meterD1(database: D1Database) {
               ? (result.results[0] ?? null)
               : (result.results[0]?.[column] ?? null);
           };
+        }
         const value = Reflect.get(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
@@ -59,8 +62,10 @@ export function meterD1(database: D1Database) {
   function session(inner: D1DatabaseSession): D1DatabaseSession {
     return new Proxy(inner, {
       get(target, property) {
-        if (property === "prepare") return (sql: string) => statement(target.prepare(sql), sql);
-        if (property === "batch")
+        if (property === "prepare") {
+          return (sql: string) => statement(target.prepare(sql), sql);
+        }
+        if (property === "batch") {
           return async (statements: D1PreparedStatement[]) => {
             const entries = statements.map((item) => originals.get(item)!);
             const results = await target.batch(entries.map((item) => item.statement));
@@ -69,6 +74,7 @@ export function meterD1(database: D1Database) {
             );
             return results;
           };
+        }
         const value = Reflect.get(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
@@ -78,9 +84,10 @@ export function meterD1(database: D1Database) {
     queries,
     database: new Proxy(database, {
       get(target, property) {
-        if (property === "withSession")
+        if (property === "withSession") {
           return (...args: Parameters<D1Database["withSession"]>) =>
             session(target.withSession(...args));
+        }
         const value = Reflect.get(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },

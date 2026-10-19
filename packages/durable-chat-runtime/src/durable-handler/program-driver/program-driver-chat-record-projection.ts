@@ -37,7 +37,9 @@ export function projectRecords(
     () => projectRecordsProgram(records, index),
     (error) => error,
   );
-  if (!outcome.ok) throw outcome.error;
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
   return outcome.value;
 }
 
@@ -58,8 +60,12 @@ function projectRecordsFromIndex(
         ),
       );
     if (recordEntry.payload.type === "TaskClosed") {
-      if (recordEntry.payload.outcome.status === "cancelled") cancellationClosed = true;
-      if (recordEntry.payload.outcome.status === "error") errorClosed = recordEntry;
+      if (recordEntry.payload.outcome.status === "cancelled") {
+        cancellationClosed = true;
+      }
+      if (recordEntry.payload.outcome.status === "error") {
+        errorClosed = recordEntry;
+      }
     }
     if (recordEntry.payload.type === "AssistantPartialAccepted") {
       const fact = recordEntry.payload.fact;
@@ -102,7 +108,9 @@ function projectRecordsFromIndex(
     }
     if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
       const messageId = index.modelMessageIds.get(recordEntry) ?? null;
-      if (!messageId) continue;
+      if (!messageId) {
+        continue;
+      }
       emit(
         { type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" },
         { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: payload["text"] },
@@ -189,12 +197,15 @@ function projectRecordsFromIndex(
         toolCallId: pending.callId,
         content: JSON.stringify({
           status: "cancelled",
+          /* CONDITIONAL-SPREAD: Omit absent partial from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
           ...(partial ? { partial } : {}),
         }),
         role: "tool",
       });
       const owner = index.toolMessageIds.get(pending.callId);
-      if (owner) events.push(publicToolMessageCompleted(owner));
+      if (owner) {
+        events.push(publicToolMessageCompleted(owner));
+      }
     }
   }
   const errored = errorClosed;
@@ -215,7 +226,9 @@ function projectRecordsFromIndex(
         role: "tool",
       });
       const owner = index.toolMessageIds.get(pending.callId);
-      if (owner) events.push(publicToolMessageCompleted(owner));
+      if (owner) {
+        events.push(publicToolMessageCompleted(owner));
+      }
     }
   }
   return events;

@@ -24,7 +24,9 @@ function* directEventStream(
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
         if (index >= events.length) {
-          if (!finished) validator.finish();
+          if (!finished) {
+            validator.finish();
+          }
           return { done: true, value: undefined };
         }
         const event = events[index++]!;

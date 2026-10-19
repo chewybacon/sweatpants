@@ -22,16 +22,21 @@ export function createReferenceKernel(bundle, observe = () => {}) {
     const executions = new Set();
     let closed = false;
     function validate(program, snapshot) {
-        if (closed) throw Error("Kernel closed");
+        if (closed) {
+            throw Error("Kernel closed");
+        }
         assertKernelCompatibility(referenceIdentity, program, snapshot);
-        if (program.digest !== digest || hash(program.code) !== hash(bundle))
+        if (program.digest !== digest || hash(program.code) !== hash(bundle)) {
             throw Error("Program differs");
+        }
     }
     function activate(input, snapshot) {
         const machine = createPullMachine(bundle, input, snapshot);
         let disposed = false;
         function check() {
-            if (disposed || closed) throw Error("Execution disposed");
+            if (disposed || closed) {
+                throw Error("Execution disposed");
+            }
         }
         let suspension = 0;
         function boundary() {
@@ -58,13 +63,15 @@ export function createReferenceKernel(bundle, observe = () => {}) {
                 }
                 const reply = command.reply;
                 check();
-                if (reply.kind === "value") machine.resume(reply.value);
-                else
+                if (reply.kind === "value") {
+                    machine.resume(reply.value);
+                } else {
                     machine.raise(
                         typeof reply.value === "object" && reply.value !== null
                             ? reply.value.message
                             : reply.value,
                     );
+                }
                 return boundary();
             },
             *capture() {
@@ -98,14 +105,24 @@ export function createReferenceKernel(bundle, observe = () => {}) {
         *restore(program, snapshot) {
             validate(program, snapshot);
             const state = snapshot.state;
-            if (!state || typeof state !== "object" || !("input" in state) || !("machine" in state))
+            if (
+                !state ||
+                typeof state !== "object" ||
+                !("input" in state) ||
+                !("machine" in state)
+            ) {
                 throw Error("Invalid reference snapshot");
+            }
             observe("restore");
             return activate(state.input, state.machine);
         },
         *close() {
-            if (closed) return;
-            for (const execution of executions) yield* execution.dispose();
+            if (closed) {
+                return;
+            }
+            for (const execution of executions) {
+                yield* execution.dispose();
+            }
             closed = true;
             observe("close");
         },
@@ -124,7 +141,9 @@ export function createReferenceWorkflowDriver(bundle, observe = () => {}) {
                 return createReferenceKernel(bundle, observe);
             },
             *loadProgram(digest) {
-                if (digest !== tool.manifest.digest) throw Error("Pinned program unavailable");
+                if (digest !== tool.manifest.digest) {
+                    throw Error("Pinned program unavailable");
+                }
                 return { digest, kernel: referenceIdentity, code: bundle };
             },
             bindOperation(request) {
@@ -134,8 +153,9 @@ export function createReferenceWorkflowDriver(bundle, observe = () => {}) {
                     typeof request.message !== "string" ||
                     !tool.manifest.elicits[request.key] ||
                     hash(request.response) !== hash(tool.manifest.elicits[request.key].response)
-                )
+                ) {
                     throw Error("Unknown elicitation contract");
+                }
                 return copy(request);
             },
         }),
@@ -147,8 +167,9 @@ export function createReferenceWorkflowDriver(bundle, observe = () => {}) {
                 program.digest !== tool.manifest.digest ||
                 program.id !== tool.manifest.programId ||
                 program.version !== tool.manifest.version
-            )
+            ) {
                 throw Error("Pinned manifest unavailable");
+            }
             return tool.manifest;
         },
     };

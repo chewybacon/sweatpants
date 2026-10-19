@@ -23,12 +23,16 @@ export function summarizeThread(
           !Array.isArray(part.input) &&
           part.input.validateOnly === true
         )
-      )
+      ) {
         workflows.push(part);
+      }
       return;
     }
-    if (part.type === "message") part.message.parts.forEach(visit);
-    else if (part.type === "activity" || part.type === "tool-call") part.parts.forEach(visit);
+    if (part.type === "message") {
+      part.message.parts.forEach(visit);
+    } else if (part.type === "activity" || part.type === "tool-call") {
+      part.parts.forEach(visit);
+    }
   }
   messages.forEach((message) => message.parts.forEach(visit));
   const workflow =
@@ -45,12 +49,16 @@ export function summarizeThread(
     for (const part of parts) {
       if (part.type === "tool-call") {
         const title = stringField(part.input, "title");
-        if (title?.trim()) return title;
+        if (title?.trim()) {
+          return title;
+        }
       }
       const children =
         part.type === "message" ? part.message.parts : "parts" in part ? part.parts : [];
       const title = nestedTitle(children);
-      if (title) return title;
+      if (title) {
+        return title;
+      }
     }
     return undefined;
   }
@@ -65,7 +73,9 @@ export function summarizeThread(
 /** A disposable display cache. The journal projection refreshes it when the thread is opened. */
 export function readThreadSummary(id: string): ThreadSummary | undefined {
   const raw = localStorage.getItem(`yo-workflow.summary.${id}`);
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   try {
     const value: unknown = JSON.parse(raw);
     if (
@@ -75,8 +85,9 @@ export function readThreadSummary(id: string): ThreadSummary | undefined {
       "status" in value &&
       typeof value.title === "string" &&
       typeof value.status === "string"
-    )
+    ) {
       return { title: value.title, status: value.status };
+    }
   } catch (error) {
     console.warn("[yo-workflow] Could not read thread summary", error);
   }

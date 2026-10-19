@@ -42,8 +42,9 @@ export function compileToolDefinition(source) {
                 t.isCallExpression(call) &&
                 t.isMemberExpression(call.callee) &&
                 call.callee.property.name === "elicit"
-            )
+            ) {
                 sourceYields.push(path.node.loc);
+            }
         },
     });
     let implementation, exportName;
@@ -52,9 +53,12 @@ export function compileToolDefinition(source) {
             if (
                 !t.isMemberExpression(path.node.callee) ||
                 path.node.callee.property.name !== "execute"
-            )
+            ) {
                 return;
-            if (implementation) throw Error("Only one tool definition supported");
+            }
+            if (implementation) {
+                throw Error("Only one tool definition supported");
+            }
             const fp = path.get("arguments.0"),
                 fn = fp.node;
             if (
@@ -62,14 +66,17 @@ export function compileToolDefinition(source) {
                 !fn.generator ||
                 fn.async ||
                 !fn.body.directives.some((d) => d.value.value === "use workflow")
-            )
+            ) {
                 throw Error("Expected use workflow generator");
-            if (fn.params.length !== 2 || fn.params.some((p) => !t.isIdentifier(p)))
+            }
+            if (fn.params.length !== 2 || fn.params.some((p) => !t.isIdentifier(p))) {
                 throw Error("Expected input and context parameters");
+            }
             fp.scope.rename(fn.params[1].name, "ctx");
             const declaration = path.findParent((p) => p.isVariableDeclarator());
-            if (!declaration?.parentPath.parentPath.isExportNamedDeclaration())
+            if (!declaration?.parentPath.parentPath.isExportNamedDeclaration()) {
                 throw Error("Expected named exported tool");
+            }
             exportName = declaration.node.id.name;
             implementation = t.functionDeclaration(
                 t.identifier("workflow"),
@@ -81,16 +88,23 @@ export function compileToolDefinition(source) {
             implementation.loc = fn.loc;
         },
     });
-    if (!implementation) throw Error("Missing workflow implementation");
+    if (!implementation) {
+        throw Error("Missing workflow implementation");
+    }
     const module = { exports: {} };
     const js = ts.transpileModule(source, {
         compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
     }).outputText;
     const resolve = (id) => {
-        if (id === "@sweatpants/agent-sdk") return sdk;
-        if (id === "zod") return { z };
-        if (id === "effection")
+        if (id === "@sweatpants/agent-sdk") {
+            return sdk;
+        }
+        if (id === "zod") {
+            return { z };
+        }
+        if (id === "effection") {
             return createRequire(new URL("../../../package.json", import.meta.url))("effection");
+        }
         throw Error("Unsupported build import " + id);
     };
     vm.runInNewContext("(function(require,module,exports){" + js + "\n})", {})(
@@ -99,8 +113,9 @@ export function compileToolDefinition(source) {
         module.exports,
     );
     const tool = module.exports[exportName];
-    if (tool?.execution !== "crank_native")
+    if (tool?.execution !== "crank_native") {
         throw Error("Expected real SDK durable tool definition");
+    }
     const generated = babel.transformFromAstSync(
         t.file(t.program([...effectImports, ...helpers, implementation])),
         null,
@@ -117,9 +132,12 @@ export function compileToolDefinition(source) {
         contracts = {},
         used = {};
     for (const [site, info] of Object.entries(preview.debug.sites)) {
-        if (info.operation !== "elicit") continue;
-        if (!info.key || !tool.elicits[info.key])
+        if (info.operation !== "elicit") {
+            continue;
+        }
+        if (!info.key || !tool.elicits[info.key]) {
             throw Error("Elicitation must use a statically declared key");
+        }
         const response = tool.elicits[info.key].response;
         // This increment supports Zod declarations; content uses the actual authored schema.
         const envelope = z.discriminatedUnion("action", [
@@ -161,11 +179,12 @@ export function compileToolDefinition(source) {
             remaining.splice(index, 1);
         }
     }
-    for (const helper of helpers)
+    for (const helper of helpers) {
         body.compiled.debug.locations[helper.id.name] = {
             line: helper.loc.start.line,
             column: helper.loc.start.column,
         };
+    }
     body.compiled.debug.locations.workflow = {
         line: implementation.loc.start.line,
         column: implementation.loc.start.column,

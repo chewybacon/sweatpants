@@ -7,8 +7,9 @@ registerHooks({
             specifier.includes("scheme-compiler") ||
             specifier.includes("@babel") ||
             specifier === "tsdown"
-        )
+        ) {
             throw Error(`Runtime tried to load compiler: ${specifier}`);
+        }
         return nextResolve(specifier, context);
     },
 });

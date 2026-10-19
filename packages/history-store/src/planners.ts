@@ -9,7 +9,6 @@ import type {
   ArchivedPublicRootIndex,
   CommandAdmissionRequest,
   CommandAdmissionResult,
-  CommandReceipt,
   CommitConversationRequest,
   ConversationHead,
   ConversationHeadProposal,
@@ -20,6 +19,7 @@ import type {
 } from "./contract.ts";
 import {
   conversationKeys,
+  serializeCommandReceipt,
   decodeAuthorityHead,
   prepareArchivedPublicRootIndex,
   prepareCheckpoint,
@@ -318,7 +318,9 @@ export function planConversationCommit(input: {
       publicSegmentEnsure(segment, index),
     ),
     ...(request.publicArchiveRootIndex ?? []).map((entry) => publicRootIndexEnsure(entry)),
+
     ...(request.checkpoint ? [checkpointEnsure(request.checkpoint)] : []),
+
     ...(request.terminalHistorySegment
       ? [terminalSegmentEnsure(request.terminalHistorySegment)]
       : []),
@@ -355,7 +357,7 @@ export function planCommandAdmission(input: {
     request.proposal,
     request.acceptedAt,
   );
-  const receipt: CommandReceipt = {
+  const receipt = serializeCommandReceipt({
     conversationId: request.conversationId,
     commandId: request.commandId,
     commandDigest: request.commandDigest,
@@ -366,7 +368,7 @@ export function planCommandAdmission(input: {
     resultingRevision: head.revision,
     logicalTurnId: request.logicalTurnId,
     executionId: request.executionId,
-  };
+  });
   return {
     kind: "apply",
     mutation: {

@@ -140,8 +140,9 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       observedHead?.conversationId === conversationId &&
       (observedHead.record?.revision ?? null) === revision &&
       (observedHead.record?.fence ?? null) === fence
-    )
+    ) {
       return observedHead.record;
+    }
     const record = yield* kernel.readAuthority(
       DurableCollections.conversationHeads,
       conversationKeys.head(conversationId),
@@ -356,7 +357,9 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
           currentRecord,
           updatedAt: request.updatedAt ?? Date.now(),
         });
-        if (retry.kind === "complete") return retry.result;
+        if (retry.kind === "complete") {
+          return retry.result;
+        }
         // Keep the original CAS basis: another publisher may have won while
         // this duplicate was being reconciled.
         outcome = yield* kernel.apply(retry.mutation);
@@ -367,15 +370,13 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       }
       return {
         ...committed,
-        ...(request.checkpoint ? { checkpoint: committed.head.checkpoint! } : {}),
-        ...(request.terminalHistorySegment
+        checkpoint: request.checkpoint ? committed.head.checkpoint! : undefined,
+        terminalHistory: request.terminalHistorySegment
           ? {
-              terminalHistory: {
-                segmentId: request.terminalHistorySegment.segmentId,
-                lastPosition: request.terminalHistorySegment.lastPosition,
-              },
+              segmentId: request.terminalHistorySegment.segmentId,
+              lastPosition: request.terminalHistorySegment.lastPosition,
             }
-          : {}),
+          : undefined,
       };
     },
     *admitCommand(request): Operation<CommandAdmissionResult> {
@@ -497,13 +498,16 @@ export function createKernelConversationStore(kernel: DurableKernel): Conversati
       return { checkpointId: stored.checkpointId };
     },
     *getCheckpoint(pointer): Operation<StoredCheckpoint | null> {
-      if (lastCheckpoint?.checkpointId === pointer.checkpointId)
+      if (lastCheckpoint?.checkpointId === pointer.checkpointId) {
         return structuredClone(lastCheckpoint);
+      }
       const record = yield* kernel.readImmutable(
         DurableCollections.conversationCheckpoints,
         conversationKeys.checkpoint(pointer.checkpointId),
       );
-      if (record === null) return null;
+      if (record === null) {
+        return null;
+      }
       lastCheckpoint = readCheckpoint(record.value);
       return structuredClone(lastCheckpoint);
     },

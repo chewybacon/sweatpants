@@ -21,7 +21,9 @@ export default class Host extends WorkerEntrypoint<{
   PLACEMENT: string;
 }> {
   private loadWorker() {
-    if (this.env.PLACEMENT === "do") return this.env.EXECUTORS.getByName(crypto.randomUUID());
+    if (this.env.PLACEMENT === "do") {
+      return this.env.EXECUTORS.getByName(crypto.randomUUID());
+    }
     return this.env.LOADER.load({
       compatibilityDate: "2026-10-05",
       compatibilityFlags: ["nodejs_compat"],

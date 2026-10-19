@@ -131,7 +131,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
     const { result: workerResult } = yield* createWorkerPrincipal<unknown, McpWorkerInitData>({
       workerUrl,
       initData,
-      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+      execArgv: execArgv && execArgv.length > 0 ? execArgv : undefined,
       requestHandler: function* (request: WorkerRequest): Operation<WorkerResponse> {
         // Re-establish context for this handler scope
         return yield* WorkerSessionStateContext.with(sessionState, function* () {
@@ -159,7 +159,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
         if (cancellationRequested) {
           log.append({
             type: "cancelled",
-            ...(cancellationReason !== undefined ? { reason: cancellationReason } : {}),
+            reason: cancellationReason,
           });
         } else if (result.type === "success") {
           log.append({ type: "result", result: result.value });
@@ -168,12 +168,12 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
             type: "error",
             name: result.error.name,
             message: result.error.message,
-            ...(result.error.stack !== undefined && { stack: result.error.stack }),
+            stack: result.error.stack,
           });
         } else if (result.type === "cancelled") {
           log.append({
             type: "cancelled",
-            ...(result.reason !== undefined && { reason: result.reason }),
+            reason: result.reason,
           });
         }
       } catch (error) {
@@ -182,7 +182,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
           type: "error",
           name: err.name,
           message: err.message,
-          ...(err.stack !== undefined && { stack: err.stack }),
+          stack: err.stack,
         });
       } finally {
         log.close();

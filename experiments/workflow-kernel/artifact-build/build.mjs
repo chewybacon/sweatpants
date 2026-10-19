@@ -10,8 +10,9 @@ export function buildBundle(source) {
         builtins = createDurableSchemaRegistry([]),
         validators = {};
     const schemaDescriptors = { ...compiledArtifact.schemaDescriptors };
-    for (const entry of tool.artifacts.catalog)
+    for (const entry of tool.artifacts.catalog) {
         schemaDescriptors[entry.descriptor.digest] = entry.descriptor;
+    }
     for (const digest of Object.keys(schemaDescriptors)) {
         const entry = schemas.get(digest);
         validators[digest] = builtins.get(digest)
@@ -35,7 +36,9 @@ export function buildBundle(source) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const [, , sourcePath, outputPath] = process.argv;
-    if (!sourcePath || !outputPath) throw Error("Usage: node build.mjs source.ts bundle.json");
+    if (!sourcePath || !outputPath) {
+        throw Error("Usage: node build.mjs source.ts bundle.json");
+    }
     const bundle = buildBundle(fs.readFileSync(sourcePath, "utf8"));
     const temporary = outputPath + "." + process.pid + ".tmp";
     let created = false;
@@ -44,7 +47,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         created = true;
         fs.renameSync(temporary, outputPath);
     } finally {
-        if (created && fs.existsSync(temporary)) fs.unlinkSync(temporary);
+        if (created && fs.existsSync(temporary)) {
+            fs.unlinkSync(temporary);
+        }
     }
     console.log(
         JSON.stringify({ bundle: bundle.id, artifact: bundle.artifact.id, output: outputPath }),

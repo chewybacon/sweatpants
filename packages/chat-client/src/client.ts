@@ -211,7 +211,9 @@ function deepFreeze<T>(value: T, seen = new WeakSet()): T {
 }
 
 function initialPreludeComplete(events: readonly ConversationStreamEvent[]): boolean {
-  if (events[0]?.type === EventType.RUN_ERROR) return true;
+  if (events[0]?.type === EventType.RUN_ERROR) {
+    return true;
+  }
   if (isConversationAuthorityFrame(events[0]!) && events[1]?.type === EventType.RUN_ERROR) {
     return true;
   }
@@ -329,9 +331,13 @@ function pendingUserMessage<TLocalPart extends ChatLocalPart = never>(
 function userContentToWire(
   content: ChatContent,
 ): Extract<ChatTransportRequestMessage, { role: "user" }>["content"] {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
   return content.map((part: ChatContentPart) => {
-    if (part.type === "text") return { type: "text", text: part.text };
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
     return part.metadata === null
       ? { type: part.type, source: part.source }
       : { type: part.type, source: part.source, metadata: part.metadata };
@@ -835,6 +841,7 @@ class ChatClientController<
     return {
       clientId: this.id,
       conversationId: this.threadId,
+      /* CONDITIONAL-SPREAD: Omitting knownWindowToken preserves existing projection fields when this partial update is merged. */
       ...(this.knownWindowToken === null ? {} : { knownWindowToken: this.knownWindowToken }),
     };
   }
@@ -955,6 +962,7 @@ class ChatClientController<
         commandId: runId,
         ...commandLifetime(),
         basisRevision: this.snapshot.authority?.revision ?? null,
+        /* CONDITIONAL-SPREAD: Omitting targetMessageId preserves existing projection fields when this partial update is merged. */
         ...(target === undefined ? {} : { targetMessageId: target }),
       },
       ...this.transportIdentity(),
@@ -1365,6 +1373,7 @@ class ChatClientController<
         status: runError ? "error" : "ready",
         connectionStatus: "disconnected",
         runId: null,
+        /* CONDITIONAL-SPREAD: Omitting error preserves existing projection fields when this partial update is merged. */
         ...(runFailure ? { error: runFailure } : {}),
       },
       true,
@@ -1480,9 +1489,15 @@ class ChatClientController<
         while (events.state.status === "open") {
           yield* call(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
         }
-        for (const trailing of events.drain()) validator.push(trailing);
-        if (events.state.status === "error") throw events.state.error;
-        if (!this.closed) validator.finish();
+        for (const trailing of events.drain()) {
+          validator.push(trailing);
+        }
+        if (events.state.status === "error") {
+          throw events.state.error;
+        }
+        if (!this.closed) {
+          validator.finish();
+        }
         return terminalEvent;
       }
 
@@ -1490,7 +1505,9 @@ class ChatClientController<
         throw drainedState.error;
       }
       if (drainedState.status === "done") {
-        if (!this.closed) validator.finish();
+        if (!this.closed) {
+          validator.finish();
+        }
         if (prelude.length > 0) {
           terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
         }
@@ -1542,7 +1559,9 @@ class ChatClientController<
       }
       next = yield* subscription.next();
     }
-    if (!this.closed) validator.finish();
+    if (!this.closed) {
+      validator.finish();
+    }
     if (prelude.length > 0) {
       terminalEvent = (yield* this.publishEventBatch(prelude)) ?? terminalEvent;
     }
@@ -1624,7 +1643,9 @@ class ChatClientController<
         const failure = new ChatClientError("chat_conversation_deleted", "Conversation is deleted");
         const completions = this.queuedCompletions.splice(0);
         this.queued = [];
-        for (const completion of completions) completion.reject(failure);
+        for (const completion of completions) {
+          completion.reject(failure);
+        }
         this.stagePublication({
           history: { hasOlder: false, loadingOlder: false, error: null },
           queue: [],
@@ -1669,6 +1690,7 @@ class ChatClientController<
       event.type === EventType.TOOL_CALL_ARGS;
     this.stagePublication({
       status: streaming ? "streaming" : this.currentPublicationStatus(),
+      /* CONDITIONAL-SPREAD: Omitting runId preserves existing projection fields when this partial update is merged. */
       ...(event.type === EventType.RUN_STARTED ? { runId: event.runId } : {}),
     });
   }
@@ -1679,6 +1701,7 @@ class ChatClientController<
         const parentRunId = this.pendingPublicationChanges.runId ?? this.snapshot.runId;
         this.interaction?.observe({
           ...action.request,
+          /* CONDITIONAL-SPREAD: Omitting parentRunId preserves existing projection fields when this partial update is merged. */
           ...(parentRunId ? { parentRunId } : {}),
         });
         return;
@@ -1728,6 +1751,7 @@ class ChatClientController<
         executionId: authority.activeExecutionId,
         interruptId: request.elicitId,
         status: completion.action === "cancel" ? "cancelled" : "resolved",
+        /* CONDITIONAL-SPREAD: Omitting payload preserves existing projection fields when this partial update is merged. */
         ...(payload !== undefined ? { payload } : {}),
       },
       ...this.transportIdentity(),
@@ -1735,6 +1759,7 @@ class ChatClientController<
       state: this.state,
       context: this.context,
       forwardedProps: this.forwardedProps,
+      /* CONDITIONAL-SPREAD: Omitting parentRunId preserves existing projection fields when this partial update is merged. */
       ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
     };
     this.publish({ authority: null, status: "submitted", connectionStatus: "connecting" });

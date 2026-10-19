@@ -328,13 +328,17 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
         invocation: {
           context: {
             messages: ask.messages,
+            /* CONDITIONAL-SPREAD: Omit absent systemPrompt from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(ask.systemPrompt === undefined ? {} : { systemPrompt: ask.systemPrompt }),
           },
+          /* CONDITIONAL-SPREAD: Omit absent options from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
           ...(ask.maxTokens === undefined && ask.toolChoice === undefined
             ? {}
             : {
                 options: {
+                  /* CONDITIONAL-SPREAD: Omit absent maxTokens from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
                   ...(ask.maxTokens === undefined ? {} : { maxTokens: ask.maxTokens }),
+                  /* CONDITIONAL-SPREAD: Omit absent toolChoice from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
                   ...(ask.toolChoice === undefined ? {} : { toolChoice: ask.toolChoice }),
                 },
               }),
@@ -342,6 +346,7 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
         tools: ask.tools === undefined ? { type: "none" } : { type: "embedded", tools: ask.tools },
         response:
           ask.schema === undefined ? { type: "message" } : { type: "json", schema: ask.schema },
+        /* CONDITIONAL-SPREAD: Omit absent modelPreferences from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
         ...(ask.modelPreferences === undefined ? {} : { modelPreferences: ask.modelPreferences }),
       }),
     };
@@ -352,6 +357,7 @@ function inputRequestFromAsk(ask: ToolInvocationAsk): EphemeralInputRequest {
     message: ask.message,
     responseSchema: canonicalToolJson(ask.schema),
     binding: ask.binding,
+    /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(ask.context === undefined ? {} : { context: canonicalToolJson(ask.context) }),
   };
 }
@@ -390,7 +396,9 @@ function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined
   const response = result.data;
   const base = {
     text: response.text,
+    /* CONDITIONAL-SPREAD: Omit absent model from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(response.model === undefined ? {} : { model: response.model }),
+    /* CONDITIONAL-SPREAD: Omit absent stopReason from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(response.stopReason === undefined ? {} : { stopReason: response.stopReason }),
   };
   if ("toolCalls" in response) {
@@ -400,6 +408,7 @@ function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined
     return {
       ...base,
       parsed: response.parsed,
+      /* CONDITIONAL-SPREAD: Omit absent parseError from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(response.parseError === undefined ? {} : { parseError: response.parseError }),
     };
   }
@@ -590,7 +599,9 @@ export function* executeEphemeralToolCall(
         }
         const lastText = ask.messages?.at(-1)?.text;
         answer = yield* relay.sample({
+          /* CONDITIONAL-SPREAD: Omit absent text from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
           ...(lastText !== undefined ? { text: lastText } : {}),
+          /* CONDITIONAL-SPREAD: Omit absent systemPrompt from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
           ...(ask.systemPrompt !== undefined ? { systemPrompt: ask.systemPrompt } : {}),
           requestId: ask.requestId,
         });
@@ -600,6 +611,7 @@ export function* executeEphemeralToolCall(
         }
         answer = yield* relay.elicit({
           message: ask.message ?? "",
+          /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
           ...(ask.context !== undefined ? { context: ask.context as Json } : {}),
         });
       }

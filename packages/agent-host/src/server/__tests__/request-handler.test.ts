@@ -15,8 +15,11 @@ describe("request-owned chat applications", () => {
             {
               pull(controller) {
                 reads++;
-                if (reads <= 2) controller.enqueue(new Uint8Array([reads]));
-                else controller.close();
+                if (reads <= 2) {
+                  controller.enqueue(new Uint8Array([reads]));
+                } else {
+                  controller.close();
+                }
               },
             },
             { highWaterMark: 0 },

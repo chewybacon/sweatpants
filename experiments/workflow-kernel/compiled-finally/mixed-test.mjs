@@ -94,11 +94,12 @@ if (process.argv[2] === "step") {
                     pids.push(r.pid);
                 }
             } else {
-                if (label === "child ensure" && c.name === "normal")
+                if (label === "child ensure" && c.name === "normal") {
                     fs.writeFileSync(
                         dir + "mixed-checkpoint.json",
                         JSON.stringify(r.state, null, 2),
                     );
+                }
                 r = fresh(
                     artifact,
                     r.state,
@@ -117,8 +118,9 @@ if (process.argv[2] === "step") {
             assert.deepEqual(r.outcome, expected.outcome, c.name);
         } else {
             assert.deepEqual(r.outcome, { kind: "cancelled" });
-            if (c.cancelAt === "body" || c.cancelAt === "child finally")
+            if (c.cancelAt === "body" || c.cancelAt === "child finally") {
                 assert.ok(!trace.includes("parent continued"));
+            }
             assert.deepEqual(trace.slice(-4), [
                 "registered in finally",
                 "child ensure",

@@ -41,7 +41,7 @@ export function toolInvocationBoundary(turn: ToolInvocationTurn): ToolInvocation
     case "cancelled":
       return {
         kind: "cancelled",
-        ...(turn.reason === undefined ? {} : { reason: turn.reason }),
+        reason: turn.reason,
       };
   }
 }
@@ -69,35 +69,43 @@ export function createToolInvocationExecutor(
           invocationId: program.invocationId,
           commandId: `${commands}:${++sequence}`,
           cursor,
-          ...(resume ? { resume } : {}),
+          resume,
         });
-        if (next.kind === "suspended") cursor = next.request.cursor;
+        if (next.kind === "suspended") {
+          cursor = next.request.cursor;
+        }
         return next;
       }
-      let boundary: ToolInvocationBoundary;
+      let started = false;
       try {
-        boundary = yield* advance();
-      } catch (error) {
-        yield* host.dispose(program.invocationId);
-        throw error;
+        const boundary = yield* advance();
+        const executionState = createExecution(boundary, {
+          validateReply(request, reply: Reply) {
+            if (request.kind !== reply.kind || request.requestId !== reply.requestId) {
+              throw new Error("execution_suspension_mismatch");
+            }
+          },
+          turn(command) {
+            return advance(
+              command.kind === "resume"
+                ? command.reply
+                : {
+                    kind: "cancel",
+                    reason: command.reason,
+                  },
+            );
+          },
+          dispose: () => host.dispose(program.invocationId),
+        });
+        started = true;
+        return executionState;
+      } finally {
+        // Until startup returns a handle, it owns cleanup. Scope cancellation
+        // also passes through finally.
+        if (!started) {
+          yield* host.dispose(program.invocationId);
+        }
       }
-      return createExecution<ToolInvocationRequest, Reply, Json, ToolInvocationError>(boundary, {
-        validateReply(request, reply) {
-          if (request.kind !== reply.kind || request.requestId !== reply.requestId)
-            throw new Error("execution_suspension_mismatch");
-        },
-        turn(command) {
-          return advance(
-            command.kind === "resume"
-              ? command.reply
-              : {
-                  kind: "cancel",
-                  ...(command.reason === undefined ? {} : { reason: command.reason }),
-                },
-          );
-        },
-        dispose: () => host.dispose(program.invocationId),
-      });
     },
   };
 }

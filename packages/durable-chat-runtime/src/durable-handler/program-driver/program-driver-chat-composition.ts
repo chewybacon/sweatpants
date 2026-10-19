@@ -100,7 +100,9 @@ function decideEphemeralExecution(
   const needsEphemeralExecution = params.toolSchemas.some(
     (tool) => nativePrograms[tool.name] === undefined,
   );
-  if (!needsEphemeralExecution) return { kind: "none" };
+  if (!needsEphemeralExecution) {
+    return { kind: "none" };
+  }
   if (params.ephemeralEffects !== undefined) {
     return { kind: "tool-session", effects: params.ephemeralEffects };
   }

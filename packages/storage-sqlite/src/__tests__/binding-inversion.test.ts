@@ -157,12 +157,16 @@ describe("SQLite binding inversion", () => {
     // Path mode: the kernel closes what it created.
     const pathMode = await attemptOpen(path, { initialize: true });
     expect(pathMode.ok).toBe(true);
-    if (pathMode.ok) await pathMode.handle.close();
+    if (pathMode.ok) {
+      await pathMode.handle.close();
+    }
 
     // Database mode: the kernel leaves the caller's binding open.
     const databaseMode = await attemptOpen(undefined, { database: binding, initialize: true });
     expect(databaseMode.ok).toBe(true);
-    if (databaseMode.ok) await databaseMode.handle.close();
+    if (databaseMode.ok) {
+      await databaseMode.handle.close();
+    }
     expect(binding.open).toBe(true);
     const one = binding.prepare("SELECT 1 AS one").get() as { one: number | bigint };
     expect(Number(one.one)).toBe(1);
@@ -341,7 +345,9 @@ describe("SQLite binding inversion", () => {
     const path = tempFile("reader.sqlite");
     const setup = await attemptOpen(path, { initialize: true });
     expect(setup.ok).toBe(true);
-    if (setup.ok) await setup.handle.close();
+    if (setup.ok) {
+      await setup.handle.close();
+    }
 
     const reader = track(createSqliteReaderBinding(path));
     expect(() => {

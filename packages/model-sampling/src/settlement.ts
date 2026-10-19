@@ -7,7 +7,9 @@ export { assistantText, assistantToolCalls } from "./provider.ts";
 
 function settleJson(response: ModelResponse): ModelSampleOutput {
   const call = assistantToolCalls(response)[0];
-  if (call) return { type: "json", value: call.input };
+  if (call) {
+    return { type: "json", value: call.input };
+  }
   const rawText = assistantText(response);
   try {
     return { type: "json", value: assertJson(JSON.parse(rawText)) };

@@ -6,7 +6,9 @@ const forbidden =
     /(typescript|@babel|compiled-frames\/compiler|tool-contracts\/compiler|compiled-finally\/artifact|artifact-build\/build\.mjs)/;
 const original = Module._load;
 Module._load = function (id, ...args) {
-    if (forbidden.test(id)) throw Error("Compiler loaded during recovery: " + id);
+    if (forbidden.test(id)) {
+        throw Error("Compiler loaded during recovery: " + id);
+    }
     return original.call(this, id, ...args);
 };
 vm.runInNewContext = () => {

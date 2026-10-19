@@ -179,6 +179,7 @@ export function encodeSamplingRequest(
   // Build MCP tools from our tool definitions
   let mcpTools: McpToolDefinition[] | undefined = event.tools?.map((tool) => ({
     name: tool.name,
+    /* CONDITIONAL-SPREAD: Omit absent description from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(tool.description !== null && { description: tool.description }),
     inputSchema: tool.parameters,
   }));
@@ -210,10 +211,14 @@ export function encodeSamplingRequest(
     method: "sampling/createMessage",
     params: {
       messages: mcpMessages,
+      /* CONDITIONAL-SPREAD: Omit absent systemPrompt from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(event.systemPrompt !== undefined && { systemPrompt: event.systemPrompt }),
       maxTokens: event.maxTokens ?? 4096,
+      /* CONDITIONAL-SPREAD: Omit absent modelPreferences from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(event.modelPreferences === undefined ? {} : { modelPreferences: event.modelPreferences }),
+      /* CONDITIONAL-SPREAD: Omit absent tools from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(mcpTools !== undefined && mcpTools.length > 0 && { tools: mcpTools }),
+      /* CONDITIONAL-SPREAD: Omit absent toolChoice from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(mcpToolChoice !== undefined && { toolChoice: mcpToolChoice }),
     },
   };

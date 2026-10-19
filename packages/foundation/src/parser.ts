@@ -150,7 +150,9 @@ export function safeSchemaIssues(
 ): SafeSchemaIssue[] {
   return convertIssues(issues).map((issue) => ({
     message: issue.message,
+    /* CONDITIONAL-SPREAD: Omit absent path from validation issue payloads used in boundary errors. */
     ...(issue.path.length > 0 ? { path: issue.path.map(String).join(".") } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent code from validation issue payloads used in boundary errors. */
     ...(issue.code === undefined ? {} : { code: issue.code }),
   }));
 }
@@ -161,14 +163,18 @@ function parserFromParse<T>(parse: (input: unknown) => ParseResult<T>): Parser<T
     map<U>(transform: (value: T) => U): Parser<U> {
       return parserFromParse((input) => {
         const result = parse(input);
-        if (!result.ok) return result;
+        if (!result.ok) {
+          return result;
+        }
         return success(transform(result.value));
       });
     },
     andThen<U>(next: (value: T) => ParseResult<U>): Parser<U> {
       return parserFromParse((input) => {
         const result = parse(input);
-        if (!result.ok) return result;
+        if (!result.ok) {
+          return result;
+        }
         return next(result.value);
       });
     },
@@ -190,13 +196,16 @@ function convertIssues(
     return Object.freeze({
       path: Object.freeze(path),
       message,
+      /* CONDITIONAL-SPREAD: Omit absent code from validation issue payloads used in boundary errors. */
       ...(code === undefined ? {} : { code }),
     });
   });
 }
 
 function normalizePath(path: unknown): Array<string | number> {
-  if (!Array.isArray(path) || path.length === 0) return [];
+  if (!Array.isArray(path) || path.length === 0) {
+    return [];
+  }
   const result: Array<string | number> = [];
   let length = 0;
   for (const segment of path) {
@@ -205,7 +214,9 @@ function normalizePath(path: unknown): Array<string | number> {
     const text = String(normalized);
     const separatorLength = result.length === 0 ? 0 : 1;
     const available = MAX_ISSUE_PATH_LENGTH - length - separatorLength;
-    if (available <= 0) break;
+    if (available <= 0) {
+      break;
+    }
     if (text.length > available) {
       result.push(
         typeof normalized === "number" && available >= text.length
@@ -221,13 +232,19 @@ function normalizePath(path: unknown): Array<string | number> {
 }
 
 function normalizePathSegment(value: unknown): string | number {
-  if (typeof value === "string" || typeof value === "number") return value;
-  if (typeof value === "symbol") return "<symbol>";
+  if (typeof value === "string" || typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "symbol") {
+    return "<symbol>";
+  }
   return "<path>";
 }
 
 function isStandardSchemaV1(value: unknown): value is StandardSchemaV1 {
-  if (!isRecord(value) || !isRecord(value["~standard"])) return false;
+  if (!isRecord(value) || !isRecord(value["~standard"])) {
+    return false;
+  }
   const standard = value["~standard"];
   return standard["version"] === 1 && typeof standard["validate"] === "function";
 }

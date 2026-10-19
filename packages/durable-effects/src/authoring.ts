@@ -23,7 +23,9 @@ export function defineDurableEffect<
 }
 
 export function assertEffectDefinition(definition: EffectDefinition<Json, Json, Json>): void {
-  if (!definition || typeof definition !== "object") invalid("effect definition");
+  if (!definition || typeof definition !== "object") {
+    invalid("effect definition");
+  }
   requireId(definition.name, "effect name");
   requireId(definition.version, "effect version");
   assertEffectSchemaDescriptor(
@@ -75,7 +77,9 @@ function assertEffectSchemaDescriptor(
 }
 
 function requireId(value: unknown, field: string): void {
-  if (typeof value !== "string" || value.length === 0) invalid(`${field} must be non-empty`);
+  if (typeof value !== "string" || value.length === 0) {
+    invalid(`${field} must be non-empty`);
+  }
 }
 
 function invalid(message: string): never {
@@ -85,7 +89,9 @@ function invalid(message: string): never {
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object") {
     Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
   }
   return value;
 }
@@ -175,6 +181,8 @@ export function createDurableEffectRegistration<
       return handler(input as I, context) as Operation<DurableEffectDisposition<Json, Json>>;
     },
   };
-  if (schemas) attachDurableEffectRuntimeSchemas(registration, schemas);
+  if (schemas) {
+    attachDurableEffectRuntimeSchemas(registration, schemas);
+  }
   return registration;
 }

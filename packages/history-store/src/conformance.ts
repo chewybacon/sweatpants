@@ -74,7 +74,9 @@ export function describeConversationStoreConformance(
             ownerTransition: { kind: "clear" as const },
           };
           const created = yield* handle.store.compareAndSwapHead("indexed", null, null, proposal);
-          if (created.status !== "committed") throw new Error("failed to create conversation");
+          if (created.status !== "committed") {
+            throw new Error("failed to create conversation");
+          }
           const root = {
             rootId: "root-0",
             position: "0",

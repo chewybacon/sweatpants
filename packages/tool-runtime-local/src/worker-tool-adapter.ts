@@ -104,6 +104,7 @@ function createCanonicalWorkerContext(
           stopReason: result.stopReason,
           exchange: result.exchange,
           content: result.text,
+          /* CONDITIONAL-SPREAD: Omit absent parsed from worker and tool-session messages; explicit undefined is not a portable JSON value. */
           ...("parsed" in result ? { parsed: result.parsed } : {}),
           raw: result,
         };
@@ -152,6 +153,7 @@ function createCanonicalWorkerContext(
       const response = yield* worker.elicit(key, {
         message: request.message,
         schema,
+        /* CONDITIONAL-SPREAD: Omit absent context from worker and tool-session messages; explicit undefined is not a portable JSON value. */
         ...(contextData !== undefined ? { context: contextData } : {}),
       });
       const result = yield* completeElicitExchange({
@@ -162,7 +164,9 @@ function createCanonicalWorkerContext(
         responseSchema: definition.response,
         completion: response,
       });
-      if (result.action === "accept") messages.push(...result.exchange.messages);
+      if (result.action === "accept") {
+        messages.push(...result.exchange.messages);
+      }
       return result;
     },
   };
@@ -199,7 +203,9 @@ function sampleRequestToConfig(
   }
   const messages: ChatMessage[] = [
     ...history,
+
     ...(request.messages ?? []),
+
     ...(request.prompt !== undefined
       ? [{ role: "user" as const, content: [{ type: "text" as const, text: request.prompt }] }]
       : []),

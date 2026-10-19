@@ -22,7 +22,9 @@ const values = [
     { nested: [null, {}, [], false, { text: "hello" }] },
     JSON.parse('{"__proto__":{"polluted":true},"constructor":null}'),
 ];
-for (const value of values) assert.deepEqual(decodeValue(encodeValue(value)), value);
+for (const value of values) {
+    assert.deepEqual(decodeValue(encodeValue(value)), value);
+}
 assert.equal({}.polluted, undefined);
 const cyclic = {};
 cyclic.self = cyclic;
@@ -48,11 +50,13 @@ for (const value of [
     new Array(1),
     { x: undefined },
     "\ud800",
-])
+]) {
     assert.throws(() => encodeValue(value));
+}
 assert.equal(getterCalls, 0);
-for (const source of ["closure", "(closure 1)", '(json-object ("x"))', "1 2", "+nan.0"])
+for (const source of ["closure", "(closure 1)", '(json-object ("x"))', "1 2", "+nan.0"]) {
     assert.throws(() => decodeValue(source));
+}
 console.log(
     "PASS portable codec: JSON distinctions, escaped strings, numbers, hostile keys and rejected host values",
 );
@@ -63,6 +67,8 @@ for (let i = 0; i < 512; i++) {
     bits = BigInt.asUintN(64, bits * 6364136223846793005n + 1n);
     view.setBigUint64(0, bits);
     const value = view.getFloat64(0);
-    if (Number.isFinite(value)) assert.equal(decodeValue(encodeValue(value)), value);
+    if (Number.isFinite(value)) {
+        assert.equal(decodeValue(encodeValue(value)), value);
+    }
 }
 console.log("PASS deterministic IEEE-754 transport samples");

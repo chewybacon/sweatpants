@@ -6,12 +6,7 @@ import {
   type DurableRaceDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import {
-  stableTupleHash,
-  digestCanonicalJson,
-  canonicalJson,
-  encodeCanonicalJson,
-} from "@sweatpants/foundation";
+import { stableTupleHash, digestCanonicalJson, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { TaskState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
@@ -102,7 +97,7 @@ export function openForkGroup(
       expected.id !== member.child.id ||
       expected.version !== member.child.version ||
       expected.digest !== member.child.digest ||
-      encodeCanonicalJson(expected.input) !== canonicalJson(member.child.input)
+      encodeCanonicalJson(expected.input) !== encodeCanonicalJson(member.child.input)
     ) {
       throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
     }
@@ -172,12 +167,15 @@ export function openForkGroup(
       // Peer member audiences are derived locally, never taken from
       // peer-supplied claims (REQ-041).
       audience: durability?.kind === "peer_hosted" ? `peer:${durability.peer}` : request.audience,
+      /* CONDITIONAL-SPREAD: Omit absent elicitAudience from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(parent.execution.elicitAudience === undefined
         ? {}
         : { elicitAudience: parent.execution.elicitAudience }),
+      /* CONDITIONAL-SPREAD: Omit absent catalog, catalogDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(parent.execution.catalog === undefined
         ? {}
         : { catalog: parent.execution.catalog, catalogDigest: parent.execution.catalogDigest! }),
+      /* CONDITIONAL-SPREAD: Omit absent route from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(member.route === undefined ? {} : { route: member.route }),
       parentTaskId: parent.taskId,
       parentPullId: pull.pullId,
@@ -268,6 +266,7 @@ export function breachForkGroup(
   return {
     groupId: group.groupId,
     cancelMembers,
+    /* CONDITIONAL-SPREAD: Omit absent resolution from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(resolution === undefined ? {} : { resolution }),
   };
 }

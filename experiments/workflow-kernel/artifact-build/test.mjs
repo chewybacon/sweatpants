@@ -153,10 +153,11 @@ try {
     ];
     for (const schema of schemas) {
         const restored = decodeSchema(encodeSchema(schema));
-        for (const value of values)
+        for (const value of values) {
             check(() =>
                 assert.equal(restored.safeParse(value).success, schema.safeParse(value).success),
             );
+        }
     }
     for (const schema of [
         z.string().refine((x) => x === "x"),

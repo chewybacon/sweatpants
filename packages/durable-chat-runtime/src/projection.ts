@@ -64,6 +64,7 @@ function withPublicMetadata<T extends object>(
   const metadata = sanitizePublicMetadata(rawMetadata);
   return {
     ...rest,
+    /* CONDITIONAL-SPREAD: Omit absent metadata from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
 }
@@ -115,11 +116,17 @@ export function recordToElicit(record: OpenInterruptRecord): ElicitRequestStream
         ? String(record.publicMetadata["sweatpants/key"])
         : record.interruptId,
     message: record.message ?? "Input required",
+    /* CONDITIONAL-SPREAD: Omit absent schema from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.responseSchema ? { schema: record.responseSchema } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent bindingId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.bindingId ? { bindingId: record.bindingId } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent context from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.context !== undefined ? { context: record.context } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent responseContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.responseContract ? { responseContract: record.responseContract } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent contextContract from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.contextContract ? { contextContract: record.contextContract } : {}),
+    /* CONDITIONAL-SPREAD: Omit absent placement from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
     ...(record.placement ? { placement: record.placement } : {}),
   };
 }
@@ -130,10 +137,15 @@ export function publicInterruptsFromRecords(records: OpenInterruptRecord[]) {
     return {
       id: record.interruptId,
       reason: record.reason,
+      /* CONDITIONAL-SPREAD: Omit absent message from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(record.message ? { message: record.message } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent toolCallId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(record.toolCallId ? { toolCallId: record.toolCallId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent responseSchema from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(record.responseSchema ? { responseSchema: record.responseSchema } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent expiresAt from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent metadata from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
   });
@@ -311,8 +323,9 @@ function* replayConversationFrames(
           seenActivityRecords.add(event.messageId);
           activityRecordOrder.push(event.messageId);
         }
-        if (event.subagentRunId !== undefined)
+        if (event.subagentRunId !== undefined) {
           activityOwners.set(event.messageId, event.subagentRunId);
+        }
         publicEvents.push(event);
         activityEventCount += 1;
         continue;
@@ -359,11 +372,14 @@ function activitySnapshotsFromProjection(
   return projection.activityRecordOrder.flatMap((activityRecordId) => {
     const nodeId = projection.activityProjection.activityNodeByRecordId.get(activityRecordId);
     const projected = nodeId ? projection.activityProjection.nodes.get(nodeId) : undefined;
-    if (!projected || projected.synthetic) return [];
+    if (!projected || projected.synthetic) {
+      return [];
+    }
     return [
       {
         type: EventType.ACTIVITY_SNAPSHOT,
         messageId: activityRecordId,
+        /* CONDITIONAL-SPREAD: Omit absent subagentRunId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(projection.activityOwners.has(activityRecordId)
           ? { subagentRunId: projection.activityOwners.get(activityRecordId) }
           : {}),
@@ -465,6 +481,7 @@ export function* completedConversationHydrateEvents(params: {
       type: EventType.STATE_SNAPSHOT,
       snapshot: buildAgUiCustomState({ elicits }),
     },
+
     ...(openInterrupts.length > 0
       ? [
           {

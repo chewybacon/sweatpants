@@ -1,11 +1,45 @@
 import { expect, it } from "vitest";
-import { run, scoped } from "effection";
+import { createTool } from "@sweatpants/agent-sdk";
+import { z } from "zod";
+import { action, createQueue, run, scoped, spawn } from "effection";
 import {
   advanceToolInvocation,
   createToolInvocationExecutor,
   ToolInvocationExecutor,
 } from "../invocation-executor.ts";
 import type { StartToolInvocation, ToolInvocationHost, TurnToolInvocation } from "../invocation.ts";
+
+it("releases a started invocation when its first boundary is abandoned", async () => {
+  await run(function* () {
+    const advancing = createQueue<void, never>();
+    const events: string[] = [];
+    const host: ToolInvocationHost = {
+      *start() {
+        events.push("started");
+      },
+      *turn() {
+        advancing.add();
+        return yield* action<never>(() => () => {});
+      },
+      *dispose() {
+        events.push("disposed");
+      },
+    };
+    const tool = createTool("interrupted-startup")
+      .description("Unused tool for the invocation host double")
+      .parameters(z.object({}))
+      .execute(function* () {
+        return null;
+      });
+    const startup = yield* spawn(() =>
+      createToolInvocationExecutor(host).start({ invocationId: "interrupted", tool }, {}),
+    );
+    yield* advancing.next();
+    expect(events).toEqual(["started"]);
+    yield* startup.halt();
+    expect(events).toEqual(["started", "disposed"]);
+  });
+});
 
 it("preserves durable command identity and cursor across a retried pull", async () => {
   const commands: TurnToolInvocation[] = [];
@@ -42,12 +76,13 @@ it("rejects mismatched replies before dispatch and advances with the parked curs
     *start() {},
     *turn(command) {
       commands.push(command);
-      if (commands.length === 1)
+      if (commands.length === 1) {
         return {
           type: "parked",
           cursor: 7,
           ask: { kind: "sample", requestId: "ask", messages: [] },
         };
+      }
       return { type: "completed", result: "done" };
     },
     *dispose() {
@@ -111,7 +146,9 @@ it("allows cancellation to suspend for cleanup before reaching a terminal bounda
     *start() {},
     *turn(command) {
       commands.push(command);
-      if (command.resume?.kind === "sample") return { type: "cancelled", reason: "stopped" };
+      if (command.resume?.kind === "sample") {
+        return { type: "cancelled", reason: "stopped" };
+      }
       return {
         type: "parked",
         cursor: commands.length,

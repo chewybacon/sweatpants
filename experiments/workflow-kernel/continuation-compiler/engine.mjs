@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { parse } from "../scheme-data/read.mjs";
 const sym = (x) => ({ sym: x });
 const name = (x) => {
-    if (!x?.sym) throw Error("Expected identifier");
+    if (!x?.sym) {
+        throw Error("Expected identifier");
+    }
     return x.sym;
 };
 export function compile(source) {
@@ -23,7 +25,9 @@ export function compile(source) {
         }
         xs.forEach((x, i) => {
             expr(x, c, tail && i === xs.length - 1);
-            if (i < xs.length - 1) c.push(["pop"]);
+            if (i < xs.length - 1) {
+                c.push(["pop"]);
+            }
         });
     }
     function expr(x, c, tail = false) {
@@ -31,14 +35,18 @@ export function compile(source) {
             c.push(x?.sym ? ["get", x.sym] : ["const", x]);
             return;
         }
-        if (!x.length) throw Error("Empty application");
+        if (!x.length) {
+            throw Error("Empty application");
+        }
         const op = x[0]?.sym;
         if (op === "lambda") {
             c.push(["closure", fn(x[1].map(name), x.slice(2))]);
             return;
         }
         if (op === "let") {
-            if (!Array.isArray(x[1])) throw Error("Named let is not supported in this spike");
+            if (!Array.isArray(x[1])) {
+                throw Error("Named let is not supported in this spike");
+            }
             expr(
                 [[sym("lambda"), x[1].map((b) => b[0]), ...x.slice(2)], ...x[1].map((b) => b[1])],
                 c,
@@ -51,7 +59,9 @@ export function compile(source) {
             return;
         }
         if (op === "if") {
-            if (x.length !== 4) throw Error("if expects three operands");
+            if (x.length !== 4) {
+                throw Error("if expects three operands");
+            }
             expr(x[1], c);
             const branch = c.length;
             c.push(["false", 0]);
@@ -64,31 +74,40 @@ export function compile(source) {
             return;
         }
         if (op === "define") {
-            if (Array.isArray(x[1])) expr([sym("lambda"), x[1].slice(1), ...x.slice(2)], c);
-            else {
-                if (x.length !== 3) throw Error("Invalid define");
+            if (Array.isArray(x[1])) {
+                expr([sym("lambda"), x[1].slice(1), ...x.slice(2)], c);
+            } else {
+                if (x.length !== 3) {
+                    throw Error("Invalid define");
+                }
                 expr(x[2], c);
             }
             c.push(["define", name(Array.isArray(x[1]) ? x[1][0] : x[1])]);
             return;
         }
         if (op === "yield-at") {
-            if (x.length !== 3 || typeof x[1] !== "string")
+            if (x.length !== 3 || typeof x[1] !== "string") {
                 throw Error("yield-at expects label and request");
+            }
             expr(x[2], c);
             c.push(["yield", x[1]]);
             return;
         }
         if (op === "yield") {
-            if (x.length !== 2) throw Error("yield expects one request");
+            if (x.length !== 2) {
+                throw Error("yield expects one request");
+            }
             expr(x[1], c);
             c.push(["yield"]);
             return;
         }
-        if (["set!", "call/cc", "quote", "define-syntax", "letrec"].includes(op))
+        if (["set!", "call/cc", "quote", "define-syntax", "letrec"].includes(op)) {
             throw Error(`Unsupported form: ${op}`);
+        }
         expr(x[0], c);
-        for (const arg of x.slice(1)) expr(arg, c);
+        for (const arg of x.slice(1)) {
+            expr(arg, c);
+        }
         c.push([tail ? "tailcall" : "call", x.length - 1]);
     }
     const entry = fn([], parse(source));
@@ -113,35 +132,49 @@ export function start(program) {
     };
 }
 export function run(program, state, { reply, fuel = 100000 } = {}) {
-    if (state.version !== 1 || state.program !== program.id)
+    if (state.version !== 1 || state.program !== program.id) {
         throw Error("Checkpoint/program mismatch");
-    if (state.status === "done") throw Error("Program already completed");
+    }
+    if (state.status === "done") {
+        throw Error("Program already completed");
+    }
     if (state.status === "waiting") {
-        if (reply === undefined) throw Error("A reply is required");
+        if (reply === undefined) {
+            throw Error("A reply is required");
+        }
         state.frames.at(-1).stack.push(reply);
         state.status = "running";
     }
     function lookup(env, key) {
         for (let e = env; e !== null; e = state.heap[e].parent) {
-            if (Object.hasOwn(state.heap[e].bindings, key)) return state.heap[e].bindings[key];
+            if (Object.hasOwn(state.heap[e].bindings, key)) {
+                return state.heap[e].bindings[key];
+            }
         }
-        if (Object.hasOwn(builtins, key)) return { builtin: key };
+        if (Object.hasOwn(builtins, key)) {
+            return { builtin: key };
+        }
         throw Error(`Unbound name: ${key}`);
     }
     function finish(value) {
         state.frames.pop();
-        if (state.frames.length) state.frames.at(-1).stack.push(value);
-        else {
+        if (state.frames.length) {
+            state.frames.at(-1).stack.push(value);
+        } else {
             state.status = "done";
             state.result = value;
         }
     }
     while (state.frames.length) {
-        if (fuel-- <= 0) throw Error("Instruction budget exhausted");
+        if (fuel-- <= 0) {
+            throw Error("Instruction budget exhausted");
+        }
         const f = state.frames.at(-1),
             s = f.stack,
             ins = program.functions[f.fn].code[f.ip++];
-        if (!ins) throw Error("Invalid instruction pointer");
+        if (!ins) {
+            throw Error("Invalid instruction pointer");
+        }
         const [op, arg] = ins;
         switch (op) {
             case "const":
@@ -168,7 +201,9 @@ export function run(program, state, { reply, fuel = 100000 } = {}) {
                 s.pop();
                 break;
             case "false":
-                if (s.pop() === false) f.ip = arg;
+                if (s.pop() === false) {
+                    f.ip = arg;
+                }
                 break;
             case "jump":
                 f.ip = arg;
@@ -186,21 +221,31 @@ export function run(program, state, { reply, fuel = 100000 } = {}) {
                     callee = s.pop();
                 if (callee?.builtin) {
                     const value = builtins[callee.builtin](...args);
-                    if (op === "tailcall") finish(value);
-                    else s.push(value);
+                    if (op === "tailcall") {
+                        finish(value);
+                    } else {
+                        s.push(value);
+                    }
                     break;
                 }
-                if (!Number.isInteger(callee?.closure)) throw Error("Not callable");
+                if (!Number.isInteger(callee?.closure)) {
+                    throw Error("Not callable");
+                }
                 const def = program.functions[callee.closure];
-                if (args.length !== def.params.length) throw Error("Arity mismatch");
+                if (args.length !== def.params.length) {
+                    throw Error("Arity mismatch");
+                }
                 const env = state.heap.length;
                 state.heap.push({
                     parent: callee.env,
                     bindings: Object.fromEntries(def.params.map((p, i) => [p, args[i]])),
                 });
                 const next = { fn: callee.closure, ip: 0, env, stack: [] };
-                if (op === "tailcall") state.frames[state.frames.length - 1] = next;
-                else state.frames.push(next);
+                if (op === "tailcall") {
+                    state.frames[state.frames.length - 1] = next;
+                } else {
+                    state.frames.push(next);
+                }
                 state.maxFrames = Math.max(state.maxFrames, state.frames.length);
                 break;
             }

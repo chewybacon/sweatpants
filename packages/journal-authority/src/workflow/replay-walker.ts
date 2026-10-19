@@ -28,6 +28,7 @@ export function* replayStrand(item: ReplayItem): Operation<CaughtUpLeaf> {
       input: item.input,
       route: item.route,
       executionEpoch: item.executionEpoch,
+      /* CONDITIONAL-SPREAD: Omit absent affinity from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(item.affinity === undefined ? {} : { affinity: item.affinity }),
     },
     checkpoint: item.checkpoint ?? { kind: "replay" },

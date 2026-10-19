@@ -148,6 +148,7 @@ async function runStaleElicit(binding: Binding, settlement: Settlement): Promise
                 executionId: pendingAuthority.activeExecutionId,
                 interruptId: entry.interruptId,
                 status: entry.status,
+                /* CONDITIONAL-SPREAD: Omit absent payload from acceptance protocol fixtures; explicit undefined is not a portable JSON value. */
                 ...(entry.payload === undefined ? {} : { payload: entry.payload }),
               },
               clientId: "stale-elicit-client",

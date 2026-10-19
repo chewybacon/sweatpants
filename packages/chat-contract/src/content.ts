@@ -190,7 +190,9 @@ export function createChatContentParser(
   const limits = resolveLimits(options.limits);
   return makeParser((value) => {
     const parsed = parseChatContentStructure(value);
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     try {
       return success(normalizeChatContent(parsed.value, limits));
     } catch (error) {
@@ -245,7 +247,7 @@ export function decodeChatContentPart(
 }
 
 function resolveLimits(requested: Partial<ChatContentLimits> | undefined): ChatContentLimits {
-  const limits = { ...DEFAULT_CHAT_CONTENT_LIMITS, ...(requested ?? {}) };
+  const limits = { ...DEFAULT_CHAT_CONTENT_LIMITS, ...requested };
   for (const name of Object.keys(DEFAULT_CHAT_CONTENT_LIMITS) as Array<keyof ChatContentLimits>) {
     const value = limits[name];
     const maximum = DEFAULT_CHAT_CONTENT_LIMITS[name];
@@ -363,7 +365,9 @@ function normalizeMetadata(
   path: string,
   limits: ChatContentLimits,
 ): JsonObject | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) {
+    return null;
+  }
   const metadata = value as JsonObject;
   const canonical = canonicalJson(metadata);
   assertByteLimit(canonical, limits.maxMetadataBytes, "maxMetadataBytes", path);
@@ -469,10 +473,18 @@ function contentErrorFromIssues(
 }
 
 function structuralErrorCode(issue: ParseIssue): ChatContentDecodeErrorCode {
-  if (issue.code === "unrecognized_keys") return "unknown-field";
-  if (issue.path.includes("source") && issue.path.at(-1) === "type") return "invalid-source";
-  if (issue.path.at(-1) === "type") return "invalid-discriminator";
-  if (issue.path.includes("metadata")) return "invalid-value";
+  if (issue.code === "unrecognized_keys") {
+    return "unknown-field";
+  }
+  if (issue.path.includes("source") && issue.path.at(-1) === "type") {
+    return "invalid-source";
+  }
+  if (issue.path.at(-1) === "type") {
+    return "invalid-discriminator";
+  }
+  if (issue.path.includes("metadata")) {
+    return "invalid-value";
+  }
   return "invalid-value";
 }
 
@@ -485,7 +497,9 @@ function issueFromContentError(error: ChatContentDecodeError): ParseIssue {
 }
 
 function decodeIssuePath(path: string): Array<string | number> {
-  if (path === "$" || path.length === 0) return [];
+  if (path === "$" || path.length === 0) {
+    return [];
+  }
   return path
     .replace(/^\$\.?/u, "")
     .split(/[.[\]]+/u)

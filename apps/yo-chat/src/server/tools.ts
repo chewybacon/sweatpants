@@ -36,6 +36,7 @@ function createToolRegistry(mcpTools: readonly NamedTool[]): McpToolRegistry {
 export function activeAgentCoreToolNames(pickCardProgramReady = false): string[] {
   return [
     ...workerTools.map((tool) => tool.name),
+
     ...(pickCardProgramReady ? [pickCard.name] : []),
   ];
 }

@@ -47,8 +47,11 @@ export const byTagFold: Fold<Item, ReadonlyMap<Item["tag"], readonly string[]>> 
   return {
     step(item) {
       const bucket = byTag.get(item.tag);
-      if (bucket) bucket.push(item.id);
-      else byTag.set(item.tag, [item.id]);
+      if (bucket) {
+        bucket.push(item.id);
+      } else {
+        byTag.set(item.tag, [item.id]);
+      }
     },
     done: () => byTag,
   };
@@ -66,7 +69,9 @@ export const edgesFold: Fold<Item, readonly Edge[]> = fold(() => {
   const edges: Edge[] = [];
   return {
     step(item) {
-      if (item.parent !== null) edges.push({ child: item.id, parent: item.parent });
+      if (item.parent !== null) {
+        edges.push({ child: item.id, parent: item.parent });
+      }
     },
     done: () => edges,
   };
@@ -97,8 +102,11 @@ export function resolveGraph(base: BaseIndexes): ResolvedGraph {
   for (const edge of base.edges) {
     const bucket = base.ids.has(edge.parent) ? attached : pending;
     const list = bucket.get(edge.parent);
-    if (list) list.push(edge.child);
-    else bucket.set(edge.parent, [edge.child]);
+    if (list) {
+      list.push(edge.child);
+    } else {
+      bucket.set(edge.parent, [edge.child]);
+    }
   }
   for (const [parent, children] of attached) {
     const occupied = new Set<number>();
@@ -128,10 +136,15 @@ export function deriveByHand(items: Iterable<Item>): {
     }
     ids.add(item.id);
     const bucket = byTag.get(item.tag);
-    if (bucket) bucket.push(item.id);
-    else byTag.set(item.tag, [item.id]);
+    if (bucket) {
+      bucket.push(item.id);
+    } else {
+      byTag.set(item.tag, [item.id]);
+    }
     slots.set(item.id, item.slot);
-    if (item.parent !== null) edges.push({ child: item.id, parent: item.parent });
+    if (item.parent !== null) {
+      edges.push({ child: item.id, parent: item.parent });
+    }
   }
   const base: BaseIndexes = { ids, byTag, slots, edges };
   return { base, resolved: resolveGraph(base) };

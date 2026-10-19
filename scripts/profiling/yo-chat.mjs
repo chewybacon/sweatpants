@@ -70,6 +70,7 @@ for (let run = 1; run <= runs; run++) {
             maxBuffer: 8 * 1024 * 1024,
             env: {
                 ...process.env,
+                /* CONDITIONAL-SPREAD: Preserve the inherited environment when YO_CHAT_CPU_PROFILE_BUNDLE has no override. */
                 ...(frozenBundle ? { YO_CHAT_CPU_PROFILE_BUNDLE: frozenBundle } : {}),
                 YO_CHAT_CPU_PROFILE_DIRECTORY: directory,
             },

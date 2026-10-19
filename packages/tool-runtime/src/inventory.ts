@@ -103,7 +103,7 @@ export function createToolInventoryEntry(
         {
           binding: tool.bindings.elicits[key]!,
           responseContract: artifact.response,
-          ...(artifact.context ? { contextContract: artifact.context } : {}),
+          contextContract: artifact.context,
         },
       ]),
     ),
@@ -111,6 +111,6 @@ export function createToolInventoryEntry(
       elicits: Boolean(tool.capabilities?.elicitation),
       samples: Boolean(tool.capabilities?.sampling),
     },
-    ...(metadata ? { metadata } : {}),
+    metadata,
   };
 }

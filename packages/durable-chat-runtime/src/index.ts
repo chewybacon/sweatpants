@@ -418,6 +418,7 @@ export function* beginTurnPublication(
   if (request.admission === "respond-to-elicit") {
     return {
       ...admittedRequest,
+      /* CONDITIONAL-SPREAD: The idempotent fields belong only to the admission.status === "idempotent" variant. */
       ...(admission.status === "idempotent" ? { idempotent: true } : {}),
     };
   }

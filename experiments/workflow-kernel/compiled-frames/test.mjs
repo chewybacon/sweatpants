@@ -42,6 +42,7 @@ if (process.argv[2] === "step") {
             [
                 fileURLToPath(import.meta.url),
                 "step",
+
                 ...(reply === undefined ? [] : [JSON.stringify(reply)]),
             ],
             { encoding: "utf8" },
@@ -49,8 +50,9 @@ if (process.argv[2] === "step") {
         assert.equal(child.status, 0, child.stderr);
         const result = JSON.parse(child.stdout);
         assert.deepEqual(result.effect ?? result.done, JSON.parse(JSON.stringify(baseline.value)));
-        if (!baseline.done)
+        if (!baseline.done) {
             fs.copyFileSync(dir + "checkpoint.json", dir + `checkpoint-${reports.length}.json`);
+        }
         reports.push(result);
     }
     assert.deepEqual(

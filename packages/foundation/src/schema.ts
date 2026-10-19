@@ -147,8 +147,9 @@ function buildPortableSchemaDescriptor<Role extends string>(
  * digest that does not recommit to the descriptor's own fields.
  */
 function parsePortableSchemaDescriptorValue(value: unknown): PortableSchemaDescriptor {
-  if (typeof value === "object" && value !== null && ownedDescriptors.has(value))
+  if (typeof value === "object" && value !== null && ownedDescriptors.has(value)) {
     return value as PortableSchemaDescriptor;
+  }
   if (!isRecord(value)) {
     throw invalidDescriptor("descriptor must be an object");
   }

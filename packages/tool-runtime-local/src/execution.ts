@@ -23,8 +23,9 @@ export interface LocalExecutionOptions {
 /** Local worker placement. Worker entries import the same authored tool list. */
 export function local(options: LocalExecutionOptions): ToolExecutionAdapter {
   const idleTimeoutMs = options.idleTimeoutMs ?? 0;
-  if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 0 || idleTimeoutMs > 2_147_483_647)
+  if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 0 || idleTimeoutMs > 2_147_483_647) {
     throw new Error("idleTimeoutMs must be an integer between 0 and 2147483647");
+  }
   return {
     prepare(tools, routeId) {
       const driverKind = routeId === "tools" ? "worker" : routeId;
@@ -51,7 +52,11 @@ export function local(options: LocalExecutionOptions): ToolExecutionAdapter {
         bindings: durable.map((tool) => ({
           publicName: tool.name,
           tool,
-          route: { driverKind, ...(options.profile ? { profile: options.profile } : {}) },
+          route: {
+            driverKind,
+            // CONDITIONAL-SPREAD: The persisted tool route is Json; omit an absent profile before journal admission.
+            ...(options.profile ? { profile: options.profile } : {}),
+          },
         })),
         driverFactories:
           durable.length && idleTimeoutMs > 0

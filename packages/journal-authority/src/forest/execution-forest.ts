@@ -108,7 +108,9 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
   for (const record of records) {
     const payload = record.payload;
     if (payload.type === "TaskOpened") {
-      if (tasks.has(payload.taskId)) invalid(`Task ${payload.taskId} opened more than once`);
+      if (tasks.has(payload.taskId)) {
+        invalid(`Task ${payload.taskId} opened more than once`);
+      }
       if ((payload.parentTaskId === undefined) !== (payload.parentPullId === undefined)) {
         invalid(`Task ${payload.taskId} has a partial parent origin`);
       }
@@ -134,14 +136,18 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
     }
 
     const task = tasks.get(payload.taskId);
-    if (!task) invalid(`Record ${record.eventId} refers to unopened task ${payload.taskId}`);
+    if (!task) {
+      invalid(`Record ${record.eventId} refers to unopened task ${payload.taskId}`);
+    }
 
     switch (payload.type) {
       case "PullRequested": {
         if (task.actions.has(payload.actionIndex)) {
           invalid(`Task ${task.taskId} repeats action ${payload.actionIndex}`);
         }
-        if (pulls.has(payload.pullId)) invalid(`Pull ${payload.pullId} is not unique`);
+        if (pulls.has(payload.pullId)) {
+          invalid(`Pull ${payload.pullId} is not unique`);
+        }
         const pull: MutablePull = {
           kind: "pull",
           actionIndex: payload.actionIndex,
@@ -198,7 +204,9 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
         break;
       case "PullResolved": {
         const pull = exactPull(pulls, task, payload.pullId);
-        if (pull.settlement) invalid(`Pull ${payload.pullId} settled more than once`);
+        if (pull.settlement) {
+          invalid(`Pull ${payload.pullId} settled more than once`);
+        }
         if (payload.attemptId) {
           updateAttempt(pulls, task, payload.pullId, payload.attemptId, "completed");
         }
@@ -210,7 +218,9 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
         break;
       }
       case "TaskClosed":
-        if (task.lifecycle.status !== "active") invalid(`Task ${task.taskId} closed twice`);
+        if (task.lifecycle.status !== "active") {
+          invalid(`Task ${task.taskId} closed twice`);
+        }
         task.lifecycle = {
           status: "closed",
           outcome: structuredClone(payload.outcome),
@@ -218,8 +228,9 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
         };
         break;
       case "TaskOrphaned":
-        if (task.lifecycle.status !== "active")
+        if (task.lifecycle.status !== "active") {
           invalid(`Task ${task.taskId} became terminal twice`);
+        }
         task.lifecycle = { status: "orphaned", reason: payload.reason, offset: record.offset };
         break;
       case "AdvancementBound":
@@ -242,15 +253,23 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
   }
 
   for (const task of tasks.values()) {
-    if (task.origin.kind === "root") continue;
+    if (task.origin.kind === "root") {
+      continue;
+    }
     const parent = tasks.get(task.origin.invokedBy.taskId);
-    if (!parent) invalid(`Task ${task.taskId} has no parent task`);
+    if (!parent) {
+      invalid(`Task ${task.taskId} has no parent task`);
+    }
     const located = pulls.get(task.origin.invokedBy.pullId);
-    if (!located || located.task !== parent) invalid(`Task ${task.taskId} has no parent pull`);
+    if (!located || located.task !== parent) {
+      invalid(`Task ${task.taskId} has no parent pull`);
+    }
     if (!isChildDescriptor(located.pull.descriptor)) {
       invalid(`Task ${task.taskId} parent pull is not a child operation`);
     }
-    if (located.pull.childIds.includes(task.taskId)) invalid(`Task ${task.taskId} has two parents`);
+    if (located.pull.childIds.includes(task.taskId)) {
+      invalid(`Task ${task.taskId} has two parents`);
+    }
     located.pull.childIds.push(task.taskId);
   }
 
@@ -260,7 +279,9 @@ export function projectExecutionForest(records: readonly DurableSemanticRecord[]
   const projected = roots.map((task) => projectTask(task, tasks, new Set()));
   const reachable = new Set<string>();
   visitProjected(projected, reachable);
-  if (reachable.size !== tasks.size) invalid("Execution topology contains an unreachable task");
+  if (reachable.size !== tasks.size) {
+    invalid("Execution topology contains an unreachable task");
+  }
   return { roots: projected };
 }
 
@@ -273,13 +294,18 @@ function validateIndexes(tasks: ReadonlyMap<string, MutableTask>): void {
     let emissionIndex = 0;
     for (let actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
       const action = actions[actionIndex]!;
-      if (action.actionIndex !== actionIndex) invalid(`Task ${task.taskId} has an action gap`);
+      if (action.actionIndex !== actionIndex) {
+        invalid(`Task ${task.taskId} has an action gap`);
+      }
       if (action.kind === "pull") {
-        if (action.pullIndex !== pullIndex) invalid(`Task ${task.taskId} has a pull-index gap`);
+        if (action.pullIndex !== pullIndex) {
+          invalid(`Task ${task.taskId} has a pull-index gap`);
+        }
         pullIndex += 1;
       } else {
-        if (action.emissionIndex !== emissionIndex)
+        if (action.emissionIndex !== emissionIndex) {
           invalid(`Task ${task.taskId} has an emission-index gap`);
+        }
         emissionIndex += 1;
       }
     }
@@ -291,7 +317,9 @@ function detectCycles(tasks: ReadonlyMap<string, MutableTask>): void {
     const seen = new Set<string>();
     let cursor: MutableTask | undefined = task;
     while (cursor?.origin.kind === "child") {
-      if (seen.has(cursor.taskId)) invalid("Execution topology contains a cycle");
+      if (seen.has(cursor.taskId)) {
+        invalid("Execution topology contains a cycle");
+      }
       seen.add(cursor.taskId);
       cursor = tasks.get(cursor.origin.invokedBy.taskId);
     }
@@ -303,7 +331,9 @@ function projectTask(
   tasks: ReadonlyMap<string, MutableTask>,
   ancestors: ReadonlySet<string>,
 ): ExecutionTask {
-  if (ancestors.has(task.taskId)) invalid("Execution topology contains a cycle");
+  if (ancestors.has(task.taskId)) {
+    invalid("Execution topology contains a cycle");
+  }
   const nextAncestors = new Set(ancestors).add(task.taskId);
   const actions = [...task.actions.values()]
     .sort((left, right) => left.actionIndex - right.actionIndex)
@@ -323,10 +353,13 @@ function projectTask(
         pullId: action.pullId,
         descriptor: structuredClone(action.descriptor),
         attempts: action.attempts.map((attempt) => ({ ...attempt })),
+        /* CONDITIONAL-SPREAD: Omit absent settlement from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(action.settlement ? { settlement: structuredClone(action.settlement) } : {}),
         children: action.childIds.map((childId) => {
           const child = tasks.get(childId);
-          if (!child) invalid(`Missing child ${childId}`);
+          if (!child) {
+            invalid(`Missing child ${childId}`);
+          }
           return projectTask(child, tasks, nextAncestors);
         }),
       };
@@ -347,7 +380,9 @@ function exactPull(
   pullId: string,
 ): MutablePull {
   const located = pulls.get(pullId);
-  if (!located || located.task !== task) invalid(`Task ${task.taskId} has no pull ${pullId}`);
+  if (!located || located.task !== task) {
+    invalid(`Task ${task.taskId} has no pull ${pullId}`);
+  }
   return located.pull;
 }
 
@@ -360,7 +395,9 @@ function updateAttempt(
 ): MutableAttempt {
   const pull = exactPull(pulls, task, pullId);
   const attempt = pull.attempts.find((candidate) => candidate.attemptId === attemptId);
-  if (!attempt) invalid(`Pull ${pullId} has no attempt ${attemptId}`);
+  if (!attempt) {
+    invalid(`Pull ${pullId} has no attempt ${attemptId}`);
+  }
   attempt.status = status;
   return attempt;
 }
@@ -371,10 +408,14 @@ function isChildDescriptor(descriptor: DurableOperationDescriptor): boolean {
 
 function visitProjected(tasks: readonly ExecutionTask[], visited: Set<string>): void {
   for (const task of tasks) {
-    if (visited.has(task.taskId)) invalid(`Task ${task.taskId} is projected twice`);
+    if (visited.has(task.taskId)) {
+      invalid(`Task ${task.taskId} is projected twice`);
+    }
     visited.add(task.taskId);
     for (const action of task.actions) {
-      if (action.kind === "pull") visitProjected(action.children, visited);
+      if (action.kind === "pull") {
+        visitProjected(action.children, visited);
+      }
     }
   }
 }

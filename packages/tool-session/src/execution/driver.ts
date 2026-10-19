@@ -90,6 +90,7 @@ function* runInvocationTurnLoop(
       sessionId: call.id,
       callId: call.id,
       toolName: call.name,
+      /* CONDITIONAL-SPREAD: The cursor fields belong only to the currentTurn.kind === "suspended" variant. */
       ...(currentTurn.kind === "suspended" ? { cursor: currentTurn.request.cursor } : {}),
     });
     if (currentTurn.kind === "completed") {
@@ -123,6 +124,7 @@ function* runInvocationTurnLoop(
             key: ask.key,
             message: ask.message,
             schema: ask.schema,
+            /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(ask.context !== undefined ? { context: ask.context } : {}),
             binding: ask.binding,
           },
@@ -266,6 +268,7 @@ export function createInvocationToolExecutionStrategy(
           cursor: ref.cursor ?? 0,
           resume: {
             kind: "cancel",
+            /* CONDITIONAL-SPREAD: Omit absent reason from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(reason === undefined ? {} : { reason }),
           },
         });

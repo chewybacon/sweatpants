@@ -34,6 +34,8 @@ function lint(source: string, filename = "fixture.ts"): string {
         "sweatpants/documented-scope-crossing": "error",
         "sweatpants/documented-weld": "error",
         "sweatpants/no-nested-yield": "error",
+        "sweatpants/no-conditional-spread": "error",
+        curly: ["error", "all"],
       },
     }),
   );
@@ -174,5 +176,83 @@ describe("sweatpants/documented-weld", () => {
       export const welded = value as unknown as number;
     `);
     expect(output).toBe("");
+  });
+});
+
+describe("sweatpants/no-conditional-spread", () => {
+  it.each([
+    "export const value = { ...(reason === undefined ? {} : { reason }) };",
+    "export const value = { ...(enabled && { enabled }) };",
+    "export const value = { ...(options ?? {}) };",
+    "export const value = { ...(options || fallback) };",
+    "export const value = { ...((enabled ? { reason } : {}) as object) };",
+    "export const value = <Widget {...(enabled ? { reason } : {})} />;",
+  ])("reports an undocumented conditional: %s", (source) => {
+    expect(lint(source, "fixture.tsx")).toContain("no-conditional-spread");
+  });
+
+  it.each([
+    "export const value = [...(items ?? [])];",
+    "export const value = [...(enabled ? [entry] : [])];",
+    "export const value = fn(...(args ?? []));",
+    "export const value = fn(...(enabled ? args : []));",
+    "export const value = new Widget(...(args ?? []));",
+  ])("accepts conditional iterable composition: %s", (source) => {
+    expect(lint(source)).toBe("");
+  });
+
+  it("accepts direct optionals and ordinary object, array, and JSX spreads", () => {
+    expect(
+      lint(
+        `
+      export const value = { reason, ...options };
+      export const values = [...entries];
+      export const widget = <Widget {...options} />;
+    `,
+        "fixture.tsx",
+      ),
+    ).toBe("");
+  });
+
+  it("accepts a local explanation of omission semantics", () => {
+    expect(
+      lint(`
+      export const value = {
+        // CONDITIONAL-SPREAD: The patch must leave the stored reason unchanged when absent.
+        ...(reason === undefined ? {} : { reason }),
+      };
+    `),
+    ).toBe("");
+  });
+
+  it.each([
+    "// CONDITIONAL-SPREAD:",
+    "// CONDITIONAL-SPREAD: This explains another statement.\n const other = {};",
+  ])("rejects missing or detached reasons: %s", (comment) => {
+    expect(
+      lint(`
+      ${comment}
+      export const value = { ...(enabled ? { enabled } : {}) };
+    `),
+    ).toContain("no-conditional-spread");
+  });
+});
+
+describe("curly", () => {
+  it.each([
+    "export function run(value: boolean) { if (value) return 1; return 0; }",
+    "export function run(value: boolean) { if (value) { return 1; } else return 0; }",
+    "export function run(values: number[]) { for (const value of values) console.log(value); }",
+  ])("requires braces for control flow: %s", (source) => {
+    expect(lint(source)).toContain("curly");
+  });
+
+  it("accepts braced returns and expression-bodied callbacks", () => {
+    expect(
+      lint(`
+      export function run(value: boolean) { if (value) { return 1; } return 0; }
+      export const identity = (value: number) => value;
+    `),
+    ).toBe("");
   });
 });

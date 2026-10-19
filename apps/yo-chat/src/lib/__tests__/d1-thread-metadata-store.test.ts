@@ -179,6 +179,7 @@ it("bounds first and deep thread pages, including timestamp ties, independent of
   expect(new Set([...firstPage.threads, ...nextPage.threads].map((thread) => thread.id)).size).toBe(
     20,
   );
-  for (const query of ["limit=0", "limit=101", "limit=NaN", "before=null", "before=%7B%7D"])
+  for (const query of ["limit=0", "limit=101", "limit=NaN", "before=null", "before=%7B%7D"]) {
     expect((await request(`?${query}`)).status).toBe(400);
+  }
 });

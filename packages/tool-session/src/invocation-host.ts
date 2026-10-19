@@ -103,10 +103,15 @@ export function createToolInvocationHost(
   }
 
   function turnDigest(request: TurnToolInvocation): string {
+    // Live optionals may be undefined. Omit the absent reason at this JSON
+    // boundary so omitted and explicit-undefined commands share an identity.
+    const resume = request.resume;
+    const encodedResume =
+      resume?.kind === "cancel" && resume.reason === undefined ? { kind: resume.kind } : resume;
     return canonicalDigest({
       invocationId: request.invocationId,
       cursor: request.cursor,
-      resume: request.resume ?? null,
+      resume: encodedResume ?? null,
     });
   }
 
@@ -266,6 +271,7 @@ function* drainInvocation(
       case "cancelled":
         return {
           type: "cancelled",
+          /* CONDITIONAL-SPREAD: Omit absent reason from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
           ...(event.reason === undefined ? {} : { reason: event.reason }),
         };
     }
@@ -298,6 +304,7 @@ function elicitAsk(
     key: event.key,
     message: event.message,
     schema: event.schema,
+    /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
     ...(event.context === undefined ? {} : { context: event.context }),
     binding,
   };

@@ -105,6 +105,7 @@ export function defineEffect<
     version: options.version,
     inputSchema: input.descriptor,
     outputSchema: output.descriptor,
+    /* CONDITIONAL-SPREAD: Omit absent cancellation from portable tool contracts and invocation payloads; explicit undefined is not a portable JSON value. */
     ...(cancellation ? { cancellation } : {}),
     retrySafety: options.retrySafety,
   });

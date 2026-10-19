@@ -59,9 +59,13 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
     yield* spawn(function* () {
       while (true) {
         const next = yield* requests.next();
-        if (next.done) return;
+        if (next.done) {
+          return;
+        }
         const request = next.value;
-        if (request.cancelled) continue;
+        if (request.cancelled) {
+          continue;
+        }
         const available = [...entries].find(
           (entry) => entry.idle && !entry.closed && entry.deadline > Date.now(),
         );
@@ -100,16 +104,20 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
                 if (entry.idle) {
                   const deadline = entry.deadline;
                   yield* race([entry.wake.next(), sleep(Math.max(0, deadline - Date.now()))]);
-                  if (entry.idle && entry.deadline === deadline && Date.now() >= deadline)
+                  if (entry.idle && entry.deadline === deadline && Date.now() >= deadline) {
                     entry.closed = true;
+                  }
                 } else {
                   yield* entry.wake.next();
                 }
               }
             });
           } catch (error) {
-            if (entry) entry.failed.add(error);
-            else ready.add({ error });
+            if (entry) {
+              entry.failed.add(error);
+            } else {
+              ready.add({ error });
+            }
             // Transport failures are observable; the authority decides recovery.
             (
               options.onWorkerError ??
@@ -123,7 +131,9 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
           }
         });
         const result = yield* ready.next();
-        if (result.done) throw new Error("Worker startup ended without a result");
+        if (result.done) {
+          throw new Error("Worker startup ended without a result");
+        }
         if (request.cancelled) {
           yield* owner.halt();
         } else {
@@ -135,7 +145,9 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
       yield* provide({
         acquire() {
           return resource<DurableWorkerLease>(function* (provideLease) {
-            if (closed) throw new Error("Durable worker pool is closed");
+            if (closed) {
+              throw new Error("Durable worker pool is closed");
+            }
             const result = yield* action<{ entry: Entry } | { error: unknown }>((resolve) => {
               const request = { cancelled: false, reply: resolve };
               requests.add(request);
@@ -143,11 +155,15 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
                 request.cancelled = true;
               };
             });
-            if ("error" in result) throw result.error;
+            if ("error" in result) {
+              throw result.error;
+            }
             const entry = result.entry;
             let released = false;
             function* release(reusable: boolean): Operation<void> {
-              if (released) return;
+              if (released) {
+                return;
+              }
               released = true;
               if (reusable && !entry.closed && !closed) {
                 entry.deadline = Date.now() + options.idleTimeoutMs;
@@ -162,7 +178,9 @@ export function useDurableWorkerPool(options: DurableWorkerPoolOptions): Operati
             try {
               yield* provideLease({
                 *send(request) {
-                  if (released || entry.closed) throw new Error("Durable worker lease is closed");
+                  if (released || entry.closed) {
+                    throw new Error("Durable worker lease is closed");
+                  }
                   return yield* race([
                     entry.worker.send(request),
                     (function* (): Operation<never> {

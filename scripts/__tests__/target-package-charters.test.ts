@@ -11,7 +11,9 @@ function productionSource(packageName: string): string {
     for (const entry of readdirSync(directory)) {
       const path = resolve(directory, entry);
       if (statSync(path).isDirectory()) {
-        if (entry !== "__tests__" && entry !== "testing") visit(path);
+        if (entry !== "__tests__" && entry !== "testing") {
+          visit(path);
+        }
       } else if (path.endsWith(".ts") && !path.endsWith(".test.ts") && !path.endsWith(".spec.ts")) {
         files.push(path);
       }
@@ -30,7 +32,9 @@ function sourceTree(directory: string): string {
     for (const entry of readdirSync(current)) {
       const path = resolve(current, entry);
       if (statSync(path).isDirectory()) {
-        if (entry !== "dist" && entry !== "node_modules") visit(path);
+        if (entry !== "dist" && entry !== "node_modules") {
+          visit(path);
+        }
       } else if (path.endsWith(".ts") || path.endsWith(".tsx")) {
         files.push(path);
       }
@@ -44,7 +48,9 @@ function sourceTree(directory: string): string {
 }
 
 function expectNoMatches(source: string, patterns: readonly RegExp[]): void {
-  for (const pattern of patterns) expect(source).not.toMatch(pattern);
+  for (const pattern of patterns) {
+    expect(source).not.toMatch(pattern);
+  }
 }
 
 describe("target package charters", () => {
@@ -143,15 +149,21 @@ describe("target package charters", () => {
     );
     for (const packageName of readdirSync(resolve(root, "packages"))) {
       const sourceRoot = resolve(root, "packages", packageName, "src");
-      if (!existsSync(sourceRoot)) continue;
+      if (!existsSync(sourceRoot)) {
+        continue;
+      }
       const visit = (directory: string): void => {
         for (const entry of readdirSync(directory)) {
           const path = resolve(directory, entry);
           if (statSync(path).isDirectory()) {
-            if (entry !== "dist" && entry !== "node_modules") visit(path);
+            if (entry !== "dist" && entry !== "node_modules") {
+              visit(path);
+            }
             continue;
           }
-          if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
+          if (!path.endsWith(".ts") || path.endsWith(".test.ts")) {
+            continue;
+          }
           const source = readFileSync(path, "utf8");
           for (const name of declarations.keys()) {
             if (new RegExp(`export (?:interface|type) ${name}\\b`).test(source)) {
@@ -180,7 +192,9 @@ describe("target package charters", () => {
       "packages/agent-sdk/src/tool/types.ts",
     ]);
     for (const packageName of readdirSync(resolve(root, "packages"))) {
-      if (packageName === "model-provider-pi-ai") continue;
+      if (packageName === "model-provider-pi-ai") {
+        continue;
+      }
       const sourceRoot = resolve(root, "packages", packageName, "src");
       if (existsSync(sourceRoot)) {
         expect(productionSource(packageName), packageName).not.toMatch(
@@ -225,7 +239,9 @@ describe("target package charters", () => {
   it("keeps concrete Zod ownership explicit", () => {
     const packageDirs = readdirSync(resolve(root, "packages"));
     for (const packageName of packageDirs) {
-      if (!existsSync(resolve(root, "packages", packageName, "src"))) continue;
+      if (!existsSync(resolve(root, "packages", packageName, "src"))) {
+        continue;
+      }
       const source = productionSource(packageName);
       if (!/import\s+(?!type\b)[^;\n]*from [\"']zod[\"']/.test(source)) {
         continue;
@@ -246,7 +262,9 @@ describe("target package charters", () => {
       for (const entry of readdirSync(directory)) {
         const path = resolve(directory, entry);
         if (statSync(path).isDirectory()) {
-          if (entry !== "dist" && entry !== "node_modules") visit(path);
+          if (entry !== "dist" && entry !== "node_modules") {
+            visit(path);
+          }
         } else if (path.endsWith(".ts") && !path.endsWith(".test.ts")) {
           const source = readFileSync(path, "utf8");
           if (
@@ -288,10 +306,14 @@ describe("target package charters", () => {
       for (const entry of readdirSync(directory)) {
         const path = resolve(directory, entry);
         if (statSync(path).isDirectory()) {
-          if (entry !== "dist" && entry !== "node_modules") visit(path);
+          if (entry !== "dist" && entry !== "node_modules") {
+            visit(path);
+          }
           continue;
         }
-        if (!path.endsWith(".ts") || path.endsWith(".test.ts")) continue;
+        if (!path.endsWith(".ts") || path.endsWith(".test.ts")) {
+          continue;
+        }
         const source = readFileSync(path, "utf8");
         for (const name of owned) {
           if (new RegExp(`export (?:interface|type) ${name}\\b`).test(source)) {

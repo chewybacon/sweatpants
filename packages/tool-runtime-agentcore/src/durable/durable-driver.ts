@@ -40,6 +40,7 @@ export function createAgentCoreDurableProgramDriver(
     evaluatorKind: "remote",
     capabilities: REPLAY_CHECKPOINT_CAPABILITIES,
     ...replayProgramRecovery,
+    /* CONDITIONAL-SPREAD: Expose manifest only when its backing capability exists; callers inspect supported methods. */
     ...(options.manifests
       ? {
           *manifest(program) {
@@ -64,6 +65,7 @@ export function createAgentCoreDurableProgramDriver(
     *shutdown(attachment, reason) {
       yield* transport.shutdown(attachment, reason);
     },
+    /* CONDITIONAL-SPREAD: Expose restoreContext only when its backing capability exists; callers inspect supported methods. */
     ...(transport.restoreContext
       ? {
           *restoreContext(request: AttachProgramRequest) {

@@ -50,7 +50,9 @@ export function projectDurableExecution(
 ): DurableExecutionProjection {
   const lineage = new Map<string, string | undefined>();
   for (const record of records) {
-    if (record.payload.type !== "TaskOpened") continue;
+    if (record.payload.type !== "TaskOpened") {
+      continue;
+    }
     lineage.set(record.payload.taskId, record.payload.parentTaskId);
   }
 
@@ -58,6 +60,7 @@ export function projectDurableExecution(
     (row): PublicTaskProjection => ({
       address: row.address,
       state: row.classification,
+      /* CONDITIONAL-SPREAD: Omit absent parentTaskId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
       ...(lineage.get(row.address.taskId) === undefined
         ? {}
         : { parentTaskId: lineage.get(row.address.taskId)! }),
@@ -65,14 +68,18 @@ export function projectDurableExecution(
   );
   const openSlots: PublicOpenSlot[] = [];
   for (const row of plan.rows) {
-    if (row.parked === undefined) continue;
+    if (row.parked === undefined) {
+      continue;
+    }
     const candidate = {
       address: row.address,
       pullId: row.parked.pullId,
       reason: row.parked.reason,
       audience: row.parked.audience,
     };
-    if (policy.participantAddressable(candidate)) openSlots.push(candidate);
+    if (policy.participantAddressable(candidate)) {
+      openSlots.push(candidate);
+    }
   }
   return {
     forestRevision: plan.forestRevision,

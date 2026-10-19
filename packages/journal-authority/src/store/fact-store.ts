@@ -78,7 +78,9 @@ export const AcceptedProjectionFactStore = createApi<FactStore<ProjectionFactEnv
 
     *read(request: ReadFactsRequest): Operation<readonly ProjectionFactEnvelope[]> {
       const frontier = request.frontier;
-      if (frontier.throughSequence === 0) return [];
+      if (frontier.throughSequence === 0) {
+        return [];
+      }
       if (!frontier.facts) {
         throw new AcceptedProjectionFactsError(
           "Accepted Projection Facts frontier has no reference",

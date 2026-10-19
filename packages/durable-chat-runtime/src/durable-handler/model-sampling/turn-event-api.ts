@@ -15,7 +15,9 @@ const TurnEventWriterContext = createContext<TurnEventWriter | undefined>(
 export const TurnEventApi = createApi("durable-chat:turn-events", {
   *emit(event: StreamEvent): Operation<void> {
     const writer = yield* TurnEventWriterContext.get();
-    if (writer) yield* writer.emit(event);
+    if (writer) {
+      yield* writer.emit(event);
+    }
   },
   *installed(): Operation<boolean> {
     return (yield* TurnEventWriterContext.get()) !== undefined;

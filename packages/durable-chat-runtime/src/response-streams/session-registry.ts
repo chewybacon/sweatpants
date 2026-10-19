@@ -271,7 +271,9 @@ export function* createSessionRegistry<T>(
           const source =
             typeof options.source === "function" ? options.source(buffer, writer) : options.source;
           const invocationOwner = (yield* useDurableStreamsOwner()) ?? undefined;
-          if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
+          if (invocationOwner) {
+            sessionOwners.set(sessionId, invocationOwner);
+          }
           const recoveredWriter = yield* startWriterTask(
             sessionId,
             source,
@@ -320,7 +322,9 @@ export function* createSessionRegistry<T>(
 
       log.debug({ sessionId }, "starting writer task in owned scope");
       const invocationOwner = (yield* useDurableStreamsOwner()) ?? undefined;
-      if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
+      if (invocationOwner) {
+        sessionOwners.set(sessionId, invocationOwner);
+      }
       const writerTask = yield* startWriterTask(
         sessionId,
         source,
@@ -379,7 +383,9 @@ export function* createSessionRegistry<T>(
       const source = options.recoverSource(buffer, writer);
       const invocationOwner =
         (yield* useDurableStreamsOwner()) ?? sessionOwners.get(sessionId) ?? undefined;
-      if (invocationOwner) sessionOwners.set(sessionId, invocationOwner);
+      if (invocationOwner) {
+        sessionOwners.set(sessionId, invocationOwner);
+      }
       const writerTask = yield* startWriterTask(
         sessionId,
         source,

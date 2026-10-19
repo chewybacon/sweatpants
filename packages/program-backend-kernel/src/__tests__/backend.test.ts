@@ -76,7 +76,9 @@ function fixture(
           identity,
           *start() {
             events.push("start");
-            if (startError) throw startError;
+            if (startError) {
+              throw startError;
+            }
             return executionState();
           },
           *restore() {
@@ -159,7 +161,9 @@ describe("kernel program backend", () => {
         yield* first.driver.shutdown(attachment, "parked");
         return saved;
       });
-      if (checkpoint.kind !== "continuation") throw Error("Expected continuation");
+      if (checkpoint.kind !== "continuation") {
+        throw Error("Expected continuation");
+      }
       yield* scoped(function* () {
         const restored = yield* second.driver.restore({
           attach,
@@ -195,7 +199,9 @@ describe("kernel program backend", () => {
       yield* first.driver.shutdown(attachment, "parked");
       return saved;
     });
-    if (checkpoint.kind !== "continuation") throw Error("Expected continuation");
+    if (checkpoint.kind !== "continuation") {
+      throw Error("Expected continuation");
+    }
     const restoring = fixture();
     const fresh = fixture();
     await run(function* () {

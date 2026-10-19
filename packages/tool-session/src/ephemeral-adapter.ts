@@ -42,7 +42,9 @@ export const TOOL_OWNED_SAMPLE_CLASSIFICATION = "sweatpants.tool-owned-sample";
 function classifyToolOwnedSample(payload: Json): ModelSampleRequest {
   const request = decodeModelSampleRequest(payload);
   const existing = request.classifications ?? [];
-  if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) return request;
+  if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) {
+    return request;
+  }
   return { ...request, classifications: [...existing, TOOL_OWNED_SAMPLE_CLASSIFICATION] };
 }
 
@@ -63,6 +65,7 @@ function* sampleToolOwnedModel(
     ...request,
     invocation: {
       context: source,
+      /* CONDITIONAL-SPREAD: Omit absent options from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(request.invocation.options === undefined ? {} : { options: request.invocation.options }),
     },
   });
@@ -110,6 +113,7 @@ const adapterTool = createPinnedDurableProgram(
     const audience = `ephemeral:${request.driver}`;
     let disposition = yield* context.effect(EPHEMERAL_TOOL_START_EFFECT, request, {
       audience,
+      /* CONDITIONAL-SPREAD: Omit absent route from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
       ...(request.route ? { route: request.route } : {}),
     });
 
@@ -130,13 +134,16 @@ const adapterTool = createPinnedDurableProgram(
                     ephemeralDriver: request.driver,
                     ephemeralTool: request.tool,
                     ephemeralKey: disposition.request.key,
+                    /* CONDITIONAL-SPREAD: Omit absent ephemeralRoute from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
                     ...(request.route !== undefined ? { ephemeralRoute: request.route } : {}),
                     responseSchema: disposition.request.responseSchema,
+                    /* CONDITIONAL-SPREAD: Omit absent context from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
                     ...(disposition.request.context !== undefined
                       ? { context: disposition.request.context }
                       : {}),
                   },
                   contextContract: EPHEMERAL_INPUT_CONTEXT_DESCRIPTOR,
+                  /* CONDITIONAL-SPREAD: Omit absent binding from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
                   ...(disposition.request.binding === undefined
                     ? {}
                     : { binding: disposition.request.binding }),
@@ -151,6 +158,7 @@ const adapterTool = createPinnedDurableProgram(
           },
           {
             audience,
+            /* CONDITIONAL-SPREAD: Omit absent route from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
             ...(request.route ? { route: request.route } : {}),
           },
         );
@@ -162,7 +170,10 @@ const adapterTool = createPinnedDurableProgram(
         yield* context.effect(
           EPHEMERAL_TOOL_CONTINUE_EFFECT,
           { continuation: disposition.continuation, response: { kind: "cancel", value: null } },
-          { audience, ...(request.route ? { route: request.route } : {}) },
+          {
+            audience /* CONDITIONAL-SPREAD: Omit absent route from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */,
+            ...(request.route ? { route: request.route } : {}),
+          },
         );
       }
       throw error;

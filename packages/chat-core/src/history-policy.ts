@@ -32,9 +32,13 @@ export function applyHistoryPolicy(
   policy: HistoryPolicy | undefined,
   context: ModelContext,
 ): { context: ModelContext; decisions: HistoryPolicyDecision[] } {
-  if (!policy) return { context, decisions: [] };
+  if (!policy) {
+    return { context, decisions: [] };
+  }
   const result = policy.apply({ messages: context.messages });
-  if (result.decisions.length === 0) return { context, decisions: [] };
+  if (result.decisions.length === 0) {
+    return { context, decisions: [] };
+  }
   return { context: { ...context, messages: result.messages }, decisions: result.decisions };
 }
 
@@ -88,12 +92,16 @@ export function createMessageBudgetHistoryPolicy(
       let keptCount = 0;
       for (let index = turns.length - 1; index >= 0; index -= 1) {
         const turn = turns[index]!;
-        if (kept.length > 0 && keptCount + turn.messages.length > maxMessages) break;
+        if (kept.length > 0 && keptCount + turn.messages.length > maxMessages) {
+          break;
+        }
         kept.unshift(turn);
         keptCount += turn.messages.length;
       }
       const dropped = turns.slice(0, turns.length - kept.length);
-      if (dropped.length === 0) return { messages: [...messages], decisions: [] };
+      if (dropped.length === 0) {
+        return { messages: [...messages], decisions: [] };
+      }
       const decisions = dropped.map((turn) => ({
         action: "drop_turn" as const,
         reason: `message budget exceeded (${conversational.length} > ${maxMessages})`,

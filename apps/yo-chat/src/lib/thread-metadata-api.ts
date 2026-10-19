@@ -28,11 +28,15 @@ export async function handleThreadMetadataRequest(
     if (method === "GET") {
       const options: ThreadListOptions = {};
       try {
-        if (url.searchParams.has("limit")) options.limit = Number(url.searchParams.get("limit"));
+        if (url.searchParams.has("limit")) {
+          options.limit = Number(url.searchParams.get("limit"));
+        }
         options.limit = threadListLimit(options);
         const cursor = url.searchParams.get("before");
         if (cursor !== null) {
-          if (cursor.length > 1024) throw new Error("Invalid thread cursor");
+          if (cursor.length > 1024) {
+            throw new Error("Invalid thread cursor");
+          }
           const value = JSON.parse(cursor);
           if (
             !value ||
@@ -41,8 +45,9 @@ export async function handleThreadMetadataRequest(
             typeof value.id !== "string" ||
             !value.id ||
             value.id.length > 512
-          )
+          ) {
             throw new Error("Invalid thread cursor");
+          }
           options.before = { updatedAt: value.updatedAt, id: value.id };
         }
       } catch {

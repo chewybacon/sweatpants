@@ -50,9 +50,10 @@ const idle = {
 };
 
 function terminal(kind: string, callId: string, offset: number) {
-  if (kind === "cancelled")
+  if (kind === "cancelled") {
     return record({ type: "TaskClosed", taskId: "root", outcome: { status: "cancelled" } }, offset);
-  if (kind === "interrupted")
+  }
+  if (kind === "interrupted") {
     return record(
       {
         type: "TaskClosed",
@@ -61,6 +62,7 @@ function terminal(kind: string, callId: string, offset: number) {
       },
       offset,
     );
+  }
   return emission(
     "tool_completed",
     {
@@ -106,10 +108,13 @@ describe("synthetic tool message lifecycle", () => {
           const hot = hydratePublicRoots(result.checkpoint).map((root) =>
             decodePublicProjectionRoot(root),
           );
-          if (i === 0) expect(hot.some((r) => r.state === "mutable")).toBe(true);
-          else {
+          if (i === 0) {
+            expect(hot.some((r) => r.state === "mutable")).toBe(true);
+          } else {
             for (const root of hot) {
-              if (root.kind !== "activity-subtree") continue;
+              if (root.kind !== "activity-subtree") {
+                continue;
+              }
               for (const anchor of root.anchors) {
                 if (anchor.publicData.kind === "message") {
                   expect(anchor.messagePosition).toMatch(/^\d+$/);
@@ -160,7 +165,9 @@ it("archives completed owners under pressure and restores every tool without emp
         decodePublicProjectionRoot(root),
       );
       for (const root of hot) {
-        if (root.kind !== "activity-subtree") continue;
+        if (root.kind !== "activity-subtree") {
+          continue;
+        }
         for (const anchor of root.anchors) {
           if (anchor.publicData.kind === "message") {
             expect(anchor.messagePosition).toMatch(/^\d+$/);

@@ -81,7 +81,10 @@ async function drive(
       throw error;
     }
   }
-  return { proposals, ...(result === undefined ? {} : { result }) };
+  return {
+    proposals /* CONDITIONAL-SPREAD: Omit absent result from portable chat history and projection records; explicit undefined is not a portable JSON value. */,
+    ...(result === undefined ? {} : { result }),
+  };
 }
 
 function chat(

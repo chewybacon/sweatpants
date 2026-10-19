@@ -93,6 +93,7 @@ export function createTestDurableProgramContext(
           input: cloneJson(input),
           resolver: {
             audience: requireId(resolver.audience, "resolver audience"),
+            /* CONDITIONAL-SPREAD: Omit absent route from durable execution records; explicit undefined is not a portable JSON value. */
             ...(resolver.route === undefined
               ? {}
               : { route: requireId(resolver.route, "resolver route") }),

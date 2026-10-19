@@ -78,7 +78,9 @@ export function createPeerSimulator(): PeerSimulator {
       // The wire: canonical JSON out, canonical JSON back.
       const encoded = canonicalJson(delivery);
       for (let attempt = 0; attempt < MAX_DELIVERY_ATTEMPTS; attempt += 1) {
-        if (dead) continue; // transport retry while the server is down
+        if (dead) {
+          continue;
+        } // transport retry while the server is down
         const decoded = JSON.parse(encoded) as PeerDelivery;
         captured.push(decoded);
         const existing = acknowledgements.get(decoded.correlator);
@@ -103,11 +105,15 @@ export function createPeerSimulator(): PeerSimulator {
       return dead;
     },
     emitEvidence(frame) {
-      if (dead) return;
+      if (dead) {
+        return;
+      }
       evidenceQueue.add(frame);
     },
     kill() {
-      if (dead) return;
+      if (dead) {
+        return;
+      }
       dead = true;
       evidenceQueue.add(null);
     },

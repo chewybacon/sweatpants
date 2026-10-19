@@ -246,9 +246,11 @@ function decodeStructuredOutputComplete(
     ...(base as StructuredOutputCompleteEvent),
     name: "structured-output.complete",
     value: {
+      /* CONDITIONAL-SPREAD: Omit absent messageId from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(value.messageId !== undefined ? { messageId: value.messageId } : {}),
       object: json(value.object, "$.value.object"),
       raw: value.raw,
+      /* CONDITIONAL-SPREAD: Omit absent reasoning from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(value.reasoning !== undefined ? { reasoning: value.reasoning } : {}),
     },
   };
@@ -287,9 +289,13 @@ function publicData(
       kind,
       callId: input["callId"] as string,
       name: input["name"] as string,
+      /* CONDITIONAL-SPREAD: Omit absent rawInput from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(input["rawInput"] !== undefined ? { rawInput: input["rawInput"] as string } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent input from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(input["input"] !== undefined ? { input: input["input"] as Json } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent output from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(input["output"] !== undefined ? { output: input["output"] as Json } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent errorText from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(input["errorText"] !== undefined ? { errorText: input["errorText"] as string } : {}),
     };
   }
@@ -297,6 +303,7 @@ function publicData(
     return {
       kind,
       activityType: input["activityType"] as string,
+      /* CONDITIONAL-SPREAD: Omit absent data from portable chat history and projection records; explicit undefined is not a portable JSON value. */
       ...(input["data"] !== undefined ? { data: input["data"] as Json } : {}),
     };
   }
@@ -311,8 +318,10 @@ function publicData(
     bindingId: input["bindingId"] as string,
     key: input["key"] as string,
     message: input["message"] as string,
+    /* CONDITIONAL-SPREAD: Omit absent context from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(input["context"] !== undefined ? { context: input["context"] as Json } : {}),
     responseContract,
+    /* CONDITIONAL-SPREAD: Omit absent contextContract from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(contextContract !== undefined ? { contextContract } : {}),
     toolName: input["toolName"] as string,
     callId: input["callId"] as string,
@@ -338,9 +347,13 @@ function retainPublicActivity(value: SweatpantsPublicActivity): SweatpantsPublic
   const pending: object[] = [value];
   while (pending.length) {
     const current = pending.pop()!;
-    if (Object.isFrozen(current)) continue;
+    if (Object.isFrozen(current)) {
+      continue;
+    }
     for (const child of Object.values(current)) {
-      if (child !== null && typeof child === "object") pending.push(child);
+      if (child !== null && typeof child === "object") {
+        pending.push(child);
+      }
     }
     Object.freeze(current);
   }
@@ -391,6 +404,7 @@ function normalizePublicActivity(value: unknown, path: string): SweatpantsPublic
     kind,
     state,
     presentation,
+    /* CONDITIONAL-SPREAD: Omit absent publicData from portable chat history and projection records; explicit undefined is not a portable JSON value. */
     ...(data !== undefined ? { publicData: data } : {}),
   } as PublicActivityNode;
   return { version: 1, node };
@@ -475,7 +489,9 @@ function normalizeActivityPatch(
     ) {
       patchInvalid("public activity text fields require strings", `${path}[${index}].value`);
     }
-    if (input.op === "remove") return { op: "remove", path: patchPath };
+    if (input.op === "remove") {
+      return { op: "remove", path: patchPath };
+    }
     return { op: input.op, path: patchPath, value: patchJsonValue! };
   });
 }
@@ -504,7 +520,9 @@ function decodeActivitySnapshot(input: Record<string, unknown>): ActivitySnapsho
     contentObject = decodePublicActivity(rawContent) as unknown as Record<string, unknown>;
   } else {
     const contentResult = activityContentParser.parse(json(rawContent, "$.content"));
-    if (!contentResult.ok) activityInvalid("content must be an object", "$.content");
+    if (!contentResult.ok) {
+      activityInvalid("content must be an object", "$.content");
+    }
     contentObject = contentResult.value;
   }
   return {

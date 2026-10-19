@@ -6,8 +6,8 @@ import {
   type DurableOperationDescriptor,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import type { EffectDefinition, OperationOutcome } from "@sweatpants/durable-effects";
-import { stableTupleHash, type Json, digestCanonicalJson, cloneJson } from "@sweatpants/foundation";
+import type { EffectDefinition } from "@sweatpants/durable-effects";
+import { stableTupleHash, type Json, digestCanonicalJson } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
@@ -42,7 +42,9 @@ export function modelPullOwnerFence(pullId: string, executionEpoch: number): str
 export function normalizeEmissionPolicy(
   policy: SemanticEmissionPolicy | undefined,
 ): SemanticEmissionPolicy | undefined {
-  if (policy === undefined) return undefined;
+  if (policy === undefined) {
+    return undefined;
+  }
   if (!isEmissionPolicyValue(policy)) {
     throw new CrankError("invalid_manifest", "Invalid semantic emission policy");
   }
@@ -59,9 +61,11 @@ const emissionPolicySchema = z.strictObject({
 
 export const emissionPolicyParser = parser(emissionPolicySchema).map(
   (value): SemanticEmissionPolicy => ({
+    /* CONDITIONAL-SPREAD: Omit absent maxEmissionsPerTask from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.maxEmissionsPerTask === undefined
       ? {}
       : { maxEmissionsPerTask: value.maxEmissionsPerTask }),
+    /* CONDITIONAL-SPREAD: Omit absent maxCumulativeEmissionBytes from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.maxCumulativeEmissionBytes === undefined
       ? {}
       : { maxCumulativeEmissionBytes: value.maxCumulativeEmissionBytes }),
@@ -129,6 +133,7 @@ export function operationPolicy(
       return {
         resultDescriptor: declaration.response,
         audience: `user:${descriptor.key}`,
+        /* CONDITIONAL-SPREAD: Omit absent contextDigest from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
         ...(declaration.context !== undefined ? { contextDigest: declaration.context.digest } : {}),
       };
     }
@@ -209,20 +214,20 @@ export function parseProgramElicitResult(
   return parsed.ok ? parsed.value : undefined;
 }
 
-export function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
-  return cloneJson(outcome);
-}
-
 export function pendingReason(
   descriptor: DurableOperationDescriptor,
 ): "elicit" | "wait" | "child" | "ephemeral" | "sample" {
   const policy = pullKindPolicy(descriptor.kind);
-  if (!policy) return "child";
+  if (!policy) {
+    return "child";
+  }
   return (policy.pendingReason ?? descriptor.kind) as ReturnType<typeof pendingReason>;
 }
 
 export function sanitizeCancellationReason(reason: string | undefined): string | undefined {
-  if (reason === undefined) return undefined;
+  if (reason === undefined) {
+    return undefined;
+  }
   const normalized = [...reason]
     .map((character) => {
       const code = character.codePointAt(0) ?? 0;
@@ -243,11 +248,13 @@ export function manifestSchemaDigests(manifest: DurableProgramManifest): string[
     manifest.outputSchema.digest,
     ...Object.values(manifest.elicits).flatMap((elicit) => [
       elicit.response.digest,
+
       ...(elicit.context ? [elicit.context.digest] : []),
     ]),
     ...Object.values(manifest.effects).flatMap((effect) => [
       effect.inputSchema.digest,
       effect.outputSchema.digest,
+
       ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
     ]),
     ...Object.values(manifest.pulls ?? {}).flatMap((pull) => [
@@ -298,9 +305,13 @@ export const restoreTicketClaimsParser = parser(restoreTicketClaimsSchema).map(
     taskId: value.taskId,
     ownerId: value.ownerId,
     activationEpoch: value.activationEpoch,
+    /* CONDITIONAL-SPREAD: Omit absent releaseId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.releaseId === undefined ? {} : { releaseId: value.releaseId }),
+    /* CONDITIONAL-SPREAD: Omit absent sandboxSessionId from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.sandboxSessionId === undefined ? {} : { sandboxSessionId: value.sandboxSessionId }),
+    /* CONDITIONAL-SPREAD: Omit absent replayDomain from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.replayDomain === undefined ? {} : { replayDomain: value.replayDomain }),
+    /* CONDITIONAL-SPREAD: Omit absent frontierDomain from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
     ...(value.frontierDomain === undefined ? {} : { frontierDomain: value.frontierDomain }),
     taskRevision: value.taskRevision,
     journalHeadId: value.journalHeadId,
@@ -312,6 +323,8 @@ export const restoreTicketClaimsParser = parser(restoreTicketClaimsSchema).map(
 
 export function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
   const parsed = restoreTicketClaimsParser.parse(value);
-  if (!parsed.ok) throw new CrankError("restore_stale");
+  if (!parsed.ok) {
+    throw new CrankError("restore_stale");
+  }
   return parsed.value;
 }

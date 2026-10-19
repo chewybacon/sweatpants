@@ -33,7 +33,7 @@ const load = () =>
     reflect_wasm_dir: fileURLToPath(new URL("../runtime", import.meta.url)),
   });
 
-for (const action of ["accept", "decline", "cancel"] as const)
+for (const action of ["accept", "decline", "cancel"] as const) {
   test(`real journal restores Scheme in fresh WASM: ${action}`, async (t) => {
     let draws = 0;
     const original = crypto.getRandomValues.bind(crypto);
@@ -206,6 +206,7 @@ for (const action of ["accept", "decline", "cancel"] as const)
       );
     });
   });
+}
 
 test("bridge preserves JSON and closes on terminal, failure and fuel exhaustion", async () => {
   await run(function* () {

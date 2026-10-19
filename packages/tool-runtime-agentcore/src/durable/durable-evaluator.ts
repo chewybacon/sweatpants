@@ -204,7 +204,9 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
       releaseId: options.releaseId,
       taskId: taskId ?? "unbound",
       activationEpoch: activationEpoch ?? 0,
+      /* CONDITIONAL-SPREAD: Omit absent attachmentId from AgentCore request and session records; explicit undefined is not a portable JSON value. */
       ...(includeAttachment && attachment ? { attachmentId: attachment.attachmentId } : {}),
+      /* CONDITIONAL-SPREAD: Omit absent actionIndex from AgentCore request and session records; explicit undefined is not a portable JSON value. */
       ...(actionIndex !== undefined ? { actionIndex } : {}),
       payload,
     } as Extract<RuntimeProgramMessage, { type: T }>;

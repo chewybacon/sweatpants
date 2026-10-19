@@ -33,18 +33,24 @@ it.each(["journal", "replay"] as const)(
       kind === "journal" ? store.readJournal(task) : store.readReplay(task),
     );
     const firstChunks: Array<readonly Json[]> = [];
-    for await (const chunk of first) firstChunks.push(chunk);
+    for await (const chunk of first) {
+      firstChunks.push(chunk);
+    }
     const exposed = firstChunks[0]![0] as { nested: { value: string } };
     exposed.nested.value = "changed by reader";
     entries[0]!.nested.value = "changed by writer";
     const secondChunks: Array<readonly Json[]> = [];
-    for await (const chunk of second) secondChunks.push(chunk);
+    for await (const chunk of second) {
+      secondChunks.push(chunk);
+    }
     expect(secondChunks).toEqual([[{ nested: { value: "original" } }]]);
     const third = await run(() =>
       kind === "journal" ? store.readJournal(task) : store.readReplay(task),
     );
     const thirdChunks: Array<readonly Json[]> = [];
-    for await (const chunk of third) thirdChunks.push(chunk);
+    for await (const chunk of third) {
+      thirdChunks.push(chunk);
+    }
     expect(thirdChunks).toEqual(secondChunks);
   },
 );

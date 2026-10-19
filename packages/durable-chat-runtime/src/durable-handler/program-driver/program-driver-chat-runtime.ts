@@ -260,6 +260,7 @@ export function* composeChatExecutionRuntime(
                 authority: selectedAuthority,
                 driver,
                 attach: request.attach,
+                /* CONDITIONAL-SPREAD: Omit absent activationOwnerId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
                 ...(activationOwnerId === undefined ? {} : { activationOwnerId }),
                 advancement: {
                   *stageSampleInput(input) {

@@ -191,7 +191,9 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
               throw new Error("Mock MCP client: No more elicit responses configured");
             }
 
-            if ("exchange" in response) return response;
+            if ("exchange" in response) {
+              return response;
+            }
 
             return yield* completeElicitExchange({
               key: "elicit",

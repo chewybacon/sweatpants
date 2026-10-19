@@ -58,6 +58,7 @@ function statusResponse(session: FakeSession): AgentCoreToolRuntimeResponse {
     type: "session_status",
     toolSessionId: session.toolSessionId,
     status: session.status,
+    /* CONDITIONAL-SPREAD: Omit absent pendingRequest from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(session.pending !== undefined && { pendingRequest: session.pending }),
     lastRuntimeEventSeq: session.nextSeq - 1,
   };
@@ -301,6 +302,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     return streamFromResponses([
       eventResponse(session, {
         type: "cancelled",
+        /* CONDITIONAL-SPREAD: Omit absent reason from AgentCore request and session records; explicit undefined is not a portable JSON value. */
         ...(request.reason !== undefined && { reason: request.reason }),
       }),
       statusResponse(session),

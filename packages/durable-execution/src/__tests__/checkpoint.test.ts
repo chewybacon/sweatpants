@@ -126,6 +126,29 @@ describe("quiescent cut", () => {
     expect(decision.status).toBe("checkpointed");
   });
 
+  it("owns a checkpoint with ordinary optional fields and restores its serialized form", () => {
+    const original = task({
+      taskId: "root",
+      parentTaskId: undefined,
+      replayHead: { id: "head", byteLength: undefined },
+    });
+    const decision = proposeQuiescentCut(snapshot([original]), fence);
+    if (decision.status !== "checkpointed") {
+      throw new Error("expected a checkpoint");
+    }
+    const parsed = parseRecoveryCheckpoint(decision.checkpoint);
+    expect(parsed).toStrictEqual(decision.checkpoint);
+    expect(Object.hasOwn(parsed.tasks[0], "parentTaskId")).toBe(true);
+    const wire = JSON.parse(JSON.stringify(parsed));
+    expect(Object.hasOwn(wire.tasks[0], "parentTaskId")).toBe(false);
+    expect(wire.tasks[0].replayHead).toStrictEqual({ id: "head" });
+    expect(parseRecoveryCheckpoint(wire)).toStrictEqual(wire);
+    Object.assign(original.replayHead!, { id: "changed" });
+    expect(decision.checkpoint.tasks[0]?.replayHead?.id).toBe("head");
+    Object.assign(decision.checkpoint.tasks[0]!.replayHead!, { id: "changed after parse" });
+    expect(parsed.tasks[0]?.replayHead?.id).toBe("head");
+  });
+
   it("rejects checkpoints missing a required category", () => {
     const decision = proposeQuiescentCut(snapshot([task({ taskId: "root" })]), fence);
     if (decision.status !== "checkpointed") {

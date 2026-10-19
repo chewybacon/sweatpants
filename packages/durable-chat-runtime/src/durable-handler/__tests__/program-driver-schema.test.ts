@@ -6,7 +6,9 @@ async function validateInput(value: unknown): Promise<unknown> {
   const binding = programDriverChatEngineSchemaEntries().find(
     (entry) => entry.descriptor.digest === manifest.inputSchema.digest,
   );
-  if (!binding) throw new Error("chat-root input schema binding is missing");
+  if (!binding) {
+    throw new Error("chat-root input schema binding is missing");
+  }
   return await binding.schema["~standard"].validate(value);
 }
 

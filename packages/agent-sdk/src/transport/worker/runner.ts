@@ -148,7 +148,7 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
             key,
             message: options.message,
             schema: options.schema,
-            ...(options.context !== undefined && { context: options.context }),
+            context: options.context,
           };
 
           return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(request);

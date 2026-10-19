@@ -7,7 +7,9 @@ let generation = 0;
 await workerMain(function* ({ messages }) {
     yield* messages.forEach(function* (message) {
         if (message.type === "attach") {
-            if (attachment) throw new Error("concurrent attachment in one worker");
+            if (attachment) {
+                throw new Error("concurrent attachment in one worker");
+            }
             attachment = message.request;
             generation++;
             return {

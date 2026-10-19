@@ -325,7 +325,10 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
               continue;
             }
             pendingDeltas.splice(index, 1);
-            waiter.wait.resolve({ delta, ...(messageId ? { messageId } : {}) });
+            waiter.wait.resolve({
+              delta /* CONDITIONAL-SPREAD: Omit absent messageId from chat protocol fixtures; explicit undefined is not a portable JSON value. */,
+              ...(messageId ? { messageId } : {}),
+            });
           } catch (error) {
             pendingDeltas.splice(index, 1);
             waiter.wait.reject(error);
@@ -460,7 +463,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         fetcher: requestOptionsFetch(options.fetch, conversationId, conversationOptions),
         eventMiddleware: [eventMiddleware],
         interaction,
+        /* CONDITIONAL-SPREAD: Omit absent initialConversation from chat protocol fixtures; explicit undefined is not a portable JSON value. */
         ...(!conversationOptions.reconnectOnOpen ? { initialConversation: "new" as const } : {}),
+        /* CONDITIONAL-SPREAD: Expose initialize only when its backing capability exists; callers inspect supported methods. */
         ...(conversationOptions.reconnectOnOpen
           ? {
               initialize: function* (control): Operation<void> {

@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalDigest, canonicalJson } from "@sweatpants/foundation";
+import { digestCanonicalJson, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { DurableAuthoritySnapshot } from "../contract/authority-contract.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 
@@ -78,7 +78,9 @@ function indexRecords(records: readonly DurableSemanticRecord[]): MaterializedRe
 }
 
 function putFirst<K, V>(index: Map<K, V>, key: K, value: V): void {
-  if (!index.has(key)) index.set(key, value);
+  if (!index.has(key)) {
+    index.set(key, value);
+  }
 }
 
 /** Length-prefixes opaque ids so composite keys are injective. */
@@ -93,7 +95,9 @@ function recordKey(...parts: readonly string[]): string {
  */
 export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): void {
   const recordSessions = new Map(snapshot.records ?? []);
-  if ([...recordSessions.values()].every((records) => records.length === 0)) return;
+  if ([...recordSessions.values()].every((records) => records.length === 0)) {
+    return;
+  }
 
   for (const [sessionId, session] of snapshot.sessions) {
     const records = recordSessions.get(sessionId) ?? [];
@@ -104,21 +108,25 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
       // Stored shells may hydrate rows alongside a bounded record window. A
       // row is verified whenever its canonical opening is present; omission
       // is not disagreement and is checked when the full chain is folded.
-      if (opening?.payload.type !== "TaskOpened") continue;
+      if (opening?.payload.type !== "TaskOpened") {
+        continue;
+      }
       if (
         opening.payload.turnId !== task.turnId ||
         opening.payload.programId !== task.program.artifact.id ||
         opening.payload.programVersion !== task.program.artifact.version ||
         opening.payload.programDigest !== task.program.artifact.digest ||
-        opening.payload.inputDigest !== canonicalDigest(task.program.input)
-      )
+        opening.payload.inputDigest !== digestCanonicalJson(task.program.input)
+      ) {
         corrupt(sessionId, `opening ${task.taskId}`);
+      }
       const expectedParent = task.origin.kind === "child" ? task.origin.invokedBy : undefined;
       if (
         opening.payload.parentTaskId !== expectedParent?.taskId ||
         opening.payload.parentPullId !== expectedParent?.pullId
-      )
+      ) {
         corrupt(sessionId, `lineage ${task.taskId}`);
+      }
 
       for (const action of task.actions) {
         if (action.kind === "pull") {
@@ -128,8 +136,9 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
             request.payload.actionIndex !== action.actionIndex ||
             request.payload.pullIndex !== action.pullIndex ||
             request.payload.descriptorDigest !== action.pull.request.proposedDescriptorDigest
-          )
+          ) {
             corrupt(sessionId, `pull ${action.pull.pullId}`);
+          }
           if (action.pull.resolution.status === "settled") {
             const resolution = indexed.resolutions.get(recordKey(task.taskId, action.pull.pullId));
             if (
@@ -137,8 +146,9 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
               resolution.payload.outcomeDigest !==
                 action.pull.resolution.settlement.outcomeDigest ||
               resolution.offset !== action.pull.resolution.settlement.receipt.resolutionOffset
-            )
+            ) {
               corrupt(sessionId, `resolution ${action.pull.pullId}`);
+            }
           }
         } else {
           const emission = indexed.emissions.get(
@@ -149,8 +159,9 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
             emission.payload.emissionIndex !== action.emissionIndex ||
             emission.payload.descriptorDigest !== action.descriptorDigest ||
             emission.offset !== action.receipt.offset
-          )
+          ) {
             corrupt(sessionId, `emission ${action.actionIndex}`);
+          }
         }
       }
 
@@ -158,10 +169,12 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
         const closure = indexed.closures.get(task.taskId);
         if (
           closure?.payload.type !== "TaskClosed" ||
-          canonicalJson(closure.payload.outcome) !== canonicalJson(task.lifecycle.outcome) ||
+          encodeCanonicalJson(closure.payload.outcome) !==
+            encodeCanonicalJson(task.lifecycle.outcome) ||
           closure.offset !== task.lifecycle.receipt.offset
-        )
+        ) {
           corrupt(sessionId, `closure ${task.taskId}`);
+        }
       }
       if (task.lifecycle.status === "orphaned") {
         const orphan = indexed.orphans.get(task.taskId);
@@ -177,10 +190,11 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
         if (
           group?.payload.type !== "ForkGroupOpened" ||
           group.payload.descriptorDigest !== task.forkGroup.descriptorDigest ||
-          canonicalJson(group.payload.memberTaskIds) !==
-            canonicalJson(task.forkGroup.members.map((member) => member.taskId))
-        )
+          encodeCanonicalJson(group.payload.memberTaskIds) !==
+            encodeCanonicalJson(task.forkGroup.members.map((member) => member.taskId))
+        ) {
           corrupt(sessionId, `fork group ${task.forkGroup.groupId}`);
+        }
       }
     }
   }

@@ -31,7 +31,9 @@ export function createWorkflowApp(
     maxToolIterations: null,
     setup: {
       application: function* () {
-        if (options.decisionProvider) yield* installDecisionProvider(options.decisionProvider);
+        if (options.decisionProvider) {
+          yield* installDecisionProvider(options.decisionProvider);
+        }
         yield* setupDurableStreams({
           bufferStore: createInMemoryBufferStore<string>(),
           registryStore: createInMemoryRegistryStore(),

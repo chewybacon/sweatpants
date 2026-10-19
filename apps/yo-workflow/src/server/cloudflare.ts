@@ -53,7 +53,9 @@ export class Conversations extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/execution") return executionFetch(request, env);
+    if (path === "/api/execution") {
+      return executionFetch(request, env);
+    }
     if (path === "/health") {
       return Response.json({
         app: "yo-workflow",

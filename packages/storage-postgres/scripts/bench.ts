@@ -150,7 +150,9 @@ async function benchBackend(
       ensures: [],
     }),
   );
-  if (created.status !== "committed") throw new Error(`setup failed: ${JSON.stringify(created)}`);
+  if (created.status !== "committed") {
+    throw new Error(`setup failed: ${JSON.stringify(created)}`);
+  }
 
   // Warmup: claim + CAS chain.
   let revision = 0;
@@ -175,7 +177,9 @@ async function benchBackend(
         ensures: [],
       }),
     );
-    if (result.status !== "committed") throw new Error("warmup failed");
+    if (result.status !== "committed") {
+      throw new Error("warmup failed");
+    }
     revision += 1;
   }
 
@@ -202,7 +206,9 @@ async function benchBackend(
         ensures: [],
       }),
     );
-    if (result.status !== "committed") throw new Error("cas commit failed");
+    if (result.status !== "committed") {
+      throw new Error("cas commit failed");
+    }
     revision += 1;
   });
 
@@ -228,7 +234,9 @@ async function benchBackend(
         ],
       }),
     );
-    if (result.status !== "committed") throw new Error("append failed");
+    if (result.status !== "committed") {
+      throw new Error("append failed");
+    }
     revision += 1;
   });
 
@@ -248,7 +256,9 @@ async function benchBackend(
         ],
       }),
     );
-    if (result.status !== "committed") throw new Error("scan prep failed");
+    if (result.status !== "committed") {
+      throw new Error("scan prep failed");
+    }
   }
   const scan = await measure(SCAN_PAGES, () =>
     run(function* () {
@@ -266,9 +276,13 @@ async function benchBackend(
         });
         rows += page.records.length;
         after = page.nextCursor;
-        if (after === null) break;
+        if (after === null) {
+          break;
+        }
       }
-      if (rows !== SCAN_TOTAL) throw new Error(`expected ${SCAN_TOTAL} rows, saw ${rows}`);
+      if (rows !== SCAN_TOTAL) {
+        throw new Error(`expected ${SCAN_TOTAL} rows, saw ${rows}`);
+      }
     }),
   );
 
@@ -284,7 +298,9 @@ async function benchBackend(
         const current = await run(() =>
           kernel.readAuthority(DurableCollections.conversationHeads, headKey),
         );
-        if (!current) throw new Error("head vanished");
+        if (!current) {
+          throw new Error("head vanished");
+        }
         const next = BigInt(current.revision) + 1n;
         const result = await run(() =>
           kernel.apply({

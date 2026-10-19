@@ -35,7 +35,9 @@ function ActivityTransition({ children }: { children: ReactNode }) {
   const [height, setHeight] = useState<number>();
   useLayoutEffect(() => {
     const element = content.current;
-    if (!element) return;
+    if (!element) {
+      return;
+    }
     const measure = () => {
       const next = element.getBoundingClientRect().height;
       setHeight(next);
@@ -65,7 +67,9 @@ export function WorkflowActivity({
   const [knownIds, setKnownIds] = useState(() => part.parts.map((child) => child.id));
   const unseen = part.parts.filter((child) => !knownIds.includes(child.id));
   const slots = unseen.length ? [...knownIds, ...unseen.map((child) => child.id)] : knownIds;
-  if (unseen.length) setKnownIds(slots);
+  if (unseen.length) {
+    setKnownIds(slots);
+  }
   const current = useContext(CurrentWorkflowActivity);
   const cancel = useContext(CancelWorkflow);
   const [cancelling, setCancelling] = useState(false);
@@ -79,7 +83,9 @@ export function WorkflowActivity({
   const entries = part.parts.map((child) => {
     const name = child.type === "tool-call" ? child.name : undefined;
     const occurrence = name ? (occurrences.get(name) ?? 0) + 1 : undefined;
-    if (name && occurrence) occurrences.set(name, occurrence);
+    if (name && occurrence) {
+      occurrences.set(name, occurrence);
+    }
     return { child, name, occurrence };
   });
   return (
@@ -92,7 +98,7 @@ export function WorkflowActivity({
           </div>
           <ol>
             {[...entries, undefined].map((entry) => {
-              if (!entry)
+              if (!entry) {
                 return work.length > 0 ? (
                   <li
                     key={`slot-${slots.length}`}
@@ -114,6 +120,7 @@ export function WorkflowActivity({
                     </div>
                   </li>
                 ) : null;
+              }
               const { child, name, occurrence } = entry;
               const slot = slots.indexOf(child.id);
               return (
@@ -147,7 +154,9 @@ export function WorkflowActivity({
                 type="button"
                 disabled={cancelling || !cancel}
                 onClick={() => {
-                  if (!cancel || cancelling) return;
+                  if (!cancel || cancelling) {
+                    return;
+                  }
                   setCancelling(true);
                   void cancel().finally(() => setCancelling(false));
                 }}

@@ -10,8 +10,12 @@ export type { ResponseStreamNamespace } from "./protocol.ts";
 
 function* invoke<T>(operation: () => Promise<Reply<T>>): Operation<T> {
   const reply = yield* call(operation);
-  if (reply.ok) return reply.value;
-  if (reply.code === "stale_token_writer") throw new StaleTokenWriterError(reply.message);
+  if (reply.ok) {
+    return reply.value;
+  }
+  if (reply.code === "stale_token_writer") {
+    throw new StaleTokenWriterError(reply.message);
+  }
   throw new Error(reply.message);
 }
 
@@ -24,7 +28,9 @@ export function createCloudflareResponseStores<T>(namespace: ResponseStreamNames
     const remote = namespace.getByName(id);
     function* state(): Operation<BufferState> {
       const value = yield* invoke(() => remote.bufferState());
-      if (!value) throw new Error(`Response buffer ${id} does not exist`);
+      if (!value) {
+        throw new Error(`Response buffer ${id} does not exist`);
+      }
       return value;
     }
     return {
@@ -36,7 +42,9 @@ export function createCloudflareResponseStores<T>(namespace: ResponseStreamNames
           *append(tokens) {
             const encoded = tokens.map((token) => {
               const value = JSON.stringify(token);
-              if (value === undefined) throw new Error("Response tokens must be JSON serializable");
+              if (value === undefined) {
+                throw new Error("Response tokens must be JSON serializable");
+              }
               return value;
             });
             return yield* invoke(() => remote.append(fence, encoded));
@@ -72,7 +80,9 @@ export function createCloudflareResponseStores<T>(namespace: ResponseStreamNames
       *waitForChange(after) {
         while (true) {
           const value = yield* state();
-          if (value.lsn > after || value.complete) return;
+          if (value.lsn > after || value.complete) {
+            return;
+          }
           const readerId = crypto.randomUUID();
           try {
             yield* invoke(() => remote.waitForChange(readerId, after));

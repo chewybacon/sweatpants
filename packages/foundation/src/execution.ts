@@ -48,6 +48,7 @@ export type ExecutionCommand<Reply> =
 /** Transport/evaluator mechanics behind the shared execution state machine. */
 export interface ExecutionDriver<Request, Reply, Output, Failure> {
   turn(command: ExecutionCommand<Reply>): Operation<ExecutionBoundary<Request, Output, Failure>>;
+  /** Release must tolerate retry after failure/interruption, including partial release. */
   dispose(): Operation<void>;
   /** Synchronous domain validation before a command can reach the operative. */
   validateReply?(request: Request, reply: Reply): void;
@@ -63,11 +64,18 @@ export function createExecution<Request, Reply, Output, Failure>(
 ): ExecutionState<Request, Reply, Output, Failure> {
   let boundary = initial;
   let state: "ready" | "advancing" | "unknown" | "closed" = "ready";
+  let disposal: "pending" | "running" | "done" = "pending";
 
   function assertReady() {
-    if (state === "closed") throw new Error("execution_closed");
-    if (state === "unknown") throw new Error("execution_outcome_unknown");
-    if (state === "advancing") throw new Error("execution_command_in_progress");
+    if (state === "closed") {
+      throw new Error("execution_closed");
+    }
+    if (state === "unknown") {
+      throw new Error("execution_outcome_unknown");
+    }
+    if (state === "advancing") {
+      throw new Error("execution_command_in_progress");
+    }
   }
 
   function* turn(
@@ -75,8 +83,9 @@ export function createExecution<Request, Reply, Output, Failure>(
   ): Operation<ExecutionBoundary<Request, Output, Failure>> {
     assertReady();
     if (command.kind === "resume") {
-      if (boundary.kind !== "suspended" || boundary.suspensionId !== command.suspensionId)
+      if (boundary.kind !== "suspended" || boundary.suspensionId !== command.suspensionId) {
         throw new Error("execution_suspension_mismatch");
+      }
       driver.validateReply?.(boundary.request, command.reply);
     } else if (boundary.kind !== "suspended") {
       return boundary;
@@ -97,12 +106,28 @@ export function createExecution<Request, Reply, Output, Failure>(
     boundary: initial,
     execution: {
       resume: (suspensionId, reply) => turn({ kind: "resume", suspensionId, reply }),
-      cancel: (reason) => turn({ kind: "cancel", ...(reason === undefined ? {} : { reason }) }),
+      cancel: (reason) => turn({ kind: "cancel", reason }),
       *dispose() {
-        if (state === "closed") return;
-        if (state === "advancing") throw new Error("execution_command_in_progress");
+        if (disposal === "done") {
+          return;
+        }
+        if (disposal === "running") {
+          throw new Error("execution_command_in_progress");
+        }
+        if (state === "advancing") {
+          throw new Error("execution_command_in_progress");
+        }
+        // Closing revokes advancement immediately; release is acknowledged only
+        // when the driver finishes. An owner may retry an interrupted release.
         state = "closed";
-        yield* driver.dispose();
+        disposal = "running";
+        let released = false;
+        try {
+          yield* driver.dispose();
+          released = true;
+        } finally {
+          disposal = released ? "done" : "pending";
+        }
       },
     },
   };

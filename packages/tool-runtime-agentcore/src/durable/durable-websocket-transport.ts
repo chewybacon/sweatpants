@@ -358,6 +358,7 @@ function commandEnvelope(
     taskId: handle.taskId,
     activationEpoch: handle.activationEpoch,
     attachmentId: handle.attachmentId,
+    /* CONDITIONAL-SPREAD: Omit absent actionIndex from AgentCore request and session records; explicit undefined is not a portable JSON value. */
     ...(indexed ? { actionIndex: command.actionIndex } : {}),
     payload: { command },
   };
