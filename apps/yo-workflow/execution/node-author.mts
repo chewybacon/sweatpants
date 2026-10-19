@@ -9,7 +9,9 @@ export function authorLocalCaller(
 ) {
   return authorCaller(prompt, validate, {
     ...authoring,
-    models: createWorkflowModels(new FileCredentialStore()),
+    models: createWorkflowModels(new FileCredentialStore(), {
+      openaiBaseUrl: process.env.OPENAI_BASE_URL,
+    }),
     provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? "opencode",
     model: process.env.DEFAULT_CHAT_MODEL_ID ?? "claude-haiku-5-5",
     thinking: process.env.DEFAULT_CHAT_MODEL_THINKING,

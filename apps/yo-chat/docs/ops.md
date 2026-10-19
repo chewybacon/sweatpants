@@ -59,8 +59,30 @@ pnpm dev:yo-chat:local
 pnpm dev:yo-chat
 ```
 
+For an OpenAI Responses-compatible proxy, set `DEFAULT_CHAT_MODEL_PROVIDER=openai`,
+`DEFAULT_CHAT_MODEL_ID` to a model in the installed Pi catalog, `OPENAI_BASE_URL`
+to the proxy's API root (including `/v1`), and `OPENAI_API_KEY` to its credential.
+The endpoint override applies to OpenAI models only; other providers keep their
+own endpoints. Set `PROGRAM_DRIVER_CAPABILITY_SECRET` to at least 32 random bytes
+for the local durable chat host.
+
 App: `http://localhost:8000`  
 Durability Lab: `http://localhost:8000/lab/durability`
+
+## Local tests
+
+Build the app's workspace dependencies before running its tests:
+
+```bash
+pnpm --filter 'yo-chat^...' --workspace-concurrency=3 --aggregate-output run build
+pnpm -C apps/yo-chat check
+pnpm -C apps/yo-chat test
+```
+
+The default test suite includes a real Postgres metadata test. Start a disposable
+Postgres database at `postgres://postgres:postgres@127.0.0.1:55432/sweatpants_test`,
+or point `SWEATPANTS_DATABASE_URL` at a dedicated test database. The app itself
+uses SQLite by default and does not need Postgres for local chat.
 
 ## Deploy / start
 

@@ -173,3 +173,13 @@ pnpm --dir apps/yo-workflow build:cloudflare
 
 Scheme acceptance exercises the real Cloudflare runtime through Test Rig. Product
 apps use real model providers. Run tests sequentially to bound worker processes.
+
+### OpenAI-compatible proxy for local authoring
+
+The local execution inspector can author Scheme or Lua using an OpenAI Responses
+endpoint. Set `DEFAULT_CHAT_MODEL_PROVIDER=openai`, `DEFAULT_CHAT_MODEL_ID` to a
+model in the installed catalog, `OPENAI_BASE_URL` to the proxy API root (including
+`/v1`), and `OPENAI_API_KEY` to its credential. Run Astro with these variables after
+building the execution artifacts. The proxy override is passed explicitly to the
+Node authoring catalog; it does not configure the Cloudflare conversation engine
+or its separate decision provider.
