@@ -344,7 +344,7 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
   }
   const message = parsed.value;
   if ("result" in message || "error" in message) {
-    return { type: "response", message: message as JsonRpcResponse };
+    return { type: "response", message };
   }
   if ("id" in message) {
     if (message.method === "tools/call") {
@@ -353,9 +353,9 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
         ? { type: "request", message: toolCall }
         : { type: "invalid", raw: decoded, error: "Invalid tools/call request" };
     }
-    return { type: "request", message: message as JsonRpcRequest };
+    return { type: "request", message };
   }
-  return { type: "notification", message: message as JsonRpcNotification };
+  return { type: "notification", message };
 }
 
 const jsonRpcIdSchema = z.union([z.string().max(512), z.number(), z.null()]);
@@ -391,7 +391,7 @@ const jsonRpcSuccessSchema = z
 const jsonRpcErrorResponseSchema = z
   .object({ jsonrpc: z.literal("2.0"), id: jsonRpcIdSchema, error: jsonRpcErrorSchema })
   .strict();
-const mcpContentBlockSchema: z.ZodType<unknown> = z.lazy(() =>
+const mcpContentBlockSchema: z.ZodType<McpContentBlock> = z.lazy(() =>
   z.union([
     z.object({ type: z.literal("text"), text: z.string() }).strict(),
     z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string() }).strict(),
@@ -447,7 +447,6 @@ const samplingResultSchema = z
     stopReason: z.string().max(128).optional(),
   })
   .strict();
-const jsonRpcResponseParser = parser(z.union([jsonRpcErrorResponseSchema, jsonRpcSuccessSchema]));
 const jsonRpcMessageEnvelopeParser = parser(
   z.union([
     jsonRpcErrorResponseSchema,
@@ -459,11 +458,6 @@ const jsonRpcMessageEnvelopeParser = parser(
 const toolCallParamsParser = parser(toolCallParamsSchema);
 const elicitationResultParser = parser(elicitationResultSchema);
 const samplingResultParser = parser(samplingResultSchema);
-
-function parseJsonRpcResponse(value: unknown): JsonRpcResponse | undefined {
-  const parsed = jsonRpcResponseParser.parse(value);
-  return parsed.ok ? (parsed.value as JsonRpcResponse) : undefined;
-}
 
 function parseToolCallRequest(
   value: z.infer<typeof jsonRpcRequestEnvelopeSchema>,
@@ -479,48 +473,32 @@ function parseToolCallRequest(
     jsonrpc: "2.0",
     id: value.id,
     method: "tools/call",
-    params: {
-      name: params.value.name,
-      /* CONDITIONAL-SPREAD: Omit absent arguments from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
-      ...(params.value.arguments !== undefined ? { arguments: params.value.arguments } : {}),
-    },
+    params: params.value,
   };
 }
 
 function parseElicitationResponse(
-  value: unknown,
+  response: JsonRpcResponse,
 ): JsonRpcResponse<McpElicitationResult> | undefined {
-  const response = parseJsonRpcResponse(value);
-  if (!response) {
-    return undefined;
-  }
   if (isJsonRpcError(response)) {
-    return response as JsonRpcResponse<McpElicitationResult>;
+    return response;
   }
   if (!isJsonRpcSuccess(response)) {
     return undefined;
   }
   const result = elicitationResultParser.parse(response.result);
-  return result.ok
-    ? ({ ...response, result: result.value } as JsonRpcResponse<McpElicitationResult>)
-    : undefined;
+  return result.ok ? { ...response, result: result.value } : undefined;
 }
 
 function parseSamplingResponse(
-  value: unknown,
+  response: JsonRpcResponse,
 ): JsonRpcResponse<McpCreateMessageResult> | undefined {
-  const response = parseJsonRpcResponse(value);
-  if (!response) {
-    return undefined;
-  }
   if (isJsonRpcError(response)) {
-    return response as JsonRpcResponse<McpCreateMessageResult>;
+    return response;
   }
   if (!isJsonRpcSuccess(response)) {
     return undefined;
   }
   const result = samplingResultParser.parse(response.result);
-  return result.ok
-    ? ({ ...response, result: result.value } as JsonRpcResponse<McpCreateMessageResult>)
-    : undefined;
+  return result.ok ? { ...response, result: result.value } : undefined;
 }

@@ -8,8 +8,6 @@ import {
   type DurableProgramManifest,
   type DurableToolRegistry,
   type EphemeralDurability,
-  type NormalizedProgramOperationTrace,
-  type NormalizedProgramTaskTrace,
   type NormalizedProgramTrace,
   type PinnedProgram,
   type ProgramElicitResult,
@@ -29,7 +27,6 @@ import {
   PULL_KIND_SAMPLE,
   PULL_KIND_WAIT,
   settleParkedPull,
-  type DurableSemanticRecord,
   type JournalAuthorityContract,
   type PullResolver,
 } from "@sweatpants/journal-authority";
@@ -51,7 +48,13 @@ import {
 } from "@sweatpants/durable-effects";
 import type { ModelContext } from "@sweatpants/model-provider";
 import { assertDurableEffectBindings } from "@sweatpants/durable-effects/runtime";
-export type { NormalizedProgramOperationTrace, NormalizedProgramTaskTrace, NormalizedProgramTrace };
+export type {
+  NormalizedProgramOperationTrace,
+  NormalizedProgramTaskTrace,
+  NormalizedProgramTrace,
+} from "@sweatpants/durable-execution";
+export { normalizeProgramTrace } from "./program-trace.ts";
+import { normalizeProgramTrace } from "./program-trace.ts";
 import {
   assertJson,
   type Json,
@@ -468,7 +471,7 @@ export function createProgramWorkflowHost(
           executionEpoch: execution.executionEpoch,
           attachmentId: stableProgramAttachmentId(attach),
           audience: "workflow-host",
-          catalog: cloneJson(assertJson(request.catalog)),
+          catalog: assertJson(request.catalog),
           catalogDigest: request.catalog.digest,
           route,
         });
@@ -633,76 +636,6 @@ function* acceptedExecution(
     route: structuredClone(state.route),
     executionEpoch: state.executionEpoch,
   };
-}
-
-export function normalizeProgramTrace(
-  records: readonly DurableSemanticRecord[],
-): NormalizedProgramTrace {
-  const tasks = new Map<string, NormalizedProgramTaskTrace>();
-  const operationByPull = new Map<string, NormalizedProgramOperationTrace>();
-  for (const record of records) {
-    const payload = record.payload;
-    if (payload.type === "TaskOpened") {
-      tasks.set(payload.taskId, {
-        taskId: payload.taskId,
-        turnId: payload.turnId,
-        /* CONDITIONAL-SPREAD: Omit absent parentTaskId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
-        ...(payload.parentTaskId ? { parentTaskId: payload.parentTaskId } : {}),
-        /* CONDITIONAL-SPREAD: Omit absent parentPullId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
-        ...(payload.parentPullId ? { parentPullId: payload.parentPullId } : {}),
-        program: {
-          id: payload.programId,
-          version: payload.programVersion,
-          digest: payload.programDigest,
-        },
-        acceptedInput: structuredClone(payload.input),
-        /* CONDITIONAL-SPREAD: Omit absent catalogDigest from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
-        ...(payload.catalogDigest ? { catalogDigest: payload.catalogDigest } : {}),
-        operations: [],
-        semanticEmissions: [],
-        cancellations: [],
-      });
-      continue;
-    }
-    if (payload.type === "PullRequested") {
-      const operation = {
-        actionIndex: payload.actionIndex,
-        pullId: payload.pullId,
-        descriptor: assertJson(structuredClone(payload.descriptor)),
-      };
-      tasks.get(payload.taskId)?.operations.push(operation);
-      operationByPull.set(payload.pullId, operation);
-      continue;
-    }
-    if (payload.type === "PullResolved") {
-      const operation = operationByPull.get(payload.pullId);
-      if (operation) {
-        operation.outcome = structuredClone(payload.outcome);
-      }
-      continue;
-    }
-    if (payload.type === "DurableEmission") {
-      tasks
-        .get(payload.taskId)
-        ?.semanticEmissions.push(assertJson(structuredClone(payload.descriptor)));
-      continue;
-    }
-    if (payload.type === "CancellationRequested") {
-      tasks.get(payload.taskId)?.cancellations.push({
-        taskId: payload.taskId,
-        /* CONDITIONAL-SPREAD: Omit absent reason from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
-        ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
-      });
-      continue;
-    }
-    if (payload.type === "TaskClosed") {
-      const task = tasks.get(payload.taskId);
-      if (task) {
-        task.terminal = structuredClone(payload.outcome);
-      }
-    }
-  }
-  return { version: 1, tasks: [...tasks.values()] };
 }
 
 function outcomeToRunResult(outcome: OperationOutcome): AdvancementResult {

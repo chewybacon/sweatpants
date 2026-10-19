@@ -312,6 +312,51 @@ describe("MCP Protocol", () => {
     });
 
     describe("decodeResponse with context", () => {
+      it("preserves provider-specific stop reasons from a validated sampling result", () => {
+        const ctx = createDecoderContext();
+        ctx.addPendingSampling("sample", "sample");
+        const decoded = decodeResponse(
+          {
+            jsonrpc: "2.0",
+            id: "sample",
+            result: {
+              role: "assistant",
+              content: { type: "text", text: "answer" },
+              model: "test-model",
+              stopReason: "provider_limit",
+            },
+          },
+          ctx,
+        );
+        expect(decoded).toEqual({
+          type: "sampling_response",
+          sampleId: "sample",
+          result: { text: "answer", model: "test-model", stopReason: "provider_limit" },
+        });
+      });
+
+      it("rejects malformed nested content inside a valid response envelope", () => {
+        const ctx = createDecoderContext();
+        ctx.addPendingSampling("sample", "sample");
+        const decoded = decodeResponse(
+          {
+            jsonrpc: "2.0",
+            id: "sample",
+            result: {
+              role: "assistant",
+              model: "test-model",
+              content: {
+                type: "tool_result",
+                toolUseId: "tool",
+                content: [{ type: "text", text: 123 }],
+              },
+            },
+          },
+          ctx,
+        );
+        expect(decoded.type).toBe("unknown");
+      });
+
       it("rejects malformed pending elicitation responses", () => {
         const ctx = createDecoderContext();
         ctx.addPendingElicitation("req_bad", "elicit_bad");

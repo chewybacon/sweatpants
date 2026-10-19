@@ -7,6 +7,7 @@ import {
   type Json,
   type JsonObject,
   type ParseIssue,
+  type ParseResult,
   type Parser,
 } from "@sweatpants/foundation";
 import {
@@ -179,111 +180,66 @@ const modelSampleCancellationPartialSchema = z.strictObject({
   interrupted: z.literal(true),
 });
 
-const modelSampleRequestShapeParser = parser(modelSampleRequestSchema);
-const modelSampleRequestBoundsSchema: StandardSchemaV1<unknown, unknown> = {
-  "~standard": {
-    version: 1,
-    vendor: "sweatpants",
-    validate(value) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return { value };
+// Check collection sizes before walking message bodies. The same limits apply
+// when a trusted context is assembled from a journal rather than decoded.
+const modelContextBoundsParser = parser(
+  z.looseObject({ messages: z.unknown(), tools: z.unknown() }).superRefine((context, issues) => {
+    for (const [key, limit] of [
+      ["messages", MAX_MODEL_SAMPLE_MESSAGES],
+      ["tools", MAX_MODEL_SAMPLE_TOOLS],
+    ] as const) {
+      const values = context[key];
+      if (Array.isArray(values) && values.length > limit) {
+        issues.addIssue({ code: "custom", path: [key], message: `${key} count exceeds ${limit}` });
       }
-      const request = value as Record<string, unknown>;
-      const invocation = request["invocation"];
-      const context =
-        invocation && typeof invocation === "object" && !Array.isArray(invocation)
-          ? (invocation as Record<string, unknown>)["context"]
-          : undefined;
-      if (context && typeof context === "object" && !Array.isArray(context)) {
-        const messages = (context as Record<string, unknown>)["messages"];
-        const tools = (context as Record<string, unknown>)["tools"];
-        if (Array.isArray(messages) && messages.length > MAX_MODEL_SAMPLE_MESSAGES) {
-          return { issues: [{ message: "model context message count exceeds limit" }] };
-        }
-        if (Array.isArray(tools) && tools.length > MAX_MODEL_SAMPLE_TOOLS) {
-          return { issues: [{ message: "model context tool count exceeds limit" }] };
-        }
-      }
-      const classifications = request["classifications"];
-      if (
-        Array.isArray(classifications) &&
-        classifications.length > MAX_MODEL_SAMPLE_CLASSIFICATIONS
-      ) {
-        return { issues: [{ message: "classification count exceeds limit" }] };
-      }
-      const toolSource = request["tools"];
-      if (toolSource && typeof toolSource === "object" && !Array.isArray(toolSource)) {
-        const tools = (toolSource as Record<string, unknown>)["tools"];
-        if (Array.isArray(tools) && tools.length > MAX_MODEL_SAMPLE_TOOLS) {
-          return { issues: [{ message: "embedded tool count exceeds limit" }] };
-        }
-      }
-      return { value };
-    },
-  },
-};
-const modelSampleRequestStructureParser = parser(modelSampleRequestBoundsSchema).andThen((value) =>
-  modelSampleRequestShapeParser.parse(value),
+    }
+  }),
 );
-const modelSampleSourceRequestSchema = z.strictObject({
+const boundedModelContextParser = modelContextBoundsParser.andThen((value) =>
+  modelContextParser.parse(value),
+);
+const modelSampleRequestStructureParser =
+  parser(modelSampleRequestSchema).andThen(parseRequestTools);
+const modelSampleSourceRequestSchema = modelSampleRequestSchema.extend({
   invocation: z.strictObject({
     context: modelContextSourceSchema,
     options: optionsSchema.optional(),
   }),
-  tools: toolSourceSchema,
-  response: responseModeSchema,
-  modelPreferences: z.json().optional(),
-  classifications: z.array(z.json()).max(MAX_MODEL_SAMPLE_CLASSIFICATIONS).optional(),
 });
-const modelContextSourceParser = parser(modelContextSourceSchema).map(
-  (value) => value as ModelContextSource,
+const modelContextSourceParser = parser(modelContextSourceSchema);
+const modelSampleSourceRequestParser = parser(modelSampleSourceRequestSchema).andThen(
+  parseRequestTools,
 );
-const modelSampleSourceRequestParser = parser(modelSampleSourceRequestSchema).map(
-  (value) => value as ModelSampleSourceRequest,
-);
+
+function parseRequestTools<T extends { tools: z.infer<typeof toolSourceSchema> }>(
+  value: T,
+): ParseResult<Omit<T, "tools"> & { tools: ModelToolSource }> {
+  if (value.tools.type !== "embedded") {
+    return success({ ...value, tools: value.tools });
+  }
+  const tools: ChatToolDefinition[] = [];
+  for (const [index, tool] of value.tools.tools.entries()) {
+    const parsed = chatToolDefinitionParser.parse(tool);
+    if (!parsed.ok) {
+      return prefixFailure(parsed.issues, ["tools", "tools", index]);
+    }
+    tools.push(parsed.value);
+  }
+  return success({ ...value, tools: { type: "embedded" as const, tools } });
+}
 const modelSampleResultStructureParser = parser(modelSampleResultSchema);
 
 /** Result-oriented parser for one model-sampling request. */
 export const modelSampleRequestParser: Parser<ModelSampleRequest> =
   modelSampleRequestStructureParser.andThen((value) => {
-    const context = modelContextParser.parse(value.invocation.context);
+    const context = boundedModelContextParser.parse(value.invocation.context);
     if (!context.ok) {
       return prefixFailure(context.issues, ["invocation", "context"]);
     }
-    if (context.value.messages.length > MAX_MODEL_SAMPLE_MESSAGES) {
-      return failure({
-        path: ["invocation", "context", "messages"],
-        message: `message count exceeds ${MAX_MODEL_SAMPLE_MESSAGES}`,
-        code: "too_big",
-      });
-    }
-    if (context.value.tools.length > MAX_MODEL_SAMPLE_TOOLS) {
-      return failure({
-        path: ["invocation", "context", "tools"],
-        message: `tool count exceeds ${MAX_MODEL_SAMPLE_TOOLS}`,
-        code: "too_big",
-      });
-    }
-
-    let tools: ModelToolSource;
-    if (value.tools.type === "embedded") {
-      const parsedTools: ChatToolDefinition[] = [];
-      for (const [index, tool] of value.tools.tools.entries()) {
-        const parsedTool = chatToolDefinitionParser.parse(tool);
-        if (!parsedTool.ok) {
-          return prefixFailure(parsedTool.issues, ["tools", "tools", index]);
-        }
-        parsedTools.push(parsedTool.value);
-      }
-      tools = { type: "embedded", tools: parsedTools };
-    } else {
-      tools = value.tools;
-    }
-
     return success({
       invocation: { context: context.value, options: value.invocation.options },
-      tools,
-      response: value.response as ModelResponseMode,
+      tools: value.tools,
+      response: value.response,
       modelPreferences: value.modelPreferences,
       classifications: value.classifications,
     });
@@ -325,13 +281,14 @@ export function resolveModelSampleSourceRequest(
   request: ModelSampleSourceRequest,
   context: ModelContext,
 ): ModelSampleRequest {
-  return decodeModelSampleRequest({
+  requireParsed(modelContextBoundsParser, context, "$.invocation.context", "invalid model context");
+  return {
     ...request,
     invocation: {
       context,
       options: request.invocation.options,
     },
-  });
+  };
 }
 
 export function encodeModelSampleSourceRequest(

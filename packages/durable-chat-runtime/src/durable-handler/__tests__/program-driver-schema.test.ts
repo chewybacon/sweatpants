@@ -22,6 +22,39 @@ function catalog(): { version: 1; digest: string; entries: Record<string, never>
 }
 
 describe("chat-root durable semantic input", () => {
+  it("projects the same nested constraints used by runtime admission", () => {
+    expect(manifest.inputSchema.inputProjection).toMatchObject({
+      properties: {
+        maxIterations: { anyOf: [{ type: "integer", minimum: 1, maximum: 100 }, { type: "null" }] },
+        contextSource: {
+          properties: {
+            checkpoint: {
+              required: ["checkpointId"],
+              properties: { checkpointId: { type: "string", minLength: 1, maxLength: 4096 } },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects a structurally valid catalog whose digest does not match", async () => {
+    const result = await validateInput({
+      contextSource: {
+        type: "conversation",
+        conversationId: "conversation-1",
+        checkpoint: { checkpointId: "checkpoint-1" },
+        acceptedCommandId: "command-1",
+        executionId: "execution-1",
+        taskId: "task-1",
+        taskJournalFrontier: "current",
+      },
+      maxIterations: null,
+      catalog: { ...catalog(), digest: "0".repeat(64) },
+    });
+    expect(result).toMatchObject({ issues: [{ message: "catalog digest differs from entries" }] });
+  });
+
   it.each([1, null])(
     "accepts canonical ChatHistoryEntry composition with limit %s",
     async (maxIterations) => {

@@ -2,7 +2,9 @@ import { canonicalJson } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import {
   decodeModelSampleRequest,
+  decodeModelSampleSourceRequest,
   encodeModelSampleRequest,
+  resolveModelSampleSourceRequest,
   type ModelSampleRequest,
 } from "../contract.ts";
 
@@ -74,5 +76,75 @@ describe("model sample request codec", () => {
   it("rejects undefined inside arbitrary JSON payloads at admission", () => {
     const input = { ...request, modelPreferences: { nested: undefined } };
     expect(() => decodeModelSampleRequest(input)).toThrow();
+  });
+});
+
+describe("model sample context resolution", () => {
+  const source = { type: "object", object: { objectId: "context-1" }, digest: "digest-1" };
+
+  it("rejects malformed tool definitions at source admission", () => {
+    expect(() =>
+      decodeModelSampleSourceRequest({
+        ...request,
+        invocation: { context: source },
+        tools: { type: "embedded", tools: [{ name: "lookup", parameters: [] }] },
+      }),
+    ).toThrow();
+  });
+
+  it("owns tool definitions at admission and reuses trusted values during resolution", () => {
+    const tool = {
+      name: "lookup",
+      description: null,
+      parameters: { type: "object", properties: { query: { type: "string" } } },
+    };
+    const admitted = decodeModelSampleSourceRequest({
+      ...request,
+      invocation: { context: source, options: { temperature: 0 } },
+      tools: { type: "embedded", tools: [tool] },
+    });
+    tool.parameters.properties.query.type = "number";
+    const context = structuredClone(request.invocation.context);
+    const resolved = resolveModelSampleSourceRequest(admitted, context);
+
+    expect(resolved.invocation.context).toBe(context);
+    expect(resolved.invocation.options).toBe(admitted.invocation.options);
+    expect(resolved.tools).toBe(admitted.tools);
+    expect(resolved.tools).toMatchObject({
+      tools: [{ parameters: { properties: { query: { type: "string" } } } }],
+    });
+    expect(Object.isFrozen(context.messages[0])).toBe(false);
+  });
+
+  it("still enforces collection limits on contexts assembled internally", () => {
+    const admitted = decodeModelSampleSourceRequest({
+      ...request,
+      invocation: { context: source },
+    });
+    expect(() =>
+      resolveModelSampleSourceRequest(admitted, {
+        messages: Array.from({ length: 4_097 }, () => ({ role: "user", content: "hello" })),
+        tools: [],
+      }),
+    ).toThrow(/messages count exceeds/);
+    expect(() =>
+      resolveModelSampleSourceRequest(admitted, {
+        messages: [],
+        tools: Array.from({ length: 1_025 }, () => ({
+          name: "lookup",
+          description: null,
+          parameters: {},
+        })),
+      }),
+    ).toThrow(/tools count exceeds/);
+  });
+
+  it("preserves strict context admission after the collection precheck", () => {
+    expect(() =>
+      decodeModelSampleRequest({
+        ...request,
+        invocation: { context: { ...request.invocation.context, unexpected: true } },
+      }),
+    ).toThrow();
   });
 });
