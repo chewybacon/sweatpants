@@ -14,7 +14,10 @@ import { McpHttpError } from "./http.ts";
 /** Adapt a rich authored interaction to MCP's flat form without changing the tool. */
 export interface McpFormAdapter {
   present(ask: ToolInvocationElicitAsk): { message: string; requestedSchema: JsonObject };
-  accept(content: NonNullable<McpFormResponse["content"]>, ask: ToolInvocationElicitAsk): Json;
+  accept(
+    content: Extract<McpFormResponse, { action: "accept" }>["content"],
+    ask: ToolInvocationElicitAsk,
+  ): Json;
 }
 export type McpFormAdapters = Readonly<Record<string, Readonly<Record<string, McpFormAdapter>>>>;
 
@@ -86,12 +89,12 @@ export function resumeInput(
       kind: "elicit",
       requestId: ask.requestId,
       response:
-        response.action === "accept"
+        response.action === "accept" && adapter
           ? {
               action: "accept",
-              content: adapter ? adapter.accept(response.content!, ask) : response.content!,
+              content: adapter.accept(response.content, ask),
             }
-          : { action: response.action },
+          : response,
     };
   }
   if (

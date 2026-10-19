@@ -6,34 +6,18 @@ import {
 } from "@sweatpants/model-sampling";
 import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import { defineDurableProgramManifest } from "@sweatpants/durable-execution";
-import {
-  assertJson,
-  requireJsonObject,
-  sha256,
-  type Json,
-  type JsonObject,
-  canonicalDigest,
-} from "@sweatpants/foundation";
+import { sha256, type JsonObject, canonicalDigest } from "@sweatpants/foundation";
 import {
   createPortableSchemaDescriptor,
   standardSchemaOf,
   type SchemaBinding,
   type PortableSchemaDescriptor,
 } from "@sweatpants/foundation/schema";
-import type { NativeProgramIdentity as NativeIdentity } from "../program-driver/native-tools.ts";
 import { z } from "zod";
 
 export type ChatToolCatalogEntry = {
   model: ChatToolDefinition;
-  execution:
-    | { kind: "program"; target: string; program: NativeIdentity }
-    | {
-        kind: "ephemeral-tool";
-        target: string;
-        driver: "tool-session" | "chat-tool-runtime";
-        tool: string;
-        durability: "ephemeral_handle";
-      };
+  execution: z.infer<typeof catalogExecutionSchema>;
 };
 
 export type EphemeralToolCatalogExecution = Exclude<
@@ -121,13 +105,13 @@ const chatProgramInputSchema = z.strictObject({
   }),
 });
 
-function chatEngineSchema(
+function chatEngineSchema<T extends z.ZodType>(
   identity: string,
   role: string,
-  projection: Json,
-  guard: (value: unknown) => string | undefined,
-  decode: (value: unknown) => Json = (value) => assertJson(value),
+  schema: T,
+  validate?: (value: z.output<T>) => string | undefined,
 ): PortableSchemaDescriptor {
+  const projection = z.toJSONSchema(schema) as JsonObject;
   const descriptor = createPortableSchemaDescriptor({
     identity,
     role,
@@ -135,21 +119,18 @@ function chatEngineSchema(
     vendor: "sweatpants",
     inputProjection: projection,
     outputProjection: projection,
+    // The generated shape is exact; the catalog digest remains a runtime invariant.
     fidelity: { input: "explicit", output: "explicit" },
   });
   chatEngineSchemaEntries.push({
     descriptor,
     schema: standardSchemaOf("sweatpants", (value) => {
-      try {
-        const decoded = decode(value);
-        const message = guard(decoded);
-        if (message !== undefined) {
-          return { issues: [{ message }] };
-        }
-        return { value: decoded };
-      } catch {
-        return { issues: [{ message: "value could not be decoded" }] };
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        return { issues: parsed.error.issues };
       }
+      const message = validate?.(parsed.data);
+      return message === undefined ? { value: parsed.data } : { issues: [{ message }] };
     }),
   });
   return descriptor;
@@ -158,122 +139,17 @@ function chatEngineSchema(
 const chatRootInputDescriptor = chatEngineSchema(
   "sweatpants.chat-root/input",
   "program_input",
-  {
-    type: "object",
-    required: ["contextSource", "maxIterations", "catalog"],
-    properties: {
-      contextSource: {
-        type: "object",
-        required: [
-          "type",
-          "conversationId",
-          "checkpoint",
-          "acceptedCommandId",
-          "executionId",
-          "taskId",
-          "taskJournalFrontier",
-        ],
-        properties: {
-          type: { const: "conversation" },
-          conversationId: { type: "string" },
-          checkpoint: { type: "object" },
-          acceptedCommandId: { type: "string" },
-          executionId: { type: "string" },
-          taskId: { type: "string" },
-          taskJournalFrontier: { type: "string" },
-          systemPrompt: { type: "string" },
-          contextArtifact: { type: "object" },
-        },
-        additionalProperties: false,
-      },
-      systemPrompt: { type: "string" },
-      toolChoice: { enum: ["auto", "none", "required"] },
-      maxIterations: { anyOf: [{ type: "integer", minimum: 1, maximum: 100 }, { type: "null" }] },
-      catalog: {
-        type: "object",
-        required: ["version", "digest", "entries"],
-        properties: {
-          version: { const: 1 },
-          digest: { type: "string", pattern: "^[0-9a-f]{64}$" },
-          entries: {
-            type: "object",
-            additionalProperties: {
-              type: "object",
-              required: ["model", "execution"],
-              properties: {
-                model: {
-                  type: "object",
-                  required: ["name", "parameters"],
-                  properties: {
-                    name: { type: "string" },
-                    description: { type: "string" },
-                    parameters: { type: "object", additionalProperties: true },
-                  },
-                  additionalProperties: false,
-                },
-                execution: {
-                  oneOf: [
-                    {
-                      type: "object",
-                      required: ["kind", "target", "program"],
-                      properties: {
-                        kind: { const: "program" },
-                        target: { type: "string" },
-                        program: { type: "object" },
-                      },
-                      additionalProperties: false,
-                    },
-                    {
-                      type: "object",
-                      required: ["kind", "target", "driver", "tool", "durability"],
-                      properties: {
-                        kind: { const: "ephemeral-tool" },
-                        target: { type: "string" },
-                        driver: { enum: ["tool-session", "chat-tool-runtime"] },
-                        tool: { type: "string" },
-                        durability: { const: "ephemeral_handle" },
-                      },
-                      additionalProperties: false,
-                    },
-                  ],
-                },
-              },
-              additionalProperties: false,
-            },
-          },
-        },
-        additionalProperties: false,
-      },
-    },
-    additionalProperties: false,
-  },
-  (value) => {
-    const parsed = chatProgramInputSchema.safeParse(value);
-    if (!parsed.success) {
-      return "chat program input structure is invalid";
-    }
-    if (
-      parsed.data.catalog.digest !==
-      canonicalDigest({ version: 1, entries: parsed.data.catalog.entries })
-    ) {
-      return "catalog digest differs from entries";
-    }
-    return undefined;
-  },
-  (value) => {
-    const input = requireJsonObject(assertJson(value), "$");
-    return {
-      ...input,
-      contextSource: assertJson(input["contextSource"]),
-    };
-  },
+  chatProgramInputSchema,
+  ({ catalog }) =>
+    catalog.digest === canonicalDigest({ version: 1, entries: catalog.entries })
+      ? undefined
+      : "catalog digest differs from entries",
 );
 
 const chatRootOutputDescriptor = chatEngineSchema(
   "sweatpants.chat-root/output",
   "program_output",
-  { type: "string" },
-  (value) => (typeof value === "string" ? undefined : "chat program output must be a string"),
+  z.string(),
 );
 
 export const manifest = defineDurableProgramManifest<ChatProgramInput, string>({

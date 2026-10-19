@@ -1,11 +1,11 @@
 import { canonicalJson, type Json } from "@sweatpants/foundation";
 import type { OperationOutcome } from "@sweatpants/durable-effects/contract";
-import type { PinnedProgram } from "../program-contract.ts";
+import type { DurableOperationDescriptor, PinnedProgram } from "../program-contract.ts";
 
 export interface NormalizedProgramOperationTrace {
   actionIndex: number;
   pullId: string;
-  descriptor: Json;
+  descriptor: DurableOperationDescriptor;
   outcome?: OperationOutcome;
 }
 

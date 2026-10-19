@@ -170,6 +170,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@standard-schema/spec": "catalog:",
     "@sweatpants/agent-sdk": "workspace:*",
     "@sweatpants/chat-contract": "workspace:*",
     "@sweatpants/chat-core": "workspace:*",

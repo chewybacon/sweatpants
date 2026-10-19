@@ -5,6 +5,17 @@ import { chatRequestBodyParser, parseChatRequestBody } from "../request-normaliz
 const issuedAt = Date.now();
 const expiresAt = issuedAt + 60_000;
 
+it("retains optional configuration without rebuilding already validated values", () => {
+  const streamOptions = {
+    temperature: 0,
+    thinkingBudgets: { low: undefined },
+    topP: undefined,
+  };
+  const body = parseChatRequestBody(command({}, { streamOptions }));
+  expect(body.streamOptions).toStrictEqual(streamOptions);
+  expect(body.streamOptions).not.toBe(streamOptions);
+});
+
 function command(override: Record<string, unknown> = {}, controls: Record<string, unknown> = {}) {
   return {
     command: Object.fromEntries(

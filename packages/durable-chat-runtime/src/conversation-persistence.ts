@@ -7,7 +7,7 @@ import {
   decodePublicActivity,
   decodePublicProjectionRoot,
   type ConversationWindowFrame,
-  type PublicActivityData,
+  type PublicActivityNode,
   type PublicPlacementAnchor,
   type PublicProjectionBasis,
   type PublicProjectionRoot,
@@ -45,7 +45,6 @@ import { call, type Operation } from "effection";
 import { useConversationStore } from "@sweatpants/history-store/port";
 import { CrankError } from "@sweatpants/durable-execution";
 import { spillRoots } from "./checkpoint-spill.ts";
-import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
 import {
   mintPublicHistoryCursor,
   mintWindowToken,
@@ -379,28 +378,23 @@ function rootIdForActivity(activityRecordId: string): string {
   return `activity:${activityRecordId}`;
 }
 
-function activityAnchor(
-  event: Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>,
-): PublicPlacementAnchor {
-  const activity = decodePublicActivity(event.content);
-  const data = activity.node.publicData;
+function activityAnchor(node: PublicActivityNode): PublicPlacementAnchor {
+  const data = node.publicData;
   if (!data) {
-    throw new Error(`Activity node ${activity.node.nodeId} has no public placement data`);
+    throw new Error(`Activity node ${node.nodeId} has no public placement data`);
   }
   return {
-    nodeId: activity.node.nodeId,
-    parentNodeId: activity.node.parentNodeId,
-    sequence: activity.node.sequence,
-    kind: activity.node.kind,
-    presentation: activity.node.presentation,
-    publicData: data as PublicActivityData,
+    nodeId: node.nodeId,
+    parentNodeId: node.parentNodeId,
+    sequence: node.sequence,
+    kind: node.kind,
+    presentation: node.presentation,
+    publicData: data,
   };
 }
 
-function activityTerminal(
-  event: Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>,
-): boolean {
-  const state = decodePublicActivity(event.content).node.state;
+function activityTerminal(node: PublicActivityNode): boolean {
+  const { state } = node;
   return (
     state === "done" ||
     state === "output-available" ||
@@ -436,13 +430,13 @@ function previousRootEvents(
 }
 
 function ancestorAnchors(
-  event: Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>,
-  byNodeId: ReadonlyMap<string, Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }>>,
+  node: PublicActivityNode,
+  byNodeId: ReadonlyMap<string, PublicActivityNode>,
   retainedAnchors: ReadonlyMap<string, PublicPlacementAnchor>,
 ): readonly PublicPlacementAnchor[] {
   const result: PublicPlacementAnchor[] = [];
   const seen = new Set<string>();
-  let parentId = decodePublicActivity(event.content).node.parentNodeId;
+  let parentId = node.parentNodeId;
   while (parentId !== null) {
     if (seen.has(parentId)) {
       throw new Error(`Public activity placement contains a cycle at ${parentId}`);
@@ -538,13 +532,15 @@ function* compactPublicRoots(params: {
   // messages. Replaying here and then calling providerHistoryFromFrames()
   // would fold the complete frame set a second time.
   const views = replayConversationViews(frames);
-  const snapshots: StreamEvent[] = [
-    {
-      type: EventType.MESSAGES_SNAPSHOT,
-      messages: [...views.providerMessages],
-    },
-    ...views.activitySnapshots,
-  ];
+  const activities = views.activitySnapshots
+    .filter(
+      (event): event is Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }> =>
+        event.type === EventType.ACTIVITY_SNAPSHOT,
+    )
+    .map((event) => ({
+      event,
+      node: decodePublicActivity(event.content).node,
+    }));
   const projectedMessages = views.providerMessages;
   const previousMessages = params.previous
     .filter(
@@ -575,11 +571,7 @@ function* compactPublicRoots(params: {
         : [],
     ),
     // Tool-only messages have no text-end event. Their owned activity closes them.
-    ...snapshots.flatMap((event) => {
-      if (event.type !== EventType.ACTIVITY_SNAPSHOT) {
-        return [];
-      }
-      const { node } = decodePublicActivity(event.content);
+    ...activities.flatMap(({ node }) => {
       return node.publicData?.kind === "message" && node.state === "done"
         ? [node.publicData.messageId]
         : [];
@@ -621,13 +613,7 @@ function* compactPublicRoots(params: {
     },
   );
 
-  const activityEvents = snapshots.filter(
-    (event): event is Extract<AGUIEvent, { type: EventType.ACTIVITY_SNAPSHOT }> =>
-      event.type === EventType.ACTIVITY_SNAPSHOT,
-  );
-  const byNodeId = new Map(
-    activityEvents.map((event) => [decodePublicActivity(event.content).node.nodeId, event]),
-  );
+  const byNodeId = new Map(activities.map(({ node }) => [node.nodeId, node]));
   // An ancestor body may already be archived. Its immutable placement remains
   // in the retained descendant's anchors and must survive the next checkpoint.
   const retainedAnchors = new Map(
@@ -637,27 +623,24 @@ function* compactPublicRoots(params: {
         : [],
     ),
   );
-  const activityRoots: Array<Omit<PublicProjectionRoot, "position">> = activityEvents.map(
-    (event) => {
-      const activity = decodePublicActivity(event.content);
+  const activityRoots: Array<Omit<PublicProjectionRoot, "position">> = activities.map(
+    ({ event, node }) => {
       const rootId = rootIdForActivity(event.messageId);
       const prior = previousById.get(rootId);
       const producerSequence =
-        activity.node.publicData?.kind === "elicit"
-          ? activity.node.publicData.producerSequence
-          : activity.node.sequence;
+        node.publicData?.kind === "elicit" ? node.publicData.producerSequence : node.sequence;
       return {
         rootId,
         kind: "activity-subtree",
-        state: prior?.state === "sealed" || activityTerminal(event) ? "sealed" : "mutable",
+        state: prior?.state === "sealed" || activityTerminal(node) ? "sealed" : "mutable",
         attribution: {},
         /* CONDITIONAL-SPREAD: Omit absent logicalTurnId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.logicalTurnId ? { logicalTurnId: params.logicalTurnId } : {}),
         /* CONDITIONAL-SPREAD: Omit absent executionId from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
         ...(params.executionId ? { executionId: params.executionId } : {}),
-        rootNodeId: activity.node.nodeId,
+        rootNodeId: node.nodeId,
         producerSequence,
-        anchors: ancestorAnchors(event, byNodeId, retainedAnchors),
+        anchors: ancestorAnchors(node, byNodeId, retainedAnchors),
         nodes: [{ activityRecordId: event.messageId, producerSequence, event }],
         unloadedDescendantCount: 0,
       } as Omit<PublicProjectionRoot, "position">;

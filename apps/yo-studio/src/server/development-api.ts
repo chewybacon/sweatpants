@@ -89,21 +89,14 @@ export function createStudioDevelopmentApi(
         const operations = result.trace.tasks.flatMap((taskTrace) =>
           taskTrace.operations.flatMap((operation) => {
             const descriptor = operation.descriptor;
-            if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) {
-              return [];
+            switch (descriptor.kind) {
+              case "effect":
+                return [descriptor.name];
+              case "invoke":
+                return [`invoke:${descriptor.child.id}`];
+              default:
+                return [];
             }
-            if (descriptor["kind"] === "effect" && typeof descriptor["name"] === "string") {
-              return [descriptor["name"]];
-            }
-            if (
-              descriptor["kind"] === "invoke" &&
-              descriptor["child"] &&
-              typeof descriptor["child"] === "object"
-            ) {
-              const child = descriptor["child"] as Record<string, unknown>;
-              return typeof child["id"] === "string" ? [`invoke:${child["id"]}`] : [];
-            }
-            return [];
           }),
         );
         send(response, 200, {
