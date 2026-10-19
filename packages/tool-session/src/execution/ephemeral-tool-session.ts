@@ -393,26 +393,9 @@ function decodeSampleResponse(value: Json): SampleExchangeCompletion | undefined
   if (!result.success) {
     return undefined;
   }
-  const response = result.data;
-  const base = {
-    text: response.text,
-    /* CONDITIONAL-SPREAD: Omit absent model from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
-    ...(response.model === undefined ? {} : { model: response.model }),
-    /* CONDITIONAL-SPREAD: Omit absent stopReason from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
-    ...(response.stopReason === undefined ? {} : { stopReason: response.stopReason }),
-  };
-  if ("toolCalls" in response) {
-    return { ...base, toolCalls: response.toolCalls };
-  }
-  if ("parsed" in response) {
-    return {
-      ...base,
-      parsed: response.parsed,
-      /* CONDITIONAL-SPREAD: Omit absent parseError from tool-session and MCP payloads; explicit undefined is not a portable JSON value. */
-      ...(response.parseError === undefined ? {} : { parseError: response.parseError }),
-    };
-  }
-  return base;
+  // Provider call/content metadata is not part of the tool's sample completion.
+  const { calls: _calls, content: _content, ...completion } = result.data;
+  return completion;
 }
 
 function decodeElicitResponse(value: Json): ElicitExchangeCompletion<Json> | undefined {

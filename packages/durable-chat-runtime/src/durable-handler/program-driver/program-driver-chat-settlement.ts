@@ -1,7 +1,9 @@
-import { type Operation } from "effection";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { ElicitExchangeCompletion } from "@sweatpants/agent-sdk";
+import type { Operation } from "effection";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { DurableSemanticRecord } from "@sweatpants/journal-authority";
-import { assertJson } from "@sweatpants/foundation";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { ToolInvocationHostPort } from "@sweatpants/tool-session";
 import {
@@ -109,32 +111,27 @@ function nativeElicitResponseSchema(
  * validation authority, so transformed response output is produced here
  * before the value is accepted by the durable program.
  */
-function* normalizeNativeElicitCompletion(
-  request: ElicitSettlementRequest,
-  index: ChatJournalIndex,
-  pending: PendingElicit,
+export function normalizeElicitCompletion(
   completion: ElicitResponse["completion"],
-): Operation<ElicitResponse["completion"]> {
+  schema: StandardSchemaV1 | undefined,
+  key: string,
+): ElicitExchangeCompletion<Json> {
   if (completion.action !== "accept") {
     return completion;
   }
-  const schema = nativeElicitResponseSchema(request, index, pending);
-  if (!schema) {
-    return completion;
-  }
-  const parsed = validateAuthoredSchema(schema, completion.content);
-  if (parsed.status !== "ok") {
+  const parsed = schema ? validateAuthoredSchema(schema, completion.content) : undefined;
+  if (parsed && parsed.status !== "ok") {
     throw new CrankError(
       "elicit_response_invalid",
-      `Elicitation response validation failed for key "${pending.descriptor.key}"`,
+      `Elicitation response validation failed for key "${key}"`,
     );
   }
   try {
-    return { action: "accept", content: assertJson(parsed.value) };
+    return { action: "accept", content: assertJson(parsed ? parsed.value : completion.content) };
   } catch (error) {
     throw new CrankError(
       "elicit_response_invalid",
-      `Elicitation response for key "${pending.descriptor.key}" is not JSON-serializable`,
+      `Elicitation response for key "${key}" is not JSON-serializable`,
       undefined,
       { cause: error },
     );
@@ -153,18 +150,17 @@ export function* resolveElicitResponses(
     if (!pending) {
       continue;
     }
-    const completion = yield* normalizeNativeElicitCompletion(
-      request,
-      index,
-      pending,
+    const completion = normalizeElicitCompletion(
       response.completion,
+      nativeElicitResponseSchema(request, index, pending),
+      pending.descriptor.key,
     );
     const result = yield* journal.resolvePending({
       sessionId: request.sessionId,
       taskId: pending.taskId,
       pullId: pending.pullId,
       audience: request.participantId,
-      outcome: { status: "ok", value: assertJson(completion) },
+      outcome: { status: "ok", value: completion },
     });
     if (result.status === "accepted" || result.status === "duplicate") {
       accepted += 1;

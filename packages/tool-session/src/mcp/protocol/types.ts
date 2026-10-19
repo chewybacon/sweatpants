@@ -259,7 +259,8 @@ export interface McpCreateMessageResult {
   role: "assistant";
   content: McpContentBlock | McpContentBlock[];
   model: string;
-  stopReason?: McpStopReason;
+  /** Known reasons include McpStopReason; clients may return provider-specific reasons. */
+  stopReason?: string;
 }
 
 // =============================================================================

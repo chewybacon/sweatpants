@@ -210,16 +210,16 @@ export function createMcpContinuations(options: {
   };
 }
 
-const formResponseSchema = z
-  .object({
-    action: z.enum(["accept", "decline", "cancel"]),
-    content: z
-      .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]))
-      .optional(),
-  })
-  .refine((response) =>
-    response.action === "accept" ? response.content !== undefined : response.content === undefined,
-  );
+const formResponseSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("accept"),
+    content: z.record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+    ),
+  }),
+  z.object({ action: z.enum(["decline", "cancel"]), content: z.undefined().optional() }),
+]);
 export type McpFormResponse = z.infer<typeof formResponseSchema>;
 
 /** Match exactly one requested form response; domain schema validation follows in the journal. */

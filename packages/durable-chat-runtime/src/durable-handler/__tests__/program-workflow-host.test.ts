@@ -123,6 +123,13 @@ describe("ProgramWorkflowHost", () => {
         ],
       });
       expect(JSON.stringify(trace)).not.toContain("capability");
+      const expectedTrace = structuredClone(trace);
+      const descriptor = trace.tasks[0]!.operations[0]!.descriptor;
+      if (descriptor.kind !== "elicit") {
+        throw new Error("expected an elicitation descriptor");
+      }
+      descriptor.message = "changed by trace consumer";
+      expect(yield* host.trace(opened.sessionId)).toEqual(expectedTrace);
     });
   });
 

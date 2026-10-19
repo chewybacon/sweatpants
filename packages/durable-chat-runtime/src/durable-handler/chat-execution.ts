@@ -346,7 +346,16 @@ export function* executeChatTurn(
         context: body.context ?? [],
         forwardedProps: body.forwardedProps ?? {},
         /* CONDITIONAL-SPREAD: Omit absent resume from chat admission, journal, and projection records; explicit undefined is not a portable JSON value. */
-        ...(body.resume ? { resume: body.resume } : {}),
+        ...(body.resume
+          ? {
+              resume: body.resume.map(({ interruptId, status, payload }) => {
+                if (payload === undefined) {
+                  return { interruptId, status };
+                }
+                return { interruptId, status, payload };
+              }),
+            }
+          : {}),
       },
     };
     const proposedAuthorityTurn = {
