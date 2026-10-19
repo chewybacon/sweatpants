@@ -34,20 +34,20 @@ The peer extension declaration has this closed `params` shape:
 
 ```ts
 interface SweatpantsPeerProfileParamsV1 {
-    protocolVersion: 1;
-    delegatedEffectsVersion: 1;
-    requirementManifestEndpoint: string;
-    delegatedEffectsEndpoint: string;
-    retention: {
-        taskSeconds: number;
-        invocationBindingSeconds: number;
-        effectEventSeconds: number;
-        grantSeconds: number;
-        effectResponseSeconds: number;
-        cancellationEvidenceSeconds: number;
-        terminalEvidenceSeconds: number;
-    };
-    terminalEvidenceKeyId?: string;
+  protocolVersion: 1;
+  delegatedEffectsVersion: 1;
+  requirementManifestEndpoint: string;
+  delegatedEffectsEndpoint: string;
+  retention: {
+    taskSeconds: number;
+    invocationBindingSeconds: number;
+    effectEventSeconds: number;
+    grantSeconds: number;
+    effectResponseSeconds: number;
+    cancellationEvidenceSeconds: number;
+    terminalEvidenceSeconds: number;
+  };
+  terminalEvidenceKeyId?: string;
 }
 ```
 

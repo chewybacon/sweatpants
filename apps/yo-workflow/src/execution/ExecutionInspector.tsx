@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
+import { displayInspectedValue } from "./inspection.ts";
 import { CheckpointSummary } from "./CheckpointSummary.tsx";
-import { executionViewSchema, type ExecutionView } from "./contract.ts";
+import {
+  executionViewSchema,
+  languageCatalogSchema,
+  type WorkflowLanguage,
+  type ExecutionView,
+} from "./contract.ts";
 
 const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 export function ExecutionInspector() {
+  const [languages, setLanguages] = useState<WorkflowLanguage[]>([]);
+  const [language, setLanguage] = useState("scheme");
   const [view, setView] = useState<ExecutionView | null>(null);
   const [prompt, setPrompt] = useState(
     "Review the launch announcement, and if I approve it, send it to Sam.",
@@ -27,7 +35,8 @@ export function ExecutionInspector() {
               body: JSON.stringify({
                 action,
                 choice,
-                id,
+                id: action === "start" ? undefined : id,
+                language: action === "start" ? language : view?.language.id,
                 revision: view?.revision,
                 /* CONDITIONAL-SPREAD: Omit absent prompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(author ? { prompt } : {}),
@@ -56,23 +65,49 @@ export function ExecutionInspector() {
     }
   }
   useEffect(() => {
+    void fetch("/api/execution")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw Error("Unable to load workflow languages");
+        }
+        const catalog = languageCatalogSchema.parse(await response.json());
+        setLanguages(catalog.languages);
+      })
+      .catch((cause) => setError(String(cause)));
+  }, []);
+  useEffect(() => {
     if (new URL(location.href).searchParams.has("run")) {
       void request();
     }
   }, []);
   const state = view?.inspection;
+  const execution = state?.execution;
   const parked = view?.status === "parked";
   return (
     <div className="execution-inspector">
       <header className="execution-heading">
         <div>
-          <p className="execution-eyebrow">WORKFLOW LAB / HOOT</p>
+          <p className="execution-eyebrow">WORKFLOW LAB</p>
           <h1>Inside the execution.</h1>
           <p className="execution-muted">
-            Follow the stack, inspect captured state, and restore into a fresh Wasm instance.
+            Follow the stack, inspect captured state, and restore into a fresh runtime instance.
           </p>
         </div>
-        <button disabled={busy} onClick={() => void request("start")}>
+        <label className="execution-language">
+          Language for new run
+          <select
+            value={language}
+            disabled={busy || !languages.length}
+            onChange={(event) => setLanguage(event.target.value)}
+          >
+            {languages.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label} · {item.runtime}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button disabled={busy || !languages.length} onClick={() => void request("start")}>
           {view ? "New confirmation run" : "Run confirmation"}
         </button>
       </header>
@@ -89,7 +124,7 @@ export function ExecutionInspector() {
           disabled={busy}
         />
         <button
-          disabled={busy || !prompt.trim()}
+          disabled={busy || !languages.length || !prompt.trim()}
           onClick={() => void request("start", undefined, true)}
         >
           {busy ? "Working…" : "Author and run"}
@@ -118,7 +153,13 @@ export function ExecutionInspector() {
           {error}
           <button
             disabled={busy}
-            onClick={() => void (authoringError ? request("start", undefined, true) : request())}
+            onClick={() => {
+              if (!languages.length) {
+                location.reload();
+                return;
+              }
+              void (authoringError ? request("start", undefined, true) : request());
+            }}
           >
             {authoringError ? "Retry authoring" : "Reload state"}
           </button>
@@ -144,7 +185,8 @@ export function ExecutionInspector() {
               {busy ? "Working…" : view.status}
             </span>
             <span className="execution-muted">
-              {state?.steps ?? 0} evaluator steps ·{" "}
+              {view.language.label} · {view.language.runtime} ·{" "}
+              {state?.steps != null ? `${state.steps} evaluator steps · ` : ""}
               {((state?.snapshotBytes ?? 0) / 1024).toFixed(1)} KB state
             </span>
             <div className="execution-actions">
@@ -166,8 +208,8 @@ export function ExecutionInspector() {
                 <span className="execution-muted">outer → inner</span>
               </header>
               <ol className="execution-stack">
-                {state?.calls.map((name, index) => (
-                  <li key={`${name}-${index}`}>
+                {execution?.calls.map(({ id, name }, index) => (
+                  <li key={id}>
                     <span className="execution-stack-index">
                       {String(index + 1).padStart(2, "0")}
                     </span>
@@ -177,7 +219,7 @@ export function ExecutionInspector() {
                         {name === "review_draft"
                           ? "Compiled developer generator"
                           : name === "workflow"
-                            ? "Scheme caller"
+                            ? `${view.language.label} caller`
                             : "Evaluator call"}
                       </small>
                     </div>
@@ -218,26 +260,50 @@ export function ExecutionInspector() {
               )}
               <div className="execution-cleanups">
                 <h3>Scope cleanup</h3>
-                {state?.cleanups
-                  .filter((c) => c.remaining.length || c.kind !== "registered")
-                  .map((cleanup, index) => (
+                {execution?.unwind.map((entry, index) => {
+                  const pending =
+                    entry.kind === "scope"
+                      ? entry.pendingCleanup
+                      : entry.kind === "cleanup"
+                        ? entry.remaining
+                        : [];
+                  if (entry.kind === "scope" && !pending.length) {
+                    return null;
+                  }
+                  return (
                     <div key={index}>
-                      <span className="execution-status">{cleanup.kind}</span>
-                      {cleanup.remaining.map((item, i) => (
+                      <span className="execution-status">{entry.kind}</span>
+                      {pending.map((item, i) => (
                         <p key={i}>
-                          <code>{item}</code>
+                          <code>{displayInspectedValue(item)}</code>
                         </p>
                       ))}
-                      {cleanup.completion && (
+                      {entry.kind !== "scope" && (
                         <p>
-                          Then continue <code>{cleanup.completion}</code>
+                          Then continue{" "}
+                          <code>
+                            {entry.completion.kind}
+                            {"value" in entry.completion
+                              ? `: ${displayInspectedValue(entry.completion.value)}`
+                              : ""}
+                          </code>
                         </p>
                       )}
-                      {cleanup.scope && <small>Scope: {cleanup.scope}</small>}
+                      {entry.kind === "scope" && <small>Scope: {entry.label}</small>}
                     </div>
-                  ))}
-                {!state?.cleanups.some((c) => c.remaining.length || c.kind !== "registered") && (
-                  <p className="execution-muted">No pending cleanup.</p>
+                  );
+                })}
+                {!execution?.unwind.some(
+                  (entry) => entry.kind !== "scope" || entry.pendingCleanup.length,
+                ) && (
+                  <p className="execution-muted">
+                    {execution?.availability.unwind === "unavailable"
+                      ? "Cleanup inspection is unavailable for this runtime."
+                      : "No pending cleanup."}
+                  </p>
+                )}
+                {execution?.truncated && (
+                  <p className="execution-muted">Inspection shortened to its display limits.</p>
                 )}
               </div>
             </section>
@@ -254,10 +320,10 @@ export function ExecutionInspector() {
               </header>
               {tab === "source" ? (
                 <>
-                  <h3>Developer generator</h3>
+                  <h3>Developer workflow · {view.language.developerLanguage}</h3>
                   <pre>{view.developerSource}</pre>
-                  <h3>Emitted Scheme + caller</h3>
-                  <pre>{view.schemeSource}</pre>
+                  <h3>Linked {view.language.label} program</h3>
+                  <pre>{view.programSource}</pre>
                 </>
               ) : (
                 <>
@@ -265,18 +331,19 @@ export function ExecutionInspector() {
                   <details className="execution-internals">
                     <summary>Internals · environments and continuation frames</summary>
                     <p className="execution-muted">
-                      Environment {state?.currentEnvironment} is current. Closures reference shared
-                      environment IDs.
+                      {state?.currentEnvironment == null
+                        ? "Lua frame/register data is available below and in the checkpoint. Lexical environment names are not projected."
+                        : `Environment ${state.currentEnvironment} is current. Closures reference shared environment IDs.`}
                     </p>
-                    {state?.environments.map((env) => (
+                    {execution?.environments.map((env) => (
                       <details
                         key={env.id}
-                        open={env.id === state.currentEnvironment || env.id === 0}
+                        open={env.id === String(state?.currentEnvironment) || env.id === "0"}
                       >
                         <summary>
                           Environment {env.id}{" "}
                           <span className="execution-muted">
-                            {env.parent === null ? "· root" : `→ ${env.parent}`}
+                            {env.parentId === null ? "· root" : `→ ${env.parentId}`}
                           </span>
                         </summary>
                         <dl>
@@ -284,7 +351,7 @@ export function ExecutionInspector() {
                             <div key={binding.name}>
                               <dt>{binding.name}</dt>
                               <dd>
-                                <code>{binding.value}</code>
+                                <code>{displayInspectedValue(binding.value)}</code>
                               </dd>
                             </div>
                           ))}
@@ -329,6 +396,7 @@ export function ExecutionInspector() {
               <h2>Boundary timeline</h2>
               <span className="execution-muted">Latest first · bounded to 100 events</span>
             </header>
+            {/* oxlint-disable-next-line unicorn/no-array-reverse -- App targets ES2022; reverse an owned copy. */}
             {[...view.trace].reverse().map((event) => (
               <details key={event.sequence}>
                 <summary>

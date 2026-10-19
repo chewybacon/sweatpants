@@ -1,7 +1,7 @@
 import { resource, type Operation } from "effection";
 import {
   assertKernelCompatibility,
-  type KernelIdentity,
+  type WorkflowRuntime,
   type KernelSnapshot,
   type WorkflowKernel,
   type WorkflowProgram,
@@ -11,9 +11,7 @@ import {
  * Opt-in dependencies for a kernel computation backend.
  * No registration, Wasm loading, or journal mutation happens on import.
  */
-export interface KernelBackendDependencies {
-  readonly kernelIdentity: KernelIdentity;
-  readonly createKernel: () => Operation<WorkflowKernel>;
+export interface KernelBackendDependencies extends WorkflowRuntime {
   /** Must verify the artifact's content digest, not just its claimed field. */
   readonly loadProgram: (digest: string) => Operation<WorkflowProgram>;
 }

@@ -15,11 +15,11 @@ Effection backend, or an explicit backend:
 
 ```ts
 const backend = createKernelProgramBackend({
-    kernelIdentity,
-    createKernel,
-    loadProgram,
-    manifest,
-    bindOperation,
+  kernelIdentity,
+  createKernel,
+  loadProgram,
+  manifest,
+  bindOperation,
 });
 const driver = createWorkflowProgramDriver(backend);
 ```
@@ -50,3 +50,17 @@ The Hoot implementation remains experimental, in
 `experiments/workflow-kernel/hoot-composition`. Its backend adapter uses this package;
 the Wasm build remains separate. Kernel boundaries currently expose operations and
 terminal results, not emissions. Native generator emission support is unchanged.
+
+## Pinned program bundles
+
+`createKernelProgramBundle(implementation, identity, contract)` rejects incompatible
+program formats and creates a detached artifact/manifest pair. Its versioned digest
+covers executable payload, kernel identity and durable contract. `loadKernelProgram`
+recomputes that digest, checks both claimed digests and the requested identity, and
+returns detached code. This replaces Hoot's local digest construction and claimed-
+digest-only loader. It does not authenticate an artifact or journal position.
+
+`KernelBackendDependencies` extends the shared `WorkflowRuntime` acquisition
+contract. Artifact loading remains separate from runtime acquisition; the existing
+`prepareWorkflow` lifecycle still owns cleanup and compatibility checks. No driver
+registry or second runtime is introduced by these contracts.

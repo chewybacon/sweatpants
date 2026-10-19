@@ -178,7 +178,7 @@ function* installResourceHost(resources: AgentCoreToolInvocationResources): Oper
       return invocationResource(session, bindings, resources);
     },
   };
-  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost({ driver: factory }));
   yield* ToolInvocationEventSourcePort.installDriver({
     *open(invocationId) {
       const resource = yield* factory.open(invocationId);

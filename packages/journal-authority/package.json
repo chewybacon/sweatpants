@@ -1,167 +1,167 @@
 {
-    "name": "@sweatpants/journal-authority",
-    "version": "0.1.0",
-    "description": "Journal authority APIs and execution-store contracts",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./store": {
-            "development": {
-                "import": "./src/store/store.ts",
-                "types": "./src/store/store.ts"
-            },
-            "import": {
-                "types": "./dist/store.d.ts",
-                "default": "./dist/store.js"
-            },
-            "default": "./src/store/store.ts"
-        },
-        "./memory": {
-            "development": {
-                "import": "./src/store/memory.ts",
-                "types": "./src/store/memory.ts"
-            },
-            "import": {
-                "types": "./dist/memory.d.ts",
-                "default": "./dist/memory.js"
-            },
-            "default": "./src/store/memory.ts"
-        },
-        "./store-persistence": {
-            "development": {
-                "import": "./src/store/store-persistence.ts",
-                "types": "./src/store/store-persistence.ts"
-            },
-            "import": {
-                "types": "./dist/store-persistence.d.ts",
-                "default": "./dist/store-persistence.js"
-            },
-            "default": "./src/store/store-persistence.ts"
-        },
-        "./store-planners": {
-            "development": {
-                "import": "./src/store/store-planners.ts",
-                "types": "./src/store/store-planners.ts"
-            },
-            "import": {
-                "types": "./dist/store-planners.d.ts",
-                "default": "./dist/store-planners.js"
-            },
-            "default": "./src/store/store-planners.ts"
-        },
-        "./store-repository": {
-            "development": {
-                "import": "./src/store/store-repository.ts",
-                "types": "./src/store/store-repository.ts"
-            },
-            "import": {
-                "types": "./dist/store-repository.d.ts",
-                "default": "./dist/store-repository.js"
-            },
-            "default": "./src/store/store-repository.ts"
-        },
-        "./testing": {
-            "development": {
-                "import": "./src/testing/testing.ts",
-                "types": "./src/testing/testing.ts"
-            },
-            "import": {
-                "types": "./dist/testing.d.ts",
-                "default": "./dist/testing.js"
-            },
-            "default": "./src/testing/testing.ts"
-        },
-        "./api": {
-            "development": {
-                "import": "./src/api.ts",
-                "types": "./src/api.ts"
-            },
-            "import": {
-                "types": "./dist/api.d.ts",
-                "default": "./dist/api.js"
-            },
-            "default": "./src/api.ts"
-        },
-        "./turn-authority": {
-            "development": {
-                "import": "./src/shell/turn-authority.ts",
-                "types": "./src/shell/turn-authority.ts"
-            },
-            "import": {
-                "types": "./dist/turn-authority.d.ts",
-                "default": "./dist/turn-authority.js"
-            },
-            "default": "./src/shell/turn-authority.ts"
-        },
-        "./schema-registry": {
-            "development": {
-                "import": "./src/contract/schema-registry.ts",
-                "types": "./src/contract/schema-registry.ts"
-            },
-            "import": {
-                "types": "./dist/schema-registry.d.ts",
-                "default": "./dist/schema-registry.js"
-            },
-            "default": "./src/contract/schema-registry.ts"
-        },
-        "./store-conformance": {
-            "development": {
-                "import": "./src/store-conformance.ts",
-                "types": "./src/store-conformance.ts"
-            },
-            "import": {
-                "types": "./src/store-conformance.d.ts",
-                "default": "./dist/store-conformance.js"
-            },
-            "default": "./src/store-conformance.ts"
-        },
-        "./sql-codec": {
-            "development": {
-                "import": "./src/sql-codec.ts",
-                "types": "./src/sql-codec.ts"
-            },
-            "import": {
-                "types": "./dist/sql-codec.d.ts",
-                "default": "./dist/sql-codec.js"
-            },
-            "default": "./src/sql-codec.ts"
-        }
+  "name": "@sweatpants/journal-authority",
+  "version": "0.1.0",
+  "description": "Journal authority APIs and execution-store contracts",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./store": {
+      "development": {
+        "import": "./src/store/store.ts",
+        "types": "./src/store/store.ts"
+      },
+      "import": {
+        "types": "./dist/store.d.ts",
+        "default": "./dist/store.js"
+      },
+      "default": "./src/store/store.ts"
     },
-    "dependencies": {
-        "@noble/hashes": "^2.2.0",
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/durable-storage-kernel": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "base64-js": "1.5.1",
-        "effection": "catalog:",
-        "zod": "catalog:"
+    "./memory": {
+      "development": {
+        "import": "./src/store/memory.ts",
+        "types": "./src/store/memory.ts"
+      },
+      "import": {
+        "types": "./dist/memory.d.ts",
+        "default": "./dist/memory.js"
+      },
+      "default": "./src/store/memory.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./store-persistence": {
+      "development": {
+        "import": "./src/store/store-persistence.ts",
+        "types": "./src/store/store-persistence.ts"
+      },
+      "import": {
+        "types": "./dist/store-persistence.d.ts",
+        "default": "./dist/store-persistence.js"
+      },
+      "default": "./src/store/store-persistence.ts"
+    },
+    "./store-planners": {
+      "development": {
+        "import": "./src/store/store-planners.ts",
+        "types": "./src/store/store-planners.ts"
+      },
+      "import": {
+        "types": "./dist/store-planners.d.ts",
+        "default": "./dist/store-planners.js"
+      },
+      "default": "./src/store/store-planners.ts"
+    },
+    "./store-repository": {
+      "development": {
+        "import": "./src/store/store-repository.ts",
+        "types": "./src/store/store-repository.ts"
+      },
+      "import": {
+        "types": "./dist/store-repository.d.ts",
+        "default": "./dist/store-repository.js"
+      },
+      "default": "./src/store/store-repository.ts"
+    },
+    "./testing": {
+      "development": {
+        "import": "./src/testing/testing.ts",
+        "types": "./src/testing/testing.ts"
+      },
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "default": "./src/testing/testing.ts"
+    },
+    "./api": {
+      "development": {
+        "import": "./src/api.ts",
+        "types": "./src/api.ts"
+      },
+      "import": {
+        "types": "./dist/api.d.ts",
+        "default": "./dist/api.js"
+      },
+      "default": "./src/api.ts"
+    },
+    "./turn-authority": {
+      "development": {
+        "import": "./src/shell/turn-authority.ts",
+        "types": "./src/shell/turn-authority.ts"
+      },
+      "import": {
+        "types": "./dist/turn-authority.d.ts",
+        "default": "./dist/turn-authority.js"
+      },
+      "default": "./src/shell/turn-authority.ts"
+    },
+    "./schema-registry": {
+      "development": {
+        "import": "./src/contract/schema-registry.ts",
+        "types": "./src/contract/schema-registry.ts"
+      },
+      "import": {
+        "types": "./dist/schema-registry.d.ts",
+        "default": "./dist/schema-registry.js"
+      },
+      "default": "./src/contract/schema-registry.ts"
+    },
+    "./store-conformance": {
+      "development": {
+        "import": "./src/store-conformance.ts",
+        "types": "./src/store-conformance.ts"
+      },
+      "import": {
+        "types": "./src/store-conformance.d.ts",
+        "default": "./dist/store-conformance.js"
+      },
+      "default": "./src/store-conformance.ts"
+    },
+    "./sql-codec": {
+      "development": {
+        "import": "./src/sql-codec.ts",
+        "types": "./src/sql-codec.ts"
+      },
+      "import": {
+        "types": "./dist/sql-codec.d.ts",
+        "default": "./dist/sql-codec.js"
+      },
+      "default": "./src/sql-codec.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/durable-storage-kernel": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "base64-js": "1.5.1",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

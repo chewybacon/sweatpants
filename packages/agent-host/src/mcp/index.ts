@@ -69,7 +69,9 @@ export function createMcpApp(config: McpAppConfig): McpApp {
               yield* prepared.setup();
             }
             const factory = yield* createResources();
-            yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+            yield* ToolInvocationHostPort.installDriver(
+              createToolInvocationHost({ driver: factory }),
+            );
             yield* ToolInvocationEventSourcePort.installDriver({
               *open(id) {
                 return (yield* factory.open(id))?.projection ?? null;

@@ -11,8 +11,8 @@ import {
 import {
   KernelExecutor,
   createKernelExecution,
-  type KernelExecutionState,
-  type KernelBoundary,
+  type WorkflowExecutionState,
+  type WorkflowBoundary,
   type WorkflowKernel,
 } from "@sweatpants/workflow-kernel";
 import { createKernelProgramBackend } from "../index.ts";
@@ -37,27 +37,30 @@ function fixture(
   startError?: Error,
 ) {
   const events: string[] = [];
-  const boundary: KernelBoundary = {
+  const boundary: WorkflowBoundary = {
     kind: "suspended",
     suspensionId: "1",
-    request: { site: "approval", request: null },
+    request: { site: "approval", binding: "approval", input: null },
   };
-  function executionState(): KernelExecutionState {
-    return createKernelExecution(boundary, {
-      *turn(command) {
-        if (command.kind === "cancel") {
-          events.push("cancel");
-          return { kind: "cancelled" };
-        }
-        const reply = command.reply;
-        events.push("resume");
-        return { kind: "completed", value: reply.value };
-      },
-      *capture() {
-        return { kernel: identity, programDigest: "digest", state: { waiting: true } };
-      },
-      *dispose() {
-        events.push("dispose");
+  function executionState(): WorkflowExecutionState {
+    return createKernelExecution({
+      initial: boundary,
+      driver: {
+        *turn(command) {
+          if (command.kind === "cancel") {
+            events.push("cancel");
+            return { kind: "cancelled" };
+          }
+          const reply = command.reply;
+          events.push("resume");
+          return { kind: "completed", value: reply.value };
+        },
+        *capture() {
+          return { kernel: identity, programDigest: "digest", state: { waiting: true } };
+        },
+        *dispose() {
+          events.push("dispose");
+        },
       },
     });
   }

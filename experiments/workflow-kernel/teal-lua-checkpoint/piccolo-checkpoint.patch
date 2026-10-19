@@ -1,0 +1,758 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 06712a6..0642723 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -38,6 +38,7 @@ license.workspace = true
+ repository.workspace = true
+ 
+ [dependencies]
++serde = { version = "1.0", features = ["derive"] }
+ ahash.workspace = true
+ allocator-api2.workspace = true
+ anyhow.workspace = true
+diff --git a/src/callback.rs b/src/callback.rs
+index 28898ba..a2e9bbf 100644
+--- a/src/callback.rs
++++ b/src/callback.rs
+@@ -284,7 +284,13 @@ pub enum SequencePoll<'gc> {
+ /// [`SequencePoll`] values from [`Sequence::poll`]. Once the triggered action completes, either
+ /// [`Sequence::poll`] or [`Sequence::error`] will be called, depending on whether the triggered
+ /// action has completed successfully or errored.
++/// Explicitly supported portable native continuations. Unknown sequences fail capture.
++#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
++pub enum SequenceCheckpoint { ProtectedCall }
++
+ pub trait Sequence<'gc>: Collect {
++    fn checkpoint(&self) -> Option<SequenceCheckpoint> { None }
++
+     /// Called by the running [`Executor`](crate::Executor) when the `Sequence` is first started
+     /// with the arguments to the `Sequence`, and whenever a triggered action completes with the
+     /// action's return values.
+@@ -336,6 +342,10 @@ impl<'gc> fmt::Debug for BoxSequence<'gc> {
+ }
+ 
+ impl<'gc> BoxSequence<'gc> {
++    pub fn checkpoint(&self) -> Option<SequenceCheckpoint> {
++        self.0.as_ref().get_ref().checkpoint()
++    }
++
+     pub fn new(mc: &Mutation<'gc>, sequence: impl Sequence<'gc> + 'gc) -> Self {
+         let b = boxed::Box::new_in(sequence, MetricsAlloc::from_metrics(mc.metrics().clone()));
+         // TODO: Required unsafety due to do lack of `CoerceUnsized` on allocator_api2 `Box` type,
+diff --git a/src/stdlib/base.rs b/src/stdlib/base.rs
+index 5a18ca8..7ca9a06 100644
+--- a/src/stdlib/base.rs
++++ b/src/stdlib/base.rs
+@@ -348,6 +348,10 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
+ pub struct PCall;
+ 
+ impl<'gc> Sequence<'gc> for PCall {
++    fn checkpoint(&self) -> Option<crate::callback::SequenceCheckpoint> {
++        Some(crate::callback::SequenceCheckpoint::ProtectedCall)
++    }
++
+     fn poll(
+         self: Pin<&mut Self>,
+         ctx: Context<'gc>,
+@@ -365,7 +369,11 @@ impl<'gc> Sequence<'gc> for PCall {
+         error: Error<'gc>,
+         mut stack: Stack<'gc, '_>,
+     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
+-        stack.replace(ctx, (false, error));
++        let value = match error {
++            Error::Lua(error) => error.0,
++            Error::Runtime(error) => Value::String(ctx.intern(error.to_string().as_bytes())),
++        };
++        stack.replace(ctx, (false, value));
+         Ok(SequencePoll::Return)
+     }
+ }
+diff --git a/src/stdlib/math.rs b/src/stdlib/math.rs
+index 99ae3e6..7133c83 100644
+--- a/src/stdlib/math.rs
++++ b/src/stdlib/math.rs
+@@ -337,7 +337,7 @@ pub fn load_random<'gc>(ctx: Context<'gc>, math: Table<'gc>) {
+                     (Some(high), Some(low)) => {
+                         let high_bytes = high.to_ne_bytes();
+                         let low_bytes = low.to_ne_bytes();
+-                        let seed: [u8; 32] = core::array::from_fn(|idx| {
++                        let seed = core::array::from_fn(|idx| {
+                             let idx_mod_16 = idx % 16;
+                             if idx_mod_16 >= 8 {
+                                 high_bytes[idx_mod_16 - 8]
+diff --git a/src/stdlib/mod.rs b/src/stdlib/mod.rs
+index aa76615..e43faab 100644
+--- a/src/stdlib/mod.rs
++++ b/src/stdlib/mod.rs
+@@ -9,3 +9,5 @@ pub use self::{
+     base::load_base, coroutine::load_coroutine, io::load_io, math::load_math, string::load_string,
+     table::load_table,
+ };
++
++pub(crate) use base::PCall;
+diff --git a/src/thread/mod.rs b/src/thread/mod.rs
+index 8e6a059..6da765c 100644
+--- a/src/thread/mod.rs
++++ b/src/thread/mod.rs
+@@ -1,3 +1,4 @@
++pub mod checkpoint;
+ mod executor;
+ mod thread;
+ mod vm;
+diff --git a/src/thread/thread.rs b/src/thread/thread.rs
+index a03d4c2..9bb1e2a 100644
+--- a/src/thread/thread.rs
++++ b/src/thread/thread.rs
+@@ -238,8 +238,8 @@ impl<'gc> Thread<'gc> {
+ #[derive(Debug, Copy, Clone, Collect)]
+ #[collect(no_drop)]
+ pub struct OpenUpValue<'gc> {
+-    thread: GcWeak<'gc, RefLock<ThreadState<'gc>>>,
+-    stack_index: usize,
++    pub(super) thread: GcWeak<'gc, RefLock<ThreadState<'gc>>>,
++    pub(super) stack_index: usize,
+ }
+ 
+ impl<'gc> OpenUpValue<'gc> {
+diff --git a/src/thread/checkpoint.rs b/src/thread/checkpoint.rs
+new file mode 100644
+index 0000000..68c8cf0
+--- /dev/null
++++ b/src/thread/checkpoint.rs
+@@ -0,0 +1,636 @@
++//! Experimental trusted-state checkpoint codec. Not an untrusted snapshot loader.
++//! Only a single thread parked at a direct callback yield is supported.
++use super::thread::{Frame, LuaReturn, OpenUpValue};
++use crate::{callback::SequenceCheckpoint, BoxSequence};
++use crate::{
++    closure::{UpValue, UpValueState},
++    types::VarCount,
++    Callback, Closure, Context, Function, FunctionPrototype, Table, Thread, ThreadMode, Value,
++};
++use allocator_api2::vec::Vec as AVec;
++use gc_arena::{allocator_api::MetricsAlloc, Gc};
++use serde::{Deserialize, Serialize};
++use std::collections::{HashMap, HashSet};
++
++type Result<T> = std::result::Result<T, String>;
++const LIMIT: usize = 100_000;
++
++#[derive(Clone, Debug, Serialize, Deserialize)]
++pub enum SavedValue {
++    Nil,
++    Bool(bool),
++    Integer(String),
++    Number(String),
++    Bytes(Vec<u8>),
++    Table(usize),
++    Closure(usize),
++    Native(usize),
++}
++#[derive(Debug, Serialize, Deserialize)]
++pub enum Node {
++    Table(Vec<(SavedValue, SavedValue)>),
++    Closure { prototype: usize, cells: Vec<usize> },
++}
++#[derive(Debug, Serialize, Deserialize)]
++pub enum Cell {
++    Open(usize),
++    Closed(SavedValue),
++}
++#[derive(Debug, Serialize, Deserialize)]
++pub enum SavedFrame {
++    ProtectedCall {
++        bottom: usize,
++    },
++    Lua {
++        bottom: usize,
++        closure: usize,
++        base: usize,
++        variable: bool,
++        pc: usize,
++        stack_size: usize,
++        returns: Option<u8>,
++    },
++}
++#[derive(Debug, Serialize, Deserialize)]
++pub struct Snapshot {
++    pub format: String,
++    pub program: String,
++    pub stack: Vec<SavedValue>,
++    pub frames: Vec<SavedFrame>,
++    pub nodes: Vec<Node>,
++    pub cells: Vec<Cell>,
++    pub open_cells: Vec<usize>,
++}
++
++/// Flatten pinned code in preorder; rebuilding this table never executes guest code.
++pub fn prototypes<'gc>(
++    root: Gc<'gc, FunctionPrototype<'gc>>,
++) -> Vec<Gc<'gc, FunctionPrototype<'gc>>> {
++    let mut result = Vec::new();
++    let mut pending = vec![root];
++    while let Some(p) = pending.pop() {
++        result.push(p);
++        pending.extend(p.prototypes.iter().rev().copied());
++    }
++    result
++}
++
++struct Encoder<'a, 'gc> {
++    protos: &'a [Gc<'gc, FunctionPrototype<'gc>>],
++    natives: &'a [Callback<'gc>],
++    objects: Vec<Value<'gc>>,
++    object_ids: HashMap<(u8, usize), usize>,
++    cells: Vec<UpValue<'gc>>,
++    cell_ids: HashMap<usize, usize>,
++    work: usize,
++    bytes: usize,
++}
++impl<'a, 'gc> Encoder<'a, 'gc> {
++    fn cell(&mut self, cell: UpValue<'gc>) -> Result<usize> {
++        self.work += 1;
++        if self.work > LIMIT {
++            return Err("capture work limit".into());
++        }
++        let key = Gc::as_ptr(cell.into_inner()) as usize;
++        if let Some(id) = self.cell_ids.get(&key) {
++            return Ok(*id);
++        }
++        if self.cells.len() >= LIMIT {
++            return Err("cell budget exceeded".into());
++        }
++        let id = self.cells.len();
++        self.cell_ids.insert(key, id);
++        self.cells.push(cell);
++        Ok(id)
++    }
++    fn value(&mut self, value: Value<'gc>) -> Result<SavedValue> {
++        self.work += 1;
++        if self.work > LIMIT {
++            return Err("capture work limit".into());
++        }
++        if let Value::String(s) = value {
++            self.bytes += s.as_bytes().len();
++            if self.bytes > 1024 * 1024 {
++                return Err("capture byte limit".into());
++            }
++        }
++        Ok(match value {
++            Value::Nil => SavedValue::Nil,
++            Value::Boolean(b) => SavedValue::Bool(b),
++            Value::Integer(i) => SavedValue::Integer(i.to_string()),
++            Value::Number(n) => SavedValue::Number(n.to_bits().to_string()),
++            Value::String(s) => SavedValue::Bytes(s.as_bytes().to_vec()),
++            Value::Function(Function::Callback(c)) => SavedValue::Native(
++                self.natives
++                    .iter()
++                    .position(|v| *v == c)
++                    .ok_or("unregistered native function")?,
++            ),
++            Value::Table(_) | Value::Function(Function::Closure(_)) => {
++                let key = match value {
++                    Value::Table(t) => (0, Gc::as_ptr(t.into_inner()) as usize),
++                    Value::Function(Function::Closure(c)) => {
++                        (1, Gc::as_ptr(c.into_inner()) as usize)
++                    }
++                    _ => unreachable!(),
++                };
++                let id = if let Some(id) = self.object_ids.get(&key) {
++                    *id
++                } else {
++                    if self.objects.len() >= LIMIT {
++                        return Err("object budget exceeded".into());
++                    }
++                    let id = self.objects.len();
++                    self.object_ids.insert(key, id);
++                    self.objects.push(value);
++                    id
++                };
++                if key.0 == 0 {
++                    SavedValue::Table(id)
++                } else {
++                    SavedValue::Closure(id)
++                }
++            }
++            _ => return Err("userdata or additional coroutine is not checkpointable".into()),
++        })
++    }
++}
++
++pub fn capture<'gc>(
++    ctx: Context<'gc>,
++    thread: Thread<'gc>,
++    program: &str,
++    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
++    natives: &[Callback<'gc>],
++) -> Result<Snapshot> {
++    if thread.mode() != ThreadMode::Suspended {
++        return Err("thread must be suspended after taking its request".into());
++    }
++    let inner = thread.into_inner();
++    let state = inner.borrow();
++    if !matches!(state.frames.last(), Some(Frame::Yielded)) {
++        return Err("expected yielded sentinel".into());
++    }
++    if state.frames.len() > LIMIT || state.stack.len() > LIMIT {
++        return Err("stack budget exceeded".into());
++    }
++    let mut enc = Encoder {
++        protos,
++        natives,
++        objects: vec![],
++        object_ids: HashMap::new(),
++        cells: vec![],
++        cell_ids: HashMap::new(),
++        work: 0,
++        bytes: 0,
++    };
++    let mut frames = Vec::new();
++    for frame in &state.frames[..state.frames.len() - 1] {
++        if let Frame::Sequence {
++            bottom,
++            sequence,
++            pending_error: None,
++        } = frame
++        {
++            match sequence.checkpoint() {
++                Some(SequenceCheckpoint::ProtectedCall) => {
++                    frames.push(SavedFrame::ProtectedCall { bottom: *bottom })
++                }
++                None => return Err("unknown native sequence is not checkpointable".into()),
++            }
++            continue;
++        }
++        let Frame::Lua {
++            bottom,
++            closure,
++            base,
++            is_variable,
++            pc,
++            stack_size,
++            expected_return,
++        } = frame
++        else {
++            return Err("native sequence/callback frames are not checkpointable".into());
++        };
++        let Some(LuaReturn::Normal(count)) = expected_return else {
++            return Err("unsupported frame return state".into());
++        };
++        let SavedValue::Closure(id) = enc.value(Value::Function(Function::Closure(*closure)))?
++        else {
++            unreachable!()
++        };
++        frames.push(SavedFrame::Lua {
++            bottom: *bottom,
++            closure: id,
++            base: *base,
++            variable: *is_variable,
++            pc: *pc,
++            stack_size: *stack_size,
++            returns: count.to_constant(),
++        });
++    }
++    let stack = state
++        .stack
++        .iter()
++        .map(|v| enc.value(*v))
++        .collect::<Result<Vec<_>>>()?;
++    let open_cells = state
++        .open_upvalues
++        .iter()
++        .map(|v| enc.cell(*v))
++        .collect::<Result<Vec<_>>>()?;
++    let mut nodes = Vec::new();
++    let mut cells = Vec::new();
++    while nodes.len() < enc.objects.len() || cells.len() < enc.cells.len() {
++        while nodes.len() < enc.objects.len() {
++            let node = match enc.objects[nodes.len()] {
++                Value::Table(t) => {
++                    if t.metatable().is_some() {
++                        return Err("metatables are not checkpointable".into());
++                    }
++                    let mut entries = Vec::new();
++                    for (k, v) in t.iter() {
++                        if entries.len() >= LIMIT {
++                            return Err("table budget exceeded".into());
++                        }
++                        entries.push((enc.value(k)?, enc.value(v)?));
++                    }
++                    Node::Table(entries)
++                }
++                Value::Function(Function::Closure(c)) => Node::Closure {
++                    prototype: enc
++                        .protos
++                        .iter()
++                        .position(|p| Gc::ptr_eq(*p, c.prototype()))
++                        .ok_or("unknown prototype")?,
++                    cells: c
++                        .upvalues()
++                        .iter()
++                        .map(|v| enc.cell(*v))
++                        .collect::<Result<Vec<_>>>()?,
++                },
++                _ => unreachable!(),
++            };
++            nodes.push(node);
++        }
++        while cells.len() < enc.cells.len() {
++            let cell = match enc.cells[cells.len()].get() {
++                UpValueState::Closed(v) => Cell::Closed(enc.value(v)?),
++                UpValueState::Open(v) => {
++                    let owner = v.thread.upgrade(&ctx).ok_or("dead open upvalue")?;
++                    if !Gc::ptr_eq(owner, inner) {
++                        return Err("cross-thread upvalue".into());
++                    }
++                    Cell::Open(v.stack_index)
++                }
++            };
++            cells.push(cell);
++        }
++    }
++    let saved = Snapshot {
++        format: "piccolo-trusted-spike-2".into(),
++        program: program.into(),
++        stack,
++        frames,
++        nodes,
++        cells,
++        open_cells,
++    };
++    validate(&saved, protos, natives.len())?;
++    Ok(saved)
++}
++
++fn decode<'gc>(
++    v: &SavedValue,
++    ctx: Context<'gc>,
++    nodes: &[Value<'gc>],
++    natives: &[Callback<'gc>],
++) -> Result<Value<'gc>> {
++    Ok(match v {
++        SavedValue::Nil => Value::Nil,
++        SavedValue::Bool(b) => Value::Boolean(*b),
++        SavedValue::Integer(i) => Value::Integer(i.parse().map_err(|_| "invalid integer")?),
++        SavedValue::Number(n) => Value::Number(f64::from_bits(
++            n.parse().map_err(|_| "invalid number bits")?,
++        )),
++        SavedValue::Bytes(s) => Value::String(ctx.intern(s)),
++        SavedValue::Table(i) => match nodes.get(*i) {
++            Some(v @ Value::Table(_)) => *v,
++            _ => return Err("invalid table ID".into()),
++        },
++        SavedValue::Closure(i) => match nodes.get(*i) {
++            Some(v @ Value::Function(Function::Closure(_))) => *v,
++            _ => return Err("invalid closure ID".into()),
++        },
++        SavedValue::Native(i) => Value::Function(Function::Callback(
++            *natives.get(*i).ok_or("unknown capability ID")?,
++        )),
++    })
++}
++
++/// Restore only snapshots produced by this exact codec and pinned program.
++/// Structural checks below are not a bytecode verifier or hostile-input boundary.
++pub fn restore<'gc>(
++    ctx: Context<'gc>,
++    saved: &Snapshot,
++    program: &str,
++    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
++    natives: &[Callback<'gc>],
++) -> Result<Thread<'gc>> {
++    if saved.format != "piccolo-trusted-spike-2" || saved.program != program {
++        return Err("snapshot/program mismatch".into());
++    }
++    if saved.nodes.len() > LIMIT
++        || saved.cells.len() > LIMIT
++        || saved.stack.len() > LIMIT
++        || saved.frames.len() > LIMIT
++    {
++        return Err("snapshot budget exceeded".into());
++    }
++    validate(saved, protos, natives.len())?;
++    let thread = Thread::new(ctx);
++    let cells: Vec<_> = saved
++        .cells
++        .iter()
++        .map(|_| UpValue::new(&ctx, UpValueState::Closed(Value::Nil)))
++        .collect();
++    let mut nodes = Vec::new();
++    for node in &saved.nodes {
++        nodes.push(match node {
++            Node::Table(_) => Value::Table(Table::new(&ctx)),
++            Node::Closure {
++                prototype,
++                cells: ids,
++            } => {
++                let proto = *protos.get(*prototype).ok_or("invalid prototype ID")?;
++                if ids.len() != proto.upvalues.len() {
++                    return Err("upvalue count mismatch".into());
++                }
++                let mut captured = AVec::new_in(MetricsAlloc::new(&ctx));
++                for id in ids {
++                    captured.push(*cells.get(*id).ok_or("invalid cell ID")?);
++                }
++                Value::Function(Function::Closure(Closure::from_parts(
++                    &ctx, proto, captured,
++                )))
++            }
++        });
++    }
++    for (id, node) in saved.nodes.iter().enumerate() {
++        if let Node::Table(entries) = node {
++            if entries.len() > LIMIT {
++                return Err("table budget exceeded".into());
++            }
++            let Value::Table(table) = nodes[id] else {
++                unreachable!()
++            };
++            for (k, v) in entries {
++                table
++                    .set_raw(
++                        &ctx,
++                        decode(k, ctx, &nodes, natives)?,
++                        decode(v, ctx, &nodes, natives)?,
++                    )
++                    .map_err(|e| e.to_string())?;
++            }
++        }
++    }
++    for (id, cell) in saved.cells.iter().enumerate() {
++        cells[id].set(
++            &ctx,
++            match cell {
++                Cell::Closed(v) => UpValueState::Closed(decode(v, ctx, &nodes, natives)?),
++                Cell::Open(index) => {
++                    if *index >= saved.stack.len() {
++                        return Err("open cell outside stack".into());
++                    }
++                    UpValueState::Open(OpenUpValue {
++                        thread: Gc::downgrade(thread.into_inner()),
++                        stack_index: *index,
++                    })
++                }
++            },
++        );
++    }
++    let mut restored_stack = AVec::new_in(MetricsAlloc::new(&ctx));
++    for v in &saved.stack {
++        restored_stack.push(decode(v, ctx, &nodes, natives)?);
++    }
++    let mut frames = AVec::new_in(MetricsAlloc::new(&ctx));
++    for f in &saved.frames {
++        match f {
++            SavedFrame::ProtectedCall { bottom } => frames.push(Frame::Sequence {
++                bottom: *bottom,
++                sequence: BoxSequence::new(&ctx, crate::stdlib::PCall),
++                pending_error: None,
++            }),
++            SavedFrame::Lua {
++                bottom,
++                closure,
++                base,
++                variable,
++                pc,
++                stack_size,
++                returns,
++            } => {
++                let Some(Value::Function(Function::Closure(c))) = nodes.get(*closure) else {
++                    return Err("frame closure missing".into());
++                };
++                let count = match returns {
++                    None => VarCount::variable(),
++                    Some(n) => VarCount::try_constant(*n).ok_or("invalid return count")?,
++                };
++                frames.push(Frame::Lua {
++                    bottom: *bottom,
++                    closure: *c,
++                    base: *base,
++                    is_variable: *variable,
++                    pc: *pc,
++                    stack_size: *stack_size,
++                    expected_return: Some(LuaReturn::Normal(count)),
++                });
++            }
++        }
++    }
++    let mut open = AVec::new_in(MetricsAlloc::new(&ctx));
++    for id in &saved.open_cells {
++        let cell = *cells.get(*id).ok_or("invalid open cell ID")?;
++        if !matches!(cell.get(), UpValueState::Open(_)) {
++            return Err("closed cell in open list".into());
++        }
++        open.push(cell);
++    }
++    frames.push(Frame::Yielded);
++    {
++        let inner = thread.into_inner();
++        let mut state = inner.borrow_mut(&ctx);
++        state.stack = restored_stack;
++        state.frames = frames;
++        state.open_upvalues = open;
++    }
++    Ok(thread)
++}
++
++/// Validate the reachable graph and aggregate budgets before installing VM state.
++/// Snapshots are still trusted program artifacts: this is not a verifier for arbitrary PCs.
++fn validate(
++    saved: &Snapshot,
++    protos: &[Gc<'_, FunctionPrototype<'_>>],
++    native_count: usize,
++) -> Result<()> {
++    let mut work = saved.stack.len() + saved.frames.len() + saved.nodes.len() + saved.cells.len();
++    let mut bytes = 0usize;
++    let mut values: Vec<&SavedValue> = saved.stack.iter().collect();
++    for node in &saved.nodes {
++        match node {
++            Node::Table(entries) => {
++                work = work
++                    .checked_add(entries.len().saturating_mul(2))
++                    .ok_or("budget overflow")?;
++                let mut keys = HashSet::new();
++                for (k, v) in entries {
++                    if !keys.insert(key_identity(k)?) {
++                        return Err("duplicate snapshot table key".into());
++                    }
++                    values.extend([k, v]);
++                }
++            }
++            Node::Closure { prototype, cells } => {
++                let proto = protos.get(*prototype).ok_or("unknown prototype")?;
++                if cells.len() != proto.upvalues.len()
++                    || cells.iter().any(|i| *i >= saved.cells.len())
++                {
++                    return Err("invalid closure cells".into());
++                }
++                work = work.checked_add(cells.len()).ok_or("budget overflow")?;
++            }
++        }
++        if work > LIMIT {
++            return Err("aggregate snapshot work limit".into());
++        }
++    }
++    let mut expected_open = HashSet::new();
++    let mut indices = HashSet::new();
++    for (id, cell) in saved.cells.iter().enumerate() {
++        match cell {
++            Cell::Closed(v) => values.push(v),
++            Cell::Open(index) => {
++                if *index >= saved.stack.len() || !indices.insert(*index) {
++                    return Err("invalid/duplicate open stack cell".into());
++                }
++                expected_open.insert(id);
++            }
++        }
++    }
++    let mut last = None;
++    for id in &saved.open_cells {
++        if !expected_open.remove(id) {
++            return Err("open cell list mismatch".into());
++        }
++        let Cell::Open(index) = saved.cells[*id] else {
++            unreachable!()
++        };
++        if last.is_some_and(|prev| prev >= index) {
++            return Err("open cells must be ordered".into());
++        }
++        last = Some(index);
++    }
++    if !expected_open.is_empty() {
++        return Err("missing open cell".into());
++    }
++    for v in values {
++        match v {
++            SavedValue::Table(id) if !matches!(saved.nodes.get(*id), Some(Node::Table(_))) => {
++                return Err("invalid table reference".into())
++            }
++            SavedValue::Closure(id)
++                if !matches!(saved.nodes.get(*id), Some(Node::Closure { .. })) =>
++            {
++                return Err("invalid closure reference".into())
++            }
++            SavedValue::Native(id) if *id >= native_count => {
++                return Err("invalid native reference".into())
++            }
++            SavedValue::Bytes(v) => {
++                bytes = bytes.checked_add(v.len()).ok_or("byte budget overflow")?
++            }
++            SavedValue::Integer(i) => {
++                i.parse::<i64>().map_err(|_| "invalid integer")?;
++            }
++            SavedValue::Number(n) => {
++                n.parse::<u64>().map_err(|_| "invalid number bits")?;
++            }
++            _ => {}
++        }
++        if bytes > 1024 * 1024 {
++            return Err("snapshot string byte limit".into());
++        }
++    }
++    let mut previous_bottom = 0;
++    for f in &saved.frames {
++        let bottom = match f {
++            SavedFrame::ProtectedCall { bottom } => *bottom,
++            SavedFrame::Lua {
++                bottom,
++                closure,
++                base,
++                pc,
++                stack_size,
++                returns,
++                ..
++            } => {
++                let Some(Node::Closure { prototype, .. }) = saved.nodes.get(*closure) else {
++                    return Err("invalid frame closure".into());
++                };
++                let proto = protos[*prototype];
++                if bottom > base
++                    || *base > saved.stack.len()
++                    || *pc == 0
++                    || *pc >= proto.opcodes.len()
++                    || *stack_size != proto.stack_size as usize
++                    || returns == &Some(255)
++                    || base.checked_add(*stack_size).is_none_or(|n| n > LIMIT)
++                {
++                    return Err("invalid frame geometry".into());
++                }
++                *bottom
++            }
++        };
++        if bottom < previous_bottom || bottom > saved.stack.len() {
++            return Err("invalid frame ordering".into());
++        }
++        previous_bottom = bottom;
++    }
++    // A tail call can leave only the Yielded sentinel (omitted from saved frames).
++    // Restoring it lets the host reply become the thread result.
++    if work > LIMIT {
++        return Err("invalid snapshot budget".into());
++    }
++    Ok(())
++}
++
++// Lua normalizes integral numeric keys; reject duplicate or illegal keys before allocation.
++fn key_identity(value: &SavedValue) -> Result<String> {
++    Ok(match value {
++        SavedValue::Nil => return Err("nil table key".into()),
++        SavedValue::Bool(b) => format!("b{b}"),
++        SavedValue::Integer(i) => {
++            format!("i{}", i.parse::<i64>().map_err(|_| "invalid integer key")?)
++        }
++        SavedValue::Number(bits) => {
++            let n = f64::from_bits(bits.parse().map_err(|_| "invalid numeric key")?);
++            if n.is_nan() {
++                return Err("NaN table key".into());
++            }
++            if n.fract() == 0.0 && n >= -9223372036854775808.0 && n < 9223372036854775808.0 {
++                format!("i{}", n as i64)
++            } else {
++                format!("n{}", n.to_bits())
++            }
++        }
++        SavedValue::Bytes(bytes) => format!("s{bytes:?}"),
++        SavedValue::Table(id) => format!("t{id}"),
++        SavedValue::Closure(id) => format!("c{id}"),
++        SavedValue::Native(id) => format!("f{id}"),
++    })
++}

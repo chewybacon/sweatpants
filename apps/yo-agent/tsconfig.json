@@ -1,26 +1,26 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.app.json",
-    "compilerOptions": {
-        "paths": {
-            "@/*": ["./src/*"],
-            "ink": ["./node_modules/ink"]
-        },
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "ink": ["./node_modules/ink"]
     },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"],
-    "references": [
-        {
-            "path": "../../packages/agent-sdk/tsconfig.json"
-        },
-        {
-            "path": "../../packages/agent-host/tsconfig.lib.json"
-        },
-        {
-            "path": "../../packages/tool-runtime-local/tsconfig.json"
-        },
-        {
-            "path": "../../packages/frame-renderer"
-        }
-    ]
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "references": [
+    {
+      "path": "../../packages/agent-sdk/tsconfig.json"
+    },
+    {
+      "path": "../../packages/agent-host/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/tool-runtime-local/tsconfig.json"
+    },
+    {
+      "path": "../../packages/frame-renderer"
+    }
+  ]
 }

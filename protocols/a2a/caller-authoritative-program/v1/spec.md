@@ -760,17 +760,17 @@ The Extension URI identifies this v1 profile. `AgentExtension.params` has this c
 
 ```ts
 interface CallerAuthoritativeProgramExtensionParamsV1 {
-    protocolVersion: 1;
-    manifestEndpoint: string; // absolute HTTPS URL
-    driverEndpoint: string; // absolute WSS URL
-    programs: Array<{
-        skillId: string;
-        program: {
-            id: string;
-            version: string;
-            digest: string; // lowercase SHA-256 hex
-        };
-    }>;
+  protocolVersion: 1;
+  manifestEndpoint: string; // absolute HTTPS URL
+  driverEndpoint: string; // absolute WSS URL
+  programs: Array<{
+    skillId: string;
+    program: {
+      id: string;
+      version: string;
+      digest: string; // lowercase SHA-256 hex
+    };
+  }>;
 }
 ```
 
@@ -782,15 +782,15 @@ The manifest endpoint is an authenticated `GET` endpoint. Query fields are `id`,
 
 ```ts
 interface RemoteProgramManifestDocumentV1 {
-    protocolVersion: 1;
-    extensionUri: string;
-    program: { id: string; version: string; digest: string };
-    manifest: DurableProgramManifest;
-    manifestDigest: string;
-    capabilities: {
-        ordinaryReplay: true;
-        streamedRestore: boolean;
-    };
+  protocolVersion: 1;
+  extensionUri: string;
+  program: { id: string; version: string; digest: string };
+  manifest: DurableProgramManifest;
+  manifestDigest: string;
+  capabilities: {
+    ordinaryReplay: true;
+    streamedRestore: boolean;
+  };
 }
 ```
 
@@ -802,12 +802,12 @@ The caller opens `driverEndpoint` with WebSocket upgrade authentication and the 
 
 ```ts
 interface ExecutorHelloV1 {
-    type: "hello";
-    protocolVersion: 1;
-    extensionUri: string;
-    executorId: string;
-    maxFrameBytes: 2097152;
-    capabilities: { streamedRestore: boolean };
+  type: "hello";
+  protocolVersion: 1;
+  extensionUri: string;
+  executorId: string;
+  maxFrameBytes: 2097152;
+  capabilities: { streamedRestore: boolean };
 }
 ```
 
@@ -819,16 +819,16 @@ Every later frame is closed canonical JSON:
 
 ```ts
 interface ProgramEnvelopeV1<TType extends string, TPayload> {
-    protocolVersion: 1;
-    extensionUri: string;
-    executionId: string;
-    program: { id: string; version: string; digest: string };
-    executionEpoch: number; // positive safe integer
-    type: TType;
-    attachmentId?: string;
-    actionIndex?: number;
-    commandId?: string;
-    payload: TPayload;
+  protocolVersion: 1;
+  extensionUri: string;
+  executionId: string;
+  program: { id: string; version: string; digest: string };
+  executionEpoch: number; // positive safe integer
+  type: TType;
+  attachmentId?: string;
+  actionIndex?: number;
+  commandId?: string;
+  payload: TPayload;
 }
 ```
 
@@ -840,25 +840,25 @@ Client messages:
 
 ```ts
 type AttachBeginV1 = ProgramEnvelopeV1<
-    "attach_begin",
-    {
-        input: Json;
-        inputDigest: string;
-    }
+  "attach_begin",
+  {
+    input: Json;
+    inputDigest: string;
+  }
 >;
 
 type ProgramCommandFrameV1 = ProgramEnvelopeV1<
-    "command",
-    {
-        command: ProgramCommand;
-    }
+  "command",
+  {
+    command: ProgramCommand;
+  }
 >;
 
 type ShutdownFrameV1 = ProgramEnvelopeV1<
-    "shutdown",
-    {
-        reason: ProgramShutdownReason;
-    }
+  "shutdown",
+  {
+    reason: ProgramShutdownReason;
+  }
 >;
 ```
 
@@ -866,18 +866,18 @@ Server messages:
 
 ```ts
 type AttachmentReadyV1 = ProgramEnvelopeV1<
-    "attachment_ready",
-    {
-        attachmentId: string;
-        computeGeneration: string;
-    }
+  "attachment_ready",
+  {
+    attachmentId: string;
+    computeGeneration: string;
+  }
 >;
 
 type StepFrameV1 = ProgramEnvelopeV1<
-    "step",
-    {
-        step: ProgramStep;
-    }
+  "step",
+  {
+    step: ProgramStep;
+  }
 >;
 
 type ShutdownCompleteV1 = ProgramEnvelopeV1<"shutdown_complete", Record<string, never>>;
@@ -891,13 +891,13 @@ Client messages:
 
 ```ts
 type RestoreBeginV1 = ProgramEnvelopeV1<
-    "restore_begin",
-    {
-        input: Json;
-        inputDigest: string;
-        replayedThroughActionIndex: number;
-        replayChainSeed: string;
-    }
+  "restore_begin",
+  {
+    input: Json;
+    inputDigest: string;
+    replayedThroughActionIndex: number;
+    replayChainSeed: string;
+  }
 >;
 
 type ReplayOperationFrameV1 = ProgramEnvelopeV1<"replay_operation", ReplayOperationEntry>;
@@ -905,11 +905,11 @@ type ReplayOperationFrameV1 = ProgramEnvelopeV1<"replay_operation", ReplayOperat
 type ReplayEmissionFrameV1 = ProgramEnvelopeV1<"replay_emission", ReplayEmissionEntry>;
 
 type ReplayEndV1 = ProgramEnvelopeV1<
-    "replay_end",
-    {
-        entryCount: number;
-        replayChainDigest: string;
-    }
+  "replay_end",
+  {
+    entryCount: number;
+    replayChainDigest: string;
+  }
 >;
 ```
 
@@ -917,21 +917,21 @@ Server messages:
 
 ```ts
 type RestoreReadyV1 = ProgramEnvelopeV1<
-    "restore_ready",
-    {
-        attachmentId: string;
-        computeGeneration: string;
-    }
+  "restore_ready",
+  {
+    attachmentId: string;
+    computeGeneration: string;
+  }
 >;
 
 type FrontierV1 = ProgramEnvelopeV1<
-    "frontier",
-    {
-        step: ProgramStep;
-        replayedThroughActionIndex: number;
-        replayChainDigest: string;
-        frontierDigest: string;
-    }
+  "frontier",
+  {
+    step: ProgramStep;
+    replayedThroughActionIndex: number;
+    replayChainDigest: string;
+    frontierDigest: string;
+  }
 >;
 ```
 
@@ -941,11 +941,11 @@ The server returns `restore_ready`, consumes exactly one replay entry per replay
 
 ```ts
 type RejectedV1 = ProgramEnvelopeV1<
-    "rejected",
-    {
-        code: ProtocolErrorCode;
-        message: string;
-    }
+  "rejected",
+  {
+    code: ProtocolErrorCode;
+    message: string;
+  }
 >;
 ```
 
@@ -957,11 +957,11 @@ The error message is bounded safe text and does not include stack traces, creden
 
 ```ts
 interface AcceptedCommandRecordV1 {
-    commandId: string;
-    commandDigest: string;
-    responseType: "step" | "shutdown_complete";
-    responseDigest: string;
-    canonicalResponse: Json;
+  commandId: string;
+  commandDigest: string;
+  responseType: "step" | "shutdown_complete";
+  responseDigest: string;
+  canonicalResponse: Json;
 }
 ```
 
@@ -973,9 +973,9 @@ The reference application exposes an `ask_parent` model tool backed by an applic
 
 ```ts
 type ReferenceConsultationResult =
-    | { status: "answered"; answer: string; source?: string }
-    | { status: "unknown"; reason?: string }
-    | { status: "declined"; reason?: string };
+  | { status: "answered"; answer: string; source?: string }
+  | { status: "unknown"; reason?: string }
+  | { status: "declined"; reason?: string };
 ```
 
 This shape is illustrative for the reference application and is not an A2A extension contract.
@@ -986,29 +986,29 @@ This shape is illustrative for the reference application and is not an A2A exten
 
 ```ts
 type ProtocolErrorCode =
-    | "agent_card_invalid"
-    | "unsafe_url"
-    | "authentication_failed"
-    | "authorization_denied"
-    | "extension_not_advertised"
-    | "extension_not_activated"
-    | "extension_echo_mismatch"
-    | "protocol_version_unsupported"
-    | "manifest_not_found"
-    | "manifest_mismatch"
-    | "program_version_unavailable"
-    | "schema_version_unavailable"
-    | "effect_handler_missing"
-    | "effect_contract_mismatch"
-    | "identity_mismatch"
-    | "stale_activation"
-    | "idempotency_conflict"
-    | "payload_too_large"
-    | "replay_diverged"
-    | "history_not_exhausted"
-    | "program_protocol_error"
-    | "deadline_exceeded"
-    | "transport_lost";
+  | "agent_card_invalid"
+  | "unsafe_url"
+  | "authentication_failed"
+  | "authorization_denied"
+  | "extension_not_advertised"
+  | "extension_not_activated"
+  | "extension_echo_mismatch"
+  | "protocol_version_unsupported"
+  | "manifest_not_found"
+  | "manifest_mismatch"
+  | "program_version_unavailable"
+  | "schema_version_unavailable"
+  | "effect_handler_missing"
+  | "effect_contract_mismatch"
+  | "identity_mismatch"
+  | "stale_activation"
+  | "idempotency_conflict"
+  | "payload_too_large"
+  | "replay_diverged"
+  | "history_not_exhausted"
+  | "program_protocol_error"
+  | "deadline_exceeded"
+  | "transport_lost";
 ```
 
 ### 4.2 Recovery classes

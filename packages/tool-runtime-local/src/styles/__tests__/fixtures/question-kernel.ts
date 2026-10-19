@@ -17,20 +17,23 @@ export function createQuestionKernel(): Kernel {
           ? { kind: "suspended", suspensionId: String(index), request: requests[index]! }
           : { kind: "completed", value: { input, answers } };
       }
-      return createExecution(next(), {
-        *turn(command) {
-          if (command.kind === "cancel") {
+      return createExecution({
+        initial: next(),
+        driver: {
+          *cancel() {
             cleaning = true;
             return { kind: "suspended", suspensionId: "cleanup", request: { release: input } };
-          }
-          if (cleaning) {
-            return { kind: "cancelled" };
-          }
-          answers.push(command.reply);
-          index++;
-          return next();
+          },
+          *resume(_id, reply: Json) {
+            if (cleaning) {
+              return { kind: "cancelled" };
+            }
+            answers.push(reply);
+            index++;
+            return next();
+          },
+          *dispose() {},
         },
-        *dispose() {},
       });
     },
   };

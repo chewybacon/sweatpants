@@ -1,50 +1,50 @@
 {
-    "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "yo-chat",
-    "main": "src/server.cloudflare.ts",
-    "compatibility_date": "2026-10-05",
-    "compatibility_flags": ["nodejs_compat"],
-    "vars": { "CHAT_HOST_PLACEMENT": "durable-object" },
-    "durable_objects": {
-        "bindings": [
-            { "name": "CONVERSATIONS", "class_name": "Conversations" },
-            { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
-            {
-                "name": "RESPONSE_STREAMS",
-                "class_name": "ResponseStream",
-            },
-            {
-                "name": "TOOL_SESSIONS",
-                "class_name": "ToolSessions",
-            },
-        ],
-    },
-    "migrations": [
-        {
-            "tag": "v1",
-            "new_sqlite_classes": ["ResponseStream", "ToolSessions"],
-        },
-        { "tag": "v2", "new_sqlite_classes": ["ToolExecutors"] },
-        { "tag": "v3", "new_sqlite_classes": ["Conversations"] },
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yo-chat",
+  "main": "src/server.cloudflare.ts",
+  "compatibility_date": "2026-10-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "CHAT_HOST_PLACEMENT": "durable-object" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONVERSATIONS", "class_name": "Conversations" },
+      { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
+      {
+        "name": "RESPONSE_STREAMS",
+        "class_name": "ResponseStream",
+      },
+      {
+        "name": "TOOL_SESSIONS",
+        "class_name": "ToolSessions",
+      },
     ],
-    "d1_databases": [
-        {
-            "binding": "JOURNAL",
-            "database_name": "yo-chat-worker-journal",
-            "database_id": "00000000-0000-0000-0000-000000000002",
-        },
-        {
-            "binding": "THREAD_METADATA",
-            "database_name": "yo-chat-worker-metadata",
-            "database_id": "00000000-0000-0000-0000-000000000003",
-        },
-    ],
-    "secrets": {
-        "required": [
-            "MODEL_CREDENTIALS",
-            "PROGRAM_DRIVER_CAPABILITY_SECRET",
-            "DEFAULT_CHAT_MODEL_PROVIDER",
-            "DEFAULT_CHAT_MODEL_ID",
-        ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ResponseStream", "ToolSessions"],
     },
+    { "tag": "v2", "new_sqlite_classes": ["ToolExecutors"] },
+    { "tag": "v3", "new_sqlite_classes": ["Conversations"] },
+  ],
+  "d1_databases": [
+    {
+      "binding": "JOURNAL",
+      "database_name": "yo-chat-worker-journal",
+      "database_id": "00000000-0000-0000-0000-000000000002",
+    },
+    {
+      "binding": "THREAD_METADATA",
+      "database_name": "yo-chat-worker-metadata",
+      "database_id": "00000000-0000-0000-0000-000000000003",
+    },
+  ],
+  "secrets": {
+    "required": [
+      "MODEL_CREDENTIALS",
+      "PROGRAM_DRIVER_CAPABILITY_SECRET",
+      "DEFAULT_CHAT_MODEL_PROVIDER",
+      "DEFAULT_CHAT_MODEL_ID",
+    ],
+  },
 }

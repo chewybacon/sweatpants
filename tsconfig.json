@@ -1,109 +1,109 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.base.json",
-    "compilerOptions": {
-        "declaration": true,
-        "ignoreDeprecations": "5.0"
+  "extends": "@sweatpants/ts-config/tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "ignoreDeprecations": "5.0"
+  },
+  "references": [
+    {
+      "path": "./packages/foundation"
     },
-    "references": [
-        {
-            "path": "./packages/foundation"
-        },
-        {
-            "path": "./packages/durable-storage-kernel"
-        },
-        {
-            "path": "./packages/storage-sqlite"
-        },
-        {
-            "path": "./packages/chat-contract"
-        },
-        {
-            "path": "./packages/durable-effects"
-        },
-        {
-            "path": "./packages/durable-execution"
-        },
-        {
-            "path": "./packages/journal-authority"
-        },
-        {
-            "path": "./packages/history-store"
-        },
-        {
-            "path": "./packages/durable-chat-runtime"
-        },
-        {
-            "path": "./packages/agent-sdk"
-        },
-        {
-            "path": "./packages/durable-streams"
-        },
-        {
-            "path": "./packages/cli"
-        },
-        {
-            "path": "./packages/cloudflare-tasks"
-        },
-        {
-            "path": "./packages/agent-host"
-        },
-        {
-            "path": "./packages/model-provider"
-        },
-        {
-            "path": "./packages/model-sampling"
-        },
-        {
-            "path": "./packages/model-provider-pi-ai"
-        },
-        {
-            "path": "./packages/chat-client"
-        },
-        {
-            "path": "./packages/react-chat"
-        },
-        {
-            "path": "./packages/chat-core"
-        },
-        {
-            "path": "./packages/tool-session"
-        },
-        {
-            "path": "./packages/tool-runtime"
-        },
-        {
-            "path": "./packages/tool-runtime-agentcore"
-        },
-        {
-            "path": "./packages/tool-runtime-local"
-        },
-        {
-            "path": "./packages/vite-plugin"
-        },
-        {
-            "path": "./packages/frame-renderer"
-        },
-        {
-            "path": "./packages/tool-runtime-cloudflare"
-        },
-        {
-            "path": "./packages/storage-d1"
-        },
-        {
-            "path": "./packages/durable-streams-cloudflare"
-        },
-        {
-            "path": "./packages/model-decision"
-        },
-        {
-            "path": "./packages/scheme-runtime"
-        },
-        {
-            "path": "./packages/workflow-kernel"
-        },
-        {
-            "path": "./packages/program-backend-kernel"
-        }
-    ],
-    "files": []
+    {
+      "path": "./packages/durable-storage-kernel"
+    },
+    {
+      "path": "./packages/storage-sqlite"
+    },
+    {
+      "path": "./packages/chat-contract"
+    },
+    {
+      "path": "./packages/durable-effects"
+    },
+    {
+      "path": "./packages/durable-execution"
+    },
+    {
+      "path": "./packages/journal-authority"
+    },
+    {
+      "path": "./packages/history-store"
+    },
+    {
+      "path": "./packages/durable-chat-runtime"
+    },
+    {
+      "path": "./packages/agent-sdk"
+    },
+    {
+      "path": "./packages/durable-streams"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./packages/cloudflare-tasks"
+    },
+    {
+      "path": "./packages/agent-host"
+    },
+    {
+      "path": "./packages/model-provider"
+    },
+    {
+      "path": "./packages/model-sampling"
+    },
+    {
+      "path": "./packages/model-provider-pi-ai"
+    },
+    {
+      "path": "./packages/chat-client"
+    },
+    {
+      "path": "./packages/react-chat"
+    },
+    {
+      "path": "./packages/chat-core"
+    },
+    {
+      "path": "./packages/tool-session"
+    },
+    {
+      "path": "./packages/tool-runtime"
+    },
+    {
+      "path": "./packages/tool-runtime-agentcore"
+    },
+    {
+      "path": "./packages/tool-runtime-local"
+    },
+    {
+      "path": "./packages/vite-plugin"
+    },
+    {
+      "path": "./packages/frame-renderer"
+    },
+    {
+      "path": "./packages/tool-runtime-cloudflare"
+    },
+    {
+      "path": "./packages/storage-d1"
+    },
+    {
+      "path": "./packages/durable-streams-cloudflare"
+    },
+    {
+      "path": "./packages/model-decision"
+    },
+    {
+      "path": "./packages/scheme-runtime"
+    },
+    {
+      "path": "./packages/workflow-kernel"
+    },
+    {
+      "path": "./packages/program-backend-kernel"
+    }
+  ],
+  "files": []
 }

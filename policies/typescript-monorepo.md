@@ -103,14 +103,14 @@ Development exports enable VSCode IntelliSense without pre-building. They are **
 
 ```json
 {
-    "exports": {
-        ".": {
-            "development": "./src/index.ts",
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.js",
-            "default": "./dist/index.js"
-        }
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
+  }
 }
 ```
 
@@ -138,18 +138,18 @@ For packages with multiple entry points:
 
 ```json
 {
-    "exports": {
-        ".": {
-            "development": "./src/index.ts",
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
-        },
-        "./vite": {
-            "development": "./src/vite/index.ts",
-            "types": "./dist/vite/index.d.ts",
-            "import": "./dist/vite/index.js"
-        }
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vite": {
+      "development": "./src/vite/index.ts",
+      "types": "./dist/vite/index.d.ts",
+      "import": "./dist/vite/index.js"
     }
+  }
 }
 ```
 
@@ -161,16 +161,16 @@ For packages with multiple entry points:
 
 ```json
 {
-    "extends": "@sweatpants/ts-config/tsconfig.package.json",
-    "compilerOptions": {
-        "composite": true,
-        "emitDeclarationOnly": true,
-        "outDir": "./dist",
-        "rootDir": "./src"
-    },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"],
-    "references": [{ "path": "../other-package" }]
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "references": [{ "path": "../other-package" }]
 }
 ```
 
@@ -185,15 +185,15 @@ For packages with multiple entry points:
 
 ```json
 {
-    "extends": "@sweatpants/ts-config/tsconfig.app.json",
-    "compilerOptions": {
-        "baseUrl": ".",
-        "paths": {
-            "@/*": ["./src/*"]
-        }
-    },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"]
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
 ```
 
@@ -207,16 +207,16 @@ For packages with multiple entry points:
 
 ```json
 {
-    "extends": "@sweatpants/ts-config/tsconfig.base.json",
-    "compilerOptions": {
-        "declaration": true
-    },
-    "references": [
-        { "path": "./packages/tool-session" },
-        { "path": "./packages/cli" },
-        { "path": "./packages/agent-host" }
-    ],
-    "files": []
+  "extends": "@sweatpants/ts-config/tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true
+  },
+  "references": [
+    { "path": "./packages/tool-session" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/agent-host" }
+  ],
+  "files": []
 }
 ```
 
@@ -354,8 +354,8 @@ Only use path mappings for:
 # Example CI step
 - name: Type Check
   run: |
-      pnpm tsc -b          # Check tsc-buildable workspaces
-      pnpm -r run check    # Check all workspaces with check script
+    pnpm tsc -b          # Check tsc-buildable workspaces
+    pnpm -r run check    # Check all workspaces with check script
 ```
 
 ---

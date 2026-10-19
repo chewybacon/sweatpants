@@ -3,35 +3,35 @@
 *,
 *::before,
 *::after {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 :root {
-    color-scheme: dark;
-    background: #191724;
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
+  color-scheme: dark;
+  background: #191724;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 html {
-    min-width: 320px;
-    background: #191724;
+  min-width: 320px;
+  background: #191724;
 }
 
 body {
-    min-width: 320px;
-    min-height: 100vh;
-    margin: 0;
-    background: #191724;
-    color: #e0def4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #191724;
+  color: #e0def4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 button,
@@ -41,106 +41,106 @@ code,
 pre,
 kbd,
 samp {
-    font: inherit;
+  font: inherit;
 }
 
 button,
 a {
-    -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
-    background: #c4a7e744;
-    color: #e0def4;
+  background: #c4a7e744;
+  color: #e0def4;
 }
 
 .page-intro {
-    max-width: 760px;
-    margin-bottom: clamp(28px, 5vw, 52px);
+  max-width: 760px;
+  margin-bottom: clamp(28px, 5vw, 52px);
 }
 
 .page-intro.compact {
-    margin-bottom: 28px;
+  margin-bottom: 28px;
 }
 
 .page-intro h1,
 .page-intro h2 {
-    max-width: 720px;
-    margin: 10px 0 14px;
-    color: #e0def4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    font-size: clamp(2.2rem, 5vw, 3.8rem);
-    font-weight: 600;
-    letter-spacing: -0.058em;
-    line-height: 0.98;
-    text-wrap: balance;
+  max-width: 720px;
+  margin: 10px 0 14px;
+  color: #e0def4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  font-weight: 600;
+  letter-spacing: -0.058em;
+  line-height: 0.98;
+  text-wrap: balance;
 }
 
 .page-intro p,
 .section-copy,
 .thread-list-island > p,
 .explainer-island > p {
-    max-width: 680px;
-    color: #908caa;
-    font-size: 0.98rem;
-    line-height: 1.7;
+  max-width: 680px;
+  color: #908caa;
+  font-size: 0.98rem;
+  line-height: 1.7;
 }
 
 .eyebrow {
-    color: #908caa;
-    font-size: 0.65rem;
-    font-weight: 750;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+  color: #908caa;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .chat-app {
-    max-width: 960px;
-    margin-inline: auto;
-    display: grid;
-    gap: 20px;
+  max-width: 960px;
+  margin-inline: auto;
+  display: grid;
+  gap: 20px;
 }
 
 .conversation {
-    display: grid;
-    gap: 14px;
+  display: grid;
+  gap: 14px;
 }
 
 .message-card {
-    min-width: 0;
+  min-width: 0;
 }
 
 .message-status,
 .composer-status,
 .thread-meta {
-    color: #908caa;
-    font-size: 0.72rem;
+  color: #908caa;
+  font-size: 0.72rem;
 }
 
 .message-parts {
-    min-width: 0;
-    margin-top: 18px;
-    color: #d0cee4;
-    line-height: 1.65;
+  min-width: 0;
+  margin-top: 18px;
+  color: #d0cee4;
+  line-height: 1.65;
 }
 
 .message-parts > :first-child {
-    margin-top: 0;
+  margin-top: 0;
 }
 
 .message-parts a {
-    color: #9ccfd8;
+  color: #9ccfd8;
 }
 
 .empty-state {
-    width: 100%;
+  width: 100%;
 }
 
 .empty-state p,
@@ -148,837 +148,837 @@ a {
 .thread-card code,
 .thread-list-island p,
 .explainer-island p {
-    color: #908caa;
+  color: #908caa;
 }
 
 .section-copy {
-    margin: 10px 0 0;
+  margin: 10px 0 0;
 }
 
 .prompt-examples,
 .thread-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
 }
 
 .prompt-example,
 .thread-card {
-    min-width: 0;
-    height: 100%;
+  min-width: 0;
+  height: 100%;
 }
 
 .prompt-example {
-    transition:
-        border-color 160ms,
-        transform 160ms,
-        background-color 160ms;
+  transition:
+    border-color 160ms,
+    transform 160ms,
+    background-color 160ms;
 }
 
 .prompt-example:hover {
-    border-color: #7d7894;
-    background: #2a2739;
-    transform: translateY(-2px);
+  border-color: #7d7894;
+  background: #2a2739;
+  transform: translateY(-2px);
 }
 
 .prompt-example strong {
-    color: #e0def4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    font-size: 1.2rem;
-    font-weight: 600;
+  color: #e0def4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1.2rem;
+  font-weight: 600;
 }
 
 .example-prompt {
-    margin: 0;
-    min-height: 62px;
-    overflow-wrap: anywhere;
-    font-size: 0.8rem;
-    line-height: 1.55;
+  margin: 0;
+  min-height: 62px;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 
 .composer-card {
-    position: static;
+  position: static;
 }
 
 .composer-actions {
-    margin-top: 14px;
+  margin-top: 14px;
 }
 
 .composer-status {
-    margin-left: auto;
+  margin-left: auto;
 }
 
 .thread-meta {
-    padding-inline: 6px;
+  padding-inline: 6px;
 }
 
 .thread-meta code,
 .thread-card code {
-    color: #b0aec4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    overflow-wrap: anywhere;
+  color: #b0aec4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  overflow-wrap: anywhere;
 }
 
 .thread-list-island {
-    min-height: 440px;
+  min-height: 440px;
 }
 
 .thread-list-island > p {
-    margin: 0;
+  margin: 0;
 }
 
 .thread-grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 }
 
 .thread-card code {
-    display: block;
-    font-size: 0.72rem;
+  display: block;
+  font-size: 0.72rem;
 }
 
 .tool,
 .reply {
-    margin-top: 14px;
-    padding: 16px;
-    border: 1px solid #514c65;
-    border-radius: 12px;
-    background: #26233a;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #514c65;
+  border-radius: 12px;
+  background: #26233a;
 }
 
 .tool-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .tool-heading > strong {
-    color: #e0def4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    font-size: 1.05rem;
+  color: #e0def4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1.05rem;
 }
 
 .tool-status {
-    border: 1px solid #514c65;
-    border-radius: 999px;
-    background: #302c44;
-    color: #908caa;
-    padding: 4px 9px;
-    font-size: 0.65rem;
+  border: 1px solid #514c65;
+  border-radius: 999px;
+  background: #302c44;
+  color: #908caa;
+  padding: 4px 9px;
+  font-size: 0.65rem;
 }
 
 .tool-status.output-available {
-    border-color: #31748f;
-    background: #223638;
-    color: #9ccfd8;
+  border-color: #31748f;
+  background: #223638;
+  color: #9ccfd8;
 }
 
 .tool-status.output-error,
 .error-card,
 .error {
-    color: #eb6f92;
+  color: #eb6f92;
 }
 
 .tool-children {
-    margin-top: 14px;
-    padding-left: 14px;
-    border-left: 2px solid #31748f;
+  margin-top: 14px;
+  padding-left: 14px;
+  border-left: 2px solid #31748f;
 }
 
 .field-label {
-    display: block;
-    color: #908caa;
-    font-size: 0.65rem;
-    font-weight: 750;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+  display: block;
+  color: #908caa;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 blockquote {
-    margin: 8px 0;
-    color: #e0def4;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    font-size: 1.18rem;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
+  margin: 8px 0;
+  color: #e0def4;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1.18rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 pre {
-    overflow: auto;
-    padding: 14px;
-    border: 1px solid #403d52;
-    border-radius: 10px;
-    background: #191724;
-    color: #9ccfd8;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
-    font-size: 0.72rem;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #403d52;
+  border-radius: 10px;
+  background: #191724;
+  color: #9ccfd8;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 details {
-    margin-top: 12px;
+  margin-top: 12px;
 }
 
 summary {
-    color: #908caa;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 650;
+  color: #908caa;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 650;
 }
 
 summary:hover {
-    color: #c4a7e7;
+  color: #c4a7e7;
 }
 
 .program-diagram {
-    overflow: auto;
-    margin-top: 12px;
-    padding: 12px;
-    border-radius: 10px;
-    background: #191724;
+  overflow: auto;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #191724;
 }
 
 /* Fit the overview; expanded mode scrolls at the diagram's native width. */
 .program-diagram svg {
-    display: block;
-    width: 100%;
-    height: auto;
-    max-height: 560px;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 560px;
 }
 
 .program-diagram.expanded {
-    max-height: 75vh;
+  max-height: 75vh;
 }
 
 .program-diagram.expanded svg {
-    width: var(--diagram-width);
-    max-width: none !important;
-    max-height: none;
+  width: var(--diagram-width);
+  max-width: none !important;
+  max-height: none;
 }
 
 .diagram-toggle {
-    margin-top: 10px;
-    border: 0;
-    background: transparent;
-    color: #9ccfd8;
-    cursor: pointer;
-    font-size: 0.75rem;
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: #9ccfd8;
+  cursor: pointer;
+  font-size: 0.75rem;
 }
 
 .hint,
 .preview-error {
-    color: #908caa;
-    font-size: 0.75rem;
+  color: #908caa;
+  font-size: 0.75rem;
 }
 
 .explainer-island {
-    min-width: 0;
+  min-width: 0;
 }
 
 @media (max-width: 700px) {
-    .prompt-examples,
-    .thread-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
+  .prompt-examples,
+  .thread-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .composer-status {
-        width: 100%;
-        margin-left: 0;
-    }
+  .composer-status {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        scroll-behavior: auto !important;
-        transition-duration: 0.01ms !important;
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-    }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 .page-intro.compact {
-    max-width: 960px;
-    margin-inline: auto;
+  max-width: 960px;
+  margin-inline: auto;
 }
 .thread-intro-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .document-content {
-    max-height: 24rem;
-    overflow: auto;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .document-choices-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
-    gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: 0.5rem;
 }
 .document-choices-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 /* Unavailable cells still carry readable spatial information. */
 .document-choices-grid button:disabled {
-    opacity: 1;
-    cursor: default;
+  opacity: 1;
+  cursor: default;
 }
 
 .ask-card {
-    border-color: #6e6a86;
-    background: linear-gradient(140deg, #29253c, #211e30);
-    min-width: 0;
+  border-color: #6e6a86;
+  background: linear-gradient(140deg, #29253c, #211e30);
+  min-width: 0;
 }
 .ask-settled {
-    border-color: #403d52;
-    background: #211e30;
+  border-color: #403d52;
+  background: #211e30;
 }
 .ask-title {
-    color: #c4a7e7;
-    font-size: 0.8rem;
-    font-weight: 600;
+  color: #c4a7e7;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 .ask-question {
-    margin: 0;
-    font-size: 1.15rem;
-    font-weight: 600;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .ask-detail {
-    margin: 0;
-    color: #b8b4ce;
-    font-size: 0.9rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  margin: 0;
+  color: #b8b4ce;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .ask-suggestions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .ask-suggestions button {
-    text-align: left;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    max-width: 100%;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 .ask-hint {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    color: #b8b4ce;
-    font-size: 0.72rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #b8b4ce;
+  font-size: 0.72rem;
 }
 .ask-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .ask-settled .reply-outcome blockquote {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .nested-activity {
-    margin-top: 12px;
-    border-left: 2px solid #6e6a86;
-    padding: 8px 0 8px 12px;
+  margin-top: 12px;
+  border-left: 2px solid #6e6a86;
+  padding: 8px 0 8px 12px;
 }
 
 /* Program canvas: Rose Pine surfaces with semantic tool and control accents. */
 .program-canvas {
-    --flow-base: #191724;
-    --flow-surface: #26233a;
-    --flow-text: #e0def4;
-    --flow-muted: #a6a0bb;
-    --flow-edge: #817c98;
-    --flow-grid: #393449;
-    --flow-builtin: #9ccfd8;
-    --flow-authored: #c4a7e7;
-    --flow-control: #f6c177;
-    --flow-neutral: #908caa;
-    position: relative;
-    height: clamp(420px, 70vh, 800px);
-    width: 100%;
-    margin: 12px 0;
-    border: 1px solid #403d52;
-    border-radius: 14px;
-    overflow: hidden;
-    color: var(--flow-text);
+  --flow-base: #191724;
+  --flow-surface: #26233a;
+  --flow-text: #e0def4;
+  --flow-muted: #a6a0bb;
+  --flow-edge: #817c98;
+  --flow-grid: #393449;
+  --flow-builtin: #9ccfd8;
+  --flow-authored: #c4a7e7;
+  --flow-control: #f6c177;
+  --flow-neutral: #908caa;
+  position: relative;
+  height: clamp(420px, 70vh, 800px);
+  width: 100%;
+  margin: 12px 0;
+  border: 1px solid #403d52;
+  border-radius: 14px;
+  overflow: hidden;
+  color: var(--flow-text);
 }
 .program-canvas .react-flow {
-    --xy-background-color: var(--flow-base);
-    --xy-edge-stroke: var(--flow-edge);
-    --xy-controls-button-background-color: var(--flow-surface);
-    --xy-controls-button-background-color-hover: #403d52;
-    --xy-controls-button-color: var(--flow-text);
-    --xy-controls-button-border-color: #403d52;
+  --xy-background-color: var(--flow-base);
+  --xy-edge-stroke: var(--flow-edge);
+  --xy-controls-button-background-color: var(--flow-surface);
+  --xy-controls-button-background-color-hover: #403d52;
+  --xy-controls-button-color: var(--flow-text);
+  --xy-controls-button-border-color: #403d52;
 }
 .canvas-tone-builtin {
-    --node-accent: var(--flow-builtin);
+  --node-accent: var(--flow-builtin);
 }
 .canvas-tone-authored {
-    --node-accent: var(--flow-authored);
+  --node-accent: var(--flow-authored);
 }
 .canvas-tone-branch {
-    --node-accent: var(--flow-control);
+  --node-accent: var(--flow-control);
 }
 .canvas-tone-failure {
-    --node-accent: #eb6f92;
+  --node-accent: #eb6f92;
 }
 .canvas-tone-entry,
 .canvas-tone-exit,
 .canvas-tone-call,
 .canvas-tone-yield {
-    --node-accent: var(--flow-neutral);
+  --node-accent: var(--flow-neutral);
 }
 .canvas-legend {
-    position: absolute;
-    z-index: 5;
-    top: 12px;
-    left: 12px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    padding: 7px 10px;
-    border: 1px solid #403d52;
-    border-radius: 8px;
-    background: var(--flow-base);
-    pointer-events: none;
-    font-size: 11px;
-    line-height: 1.4;
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 7px 10px;
+  border: 1px solid #403d52;
+  border-radius: 8px;
+  background: var(--flow-base);
+  pointer-events: none;
+  font-size: 11px;
+  line-height: 1.4;
 }
 .canvas-legend > span {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--flow-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--flow-muted);
 }
 .canvas-legend i {
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    background: var(--node-accent);
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--node-accent);
 }
 .canvas-card {
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, var(--node-accent) 55%, var(--flow-surface));
-    border-left: 3px solid var(--node-accent);
-    border-radius: 12px;
-    background: linear-gradient(
-        120deg,
-        color-mix(in srgb, var(--node-accent) 10%, var(--flow-surface)),
-        var(--flow-surface)
-    );
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    text-align: left;
-    box-shadow: 0 3px 10px #00000024;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--node-accent) 55%, var(--flow-surface));
+  border-left: 3px solid var(--node-accent);
+  border-radius: 12px;
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--node-accent) 10%, var(--flow-surface)),
+    var(--flow-surface)
+  );
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  box-shadow: 0 3px 10px #00000024;
 }
 .canvas-card-heading {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    flex-shrink: 0;
-    height: 22px;
-    color: var(--node-accent);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 22px;
+  color: var(--node-accent);
 }
 .canvas-symbol {
-    display: flex;
-    width: 22px;
-    height: 22px;
-    align-items: center;
-    justify-content: center;
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--node-accent) 13%, transparent);
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--node-accent) 13%, transparent);
 }
 .canvas-symbol svg {
-    width: 15px;
-    height: 15px;
+  width: 15px;
+  height: 15px;
 }
 .canvas-card small {
-    font-size: 11px;
-    font-weight: 650;
-    line-height: 14px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 14px;
 }
 .canvas-boundary {
-    margin-left: auto;
-    color: var(--flow-muted);
-    font-size: 9px;
-    letter-spacing: 0.08em;
+  margin-left: auto;
+  color: var(--flow-muted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
 }
 .canvas-card strong {
-    flex-shrink: 0;
-    color: var(--flow-text);
-    font-size: 15px;
-    line-height: 1.25;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  flex-shrink: 0;
+  color: var(--flow-text);
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .canvas-caption {
-    font-size: 11px;
-    line-height: 1.4;
-    color: var(--flow-muted);
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--flow-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .canvas-card:not(.canvas-yield) {
-    padding: 10px 12px;
-    gap: 7px;
+  padding: 10px 12px;
+  gap: 7px;
 }
 .canvas-card:not(.canvas-yield) > .canvas-caption {
-    display: none;
+  display: none;
 }
 .canvas-entry,
 .canvas-exit {
-    border-left-width: 1px;
-    border-radius: 20px;
-    background: var(--flow-surface);
-    box-shadow: none;
+  border-left-width: 1px;
+  border-radius: 20px;
+  background: var(--flow-surface);
+  box-shadow: none;
 }
 .canvas-call {
-    border-style: dashed;
+  border-style: dashed;
 }
 .program-canvas .react-flow__handle {
-    width: 6px;
-    height: 6px;
-    border: 2px solid var(--flow-base);
-    background: var(--node-accent);
+  width: 6px;
+  height: 6px;
+  border: 2px solid var(--flow-base);
+  background: var(--node-accent);
 }
 .program-canvas .react-flow__controls {
-    overflow: hidden;
-    border: 1px solid #403d52;
-    border-radius: 8px;
-    box-shadow: 0 3px 10px #00000024;
+  overflow: hidden;
+  border: 1px solid #403d52;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px #00000024;
 }
 
 /* Compact terminals leave space for the operations and their return lanes. */
 .canvas-entry,
 .canvas-exit {
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .canvas-entry .canvas-card-heading,
 .canvas-exit .canvas-card-heading {
-    height: 20px;
+  height: 20px;
 }
 .canvas-entry small,
 .canvas-exit small {
-    display: none;
+  display: none;
 }
 .canvas-entry strong,
 .canvas-exit strong {
-    font-size: 13px;
+  font-size: 13px;
 }
 .program-canvas .react-flow__handle {
-    opacity: 0;
+  opacity: 0;
 }
 
 .canvas-loop-region {
-    width: 100%;
-    height: 100%;
-    border: 1px solid #f6c17748;
-    border-radius: 20px;
-    background: #f6c17706;
-    pointer-events: none;
+  width: 100%;
+  height: 100%;
+  border: 1px solid #f6c17748;
+  border-radius: 20px;
+  background: #f6c17706;
+  pointer-events: none;
 }
 .canvas-loop-region > span {
-    position: absolute;
-    top: 12px;
-    left: 18px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: #f6c177;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f6c177;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .canvas-loop-region b {
-    font-size: 18px;
-    font-weight: 400;
+  font-size: 18px;
+  font-weight: 400;
 }
 
 .workflow-timeline {
-    margin-block: 16px;
+  margin-block: 16px;
 }
 .workflow-timeline > ol {
-    list-style: none;
-    padding: 0;
-    margin: 16px 0;
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
 }
 .workflow-timeline > ol > li {
-    position: relative;
-    margin-left: 14px;
-    padding: 0 0 20px 28px;
-    border-left: 2px solid #524f67;
+  position: relative;
+  margin-left: 14px;
+  padding: 0 0 20px 28px;
+  border-left: 2px solid #524f67;
 }
 .workflow-timeline > ol > li:last-child {
-    padding-bottom: 0;
+  padding-bottom: 0;
 }
 .workflow-tick {
-    position: absolute;
-    left: -14px;
-    top: 0;
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid #524f67;
-    border-radius: 50%;
-    background: #232136;
-    color: #c4a7e7;
-    font-size: 0.75rem;
-    font-variant-numeric: tabular-nums;
+  position: absolute;
+  left: -14px;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #524f67;
+  border-radius: 50%;
+  background: #232136;
+  color: #c4a7e7;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 .workflow-event {
-    min-width: 0;
-    overflow-wrap: anywhere;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .workflow-event-heading {
-    display: flex;
-    gap: 12px;
-    align-items: baseline;
-    flex-wrap: wrap;
-    padding: 3px 0 8px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 3px 0 8px;
 }
 .workflow-event-heading small {
-    color: #908caa;
+  color: #908caa;
 }
 .workflow-event > details > summary {
-    cursor: pointer;
-    color: #908caa;
+  cursor: pointer;
+  color: #908caa;
 }
 .workflow-event > .tool {
-    margin: 4px 0 0;
+  margin: 4px 0 0;
 }
 /* Program and timeline are peer sections within the workflow container. */
 .workflow-program {
-    margin-block: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #524f67;
+  margin-block: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #524f67;
 }
 .workflow-program > h3 {
-    margin: 0 0 12px;
-    font-size: 1rem;
+  margin: 0 0 12px;
+  font-size: 1rem;
 }
 .workflow-execution {
-    border: 0;
-    padding: 0;
-    background: transparent;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 .workflow-event .tool-children {
-    border-left: 0;
-    padding-left: 0;
+  border-left: 0;
+  padding-left: 0;
 }
 .workflow-event .tool-data {
-    margin-block: 12px;
+  margin-block: 12px;
 }
 
 .workflow-now p {
-    margin: 0;
-    padding-block: 4px;
+  margin: 0;
+  padding-block: 4px;
 }
 .workflow-now strong {
-    font-size: 0.9rem;
-    font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .workflow-transition {
-    transition: height 260ms ease;
-    overflow: clip;
+  transition: height 260ms ease;
+  overflow: clip;
 }
 .workflow-transition-content {
-    display: flow-root;
+  display: flow-root;
 }
 .workflow-arriving > .workflow-event {
-    animation: workflow-arrive 260ms ease both;
+  animation: workflow-arrive 260ms ease both;
 }
 .workflow-now[data-working="true"] .workflow-tick {
-    color: transparent;
-    border-top-color: #9ccfd8;
-    animation: workflow-spin 850ms linear infinite;
+  color: transparent;
+  border-top-color: #9ccfd8;
+  animation: workflow-spin 850ms linear infinite;
 }
 @keyframes workflow-spin {
-    to {
-        transform: rotate(360deg);
-    }
+  to {
+    transform: rotate(360deg);
+  }
 }
 @keyframes workflow-arrive {
-    from {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-    .workflow-transition {
-        transition: none;
-    }
-    .workflow-arriving > .workflow-event,
-    .workflow-now[data-working="true"] .workflow-tick {
-        animation: none;
-    }
+  .workflow-transition {
+    transition: none;
+  }
+  .workflow-arriving > .workflow-event,
+  .workflow-now[data-working="true"] .workflow-tick {
+    animation: none;
+  }
 }
 
 .workflow-controls {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .workflow-timeline > ol > li.workflow-now[data-working="false"] {
-    border-left-color: transparent;
+  border-left-color: transparent;
 }
 
 /* On phones, give the conversation width to the work rather than nested shells. */
 @media (max-width: 600px) {
-    .chat-app .message-card,
-    .chat-app .composer-card {
-        padding: 12px;
-        border-radius: 14px;
-    }
-    .message-parts {
-        margin-top: 12px;
-    }
-    .message-parts > .tool {
-        padding: 0;
-        border: 0;
-        background: transparent;
-    }
-    .tool-heading {
-        align-items: flex-start;
-        gap: 8px;
-    }
-    .tool-heading > strong {
-        min-width: 0;
-        overflow-wrap: anywhere;
-    }
-    .workflow-program {
-        margin-block: 16px;
-        padding-bottom: 12px;
-    }
-    .workflow-timeline > ol > li {
-        margin-left: 11px;
-        padding-left: 19px;
-    }
-    .workflow-tick {
-        left: -12px;
-        width: 22px;
-        height: 22px;
-        font-size: 0.7rem;
-    }
-    .workflow-event .tool {
-        padding: 10px 0;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        margin-top: 0;
-    }
-    .workflow-event .ask-card {
-        padding: 12px;
-        border-radius: 12px;
-    }
-    .ask-question {
-        font-size: 1rem;
-        line-height: 1.45;
-    }
-    .chat-app textarea {
-        font-size: 16px;
-        padding: 10px;
-    }
-    .ask-actions {
-        gap: 4px;
-    }
-    .ask-actions button,
-    .ask-suggestions button,
-    .workflow-controls button {
-        min-height: 44px;
-        padding-inline: 10px;
-    }
-    .ask-actions > div {
-        gap: 0;
-    }
-    .ask-hint {
-        gap: 4px;
-        font-size: 0.7rem;
-    }
-    .workflow-event,
-    .workflow-program,
-    .tool,
-    .thread-meta {
-        min-width: 0;
-        overflow-wrap: anywhere;
-    }
+  .chat-app .message-card,
+  .chat-app .composer-card {
+    padding: 12px;
+    border-radius: 14px;
+  }
+  .message-parts {
+    margin-top: 12px;
+  }
+  .message-parts > .tool {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .tool-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .tool-heading > strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .workflow-program {
+    margin-block: 16px;
+    padding-bottom: 12px;
+  }
+  .workflow-timeline > ol > li {
+    margin-left: 11px;
+    padding-left: 19px;
+  }
+  .workflow-tick {
+    left: -12px;
+    width: 22px;
+    height: 22px;
+    font-size: 0.7rem;
+  }
+  .workflow-event .tool {
+    padding: 10px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    margin-top: 0;
+  }
+  .workflow-event .ask-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+  .ask-question {
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+  .chat-app textarea {
+    font-size: 16px;
+    padding: 10px;
+  }
+  .ask-actions {
+    gap: 4px;
+  }
+  .ask-actions button,
+  .ask-suggestions button,
+  .workflow-controls button {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+  .ask-actions > div {
+    gap: 0;
+  }
+  .ask-hint {
+    gap: 4px;
+    font-size: 0.7rem;
+  }
+  .workflow-event,
+  .workflow-program,
+  .tool,
+  .thread-meta {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }

@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import { createWorkflowModels } from "../server/cloudflare/model-catalog.ts";
+import type { createWorkflowModels } from "../server/cloudflare/model-catalog.ts";
 import { reasoningLevel } from "../server/model-settings.ts";
 
 /** Authoring is host work; the generated caller is pinned before execution opens. */
@@ -12,6 +12,8 @@ export async function authorCaller(
     provider: string;
     model: string;
     thinking?: string;
+    language: string;
+    instructions: string;
   },
 ): Promise<string> {
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 4000) {
@@ -37,13 +39,7 @@ export async function authorCaller(
               content: [
                 {
                   type: "text",
-                  text: `Write a Scheme caller for a durable workflow evaluator. Return only Scheme source, without Markdown.
-Available compiled developer function: (review_draft input). input is a JSON object with title (string), recipient (string), metadata (JSON value). It asks the human for approval, registers cleanup that asks the human to release the reservation, and returns the string "Draft approved" or "Draft declined". Call it; do not redefine it or simulate its effects.
-The caller must define (workflow input) and end with (workflow %input). %input is provided by the host. Available host tool: (send_announcement input). It queues an announcement in the local outbox and returns a JSON object with announcementId, status, title, recipient. Call it only after review_draft returns "Draft approved". Return its receipt or a string explaining the decline. The host owns execution; do not implement this tool.
-Use define, let, let*, if, equal?, json-field, string-append and ordinary function calls. No imports, eval, external APIs, or direct effects. Preserve the tool result. This experiment has no email-sending capability.
-The host supplies title, recipient, and metadata in input; pass input directly to both tools. Do not invent JSON literal syntax.
-User request: ${prompt}
-${feedback}`,
+                  text: `${config.instructions}\nUser request: ${prompt}\n${feedback}`,
                 },
               ],
             },
@@ -88,12 +84,12 @@ ${feedback}`,
       .trim();
     const diagnostic =
       !source || source.includes("```")
-        ? "Expected bare Scheme source, without Markdown or explanation"
+        ? "Expected bare workflow source, without Markdown or explanation"
         : await validate(source);
     if (!diagnostic) {
       return source;
     }
-    feedback = `Your previous response was rejected before execution. Rewrite the complete caller as bare Scheme only. Validator feedback: ${diagnostic.slice(0, 2000)}`;
+    feedback = `Your previous response was rejected before execution. Rewrite the complete caller as bare ${config.language} only. Validator feedback: ${diagnostic.slice(0, 2000)}`;
     console.warn("Workflow authoring validation rejected source", { diagnostic });
   }
   throw Error(`Workflow authoring failed validation after three attempts. ${feedback}`);

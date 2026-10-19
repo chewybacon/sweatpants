@@ -1,19 +1,19 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.app.json",
-    "compilerOptions": {
-        "paths": {
-            "@/*": ["./src/*"]
-        },
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
     },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"],
-    "references": [
-        {
-            "path": "../../packages/agent-sdk/tsconfig.json"
-        },
-        {
-            "path": "../../packages/agent-host/tsconfig.lib.json"
-        }
-    ]
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "references": [
+    {
+      "path": "../../packages/agent-sdk/tsconfig.json"
+    },
+    {
+      "path": "../../packages/agent-host/tsconfig.lib.json"
+    }
+  ]
 }

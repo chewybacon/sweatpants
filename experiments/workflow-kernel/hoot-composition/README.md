@@ -215,3 +215,50 @@ Snapshot format v3 replaces v2 for the new object/null representation. The pinne
 Wasm digest also changes. No compatibility reader or migration is provided.
 The installed-effect proof now uses nested object input/output, and the value
 suite restores all value kinds into fresh Wasm instances without stepping.
+
+## Shared inspection projection
+
+`inspection.mts` projects Hoot's explicit state into the `ExecutionInspection`
+contract exported by `workflow-kernel`. `machine.inspect(boundary)` returns this
+as `execution` alongside the Hoot diagnostics. The supplied boundary is the
+kernel adapter's actual transition result; its live suspension ID is excluded
+from the projection. Inspection does not step the evaluator or authorize recovery.
+
+Calls, lexical environments and unwind continuations remain separate. Scope
+registration, running cleanup and finally are distinct variants; scope ownership
+is not fabricated after Hoot discards it. Closures retain their environment ID.
+The projection caps collections at 2,000 entries overall and display summaries
+at 2,000 characters / depth 16, reporting truncation. These are presentation
+limits, not snapshot admission or sandbox limits. The boundary payload and raw
+Hoot diagnostics retain their existing limits.
+
+The lab's call-stack, binding and cleanup panels use this shared projection;
+its continuation frames and step counter remain Hoot diagnostics. Run the new
+proof with `node experiments/workflow-kernel/hoot-composition/__tests__/inspection.mjs`
+after building the Hoot artifact, or use `pnpm --filter yo-workflow execution:test`.
+
+## Linking and authoring composition
+
+`linker.mts` implements `WorkflowLinker`. It accepts Scheme callers and the current
+versioned definition format, explicitly registers compiled functions versus host
+capabilities, verifies entries, rejects duplicate public/private names and deduplicates
+identical definition modules. It parses caller forms before embedding them in the
+host registration envelope; evaluator validation and effect-free preflight still
+own language admission. The current evaluator's host-call version is 1, so other
+versions are explicitly rejected. Registered public names currently use a bounded
+symbol grammar; arbitrary symbol quoting is not supported.
+
+`authoring.mjs` supplies the lab's source validator, linker and program factory.
+Node and Cloudflare compose those same seams with their existing machine loaders.
+The application preflights through `WorkflowKernel`, not the Hoot machine API.
+
+Programs now use the shared `createKernelProgramBundle`/`loadKernelProgram` content
+identity helpers. This changes program digests for newly prepared programs. No
+migration of existing pinned executions is promised. The evaluator, guest semantics,
+Wasm binary and snapshot format are unchanged. Run `__tests__/linker.mjs` or the
+lab's `execution:test` for linking rejection and fresh-restore evidence.
+
+Hoot linking implements the Effection `WorkflowLinker.link` operation. The pure
+Scheme registration transform stays internal to the adapter. The lab yields
+linking during validation/preflight and bridges its Promise service entry points
+with `run()`, so another target can wait for caller checking or compilation.

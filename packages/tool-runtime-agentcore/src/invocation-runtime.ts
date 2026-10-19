@@ -117,7 +117,7 @@ export function* createAgentCoreToolInvocationRuntime(
   options: AgentCoreToolInvocationRuntimeOptions,
 ): Operation<void> {
   const factory = yield* createAgentCoreToolInvocationResourceFactory(options);
-  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+  yield* ToolInvocationHostPort.installDriver(createToolInvocationHost({ driver: factory }));
   yield* ToolInvocationEventSourcePort.installDriver({
     *open(invocationId) {
       const resource = yield* factory.open(invocationId);

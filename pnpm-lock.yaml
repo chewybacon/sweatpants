@@ -179,6 +179,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 1.0.1
         version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.21.0)(zod@4.6.5)
+      '@sweatpants/agent-sdk':
+        specifier: workspace:*
+        version: link:packages/agent-sdk
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:packages/durable-execution
@@ -194,6 +197,9 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:packages/ts-config
+      '@sweatpants/workflow-kernel':
+        specifier: workspace:*
+        version: link:packages/workflow-kernel
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
@@ -221,6 +227,9 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
 
   apps/agentcore-durable-program-runtime:
     dependencies:
@@ -2761,6 +2770,9 @@ importers:
 
   packages/workflow-kernel:
     dependencies:
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../durable-execution
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation

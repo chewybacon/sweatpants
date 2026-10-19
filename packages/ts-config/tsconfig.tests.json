@@ -1,12 +1,12 @@
 {
-    "$schema": "https://json.schemastore.org/tsconfig",
-    "_comment": "Typechecks test files without emitting. Package tsconfigs exclude tests so declaration output stays free of test types; that exclusion also meant test code was never typechecked at all, which let a test await an Operation and silently assert on a generator object.",
-    "compilerOptions": {
-        "composite": false,
-        "declaration": false,
-        "declarationMap": false,
-        "emitDeclarationOnly": false,
-        "noEmit": true
-    },
-    "exclude": ["dist", "node_modules"]
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "_comment": "Typechecks test files without emitting. Package tsconfigs exclude tests so declaration output stays free of test types; that exclusion also meant test code was never typechecked at all, which let a test await an Operation and silently assert on a generator object.",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true
+  },
+  "exclude": ["dist", "node_modules"]
 }

@@ -1,22 +1,22 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.package.json",
-    "compilerOptions": {
-        "noEmit": true,
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../chat-client"
     },
-    "include": ["src/**/*.ts"],
-    "references": [
-        {
-            "path": "../chat-client"
-        },
-        {
-            "path": "../tool-session"
-        },
-        {
-            "path": "../durable-chat-runtime"
-        },
-        {
-            "path": "../agent-host"
-        }
-    ]
+    {
+      "path": "../tool-session"
+    },
+    {
+      "path": "../durable-chat-runtime"
+    },
+    {
+      "path": "../agent-host"
+    }
+  ]
 }

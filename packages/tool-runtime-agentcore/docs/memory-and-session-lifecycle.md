@@ -29,10 +29,10 @@ The diagnostic response includes:
 - `process.memoryUsage()`
 - `process.resourceUsage()`
 - cgroup memory files:
-    - `/sys/fs/cgroup/memory.current`
-    - `/sys/fs/cgroup/memory.peak`
-    - `/sys/fs/cgroup/memory.max`
-    - `/sys/fs/cgroup/memory.stat`
+  - `/sys/fs/cgroup/memory.current`
+  - `/sys/fs/cgroup/memory.peak`
+  - `/sys/fs/cgroup/memory.max`
+  - `/sys/fs/cgroup/memory.stat`
 - retained tool-session counts by status
 
 The diagnostic operation lives in the tracer app protocol, not the generic package protocol:
@@ -169,15 +169,15 @@ Observed runtime config shape included lifecycle, network, artifact, protocol, m
 
 ```json
 {
-    "lifecycleConfiguration": {
-        "idleRuntimeSessionTimeout": 900,
-        "maxLifetime": 28800
-    },
-    "agentRuntimeArtifact": {
-        "containerConfiguration": {
-            "containerUri": "..."
-        }
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "agentRuntimeArtifact": {
+    "containerConfiguration": {
+      "containerUri": "..."
     }
+  }
 }
 ```
 
@@ -222,9 +222,9 @@ A raw completed session stayed inspectable after completion:
 
 ```json
 {
-    "type": "session_status",
-    "status": "completed",
-    "lastRuntimeEventSeq": 2
+  "type": "session_status",
+  "status": "completed",
+  "lastRuntimeEventSeq": 2
 }
 ```
 
@@ -236,11 +236,11 @@ A paused tool session, such as one awaiting elicitation, remains non-terminal an
 
 ```json
 {
-    "status": "awaiting_elicit",
-    "pendingRequest": {
-        "type": "elicit",
-        "elicitId": "..."
-    }
+  "status": "awaiting_elicit",
+  "pendingRequest": {
+    "type": "elicit",
+    "elicitId": "..."
+  }
 }
 ```
 
@@ -248,14 +248,14 @@ Diagnostics showed:
 
 ```json
 {
-    "sessions": {
-        "total": 1,
-        "terminal": 0,
-        "nonTerminal": 1,
-        "byStatus": {
-            "awaiting_elicit": 1
-        }
+  "sessions": {
+    "total": 1,
+    "terminal": 0,
+    "nonTerminal": 1,
+    "byStatus": {
+      "awaiting_elicit": 1
     }
+  }
 }
 ```
 

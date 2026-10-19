@@ -1,74 +1,33 @@
-import type {
-  BoundedScan,
-  ChangeWait,
-  DurableKernel,
-  DurableMutation,
-  DurableMutationOutcome,
-  StoredAuthorityRecord,
-  StoredImmutableRecord,
-  StoredScanPage,
-} from "./contract.ts";
-import type { AuthorityCollectionId, ImmutableCollectionId } from "./collections.ts";
-import type { Operation } from "effection";
+import { composeOperation, type OperationOptions } from "@sweatpants/foundation";
+import type { DurableKernel } from "./contract.ts";
 
-export interface DurableKernelMiddleware {
-  readAuthority?(
-    collection: AuthorityCollectionId,
-    key: string,
-    next: () => Operation<StoredAuthorityRecord | null>,
-  ): Operation<StoredAuthorityRecord | null>;
-  readImmutable?(
-    collection: ImmutableCollectionId,
-    key: string,
-    next: () => Operation<StoredImmutableRecord | null>,
-  ): Operation<StoredImmutableRecord | null>;
-  scan?(request: BoundedScan, next: () => Operation<StoredScanPage>): Operation<StoredScanPage>;
-  waitForChange?(request: ChangeWait, next: () => Operation<void>): Operation<void>;
-  apply?(
-    mutation: DurableMutation,
-    next: () => Operation<DurableMutationOutcome>,
-  ): Operation<DurableMutationOutcome>;
-}
+export type DurableKernelOptions = OperationOptions<DurableKernel>;
 
-/** Wrap physical kernel work without making middleware part of correctness. */
-export function withDurableKernelMiddleware(
-  inner: DurableKernel,
-  middleware: DurableKernelMiddleware,
-): DurableKernel {
+/** Decorate physical storage operations; transaction correctness remains driver-owned. */
+export function createDurableKernel({
+  driver,
+  middleware = [],
+}: DurableKernelOptions): DurableKernel {
   return {
-    *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
-      if (middleware.readAuthority) {
-        return yield* middleware.readAuthority(collection, key, () =>
-          inner.readAuthority(collection, key),
-        );
-      }
-      return yield* inner.readAuthority(collection, key);
-    },
-    *readImmutable(collection, key): Operation<StoredImmutableRecord | null> {
-      if (middleware.readImmutable) {
-        return yield* middleware.readImmutable(collection, key, () =>
-          inner.readImmutable(collection, key),
-        );
-      }
-      return yield* inner.readImmutable(collection, key);
-    },
-    *scan(request): Operation<StoredScanPage> {
-      if (middleware.scan) {
-        return yield* middleware.scan(request, () => inner.scan(request));
-      }
-      return yield* inner.scan(request);
-    },
-    *waitForChange(request): Operation<void> {
-      if (middleware.waitForChange) {
-        return yield* middleware.waitForChange(request, () => inner.waitForChange(request));
-      }
-      return yield* inner.waitForChange(request);
-    },
-    *apply(mutation): Operation<DurableMutationOutcome> {
-      if (middleware.apply) {
-        return yield* middleware.apply(mutation, () => inner.apply(mutation));
-      }
-      return yield* inner.apply(mutation);
-    },
+    readAuthority: composeOperation(
+      (collection, key) => driver.readAuthority(collection, key),
+      middleware.map((m) => m.readAuthority),
+    ),
+    readImmutable: composeOperation(
+      (collection, key) => driver.readImmutable(collection, key),
+      middleware.map((m) => m.readImmutable),
+    ),
+    scan: composeOperation(
+      (request) => driver.scan(request),
+      middleware.map((m) => m.scan),
+    ),
+    waitForChange: composeOperation(
+      (request) => driver.waitForChange(request),
+      middleware.map((m) => m.waitForChange),
+    ),
+    apply: composeOperation(
+      (mutation) => driver.apply(mutation),
+      middleware.map((m) => m.apply),
+    ),
   };
 }

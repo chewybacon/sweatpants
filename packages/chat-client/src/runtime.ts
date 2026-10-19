@@ -1,11 +1,5 @@
-import {
-  createScope,
-  suspend,
-  useScope,
-  withResolvers,
-  type Around,
-  type Operation,
-} from "effection";
+import { installOperationMiddleware } from "@sweatpants/foundation";
+import { createScope, suspend, useScope, withResolvers, type Operation } from "effection";
 import { ChatClientError, asChatClientError } from "./errors.ts";
 import { ChatClientApi, ChatEventApi, ChatTransportPort } from "./ports.ts";
 import { createHttpTransport } from "./http.ts";
@@ -18,15 +12,6 @@ import {
   type InternalRuntime,
 } from "./client.ts";
 import type { ChatUIMessage } from "@sweatpants/chat-core";
-
-function* installMiddleware<T extends object>(
-  api: { around(middleware: Partial<Around<T>>): Operation<void> },
-  middleware: readonly Partial<Around<T>>[],
-): Operation<void> {
-  for (const item of middleware) {
-    yield* api.around(item);
-  }
-}
 
 function isPortDriverDuplicate(error: unknown): boolean {
   return (
@@ -63,13 +48,13 @@ export function createChatRuntime(options: ChatRuntimeOptions = {}): ChatRuntime
         yield* options.setup();
       }
       if (options.middleware) {
-        yield* installMiddleware(ChatClientApi, options.middleware);
+        yield* installOperationMiddleware(ChatClientApi, options.middleware);
       }
       if (options.eventMiddleware) {
-        yield* installMiddleware(ChatEventApi, options.eventMiddleware);
+        yield* installOperationMiddleware(ChatEventApi, options.eventMiddleware);
       }
       if (options.transport?.middleware) {
-        yield* installMiddleware(ChatTransportPort.api, options.transport.middleware);
+        yield* installOperationMiddleware(ChatTransportPort.api, options.transport.middleware);
       }
       const connection = options.connection ?? options.transport?.driver;
       if (connection) {

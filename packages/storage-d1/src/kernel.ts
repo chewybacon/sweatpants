@@ -1,3 +1,4 @@
+import { createDurableKernel, type DurableKernelOptions } from "@sweatpants/durable-storage-kernel";
 import type { D1Database, D1DatabaseSession, D1PreparedStatement } from "@cloudflare/workers-types";
 import { call, sleep } from "effection";
 import {
@@ -26,7 +27,7 @@ import {
   type Domain,
   type Row,
 } from "./domain.ts";
-export interface D1KernelOptions {
+export interface D1KernelOptions extends Pick<DurableKernelOptions, "middleware"> {
   maxAttempts?: number;
 }
 type Stored = StoredAuthorityRecord | StoredImmutableRecord;
@@ -232,304 +233,307 @@ export function createD1DurableKernel(
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) {
     throw new RangeError("maxAttempts must be positive");
   }
-  return {
-    *readAuthority(collection, key) {
-      return (yield* call(() =>
-        read(database.withSession("first-primary"), collection, key),
-      )) as StoredAuthorityRecord | null;
-    },
-    *readImmutable(collection, key) {
-      return (yield* call(() =>
-        read(database.withSession("first-primary"), collection, key),
-      )) as StoredImmutableRecord | null;
-    },
-    *apply(mutation) {
-      validateMutationStructure(mutation);
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const session = database.withSession("first-primary");
-        const observations = new Map<
-          string,
-          { collection: string; key: string; record: Stored | null }
-        >();
-        const observe = async (collection: string, key: string) => {
-          const id = JSON.stringify([collection, key]);
-          let entry = observations.get(id);
-          if (!entry) {
-            entry = { collection, key, record: await read(session, collection, key) };
-            observations.set(id, entry);
-          }
-          return entry.record;
-        };
-        const claim = mutation.claim
-          ? ((yield* call(() =>
-              observe(mutation.claim!.collection, mutation.claim!.key),
-            )) as StoredImmutableRecord | null)
-          : null;
-        const authority =
-          !claim && mutation.authority
-            ? ((yield* call(() =>
-                observe(mutation.authority!.collection, mutation.authority!.key),
-              )) as StoredAuthorityRecord | null)
-            : null;
-        const precondition = evaluateMutationPreconditions(mutation, { claim, authority });
-        if (precondition) {
-          return precondition;
-        }
-        const candidates = new Map<string, StoredImmutableRecord[]>();
-        for (const ensure of mutation.ensures) {
-          const records: StoredImmutableRecord[] = [];
-          for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
-            const record = yield* call(() => observe(ensure.collection, key));
-            if (record) {
-              records.push(record as StoredImmutableRecord);
+  return createDurableKernel({
+    middleware: options.middleware,
+    driver: {
+      *readAuthority(collection, key) {
+        return (yield* call(() =>
+          read(database.withSession("first-primary"), collection, key),
+        )) as StoredAuthorityRecord | null;
+      },
+      *readImmutable(collection, key) {
+        return (yield* call(() =>
+          read(database.withSession("first-primary"), collection, key),
+        )) as StoredImmutableRecord | null;
+      },
+      *apply(mutation) {
+        validateMutationStructure(mutation);
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const session = database.withSession("first-primary");
+          const observations = new Map<
+            string,
+            { collection: string; key: string; record: Stored | null }
+          >();
+          const observe = async (collection: string, key: string) => {
+            const id = JSON.stringify([collection, key]);
+            let entry = observations.get(id);
+            if (!entry) {
+              entry = { collection, key, record: await read(session, collection, key) };
+              observations.set(id, entry);
             }
-          }
-          candidates.set(ensure.name, records);
-          // Aliases are domain identities, never arbitrary redirects.
-          const row = domainFor(ensure.collection).toRow(ensure.value);
-          const domain = domainFor(ensure.collection);
-          for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
-            const parts = decodeDurableKey(key),
-              fields = domain.keys.find((candidate) => candidate.length === parts.length);
-            if (
-              !fields ||
-              fields.some((field, index) => field !== null && String(row[field]) !== parts[index])
-            ) {
-              invalid("Immutable alias disagrees with domain value");
-            }
-          }
-        }
-        const plan = evaluateMutation(mutation, {
-          claim,
-          authority,
-          candidates: (ensure) => candidates.get(ensure.name) ?? [],
-        });
-        if (plan.status !== "ready") {
-          return plan;
-        }
-        if (!mutation.claim && plan.inserts.length === 0 && !plan.outcome.authority) {
-          return plan.outcome;
-        }
-        // Group bounded input identities by domain index. SQL size depends on the
-        // domain schema, not on the number of records in a maximum-size mutation.
-        const groups = new Map<
-          string,
-          { domain: Domain; fields: readonly (string | null)[]; rows: unknown[][] }
-        >();
-        for (const observed of observations.values()) {
-          const domain = domainFor(observed.collection);
-          const parts = decodeDurableKey(observed.key);
-          const fields = domain.keys.find((candidate) => candidate.length === parts.length)!;
-          const groupKey = `${observed.collection}:${parts.length}`;
-          let group = groups.get(groupKey);
-          if (!group) {
-            group = { domain, fields, rows: [] };
-            groups.set(groupKey, group);
-          }
-          group.rows.push([
-            ...parts,
-            observed.record && "revision" in observed.record
-              ? observed.record.revision
-              : observed.record !== null
-                ? 1
-                : null,
-          ]);
-        }
-        const guardValues: unknown[][][] = [];
-        const guards: string[] = [];
-        for (const { domain, fields, rows } of groups.values()) {
-          const defs = columns(domain);
-          const at = guardValues.length;
-          guardValues.push(rows);
-          const joins = fields.flatMap((field, index) =>
-            field === null
-              ? []
-              : [
-                  `actual."${defs[field]!.name}" = ${defs[field]!.columnType === "SQLiteCustomColumn" ? `CAST(json_extract(expected.value,'$[${index}]') AS INTEGER)` : `json_extract(expected.value,'$[${index}]')`}`,
-                ],
-          );
-          const actual = domain.revision
-            ? `CAST(actual."${defs[domain.revision]!.name}" AS TEXT)`
-            : `CASE WHEN actual."${defs[domain.keys[0]![0]!]!.name}" IS NULL THEN NULL ELSE 1 END`;
-          guards.push(
-            `NOT EXISTS (SELECT 1 FROM json_each(json_extract((SELECT value FROM observed),'$[${at}]')) expected LEFT JOIN "${tableName(domain)}" actual ON ${joins.join(" AND ")} WHERE ${actual} IS NOT json_extract(expected.value,'$[${fields.length}]'))`,
-          );
-        }
-        const token = crypto.randomUUID();
-        const statements: D1PreparedStatement[] = [
-          session
-            .prepare(
-              `WITH observed(value) AS (SELECT ?) UPDATE sp_d1_meta SET token=? WHERE id=1 AND ${guards.join(" AND ") || "1"} RETURNING token`,
-            )
-            .bind(JSON.stringify(guardValues), token),
-        ];
-        if (mutation.claim) {
-          statements.push(...prepareWrite(session, mutation.claim, token));
-        }
-        for (const ensure of plan.inserts) {
-          statements.push(...prepareWrite(session, plan.outcome.ensured[ensure.name]!, token));
-        }
-        if (plan.outcome.authority) {
-          statements.push(...prepareWrite(session, plan.outcome.authority!, token));
-        }
-        for (const key of mutation.retireExecutionObjects ?? []) {
-          const [objectId] = decodeDurableKey(key);
-          statements.push(
-            session
-              .prepare(`DELETE FROM sp_execution_objects WHERE object_id=? AND ${gate}`)
-              .bind(objectId!, token),
-            session
-              .prepare(
-                `DELETE FROM sp_d1_payload_chunks WHERE collection='execution-objects' AND key=? AND ${gate}`,
-              )
-              .bind(key, token),
-            session
-              .prepare(
-                `DELETE FROM sp_d1_payloads WHERE collection='execution-objects' AND key=? AND ${gate}`,
-              )
-              .bind(key, token),
-          );
-        }
-        const result = yield* call(() => session.batch(statements));
-        if (result[0]!.results.length) {
-          return plan.outcome;
-        }
-        // Read the winning outcome even with a single allowed write attempt.
-        if (attempt === maxAttempts - 1) {
-          const winnerClaim = mutation.claim
+            return entry.record;
+          };
+          const claim = mutation.claim
             ? ((yield* call(() =>
-                read(session, mutation.claim!.collection, mutation.claim!.key),
+                observe(mutation.claim!.collection, mutation.claim!.key),
               )) as StoredImmutableRecord | null)
             : null;
-          const winnerAuthority =
-            !winnerClaim && mutation.authority
+          const authority =
+            !claim && mutation.authority
               ? ((yield* call(() =>
-                  read(session, mutation.authority!.collection, mutation.authority!.key),
+                  observe(mutation.authority!.collection, mutation.authority!.key),
                 )) as StoredAuthorityRecord | null)
               : null;
-          const conflict = evaluateMutationPreconditions(mutation, {
-            claim: winnerClaim,
-            authority: winnerAuthority,
-          });
-          if (conflict) {
-            return conflict;
+          const precondition = evaluateMutationPreconditions(mutation, { claim, authority });
+          if (precondition) {
+            return precondition;
           }
-          const winners = new Map<string, StoredImmutableRecord[]>();
+          const candidates = new Map<string, StoredImmutableRecord[]>();
           for (const ensure of mutation.ensures) {
-            const rows: StoredImmutableRecord[] = [];
+            const records: StoredImmutableRecord[] = [];
             for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
-              const record = yield* call(() => read(session, ensure.collection, key));
+              const record = yield* call(() => observe(ensure.collection, key));
               if (record) {
-                rows.push(record as StoredImmutableRecord);
+                records.push(record as StoredImmutableRecord);
               }
             }
-            winners.set(ensure.name, rows);
+            candidates.set(ensure.name, records);
+            // Aliases are domain identities, never arbitrary redirects.
+            const row = domainFor(ensure.collection).toRow(ensure.value);
+            const domain = domainFor(ensure.collection);
+            for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
+              const parts = decodeDurableKey(key),
+                fields = domain.keys.find((candidate) => candidate.length === parts.length);
+              if (
+                !fields ||
+                fields.some((field, index) => field !== null && String(row[field]) !== parts[index])
+              ) {
+                invalid("Immutable alias disagrees with domain value");
+              }
+            }
           }
-          const outcome = evaluateMutation(mutation, {
-            claim: winnerClaim,
-            authority: winnerAuthority,
-            candidates: (ensure) => winners.get(ensure.name) ?? [],
+          const plan = evaluateMutation(mutation, {
+            claim,
+            authority,
+            candidates: (ensure) => candidates.get(ensure.name) ?? [],
           });
-          if (outcome.status !== "ready") {
-            return outcome;
+          if (plan.status !== "ready") {
+            return plan;
           }
-          if (!mutation.claim && !outcome.outcome.authority && outcome.inserts.length === 0) {
-            return outcome.outcome;
+          if (!mutation.claim && plan.inserts.length === 0 && !plan.outcome.authority) {
+            return plan.outcome;
           }
+          // Group bounded input identities by domain index. SQL size depends on the
+          // domain schema, not on the number of records in a maximum-size mutation.
+          const groups = new Map<
+            string,
+            { domain: Domain; fields: readonly (string | null)[]; rows: unknown[][] }
+          >();
+          for (const observed of observations.values()) {
+            const domain = domainFor(observed.collection);
+            const parts = decodeDurableKey(observed.key);
+            const fields = domain.keys.find((candidate) => candidate.length === parts.length)!;
+            const groupKey = `${observed.collection}:${parts.length}`;
+            let group = groups.get(groupKey);
+            if (!group) {
+              group = { domain, fields, rows: [] };
+              groups.set(groupKey, group);
+            }
+            group.rows.push([
+              ...parts,
+              observed.record && "revision" in observed.record
+                ? observed.record.revision
+                : observed.record !== null
+                  ? 1
+                  : null,
+            ]);
+          }
+          const guardValues: unknown[][][] = [];
+          const guards: string[] = [];
+          for (const { domain, fields, rows } of groups.values()) {
+            const defs = columns(domain);
+            const at = guardValues.length;
+            guardValues.push(rows);
+            const joins = fields.flatMap((field, index) =>
+              field === null
+                ? []
+                : [
+                    `actual."${defs[field]!.name}" = ${defs[field]!.columnType === "SQLiteCustomColumn" ? `CAST(json_extract(expected.value,'$[${index}]') AS INTEGER)` : `json_extract(expected.value,'$[${index}]')`}`,
+                  ],
+            );
+            const actual = domain.revision
+              ? `CAST(actual."${defs[domain.revision]!.name}" AS TEXT)`
+              : `CASE WHEN actual."${defs[domain.keys[0]![0]!]!.name}" IS NULL THEN NULL ELSE 1 END`;
+            guards.push(
+              `NOT EXISTS (SELECT 1 FROM json_each(json_extract((SELECT value FROM observed),'$[${at}]')) expected LEFT JOIN "${tableName(domain)}" actual ON ${joins.join(" AND ")} WHERE ${actual} IS NOT json_extract(expected.value,'$[${fields.length}]'))`,
+            );
+          }
+          const token = crypto.randomUUID();
+          const statements: D1PreparedStatement[] = [
+            session
+              .prepare(
+                `WITH observed(value) AS (SELECT ?) UPDATE sp_d1_meta SET token=? WHERE id=1 AND ${guards.join(" AND ") || "1"} RETURNING token`,
+              )
+              .bind(JSON.stringify(guardValues), token),
+          ];
+          if (mutation.claim) {
+            statements.push(...prepareWrite(session, mutation.claim, token));
+          }
+          for (const ensure of plan.inserts) {
+            statements.push(...prepareWrite(session, plan.outcome.ensured[ensure.name]!, token));
+          }
+          if (plan.outcome.authority) {
+            statements.push(...prepareWrite(session, plan.outcome.authority!, token));
+          }
+          for (const key of mutation.retireExecutionObjects ?? []) {
+            const [objectId] = decodeDurableKey(key);
+            statements.push(
+              session
+                .prepare(`DELETE FROM sp_execution_objects WHERE object_id=? AND ${gate}`)
+                .bind(objectId!, token),
+              session
+                .prepare(
+                  `DELETE FROM sp_d1_payload_chunks WHERE collection='execution-objects' AND key=? AND ${gate}`,
+                )
+                .bind(key, token),
+              session
+                .prepare(
+                  `DELETE FROM sp_d1_payloads WHERE collection='execution-objects' AND key=? AND ${gate}`,
+                )
+                .bind(key, token),
+            );
+          }
+          const result = yield* call(() => session.batch(statements));
+          if (result[0]!.results.length) {
+            return plan.outcome;
+          }
+          // Read the winning outcome even with a single allowed write attempt.
+          if (attempt === maxAttempts - 1) {
+            const winnerClaim = mutation.claim
+              ? ((yield* call(() =>
+                  read(session, mutation.claim!.collection, mutation.claim!.key),
+                )) as StoredImmutableRecord | null)
+              : null;
+            const winnerAuthority =
+              !winnerClaim && mutation.authority
+                ? ((yield* call(() =>
+                    read(session, mutation.authority!.collection, mutation.authority!.key),
+                  )) as StoredAuthorityRecord | null)
+                : null;
+            const conflict = evaluateMutationPreconditions(mutation, {
+              claim: winnerClaim,
+              authority: winnerAuthority,
+            });
+            if (conflict) {
+              return conflict;
+            }
+            const winners = new Map<string, StoredImmutableRecord[]>();
+            for (const ensure of mutation.ensures) {
+              const rows: StoredImmutableRecord[] = [];
+              for (const key of [ensure.key, ...(ensure.alternateKeys ?? [])]) {
+                const record = yield* call(() => read(session, ensure.collection, key));
+                if (record) {
+                  rows.push(record as StoredImmutableRecord);
+                }
+              }
+              winners.set(ensure.name, rows);
+            }
+            const outcome = evaluateMutation(mutation, {
+              claim: winnerClaim,
+              authority: winnerAuthority,
+              candidates: (ensure) => winners.get(ensure.name) ?? [],
+            });
+            if (outcome.status !== "ready") {
+              return outcome;
+            }
+            if (!mutation.claim && !outcome.outcome.authority && outcome.inserts.length === 0) {
+              return outcome.outcome;
+            }
+          }
+          yield* sleep(Math.min(50, 1 + attempt * 2));
         }
-        yield* sleep(Math.min(50, 1 + attempt * 2));
-      }
-      throw new DurableKernelError(
-        "durable_kernel_transaction_failed",
-        "D1 journal contention exceeded the retry budget",
-      );
-    },
-    *scan(request) {
-      validateScan(request);
-      const domain = domainFor(request.collection),
-        defs = columns(domain),
-        session = database.withSession("first-primary");
-      const scope = decodeDurableKey(request.scope),
-        task = request.index === "task-sequence";
-      const position =
-        "position" in defs
-          ? "position"
-          : "minPosition" in defs
-            ? "minPosition"
-            : "firstPosition" in defs
-              ? "firstPosition"
-              : "firstSequence";
-      const scopes = task ? ["executionId", "taskId"] : ["conversationId"];
-      const clauses = scopes.map((name) => `"${defs[name]!.name}"=?`),
-        args: Bind[] = [...scope];
-      const forward = request.direction === "forward";
-      if (request.after !== null) {
-        clauses.push(`"${defs[position]!.name}" ${forward ? ">" : "<"} CAST(? AS INTEGER)`);
-        args.push(sqlCounter(request.after).toString());
-      }
-      if (request.through !== undefined) {
-        clauses.push(`"${defs[position]!.name}" ${forward ? "<=" : ">="} CAST(? AS INTEGER)`);
-        args.push(sqlCounter(request.through).toString());
-      }
-      const keyColumns = domain.keys[0]!;
-      const payloadSize =
-        request.collection === "conversation-public-root-index"
-          ? "0"
-          : request.collection === "conversation-terminal-segments"
-            ? `COALESCE((SELECT payload_bytes FROM sp_d1_payloads WHERE collection='conversation-terminal-segments' AND key=${sqlIdentity(domain)}), octet_length(entries_json))`
-            : "encoded_bytes";
-      const metadata = yield* call(() =>
-        session
-          .prepare(
-            `SELECT ${keyColumns.map((name) => `CAST("${defs[name!]!.name}" AS TEXT) AS "${name}"`).join(",")}, CAST("${defs[position]!.name}" AS TEXT) AS scanPosition, ${payloadSize} AS payloadBytes FROM "${tableName(domain)}" WHERE ${clauses.join(" AND ")} ORDER BY "${tableName(domain)}"."${defs[position]!.name}" ${forward ? "ASC" : "DESC"} LIMIT ?`,
-          )
-          .bind(...args, request.maxRecords + 1)
-          .all<Row>(),
-      );
-      const page = planScanPage(
-        request,
-        metadata.results.map((row) => ({
-          key: identity(domain, row),
-          position: String(row.scanPosition),
-          payloadBytes: Number(row.payloadBytes),
-        })),
-      );
-      const found = new Map<string, Stored>();
-      const groupSize = Math.floor(99 / keyColumns.length);
-      for (let offset = 0; offset < page.selected.length; offset += groupSize) {
-        const group = page.selected.slice(offset, offset + groupSize),
-          matches = group.map((row) => predicate(domain, row.key));
-        const rows = yield* call(() =>
+        throw new DurableKernelError(
+          "durable_kernel_transaction_failed",
+          "D1 journal contention exceeded the retry budget",
+        );
+      },
+      *scan(request) {
+        validateScan(request);
+        const domain = domainFor(request.collection),
+          defs = columns(domain),
+          session = database.withSession("first-primary");
+        const scope = decodeDurableKey(request.scope),
+          task = request.index === "task-sequence";
+        const position =
+          "position" in defs
+            ? "position"
+            : "minPosition" in defs
+              ? "minPosition"
+              : "firstPosition" in defs
+                ? "firstPosition"
+                : "firstSequence";
+        const scopes = task ? ["executionId", "taskId"] : ["conversationId"];
+        const clauses = scopes.map((name) => `"${defs[name]!.name}"=?`),
+          args: Bind[] = [...scope];
+        const forward = request.direction === "forward";
+        if (request.after !== null) {
+          clauses.push(`"${defs[position]!.name}" ${forward ? ">" : "<"} CAST(? AS INTEGER)`);
+          args.push(sqlCounter(request.after).toString());
+        }
+        if (request.through !== undefined) {
+          clauses.push(`"${defs[position]!.name}" ${forward ? "<=" : ">="} CAST(? AS INTEGER)`);
+          args.push(sqlCounter(request.through).toString());
+        }
+        const keyColumns = domain.keys[0]!;
+        const payloadSize =
+          request.collection === "conversation-public-root-index"
+            ? "0"
+            : request.collection === "conversation-terminal-segments"
+              ? `COALESCE((SELECT payload_bytes FROM sp_d1_payloads WHERE collection='conversation-terminal-segments' AND key=${sqlIdentity(domain)}), octet_length(entries_json))`
+              : "encoded_bytes";
+        const metadata = yield* call(() =>
           session
             .prepare(
-              `SELECT ${payloadSelection(domain, request.collection)} FROM "${tableName(domain)}" WHERE ${matches.map((where) => `(${where.sql})`).join(" OR ")}`,
+              `SELECT ${keyColumns.map((name) => `CAST("${defs[name!]!.name}" AS TEXT) AS "${name}"`).join(",")}, CAST("${defs[position]!.name}" AS TEXT) AS scanPosition, ${payloadSize} AS payloadBytes FROM "${tableName(domain)}" WHERE ${clauses.join(" AND ")} ORDER BY "${tableName(domain)}"."${defs[position]!.name}" ${forward ? "ASC" : "DESC"} LIMIT ?`,
             )
-            .bind(...matches.flatMap((where) => where.args))
+            .bind(...args, request.maxRecords + 1)
             .all<Row>(),
         );
-        for (const row of rows.results) {
-          const record = yield* call(() => hydrate(session, request.collection, row));
-          found.set(record.key, record);
-        }
-      }
-      return {
-        records: page.selected.map((selected) => {
-          const record = found.get(selected.key);
-          if (!record) {
-            invalid("Missing indexed journal record");
+        const page = planScanPage(
+          request,
+          metadata.results.map((row) => ({
+            key: identity(domain, row),
+            position: String(row.scanPosition),
+            payloadBytes: Number(row.payloadBytes),
+          })),
+        );
+        const found = new Map<string, Stored>();
+        const groupSize = Math.floor(99 / keyColumns.length);
+        for (let offset = 0; offset < page.selected.length; offset += groupSize) {
+          const group = page.selected.slice(offset, offset + groupSize),
+            matches = group.map((row) => predicate(domain, row.key));
+          const rows = yield* call(() =>
+            session
+              .prepare(
+                `SELECT ${payloadSelection(domain, request.collection)} FROM "${tableName(domain)}" WHERE ${matches.map((where) => `(${where.sql})`).join(" OR ")}`,
+              )
+              .bind(...matches.flatMap((where) => where.args))
+              .all<Row>(),
+          );
+          for (const row of rows.results) {
+            const record = yield* call(() => hydrate(session, request.collection, row));
+            found.set(record.key, record);
           }
-          return {
-            ...(record as StoredImmutableRecord),
-            position: selected.position,
-            payloadBytes: selected.payloadBytes,
-          };
-        }),
-        nextCursor: page.nextCursor,
-      };
+        }
+        return {
+          records: page.selected.map((selected) => {
+            const record = found.get(selected.key);
+            if (!record) {
+              invalid("Missing indexed journal record");
+            }
+            return {
+              ...(record as StoredImmutableRecord),
+              position: selected.position,
+              payloadBytes: selected.payloadBytes,
+            };
+          }),
+          nextCursor: page.nextCursor,
+        };
+      },
+      *waitForChange(request) {
+        parseCounter(request.afterRevision, "wait revision");
+        yield* sleep(Math.max(0, request.timeoutMs));
+      },
     },
-    *waitForChange(request) {
-      parseCounter(request.afterRevision, "wait revision");
-      yield* sleep(Math.max(0, request.timeoutMs));
-    },
-  };
+  });
 }

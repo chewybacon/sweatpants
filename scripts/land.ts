@@ -143,7 +143,10 @@ async function main(): Promise<void> {
       {
         name: "preflight:model-auth",
         command: "pnpm",
-        args: ["model:auth:refresh"],
+        args:
+          process.env["DEFAULT_CHAT_MODEL_PROVIDER"] === "openai"
+            ? ["exec", "tsx", "scripts/check-openai-connection.ts"]
+            : ["model:auth:refresh"],
         timeoutMs: 30_000,
       },
       {

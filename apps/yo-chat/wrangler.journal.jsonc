@@ -1,20 +1,20 @@
 {
-    "name": "yo-chat-journal-local",
-    "compatibility_date": "2026-10-05",
-    "durable_objects": {
-        "bindings": [
-            {
-                "name": "RESPONSE_STREAMS",
-                "class_name": "ResponseStream",
-                "script_name": "yo-chat-thread-metadata",
-            },
-        ],
-    },
-    "d1_databases": [
-        {
-            "binding": "JOURNAL",
-            "database_name": "yo-chat-journal",
-            "database_id": "00000000-0000-0000-0000-000000000001",
-        },
+  "name": "yo-chat-journal-local",
+  "compatibility_date": "2026-10-05",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RESPONSE_STREAMS",
+        "class_name": "ResponseStream",
+        "script_name": "yo-chat-thread-metadata",
+      },
     ],
+  },
+  "d1_databases": [
+    {
+      "binding": "JOURNAL",
+      "database_name": "yo-chat-journal",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+    },
+  ],
 }

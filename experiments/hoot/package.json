@@ -1,8 +1,8 @@
 {
-    "name": "hoot-journal-spike",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "test": "NODE_OPTIONS=--conditions=development tsx --test __tests__/*.test.ts"
-    }
+  "name": "hoot-journal-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "NODE_OPTIONS=--conditions=development tsx --test __tests__/*.test.ts"
+  }
 }

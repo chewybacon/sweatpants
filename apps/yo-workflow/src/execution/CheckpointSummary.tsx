@@ -31,14 +31,16 @@ export function CheckpointSummary({ view }: { view: ExecutionView }) {
           <div>
             <dt>Position</dt>
             <dd>
-              {state.steps} evaluator steps · {state.mode}
+              {state.steps == null ? "" : `${state.steps} evaluator steps · `}
+              {state.mode}
             </dd>
           </div>
           <div>
             <dt>Values</dt>
             <dd>
-              {state.environments.length} environments; current environment{" "}
-              {state.currentEnvironment}
+              {state.currentEnvironment == null
+                ? "See VM registers and heap in the checkpoint"
+                : `${state.environments.length} environments; current environment ${state.currentEnvironment}`}
               {environment && (
                 <small>
                   {environment.bindings.map((binding) => binding.name).join(", ") ||
@@ -56,7 +58,7 @@ export function CheckpointSummary({ view }: { view: ExecutionView }) {
           <summary>Actual checkpoint data</summary>
           <p className="execution-muted">
             The accepted journal checkpoint envelope, including the kernel snapshot. Its state
-            string contains the serialized Scheme evaluator.
+            contains the serialized runtime continuation and reachable values.
           </p>
           <pre>{JSON.stringify(view.checkpoint, null, 2)}</pre>
           {!view.checkpoint && <p>No accepted checkpoint is available.</p>}
@@ -67,12 +69,12 @@ export function CheckpointSummary({ view }: { view: ExecutionView }) {
           <span>2</span> Restore
         </h3>
         <p>
-          Checkpoint → validate identity and state → fresh Wasm instance → same waiting boundary.
+          Checkpoint → validate identity and state → fresh runtime instance → same waiting boundary.
         </p>
         {view.restoration ? (
           <p className="checkpoint-proof">
-            Verified for this checkpoint: {view.restoration.stepsBefore} →{" "}
-            {view.restoration.stepsAfter} steps. Restore advanced no evaluator steps.
+            Verified for this checkpoint: restoring and capturing again preserved the saved
+            computation state.
           </p>
         ) : (
           <p className="execution-muted">

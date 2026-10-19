@@ -24,6 +24,10 @@ export default defineConfig({
           "../../packages/scheme-runtime/generated/wtf8.wasm",
           import.meta.url,
         ).pathname,
+        "#execution-lua-wasm": new URL(
+          "../../.artifacts/teal-lua-checkpoint/kernel.wasm",
+          import.meta.url,
+        ).pathname,
         "#execution-kernel-wasm": new URL(
           "../../.artifacts/hoot-composition/kernel.wasm",
           import.meta.url,

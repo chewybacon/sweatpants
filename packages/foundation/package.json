@@ -1,131 +1,131 @@
 {
-    "name": "@sweatpants/foundation",
-    "version": "0.1.0",
-    "description": "Portable JSON, canonicalization, and schema-neutral primitives",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./json": {
-            "development": {
-                "import": "./src/json.ts",
-                "types": "./src/json.ts"
-            },
-            "import": {
-                "types": "./dist/json.d.ts",
-                "default": "./dist/json.js"
-            },
-            "default": "./src/json.ts"
-        },
-        "./port": {
-            "development": {
-                "import": "./src/port.ts",
-                "types": "./src/port.ts"
-            },
-            "import": {
-                "types": "./dist/port.d.ts",
-                "default": "./dist/port.js"
-            },
-            "default": "./src/port.ts"
-        },
-        "./stream": {
-            "development": {
-                "import": "./src/stream.ts",
-                "types": "./src/stream.ts"
-            },
-            "import": {
-                "types": "./dist/stream.d.ts",
-                "default": "./dist/stream.js"
-            },
-            "default": "./src/stream.ts"
-        },
-        "./projection": {
-            "development": {
-                "import": "./src/projection.ts",
-                "types": "./src/projection.ts"
-            },
-            "import": {
-                "types": "./dist/projection.d.ts",
-                "default": "./dist/projection.js"
-            },
-            "default": "./src/projection.ts"
-        },
-        "./errors": {
-            "development": {
-                "import": "./src/errors.ts",
-                "types": "./src/errors.ts"
-            },
-            "import": {
-                "types": "./dist/errors.d.ts",
-                "default": "./dist/errors.js"
-            },
-            "default": "./src/errors.ts"
-        },
-        "./schema": {
-            "development": {
-                "import": "./src/schema.ts",
-                "types": "./src/schema.ts"
-            },
-            "import": {
-                "types": "./dist/schema.d.ts",
-                "default": "./dist/schema.js"
-            },
-            "default": "./src/schema.ts"
-        },
-        "./schema-validation": {
-            "development": {
-                "import": "./src/schema-validation.ts",
-                "types": "./src/schema-validation.ts"
-            },
-            "import": {
-                "types": "./dist/schema-validation.d.ts",
-                "default": "./dist/schema-validation.js"
-            },
-            "default": "./src/schema-validation.ts"
-        },
-        "./parser": {
-            "development": {
-                "import": "./src/parser.ts",
-                "types": "./src/parser.ts"
-            },
-            "import": {
-                "types": "./dist/parser.d.ts",
-                "default": "./dist/parser.js"
-            },
-            "default": "./src/parser.ts"
-        }
+  "name": "@sweatpants/foundation",
+  "version": "0.1.0",
+  "description": "Portable JSON, canonicalization, and schema-neutral primitives",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./json": {
+      "development": {
+        "import": "./src/json.ts",
+        "types": "./src/json.ts"
+      },
+      "import": {
+        "types": "./dist/json.d.ts",
+        "default": "./dist/json.js"
+      },
+      "default": "./src/json.ts"
     },
-    "dependencies": {
-        "@noble/hashes": "^2.2.0",
-        "@standard-schema/spec": "catalog:",
-        "canonicalize": "5.1.0",
-        "effection": "catalog:",
-        "uuid": "11.1.0"
+    "./port": {
+      "development": {
+        "import": "./src/port.ts",
+        "types": "./src/port.ts"
+      },
+      "import": {
+        "types": "./dist/port.d.ts",
+        "default": "./dist/port.js"
+      },
+      "default": "./src/port.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./stream": {
+      "development": {
+        "import": "./src/stream.ts",
+        "types": "./src/stream.ts"
+      },
+      "import": {
+        "types": "./dist/stream.d.ts",
+        "default": "./dist/stream.js"
+      },
+      "default": "./src/stream.ts"
+    },
+    "./projection": {
+      "development": {
+        "import": "./src/projection.ts",
+        "types": "./src/projection.ts"
+      },
+      "import": {
+        "types": "./dist/projection.d.ts",
+        "default": "./dist/projection.js"
+      },
+      "default": "./src/projection.ts"
+    },
+    "./errors": {
+      "development": {
+        "import": "./src/errors.ts",
+        "types": "./src/errors.ts"
+      },
+      "import": {
+        "types": "./dist/errors.d.ts",
+        "default": "./dist/errors.js"
+      },
+      "default": "./src/errors.ts"
+    },
+    "./schema": {
+      "development": {
+        "import": "./src/schema.ts",
+        "types": "./src/schema.ts"
+      },
+      "import": {
+        "types": "./dist/schema.d.ts",
+        "default": "./dist/schema.js"
+      },
+      "default": "./src/schema.ts"
+    },
+    "./schema-validation": {
+      "development": {
+        "import": "./src/schema-validation.ts",
+        "types": "./src/schema-validation.ts"
+      },
+      "import": {
+        "types": "./dist/schema-validation.d.ts",
+        "default": "./dist/schema-validation.js"
+      },
+      "default": "./src/schema-validation.ts"
+    },
+    "./parser": {
+      "development": {
+        "import": "./src/parser.ts",
+        "types": "./src/parser.ts"
+      },
+      "import": {
+        "types": "./dist/parser.d.ts",
+        "default": "./dist/parser.js"
+      },
+      "default": "./src/parser.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "@standard-schema/spec": "catalog:",
+    "canonicalize": "5.1.0",
+    "effection": "catalog:",
+    "uuid": "11.1.0"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

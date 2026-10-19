@@ -31,7 +31,7 @@ executions; the relationship is not necessarily one-to-one. Restoring computatio
 creates a fresh execution handle. It does not reactivate a disposed handle.
 
 `ExecutionState` is the returned pair `{ execution, boundary }`.
-`KernelExecutionState` specializes it with a snapshot-capable execution. These
+`WorkflowExecutionState` specializes it with a snapshot-capable execution. These
 are live values, not durable identities or serialized snapshots. The boundary in
 the pair is the boundary at that return point; it does not update automatically
 when the handle advances. The pair has no separate lifecycle; it is not another

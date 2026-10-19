@@ -131,7 +131,7 @@ export function prepareChatTools(
       const ordinary = tools.filter((tool) => !isChatDurableTool(tool));
       if (prepared.createResources) {
         const factory = yield* prepared.createResources();
-        yield* ToolInvocationHostPort.installDriver(createToolInvocationHost(factory));
+        yield* ToolInvocationHostPort.installDriver(createToolInvocationHost({ driver: factory }));
         yield* ToolInvocationEventSourcePort.installDriver({
           *open(id) {
             return (yield* factory.open(id))?.projection ?? null;

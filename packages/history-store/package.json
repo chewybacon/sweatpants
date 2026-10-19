@@ -1,117 +1,117 @@
 {
-    "name": "@sweatpants/history-store",
-    "version": "0.1.0",
-    "description": "Session History storage mechanics",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./memory": {
-            "development": {
-                "import": "./src/memory.ts",
-                "types": "./src/memory.ts"
-            },
-            "import": {
-                "types": "./dist/memory.d.ts",
-                "default": "./dist/memory.js"
-            },
-            "default": "./src/memory.ts"
-        },
-        "./port": {
-            "development": {
-                "import": "./src/port.ts",
-                "types": "./src/port.ts"
-            },
-            "import": {
-                "types": "./dist/port.d.ts",
-                "default": "./dist/port.js"
-            },
-            "default": "./src/port.ts"
-        },
-        "./contract": {
-            "development": {
-                "import": "./src/contract.ts",
-                "types": "./src/contract.ts"
-            },
-            "import": {
-                "types": "./dist/contract.d.ts",
-                "default": "./dist/contract.js"
-            },
-            "default": "./src/contract.ts"
-        },
-        "./persistence": {
-            "development": {
-                "import": "./src/persistence.ts",
-                "types": "./src/persistence.ts"
-            },
-            "import": {
-                "types": "./dist/persistence.d.ts",
-                "default": "./dist/persistence.js"
-            },
-            "default": "./src/persistence.ts"
-        },
-        "./repository": {
-            "development": {
-                "import": "./src/repository.ts",
-                "types": "./src/repository.ts"
-            },
-            "import": {
-                "types": "./dist/repository.d.ts",
-                "default": "./dist/repository.js"
-            },
-            "default": "./src/repository.ts"
-        },
-        "./conformance": {
-            "development": {
-                "import": "./src/conformance.ts",
-                "types": "./src/conformance.ts"
-            },
-            "import": {
-                "types": "./src/conformance.d.ts",
-                "default": "./dist/conformance.js"
-            },
-            "default": "./src/conformance.ts"
-        },
-        "./sql-codec": {
-            "development": {
-                "import": "./src/sql-codec.ts",
-                "types": "./src/sql-codec.ts"
-            },
-            "import": {
-                "types": "./dist/sql-codec.d.ts",
-                "default": "./dist/sql-codec.js"
-            },
-            "default": "./src/sql-codec.ts"
-        }
+  "name": "@sweatpants/history-store",
+  "version": "0.1.0",
+  "description": "Session History storage mechanics",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./memory": {
+      "development": {
+        "import": "./src/memory.ts",
+        "types": "./src/memory.ts"
+      },
+      "import": {
+        "types": "./dist/memory.d.ts",
+        "default": "./dist/memory.js"
+      },
+      "default": "./src/memory.ts"
     },
-    "dependencies": {
-        "@sweatpants/durable-storage-kernel": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+    "./port": {
+      "development": {
+        "import": "./src/port.ts",
+        "types": "./src/port.ts"
+      },
+      "import": {
+        "types": "./dist/port.d.ts",
+        "default": "./dist/port.js"
+      },
+      "default": "./src/port.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./contract": {
+      "development": {
+        "import": "./src/contract.ts",
+        "types": "./src/contract.ts"
+      },
+      "import": {
+        "types": "./dist/contract.d.ts",
+        "default": "./dist/contract.js"
+      },
+      "default": "./src/contract.ts"
+    },
+    "./persistence": {
+      "development": {
+        "import": "./src/persistence.ts",
+        "types": "./src/persistence.ts"
+      },
+      "import": {
+        "types": "./dist/persistence.d.ts",
+        "default": "./dist/persistence.js"
+      },
+      "default": "./src/persistence.ts"
+    },
+    "./repository": {
+      "development": {
+        "import": "./src/repository.ts",
+        "types": "./src/repository.ts"
+      },
+      "import": {
+        "types": "./dist/repository.d.ts",
+        "default": "./dist/repository.js"
+      },
+      "default": "./src/repository.ts"
+    },
+    "./conformance": {
+      "development": {
+        "import": "./src/conformance.ts",
+        "types": "./src/conformance.ts"
+      },
+      "import": {
+        "types": "./src/conformance.d.ts",
+        "default": "./dist/conformance.js"
+      },
+      "default": "./src/conformance.ts"
+    },
+    "./sql-codec": {
+      "development": {
+        "import": "./src/sql-codec.ts",
+        "types": "./src/sql-codec.ts"
+      },
+      "import": {
+        "types": "./dist/sql-codec.d.ts",
+        "default": "./dist/sql-codec.js"
+      },
+      "default": "./src/sql-codec.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sweatpants/durable-storage-kernel": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

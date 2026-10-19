@@ -1,8 +1,8 @@
-import type { Around, Operation, Scope } from "effection";
+import type { Operation, Scope } from "effection";
 import { createApi } from "effection/experimental";
 
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
-import type { Json } from "@sweatpants/foundation";
+import type { Json, OperationMiddleware } from "@sweatpants/foundation";
 import type { DurableProgramContext } from "@sweatpants/durable-execution";
 
 export type DurableClientMethod = (...args: any[]) => Operation<any>;
@@ -10,7 +10,7 @@ export type DurableClientShape = Readonly<Record<string, DurableClientMethod>>;
 
 export interface DurableClientApi<Client extends DurableClientShape> {
   around(
-    middleware: Partial<Around<Client>>,
+    middleware: OperationMiddleware<Client>,
     options?: { readonly at: "min" | "max" },
   ): Operation<void>;
   /** @internal Invokes one semantic client method through recursive middleware. */

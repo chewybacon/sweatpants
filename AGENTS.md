@@ -215,9 +215,9 @@ exported, so callers cannot reach around the seam to an installed driver.
 
 ```ts
 export const ExecutionStorePort = definePort<ExecutionStore>("execution-store", {
-    *loadControl(_executionId): Operation<ExecutionControl | null> {
-        return unavailable();
-    },
+  *loadControl(_executionId): Operation<ExecutionControl | null> {
+    return unavailable();
+  },
 });
 
 yield * ExecutionStorePort.installDriver(createMemoryExecutionStore());

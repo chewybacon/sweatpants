@@ -1,93 +1,93 @@
 {
-    "name": "@sweatpants/agent-sdk",
-    "version": "0.1.0",
-    "description": "Tool authoring, agent contracts, resources, and worker transport for Sweatpants",
-    "keywords": [
-        "agent",
-        "effection",
-        "transport"
-    ],
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./tools": {
-            "development": {
-                "import": "./src/tool/index.ts",
-                "types": "./src/tool/index.ts"
-            },
-            "import": {
-                "types": "./dist/tool/index.d.ts",
-                "default": "./dist/tool/index.js"
-            }
-        },
-        "./tool": {
-            "development": {
-                "import": "./src/tool/index.ts",
-                "types": "./src/tool/index.ts"
-            },
-            "import": {
-                "types": "./dist/tool/index.d.ts",
-                "default": "./dist/tool/index.js"
-            }
-        },
-        "./transport/worker": {
-            "development": {
-                "import": "./src/transport/worker/index.ts",
-                "types": "./src/transport/worker/index.ts"
-            },
-            "import": {
-                "types": "./dist/transport/worker.d.ts",
-                "default": "./dist/transport/worker.js"
-            }
-        }
+  "name": "@sweatpants/agent-sdk",
+  "version": "0.1.0",
+  "description": "Tool authoring, agent contracts, resources, and worker transport for Sweatpants",
+  "keywords": [
+    "agent",
+    "effection",
+    "transport"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "check": "tsc -b",
-        "test": "vitest",
-        "test:acceptance": "vitest run acceptance"
+    "./tools": {
+      "development": {
+        "import": "./src/tool/index.ts",
+        "types": "./src/tool/index.ts"
+      },
+      "import": {
+        "types": "./dist/tool/index.d.ts",
+        "default": "./dist/tool/index.js"
+      }
     },
-    "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/chat-contract": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/model-decision": "workspace:*",
-        "@sweatpants/model-provider": "workspace:*",
-        "@sweatpants/model-sampling": "workspace:*",
-        "base64-js": "1.5.1",
-        "effection": "catalog:",
-        "zod": "catalog:"
+    "./tool": {
+      "development": {
+        "import": "./src/tool/index.ts",
+        "types": "./src/tool/index.ts"
+      },
+      "import": {
+        "types": "./dist/tool/index.d.ts",
+        "default": "./dist/tool/index.js"
+      }
     },
-    "devDependencies": {
-        "@effectionx/vitest": "catalog:",
-        "@effectionx/worker": "catalog:",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "effection": "catalog:",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:",
-        "zod": "catalog:"
-    },
-    "peerDependencies": {
-        "@effectionx/worker": "^0.5.2"
+    "./transport/worker": {
+      "development": {
+        "import": "./src/transport/worker/index.ts",
+        "types": "./src/transport/worker/index.ts"
+      },
+      "import": {
+        "types": "./dist/transport/worker.d.ts",
+        "default": "./dist/transport/worker.js"
+      }
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc -b",
+    "test": "vitest",
+    "test:acceptance": "vitest run acceptance"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/chat-contract": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/model-decision": "workspace:*",
+    "@sweatpants/model-provider": "workspace:*",
+    "@sweatpants/model-sampling": "workspace:*",
+    "base64-js": "1.5.1",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@effectionx/vitest": "catalog:",
+    "@effectionx/worker": "catalog:",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "effection": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@effectionx/worker": "^0.5.2"
+  }
 }

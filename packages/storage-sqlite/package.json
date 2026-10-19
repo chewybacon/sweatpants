@@ -1,140 +1,140 @@
 {
-    "name": "@sweatpants/storage-sqlite",
-    "version": "0.1.0",
-    "description": "SQLite conversation and execution durability spine",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src",
-        "drizzle"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./schema": {
-            "development": {
-                "import": "./src/schema.ts",
-                "types": "./src/schema.ts"
-            },
-            "import": {
-                "types": "./dist/schema.d.ts",
-                "default": "./dist/schema.js"
-            },
-            "default": "./src/schema.ts"
-        },
-        "./client": {
-            "development": {
-                "import": "./src/client.ts",
-                "types": "./src/client.ts"
-            },
-            "import": {
-                "types": "./dist/client.d.ts",
-                "default": "./dist/client.js"
-            },
-            "default": "./src/client.ts"
-        },
-        "./repository": {
-            "development": {
-                "import": "./src/repository.ts",
-                "types": "./src/repository.ts"
-            },
-            "import": {
-                "types": "./dist/repository.d.ts",
-                "default": "./dist/repository.js"
-            },
-            "default": "./src/repository.ts"
-        },
-        "./better-sqlite3": {
-            "development": {
-                "import": "./src/better-sqlite3.ts",
-                "types": "./src/better-sqlite3.ts"
-            },
-            "import": {
-                "types": "./dist/better-sqlite3.d.ts",
-                "default": "./dist/better-sqlite3.js"
-            },
-            "default": "./src/better-sqlite3.ts"
-        },
-        "./package.json": "./package.json",
-        "./inspection": {
-            "development": {
-                "import": "./src/inspection.ts",
-                "types": "./src/inspection.ts"
-            },
-            "import": {
-                "types": "./dist/inspection.d.ts",
-                "default": "./dist/inspection.js"
-            },
-            "default": "./src/inspection.ts"
-        },
-        "./testing": {
-            "development": {
-                "import": "./src/testing.ts",
-                "types": "./src/testing.ts"
-            },
-            "import": {
-                "types": "./dist/testing.d.ts",
-                "default": "./dist/testing.js"
-            },
-            "default": "./src/testing.ts"
-        },
-        "./metrics": {
-            "development": {
-                "import": "./src/metrics.ts",
-                "types": "./src/metrics.ts"
-            },
-            "import": {
-                "types": "./dist/metrics.d.ts",
-                "default": "./dist/metrics.js"
-            },
-            "default": "./src/metrics.ts"
-        },
-        "./initialize": {
-            "development": {
-                "import": "./src/initialize.ts",
-                "types": "./src/initialize.ts"
-            },
-            "import": {
-                "types": "./dist/initialize.d.ts",
-                "default": "./dist/initialize.js"
-            },
-            "default": "./src/initialize.ts"
-        }
+  "name": "@sweatpants/storage-sqlite",
+  "version": "0.1.0",
+  "description": "SQLite conversation and execution durability spine",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "drizzle"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "typecheck": "tsc -b",
-        "lint": "oxlint src",
-        "test": "vitest run",
-        "db:generate": "drizzle-kit generate"
+    "./schema": {
+      "development": {
+        "import": "./src/schema.ts",
+        "types": "./src/schema.ts"
+      },
+      "import": {
+        "types": "./dist/schema.d.ts",
+        "default": "./dist/schema.js"
+      },
+      "default": "./src/schema.ts"
     },
-    "dependencies": {
-        "@sweatpants/durable-storage-kernel": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/history-store": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
-        "better-sqlite3": "catalog:",
-        "drizzle-orm": "catalog:",
-        "effection": "catalog:"
+    "./client": {
+      "development": {
+        "import": "./src/client.ts",
+        "types": "./src/client.ts"
+      },
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "default": "./src/client.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/better-sqlite3": "catalog:",
-        "@types/node": "catalog:",
-        "drizzle-kit": "catalog:",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./repository": {
+      "development": {
+        "import": "./src/repository.ts",
+        "types": "./src/repository.ts"
+      },
+      "import": {
+        "types": "./dist/repository.d.ts",
+        "default": "./dist/repository.js"
+      },
+      "default": "./src/repository.ts"
+    },
+    "./better-sqlite3": {
+      "development": {
+        "import": "./src/better-sqlite3.ts",
+        "types": "./src/better-sqlite3.ts"
+      },
+      "import": {
+        "types": "./dist/better-sqlite3.d.ts",
+        "default": "./dist/better-sqlite3.js"
+      },
+      "default": "./src/better-sqlite3.ts"
+    },
+    "./package.json": "./package.json",
+    "./inspection": {
+      "development": {
+        "import": "./src/inspection.ts",
+        "types": "./src/inspection.ts"
+      },
+      "import": {
+        "types": "./dist/inspection.d.ts",
+        "default": "./dist/inspection.js"
+      },
+      "default": "./src/inspection.ts"
+    },
+    "./testing": {
+      "development": {
+        "import": "./src/testing.ts",
+        "types": "./src/testing.ts"
+      },
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "default": "./src/testing.ts"
+    },
+    "./metrics": {
+      "development": {
+        "import": "./src/metrics.ts",
+        "types": "./src/metrics.ts"
+      },
+      "import": {
+        "types": "./dist/metrics.d.ts",
+        "default": "./dist/metrics.js"
+      },
+      "default": "./src/metrics.ts"
+    },
+    "./initialize": {
+      "development": {
+        "import": "./src/initialize.ts",
+        "types": "./src/initialize.ts"
+      },
+      "import": {
+        "types": "./dist/initialize.d.ts",
+        "default": "./dist/initialize.js"
+      },
+      "default": "./src/initialize.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "typecheck": "tsc -b",
+    "lint": "oxlint src",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@sweatpants/durable-storage-kernel": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/history-store": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "better-sqlite3": "catalog:",
+    "drizzle-orm": "catalog:",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "drizzle-kit": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

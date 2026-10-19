@@ -1,16 +1,12 @@
-import type { ExecutionDriver, Json } from "@sweatpants/foundation";
-import type { KernelRequest, KernelReply, KernelSnapshot } from "../index.ts";
-type Driver = ExecutionDriver<KernelRequest, KernelReply, Json, Json> & {
-  capture(): import("effection").Operation<KernelSnapshot>;
-};
+import type { WorkflowExecutionDriver as Driver } from "../index.ts";
 import { expect, it } from "vitest";
 import { run, action, spawn, createQueue } from "effection";
-import { createKernelExecution, type KernelBoundary } from "../index.ts";
+import { createKernelExecution, type WorkflowBoundary } from "../index.ts";
 
-const effect: KernelBoundary = {
+const effect: WorkflowBoundary = {
   kind: "suspended",
   suspensionId: "1",
-  request: { site: "loop", request: null },
+  request: { site: "loop", binding: "loop", input: null },
 };
 
 it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", async () => {
@@ -22,7 +18,7 @@ it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", a
         return {
           kind: "suspended",
           suspensionId: "3",
-          request: { site: "cleanup", request: "release" },
+          request: { site: "cleanup", binding: "release", input: null },
         };
       }
       replies.push(command.reply);
@@ -35,7 +31,7 @@ it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", a
       disposed++;
     },
   };
-  const { execution, boundary } = createKernelExecution(effect, kernel);
+  const { execution, boundary } = createKernelExecution({ initial: effect, driver: kernel });
   expect(boundary).toMatchObject({ kind: "suspended", suspensionId: "1" });
   expect(await run(() => execution.resume("1", { kind: "value", value: true }))).toMatchObject({
     kind: "suspended",
@@ -74,7 +70,7 @@ it("fails closed after an unknown advance outcome but still releases compute", a
       disposed = true;
     },
   };
-  const { execution } = createKernelExecution(effect, kernel);
+  const { execution } = createKernelExecution({ initial: effect, driver: kernel });
   await expect(run(() => execution.resume("1", { kind: "value", value: null }))).rejects.toThrow(
     "connection lost",
   );
@@ -85,11 +81,11 @@ it("fails closed after an unknown advance outcome but still releases compute", a
 
 it("rejects overlapping commands while an advance is in progress", async () => {
   await run(function* () {
-    let release!: (value: KernelBoundary) => void;
+    let release!: (value: WorkflowBoundary) => void;
     const entered = createQueue<void, never>();
     const kernel: Driver = {
       *turn() {
-        return yield* action<KernelBoundary>((resolve) => {
+        return yield* action<WorkflowBoundary>((resolve) => {
           release = resolve;
           entered.add();
           return () => {};
@@ -101,7 +97,7 @@ it("rejects overlapping commands while an advance is in progress", async () => {
       },
       *dispose() {},
     };
-    const { execution } = createKernelExecution(effect, kernel);
+    const { execution } = createKernelExecution({ initial: effect, driver: kernel });
     const pending = yield* spawn(() => execution.resume("1", { kind: "value", value: null }));
     yield* entered.next();
     let failure: unknown;
@@ -126,7 +122,7 @@ it("does not send another command after the caller abandons an in-flight resume"
       *turn() {
         commands++;
         entered.add();
-        return yield* action<KernelBoundary>(() => () => {});
+        return yield* action<WorkflowBoundary>(() => () => {});
       },
 
       *capture() {
@@ -136,7 +132,7 @@ it("does not send another command after the caller abandons an in-flight resume"
         disposed = true;
       },
     };
-    const { execution } = createKernelExecution(effect, kernel);
+    const { execution } = createKernelExecution({ initial: effect, driver: kernel });
     const advancing = yield* spawn(() => execution.resume("1", { kind: "value", value: null }));
     yield* entered.next();
 
@@ -162,17 +158,20 @@ it("captures on the same shared handle without an executor lookup or forwarding 
     state: { waiting: true },
   };
   const events: string[] = [];
-  const executionState = createKernelExecution(effect, {
-    *turn(command) {
-      events.push(command.kind);
-      return { kind: "completed", value: true };
-    },
-    *capture() {
-      events.push("capture");
-      return snapshot;
-    },
-    *dispose() {
-      events.push("dispose");
+  const executionState = createKernelExecution({
+    initial: effect,
+    driver: {
+      *turn(command) {
+        events.push(command.kind);
+        return { kind: "completed", value: true };
+      },
+      *capture() {
+        events.push("capture");
+        return snapshot;
+      },
+      *dispose() {
+        events.push("dispose");
+      },
     },
   });
   await run(function* () {

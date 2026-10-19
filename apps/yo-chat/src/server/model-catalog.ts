@@ -1,10 +1,25 @@
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { opencodeProvider } from "@earendil-works/pi-ai/providers/opencode";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { CredentialStore, Model } from "@earendil-works/pi-ai";
 
 /** App-owned catalog additions for models newer than the installed Pi catalog. */
 export function createYoChatModels(credentials: CredentialStore) {
   const models = builtinModels({ credentials });
+  const openaiBaseUrl = process.env["OPENAI_BASE_URL"];
+  if (openaiBaseUrl) {
+    const openai = openaiProvider();
+    models.setProvider({
+      ...openai,
+      baseUrl: openaiBaseUrl,
+      getModels: () => openai.getModels().map((model) => ({ ...model, baseUrl: openaiBaseUrl })),
+      getAllModels: () =>
+        (openai.getAllModels?.() ?? openai.getModels()).map((model) => ({
+          ...model,
+          baseUrl: openaiBaseUrl,
+        })),
+    });
+  }
   const provider = opencodeProvider();
   // OpenCode's /zen/v1/models and models.dev catalog, verified 2026-10-08.
   const haiku: Model<"anthropic-messages"> = {

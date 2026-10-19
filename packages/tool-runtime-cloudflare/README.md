@@ -60,14 +60,14 @@ import { cloudflare } from "@sweatpants/tool-runtime-cloudflare";
 import type { ToolExecutorClass } from "@sweatpants/tool-runtime-cloudflare/executor";
 
 const worker = env.LOADER.get(bundleDigest, () => ({
-    compatibilityDate: "2026-10-05",
-    compatibilityFlags: ["nodejs_compat"],
-    mainModule: "executor.js",
-    modules: { "executor.js": bundledSource },
-    globalOutbound: null,
+  compatibilityDate: "2026-10-05",
+  compatibilityFlags: ["nodejs_compat"],
+  mainModule: "executor.js",
+  modules: { "executor.js": bundledSource },
+  globalOutbound: null,
 }));
 const execution = cloudflare({
-    worker: worker.getEntrypoint<InstanceType<ToolExecutorClass>>(),
+  worker: worker.getEntrypoint<InstanceType<ToolExecutorClass>>(),
 });
 ```
 

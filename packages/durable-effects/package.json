@@ -1,96 +1,96 @@
 {
-    "name": "@sweatpants/durable-effects",
-    "version": "0.1.0",
-    "description": "Durable effect contracts, authoring, and runtime routing",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./contract": {
-            "development": {
-                "import": "./src/contract.ts",
-                "types": "./src/contract.ts"
-            },
-            "import": {
-                "types": "./dist/contract.d.ts",
-                "default": "./dist/contract.js"
-            },
-            "default": "./src/contract.ts"
-        },
-        "./authoring": {
-            "development": {
-                "import": "./src/authoring.ts",
-                "types": "./src/authoring.ts"
-            },
-            "import": {
-                "types": "./dist/authoring.d.ts",
-                "default": "./dist/authoring.js"
-            },
-            "default": "./src/authoring.ts"
-        },
-        "./runtime": {
-            "development": {
-                "import": "./src/runtime.ts",
-                "types": "./src/runtime.ts"
-            },
-            "import": {
-                "types": "./dist/runtime.d.ts",
-                "default": "./dist/runtime.js"
-            },
-            "default": "./src/runtime.ts"
-        },
-        "./placement": {
-            "development": {
-                "import": "./src/placement.ts",
-                "types": "./src/placement.ts"
-            },
-            "import": {
-                "types": "./dist/placement.d.ts",
-                "default": "./dist/placement.js"
-            },
-            "default": "./src/placement.ts"
-        },
-        "./outcome-acknowledgement": {
-            "development": {
-                "import": "./src/outcome-acknowledgement.ts",
-                "types": "./src/outcome-acknowledgement.ts"
-            },
-            "import": {
-                "types": "./dist/outcome-acknowledgement.d.ts",
-                "default": "./dist/outcome-acknowledgement.js"
-            },
-            "default": "./src/outcome-acknowledgement.ts"
-        }
+  "name": "@sweatpants/durable-effects",
+  "version": "0.1.0",
+  "description": "Durable effect contracts, authoring, and runtime routing",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./contract": {
+      "development": {
+        "import": "./src/contract.ts",
+        "types": "./src/contract.ts"
+      },
+      "import": {
+        "types": "./dist/contract.d.ts",
+        "default": "./dist/contract.js"
+      },
+      "default": "./src/contract.ts"
     },
-    "dependencies": {
-        "@standard-schema/spec": "catalog:",
-        "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:",
-        "zod": "catalog:"
+    "./authoring": {
+      "development": {
+        "import": "./src/authoring.ts",
+        "types": "./src/authoring.ts"
+      },
+      "import": {
+        "types": "./dist/authoring.d.ts",
+        "default": "./dist/authoring.js"
+      },
+      "default": "./src/authoring.ts"
     },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./runtime": {
+      "development": {
+        "import": "./src/runtime.ts",
+        "types": "./src/runtime.ts"
+      },
+      "import": {
+        "types": "./dist/runtime.d.ts",
+        "default": "./dist/runtime.js"
+      },
+      "default": "./src/runtime.ts"
+    },
+    "./placement": {
+      "development": {
+        "import": "./src/placement.ts",
+        "types": "./src/placement.ts"
+      },
+      "import": {
+        "types": "./dist/placement.d.ts",
+        "default": "./dist/placement.js"
+      },
+      "default": "./src/placement.ts"
+    },
+    "./outcome-acknowledgement": {
+      "development": {
+        "import": "./src/outcome-acknowledgement.ts",
+        "types": "./src/outcome-acknowledgement.ts"
+      },
+      "import": {
+        "types": "./dist/outcome-acknowledgement.d.ts",
+        "default": "./dist/outcome-acknowledgement.js"
+      },
+      "default": "./src/outcome-acknowledgement.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@sweatpants/foundation": "workspace:*",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

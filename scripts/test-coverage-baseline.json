@@ -1,37 +1,37 @@
 {
-    "test:packages": {
-        "passed": 1072,
-        "skipped": 17,
-        "total": 1096
-    },
-    "test:tooling": {
-        "passed": 27,
-        "skipped": 0,
-        "total": 27
-    },
-    "test:@sweatpants/agentcore-tool-session-tracer": {
-        "passed": 18,
-        "skipped": 0,
-        "total": 18
-    },
-    "test:yo-chat": {
-        "passed": 44,
-        "skipped": 0,
-        "total": 44
-    },
-    "test:yo-mcp": {
-        "passed": 1,
-        "skipped": 0,
-        "total": 1
-    },
-    "test:yo-studio": {
-        "passed": 8,
-        "skipped": 0,
-        "total": 8
-    },
-    "test:yo-agent": {
-        "passed": 4,
-        "skipped": 0,
-        "total": 4
-    }
+  "test:packages": {
+    "passed": 1072,
+    "skipped": 17,
+    "total": 1096
+  },
+  "test:tooling": {
+    "passed": 27,
+    "skipped": 0,
+    "total": 27
+  },
+  "test:@sweatpants/agentcore-tool-session-tracer": {
+    "passed": 18,
+    "skipped": 0,
+    "total": 18
+  },
+  "test:yo-chat": {
+    "passed": 44,
+    "skipped": 0,
+    "total": 44
+  },
+  "test:yo-mcp": {
+    "passed": 1,
+    "skipped": 0,
+    "total": 1
+  },
+  "test:yo-studio": {
+    "passed": 8,
+    "skipped": 0,
+    "total": 8
+  },
+  "test:yo-agent": {
+    "passed": 4,
+    "skipped": 0,
+    "total": 4
+  }
 }

@@ -1,4 +1,5 @@
-import { createContext, type Around, type Operation, type Stream } from "effection";
+import type { OperationMiddleware } from "@sweatpants/foundation";
+import { createContext, type Operation, type Stream } from "effection";
 import { createApi } from "effection/experimental";
 import { definePort } from "@sweatpants/foundation/port";
 import type {
@@ -146,6 +147,6 @@ export const ChatClientApi = createApi<ChatClientCommandContract>("sweatpants:ch
 
 export { ChatCommandContext, ChatEventContext };
 
-export type ChatTransportMiddleware = Partial<Around<ChatTransportContract>>;
-export type ChatClientMiddleware = Partial<Around<ChatClientCommandContract>>;
-export type ChatEventMiddleware = Partial<Around<ChatEventContract>>;
+export type ChatTransportMiddleware = OperationMiddleware<ChatTransportContract>;
+export type ChatClientMiddleware = OperationMiddleware<ChatClientCommandContract>;
+export type ChatEventMiddleware = OperationMiddleware<ChatEventContract>;

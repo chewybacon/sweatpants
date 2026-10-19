@@ -32,7 +32,10 @@ it("releases a started invocation when its first boundary is abandoned", async (
         return null;
       });
     const startup = yield* spawn(() =>
-      createToolInvocationExecutor(host).start({ invocationId: "interrupted", tool }, {}),
+      createToolInvocationExecutor({ driver: host }).start(
+        { invocationId: "interrupted", tool },
+        {},
+      ),
     );
     yield* advancing.next();
     expect(events).toEqual(["started"]);
@@ -99,7 +102,7 @@ it("rejects mismatched replies before dispatch and advances with the parked curs
         return yield* next(program, input);
       },
     });
-    yield* ToolInvocationExecutor.installDriver(createToolInvocationExecutor(host));
+    yield* ToolInvocationExecutor.installDriver(createToolInvocationExecutor({ driver: host }));
     return yield* scoped(function* () {
       const executor = yield* ToolInvocationExecutor.context.expect();
       return yield* executor.start(program, null);
@@ -158,7 +161,7 @@ it("allows cancellation to suspend for cleanup before reaching a terminal bounda
     *dispose() {},
   };
   const { execution } = await run(() =>
-    createToolInvocationExecutor(host).start(
+    createToolInvocationExecutor({ driver: host }).start(
       {
         invocationId: "invocation",
         tool: {} as StartToolInvocation["tool"],

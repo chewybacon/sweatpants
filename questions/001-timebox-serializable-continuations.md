@@ -84,14 +84,14 @@ It initially passed 37 cases against installed Effection 4.2.0.
 
 ```ts
 yield *
-    ctx.deadline(expiresAt, function* ({ ensure, signal }) {
-        // Own the hold and register cleanup here.
-    });
+  ctx.deadline(expiresAt, function* ({ ensure, signal }) {
+    // Own the hold and register cleanup here.
+  });
 
 yield *
-    ctx.timebox(durationMs, function* ({ ensure, signal }) {
-        // Convenience over a recorded absolute deadline.
-    });
+  ctx.timebox(durationMs, function* ({ ensure, signal }) {
+    // Convenience over a recorded absolute deadline.
+  });
 ```
 
 Open: callback capabilities versus a child context; body-signal versus cleanup

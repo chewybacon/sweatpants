@@ -1,45 +1,45 @@
 {
-    "name": "@sweatpants/tool-runtime",
-    "version": "0.1.0",
-    "description": "Protocol-neutral tool inventory and execution runtime contracts",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        }
-    },
-    "scripts": {
-        "build": "tsup",
-        "check": "tsc -b",
-        "test": "vitest run --passWithNoTests"
-    },
-    "dependencies": {
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-contract": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/model-provider": "workspace:*",
-        "effection": "catalog:"
-    },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    },
-    "peerDependencies": {
-        "effection": ">=4.2.0 <5.0.0"
+  "name": "@sweatpants/tool-runtime",
+  "version": "0.1.0",
+  "description": "Protocol-neutral tool inventory and execution runtime contracts",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-contract": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/model-provider": "workspace:*",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effection": ">=4.2.0 <5.0.0"
+  }
 }

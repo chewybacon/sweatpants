@@ -1,3 +1,4 @@
+import { createDurableKernel, type DurableKernelOptions } from "@sweatpants/durable-storage-kernel";
 import {
   headFromRow,
   headToRow,
@@ -874,29 +875,33 @@ export function createSqliteDurableKernel<
   database: SweatpantsSqliteDatabase<TResultKind, TRunResult>;
   transactionRunner: TransactionRunner<SweatpantsSqliteDatabase<TResultKind, TRunResult>>;
   faultInjection?: (point: string) => void;
+  middleware?: DurableKernelOptions["middleware"];
 }): DurableKernel {
   const database = options.database as Database;
   const transactionRunner = options.transactionRunner as TransactionRunner<Database>;
-  return {
-    *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
-      return yield* call(() => readAuthorityIn(database, collection, key));
+  return createDurableKernel({
+    middleware: options.middleware,
+    driver: {
+      *readAuthority(collection, key): Operation<StoredAuthorityRecord | null> {
+        return yield* call(() => readAuthorityIn(database, collection, key));
+      },
+      *readImmutable(collection, key): Operation<StoredImmutableRecord | null> {
+        return yield* call(() => readImmutableIn(database, collection, key));
+      },
+      *scan(request): Operation<StoredScanPage> {
+        return yield* call(() => scanIn(database, request));
+      },
+      *waitForChange(request): Operation<void> {
+        // The repository checks the head before and after this wake-up hint.
+        // Do not multiply one wait into repeated payload reads and connections.
+        yield* sleep(Math.max(0, request.timeoutMs));
+      },
+      *apply(mutation): Operation<DurableMutationOutcome> {
+        validateMutationStructure(mutation);
+        return yield* transactionRunner.transaction((transaction) =>
+          applyIn(transaction, mutation, options.faultInjection),
+        );
+      },
     },
-    *readImmutable(collection, key): Operation<StoredImmutableRecord | null> {
-      return yield* call(() => readImmutableIn(database, collection, key));
-    },
-    *scan(request): Operation<StoredScanPage> {
-      return yield* call(() => scanIn(database, request));
-    },
-    *waitForChange(request): Operation<void> {
-      // The repository checks the head before and after this wake-up hint.
-      // Do not multiply one wait into repeated payload reads and connections.
-      yield* sleep(Math.max(0, request.timeoutMs));
-    },
-    *apply(mutation): Operation<DurableMutationOutcome> {
-      validateMutationStructure(mutation);
-      return yield* transactionRunner.transaction((transaction) =>
-        applyIn(transaction, mutation, options.faultInjection),
-      );
-    },
-  };
+  });
 }

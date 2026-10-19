@@ -433,6 +433,8 @@ describe("D1 atomic kernel", () => {
   });
 });
 
+// The maximum mutation observes 512 primary/alternate keys over the real D1 bridge.
+// Timing probes showed reads still progressing at five seconds; retain all 256 ensures.
 it("commits the maximum admitted ensure count with primary and alternate identities", async () => {
   await fresh();
   const kernel = createD1DurableKernel(db);
@@ -454,7 +456,7 @@ it("commits the maximum admitted ensure count with primary and alternate identit
     );
     expect(record?.value).toEqual(ensures[index]!.value);
   }
-});
+}, 15_000);
 
 it("rejects counters outside signed 64-bit storage instead of silently clamping them", async () => {
   await fresh();

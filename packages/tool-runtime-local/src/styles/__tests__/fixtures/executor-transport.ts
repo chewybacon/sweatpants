@@ -168,20 +168,25 @@ export function createExecutor(transport: Transport): Kernel {
       }
       try {
         const initial = yield* boundary({ kind: "start", program, input });
-        return createExecution(initial, {
-          turn: boundary,
-          *dispose() {
-            try {
-              const response = yield* connection.exchange({ kind: "dispose" });
-              if (response.kind === "rejected") {
-                throw new Error(response.message);
+        return createExecution({
+          initial,
+          driver: {
+            resume: (suspensionId, reply: Json) =>
+              boundary({ kind: "resume", suspensionId, reply }),
+            cancel: (reason) => boundary({ kind: "cancel", reason }),
+            *dispose() {
+              try {
+                const response = yield* connection.exchange({ kind: "dispose" });
+                if (response.kind === "rejected") {
+                  throw new Error(response.message);
+                }
+                if (response.kind !== "disposed") {
+                  throw new Error("Expected disposal acknowledgement");
+                }
+              } finally {
+                yield* connection.close();
               }
-              if (response.kind !== "disposed") {
-                throw new Error("Expected disposal acknowledgement");
-              }
-            } finally {
-              yield* connection.close();
-            }
+            },
           },
         });
       } catch (error) {

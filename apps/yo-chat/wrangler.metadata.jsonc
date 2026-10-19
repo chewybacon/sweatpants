@@ -1,16 +1,16 @@
 {
-    "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "yo-chat-thread-metadata",
-    "main": "src/server/thread-metadata-worker.ts",
-    "compatibility_date": "2026-10-05",
-    "durable_objects": {
-        "bindings": [{ "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" }],
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yo-chat-thread-metadata",
+  "main": "src/server/thread-metadata-worker.ts",
+  "compatibility_date": "2026-10-05",
+  "durable_objects": {
+    "bindings": [{ "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" }],
+  },
+  "migrations": [{ "tag": "response-streams-v1", "new_sqlite_classes": ["ResponseStream"] }],
+  "d1_databases": [
+    {
+      "binding": "THREAD_METADATA",
+      "database_name": "yo-chat-thread-metadata",
     },
-    "migrations": [{ "tag": "response-streams-v1", "new_sqlite_classes": ["ResponseStream"] }],
-    "d1_databases": [
-        {
-            "binding": "THREAD_METADATA",
-            "database_name": "yo-chat-thread-metadata",
-        },
-    ],
+  ],
 }
