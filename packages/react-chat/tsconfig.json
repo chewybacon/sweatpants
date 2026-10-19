@@ -1,21 +1,21 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.package.json",
-    "compilerOptions": {
-        "composite": true,
-        "emitDeclarationOnly": true,
-        "outDir": "./dist",
-        "rootDir": "./src",
-        "ignoreDeprecations": "5.0",
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "ignoreDeprecations": "5.0",
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    {
+      "path": "../chat-client"
     },
-    "include": ["src/**/*.ts", "src/**/*.tsx"],
-    "exclude": ["dist", "node_modules"],
-    "references": [
-        {
-            "path": "../chat-client"
-        },
-        {
-            "path": "../frame-renderer"
-        }
-    ]
+    {
+      "path": "../frame-renderer"
+    }
+  ]
 }

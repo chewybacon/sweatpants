@@ -1,1062 +1,1062 @@
 {
-    "version": "6",
-    "dialect": "sqlite",
-    "id": "7ebcf727-805f-45d3-b68b-28074d7c0b6d",
-    "prevId": "00000000-0000-0000-0000-000000000000",
-    "tables": {
-        "sp_conversation_checkpoints": {
-            "name": "sp_conversation_checkpoints",
-            "columns": {
-                "checkpoint_id": {
-                    "name": "checkpoint_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "cause_key": {
-                    "name": "cause_key",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "cause_json": {
-                    "name": "cause_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "lineage_id": {
-                    "name": "lineage_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "archive_head_segment_id": {
-                    "name": "archive_head_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "archive_frontier_ordinal": {
-                    "name": "archive_frontier_ordinal",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "next_public_position": {
-                    "name": "next_public_position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "payload_json": {
-                    "name": "payload_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "encoded_bytes": {
-                    "name": "encoded_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_checkpoint_conversation_cause": {
-                    "name": "sp_checkpoint_conversation_cause",
-                    "columns": ["conversation_id", "cause_key"],
-                    "isUnique": true
-                },
-                "sp_checkpoint_conversation_created": {
-                    "name": "sp_checkpoint_conversation_created",
-                    "columns": ["conversation_id", "created_at"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_checkpoint_archive_frontier": {
-                    "name": "sp_checkpoint_archive_frontier",
-                    "value": "\"sp_conversation_checkpoints\".\"archive_frontier_ordinal\" >= 0"
-                },
-                "sp_checkpoint_next_public_position": {
-                    "name": "sp_checkpoint_next_public_position",
-                    "value": "\"sp_conversation_checkpoints\".\"next_public_position\" >= 0"
-                },
-                "sp_checkpoint_encoded_bytes": {
-                    "name": "sp_checkpoint_encoded_bytes",
-                    "value": "\"sp_conversation_checkpoints\".\"encoded_bytes\" >= 0"
-                }
-            }
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "7ebcf727-805f-45d3-b68b-28074d7c0b6d",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "sp_conversation_checkpoints": {
+      "name": "sp_conversation_checkpoints",
+      "columns": {
+        "checkpoint_id": {
+          "name": "checkpoint_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_conversation_command_receipts": {
-            "name": "sp_conversation_command_receipts",
-            "columns": {
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "command_id": {
-                    "name": "command_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "command_digest": {
-                    "name": "command_digest",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "participant_id": {
-                    "name": "participant_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "accepted_at": {
-                    "name": "accepted_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "retain_until": {
-                    "name": "retain_until",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "admitted_revision": {
-                    "name": "admitted_revision",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "resulting_revision": {
-                    "name": "resulting_revision",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "logical_turn_id": {
-                    "name": "logical_turn_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "execution_id": {
-                    "name": "execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_receipt_retain_until": {
-                    "name": "sp_receipt_retain_until",
-                    "columns": ["retain_until"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {
-                "sp_conversation_command_receipts_conversation_id_command_id_pk": {
-                    "columns": ["conversation_id", "command_id"],
-                    "name": "sp_conversation_command_receipts_conversation_id_command_id_pk"
-                }
-            },
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_receipt_admitted_revision": {
-                    "name": "sp_receipt_admitted_revision",
-                    "value": "\"sp_conversation_command_receipts\".\"admitted_revision\" >= 0"
-                },
-                "sp_receipt_resulting_revision": {
-                    "name": "sp_receipt_resulting_revision",
-                    "value": "\"sp_conversation_command_receipts\".\"resulting_revision\" > \"sp_conversation_command_receipts\".\"admitted_revision\""
-                }
-            }
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_conversation_heads": {
-            "name": "sp_conversation_heads",
-            "columns": {
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "revision": {
-                    "name": "revision",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "owner_epoch": {
-                    "name": "owner_epoch",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "owner_route_json": {
-                    "name": "owner_route_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "state": {
-                    "name": "state",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "checkpoint_id": {
-                    "name": "checkpoint_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "terminal_segment_id": {
-                    "name": "terminal_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "active_logical_turn_id": {
-                    "name": "active_logical_turn_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "active_execution_id": {
-                    "name": "active_execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "latest_completed_execution_id": {
-                    "name": "latest_completed_execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "active_segment_json": {
-                    "name": "active_segment_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "active_command_json": {
-                    "name": "active_command_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "deleted_at": {
-                    "name": "deleted_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "updated_at": {
-                    "name": "updated_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_heads_live_updated": {
-                    "name": "sp_heads_live_updated",
-                    "columns": ["deleted_at", "updated_at", "conversation_id"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_heads_revision": {
-                    "name": "sp_heads_revision",
-                    "value": "\"sp_conversation_heads\".\"revision\" >= 0"
-                },
-                "sp_heads_owner_epoch": {
-                    "name": "sp_heads_owner_epoch",
-                    "value": "\"sp_conversation_heads\".\"owner_epoch\" >= 0"
-                },
-                "sp_heads_state": {
-                    "name": "sp_heads_state",
-                    "value": "\"sp_conversation_heads\".\"state\" IN ('idle', 'running', 'parked', 'recovering', 'deleted')"
-                },
-                "sp_heads_deleted_state": {
-                    "name": "sp_heads_deleted_state",
-                    "value": "(\"sp_conversation_heads\".\"state\" = 'deleted') = (\"sp_conversation_heads\".\"deleted_at\" IS NOT NULL)"
-                },
-                "sp_heads_deleted_tombstone": {
-                    "name": "sp_heads_deleted_tombstone",
-                    "value": "\"sp_conversation_heads\".\"state\" <> 'deleted' OR (\n        \"sp_conversation_heads\".\"checkpoint_id\" IS NULL AND \"sp_conversation_heads\".\"terminal_segment_id\" IS NULL AND\n        \"sp_conversation_heads\".\"active_logical_turn_id\" IS NULL AND \"sp_conversation_heads\".\"active_execution_id\" IS NULL AND\n        \"sp_conversation_heads\".\"latest_completed_execution_id\" IS NULL AND \"sp_conversation_heads\".\"active_segment_json\" IS NULL AND\n        \"sp_conversation_heads\".\"active_command_json\" IS NULL AND \"sp_conversation_heads\".\"owner_route_json\" IS NULL\n      )"
-                }
-            }
+        "cause_key": {
+          "name": "cause_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_conversation_public_root_index": {
-            "name": "sp_conversation_public_root_index",
-            "columns": {
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "position": {
-                    "name": "position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "root_id": {
-                    "name": "root_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "segment_id": {
-                    "name": "segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "segment_root_index": {
-                    "name": "segment_root_index",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "archive_ordinal": {
-                    "name": "archive_ordinal",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "encoded_bytes": {
-                    "name": "encoded_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_public_root_identity": {
-                    "name": "sp_public_root_identity",
-                    "columns": ["conversation_id", "root_id"],
-                    "isUnique": true
-                },
-                "sp_public_root_archive_ordinal": {
-                    "name": "sp_public_root_archive_ordinal",
-                    "columns": ["conversation_id", "archive_ordinal"],
-                    "isUnique": true
-                },
-                "sp_public_root_segment": {
-                    "name": "sp_public_root_segment",
-                    "columns": ["segment_id", "segment_root_index"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {
-                "sp_conversation_public_root_index_conversation_id_position_pk": {
-                    "columns": ["conversation_id", "position"],
-                    "name": "sp_conversation_public_root_index_conversation_id_position_pk"
-                }
-            },
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_public_root_position": {
-                    "name": "sp_public_root_position",
-                    "value": "\"sp_conversation_public_root_index\".\"position\" >= 0"
-                },
-                "sp_public_root_segment_index": {
-                    "name": "sp_public_root_segment_index",
-                    "value": "\"sp_conversation_public_root_index\".\"segment_root_index\" >= 0"
-                },
-                "sp_public_root_archive_ordinal_check": {
-                    "name": "sp_public_root_archive_ordinal_check",
-                    "value": "\"sp_conversation_public_root_index\".\"archive_ordinal\" >= 0"
-                },
-                "sp_public_root_bytes": {
-                    "name": "sp_public_root_bytes",
-                    "value": "\"sp_conversation_public_root_index\".\"encoded_bytes\" >= 0"
-                }
-            }
+        "cause_json": {
+          "name": "cause_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
-        "sp_conversation_public_segments": {
-            "name": "sp_conversation_public_segments",
-            "columns": {
-                "segment_id": {
-                    "name": "segment_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "previous_segment_id": {
-                    "name": "previous_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "min_position": {
-                    "name": "min_position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "max_position": {
-                    "name": "max_position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "roots_json": {
-                    "name": "roots_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "encoded_bytes": {
-                    "name": "encoded_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_public_segment_conversation_position": {
-                    "name": "sp_public_segment_conversation_position",
-                    "columns": ["conversation_id", "min_position", "max_position"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_public_segment_min_position": {
-                    "name": "sp_public_segment_min_position",
-                    "value": "\"sp_conversation_public_segments\".\"min_position\" >= 0"
-                },
-                "sp_public_segment_positions": {
-                    "name": "sp_public_segment_positions",
-                    "value": "\"sp_conversation_public_segments\".\"max_position\" >= \"sp_conversation_public_segments\".\"min_position\""
-                },
-                "sp_public_segment_bytes": {
-                    "name": "sp_public_segment_bytes",
-                    "value": "\"sp_conversation_public_segments\".\"encoded_bytes\" >= 0"
-                }
-            }
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_conversation_terminal_segments": {
-            "name": "sp_conversation_terminal_segments",
-            "columns": {
-                "segment_id": {
-                    "name": "segment_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "conversation_id": {
-                    "name": "conversation_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "logical_turn_id": {
-                    "name": "logical_turn_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "execution_id": {
-                    "name": "execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "publication_key": {
-                    "name": "publication_key",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "previous_segment_id": {
-                    "name": "previous_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "first_position": {
-                    "name": "first_position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "last_position": {
-                    "name": "last_position",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "entries_json": {
-                    "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_terminal_segment_publication": {
-                    "name": "sp_terminal_segment_publication",
-                    "columns": ["conversation_id", "publication_key"],
-                    "isUnique": true
-                },
-                "sp_terminal_segment_conversation_position": {
-                    "name": "sp_terminal_segment_conversation_position",
-                    "columns": ["conversation_id", "first_position", "last_position"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_terminal_segment_first_position": {
-                    "name": "sp_terminal_segment_first_position",
-                    "value": "\"sp_conversation_terminal_segments\".\"first_position\" >= 0"
-                },
-                "sp_terminal_segment_positions": {
-                    "name": "sp_terminal_segment_positions",
-                    "value": "\"sp_conversation_terminal_segments\".\"last_position\" >= \"sp_conversation_terminal_segments\".\"first_position\""
-                }
-            }
+        "lineage_id": {
+          "name": "lineage_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_execution_control": {
-            "name": "sp_execution_control",
-            "columns": {
-                "execution_id": {
-                    "name": "execution_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "control_revision": {
-                    "name": "control_revision",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "owner_fence": {
-                    "name": "owner_fence",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "status": {
-                    "name": "status",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "root_task_id": {
-                    "name": "root_task_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "stop_generation": {
-                    "name": "stop_generation",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "requested_disposition": {
-                    "name": "requested_disposition",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "control_json": {
-                    "name": "control_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "updated_at": {
-                    "name": "updated_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {},
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_execution_control_status": {
-                    "name": "sp_execution_control_status",
-                    "value": "\"sp_execution_control\".\"status\" IN ('active', 'parked', 'cancelling', 'terminal')"
-                },
-                "sp_execution_control_disposition": {
-                    "name": "sp_execution_control_disposition",
-                    "value": "\"sp_execution_control\".\"requested_disposition\" IS NULL OR \"sp_execution_control\".\"requested_disposition\" IN ('cancelled', 'superseded')"
-                },
-                "sp_execution_control_revision": {
-                    "name": "sp_execution_control_revision",
-                    "value": "\"sp_execution_control\".\"control_revision\" >= 0"
-                },
-                "sp_execution_control_owner_fence": {
-                    "name": "sp_execution_control_owner_fence",
-                    "value": "\"sp_execution_control\".\"owner_fence\" >= 0"
-                },
-                "sp_execution_control_stop_generation": {
-                    "name": "sp_execution_control_stop_generation",
-                    "value": "\"sp_execution_control\".\"stop_generation\" >= 0"
-                }
-            }
+        "archive_head_segment_id": {
+          "name": "archive_head_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
-        "sp_execution_journal_segments": {
-            "name": "sp_execution_journal_segments",
-            "columns": {
-                "segment_id": {
-                    "name": "segment_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "execution_id": {
-                    "name": "execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "task_id": {
-                    "name": "task_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "previous_segment_id": {
-                    "name": "previous_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "first_sequence": {
-                    "name": "first_sequence",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "last_sequence": {
-                    "name": "last_sequence",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "entries_json": {
-                    "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "encoded_bytes": {
-                    "name": "encoded_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_journal_task_range": {
-                    "name": "sp_journal_task_range",
-                    "columns": ["execution_id", "task_id", "first_sequence", "last_sequence"],
-                    "isUnique": true
-                },
-                "sp_journal_task_sequence": {
-                    "name": "sp_journal_task_sequence",
-                    "columns": ["execution_id", "task_id", "first_sequence"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_journal_segment_first_sequence": {
-                    "name": "sp_journal_segment_first_sequence",
-                    "value": "\"sp_execution_journal_segments\".\"first_sequence\" >= 0"
-                },
-                "sp_journal_segment_positions": {
-                    "name": "sp_journal_segment_positions",
-                    "value": "\"sp_execution_journal_segments\".\"last_sequence\" >= \"sp_execution_journal_segments\".\"first_sequence\""
-                },
-                "sp_journal_segment_bytes": {
-                    "name": "sp_journal_segment_bytes",
-                    "value": "\"sp_execution_journal_segments\".\"encoded_bytes\" >= 0"
-                }
-            }
+        "archive_frontier_ordinal": {
+          "name": "archive_frontier_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_execution_objects": {
-            "name": "sp_execution_objects",
-            "columns": {
-                "object_id": {
-                    "name": "object_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "lifetime_scope": {
-                    "name": "lifetime_scope",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "scope_owner_id": {
-                    "name": "scope_owner_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "object_kind": {
-                    "name": "object_kind",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "byte_length": {
-                    "name": "byte_length",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "json_body": {
-                    "name": "json_body",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_execution_object_scope_index": {
-                    "name": "sp_execution_object_scope_index",
-                    "columns": ["lifetime_scope", "scope_owner_id", "object_kind"],
-                    "isUnique": false
-                },
-                "sp_execution_object_created": {
-                    "name": "sp_execution_object_created",
-                    "columns": ["created_at"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_execution_object_scope": {
-                    "name": "sp_execution_object_scope",
-                    "value": "\"sp_execution_objects\".\"lifetime_scope\" IN ('execution', 'conversation')"
-                },
-                "sp_execution_object_bytes": {
-                    "name": "sp_execution_object_bytes",
-                    "value": "\"sp_execution_objects\".\"byte_length\" >= 0"
-                }
-            }
+        "next_public_position": {
+          "name": "next_public_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
-        "sp_execution_replay_segments": {
-            "name": "sp_execution_replay_segments",
-            "columns": {
-                "segment_id": {
-                    "name": "segment_id",
-                    "type": "text",
-                    "primaryKey": true,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "execution_id": {
-                    "name": "execution_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "task_id": {
-                    "name": "task_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "previous_segment_id": {
-                    "name": "previous_segment_id",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": false,
-                    "autoincrement": false
-                },
-                "first_sequence": {
-                    "name": "first_sequence",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "last_sequence": {
-                    "name": "last_sequence",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "entries_json": {
-                    "name": "entries_json",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "content_hash": {
-                    "name": "content_hash",
-                    "type": "text",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "encoded_bytes": {
-                    "name": "encoded_bytes",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                },
-                "created_at": {
-                    "name": "created_at",
-                    "type": "integer",
-                    "primaryKey": false,
-                    "notNull": true,
-                    "autoincrement": false
-                }
-            },
-            "indexes": {
-                "sp_replay_task_range": {
-                    "name": "sp_replay_task_range",
-                    "columns": ["execution_id", "task_id", "first_sequence", "last_sequence"],
-                    "isUnique": true
-                },
-                "sp_replay_task_sequence": {
-                    "name": "sp_replay_task_sequence",
-                    "columns": ["execution_id", "task_id", "first_sequence"],
-                    "isUnique": false
-                }
-            },
-            "foreignKeys": {},
-            "compositePrimaryKeys": {},
-            "uniqueConstraints": {},
-            "checkConstraints": {
-                "sp_replay_segment_first_sequence": {
-                    "name": "sp_replay_segment_first_sequence",
-                    "value": "\"sp_execution_replay_segments\".\"first_sequence\" >= 0"
-                },
-                "sp_replay_segment_positions": {
-                    "name": "sp_replay_segment_positions",
-                    "value": "\"sp_execution_replay_segments\".\"last_sequence\" >= \"sp_execution_replay_segments\".\"first_sequence\""
-                },
-                "sp_replay_segment_bytes": {
-                    "name": "sp_replay_segment_bytes",
-                    "value": "\"sp_execution_replay_segments\".\"encoded_bytes\" >= 0"
-                }
-            }
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "encoded_bytes": {
+          "name": "encoded_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
+      },
+      "indexes": {
+        "sp_checkpoint_conversation_cause": {
+          "name": "sp_checkpoint_conversation_cause",
+          "columns": ["conversation_id", "cause_key"],
+          "isUnique": true
+        },
+        "sp_checkpoint_conversation_created": {
+          "name": "sp_checkpoint_conversation_created",
+          "columns": ["conversation_id", "created_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_checkpoint_archive_frontier": {
+          "name": "sp_checkpoint_archive_frontier",
+          "value": "\"sp_conversation_checkpoints\".\"archive_frontier_ordinal\" >= 0"
+        },
+        "sp_checkpoint_next_public_position": {
+          "name": "sp_checkpoint_next_public_position",
+          "value": "\"sp_conversation_checkpoints\".\"next_public_position\" >= 0"
+        },
+        "sp_checkpoint_encoded_bytes": {
+          "name": "sp_checkpoint_encoded_bytes",
+          "value": "\"sp_conversation_checkpoints\".\"encoded_bytes\" >= 0"
+        }
+      }
     },
-    "views": {},
-    "enums": {},
-    "_meta": {
-        "schemas": {},
-        "tables": {},
-        "columns": {}
+    "sp_conversation_command_receipts": {
+      "name": "sp_conversation_command_receipts",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_digest": {
+          "name": "command_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retain_until": {
+          "name": "retain_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "admitted_revision": {
+          "name": "admitted_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resulting_revision": {
+          "name": "resulting_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "logical_turn_id": {
+          "name": "logical_turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_receipt_retain_until": {
+          "name": "sp_receipt_retain_until",
+          "columns": ["retain_until"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "sp_conversation_command_receipts_conversation_id_command_id_pk": {
+          "columns": ["conversation_id", "command_id"],
+          "name": "sp_conversation_command_receipts_conversation_id_command_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_receipt_admitted_revision": {
+          "name": "sp_receipt_admitted_revision",
+          "value": "\"sp_conversation_command_receipts\".\"admitted_revision\" >= 0"
+        },
+        "sp_receipt_resulting_revision": {
+          "name": "sp_receipt_resulting_revision",
+          "value": "\"sp_conversation_command_receipts\".\"resulting_revision\" > \"sp_conversation_command_receipts\".\"admitted_revision\""
+        }
+      }
     },
-    "internal": {
-        "indexes": {}
+    "sp_conversation_heads": {
+      "name": "sp_conversation_heads",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_epoch": {
+          "name": "owner_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_route_json": {
+          "name": "owner_route_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpoint_id": {
+          "name": "checkpoint_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "terminal_segment_id": {
+          "name": "terminal_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active_logical_turn_id": {
+          "name": "active_logical_turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active_execution_id": {
+          "name": "active_execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "latest_completed_execution_id": {
+          "name": "latest_completed_execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active_segment_json": {
+          "name": "active_segment_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active_command_json": {
+          "name": "active_command_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_heads_live_updated": {
+          "name": "sp_heads_live_updated",
+          "columns": ["deleted_at", "updated_at", "conversation_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_heads_revision": {
+          "name": "sp_heads_revision",
+          "value": "\"sp_conversation_heads\".\"revision\" >= 0"
+        },
+        "sp_heads_owner_epoch": {
+          "name": "sp_heads_owner_epoch",
+          "value": "\"sp_conversation_heads\".\"owner_epoch\" >= 0"
+        },
+        "sp_heads_state": {
+          "name": "sp_heads_state",
+          "value": "\"sp_conversation_heads\".\"state\" IN ('idle', 'running', 'parked', 'recovering', 'deleted')"
+        },
+        "sp_heads_deleted_state": {
+          "name": "sp_heads_deleted_state",
+          "value": "(\"sp_conversation_heads\".\"state\" = 'deleted') = (\"sp_conversation_heads\".\"deleted_at\" IS NOT NULL)"
+        },
+        "sp_heads_deleted_tombstone": {
+          "name": "sp_heads_deleted_tombstone",
+          "value": "\"sp_conversation_heads\".\"state\" <> 'deleted' OR (\n        \"sp_conversation_heads\".\"checkpoint_id\" IS NULL AND \"sp_conversation_heads\".\"terminal_segment_id\" IS NULL AND\n        \"sp_conversation_heads\".\"active_logical_turn_id\" IS NULL AND \"sp_conversation_heads\".\"active_execution_id\" IS NULL AND\n        \"sp_conversation_heads\".\"latest_completed_execution_id\" IS NULL AND \"sp_conversation_heads\".\"active_segment_json\" IS NULL AND\n        \"sp_conversation_heads\".\"active_command_json\" IS NULL AND \"sp_conversation_heads\".\"owner_route_json\" IS NULL\n      )"
+        }
+      }
+    },
+    "sp_conversation_public_root_index": {
+      "name": "sp_conversation_public_root_index",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "segment_root_index": {
+          "name": "segment_root_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archive_ordinal": {
+          "name": "archive_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encoded_bytes": {
+          "name": "encoded_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_public_root_identity": {
+          "name": "sp_public_root_identity",
+          "columns": ["conversation_id", "root_id"],
+          "isUnique": true
+        },
+        "sp_public_root_archive_ordinal": {
+          "name": "sp_public_root_archive_ordinal",
+          "columns": ["conversation_id", "archive_ordinal"],
+          "isUnique": true
+        },
+        "sp_public_root_segment": {
+          "name": "sp_public_root_segment",
+          "columns": ["segment_id", "segment_root_index"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "sp_conversation_public_root_index_conversation_id_position_pk": {
+          "columns": ["conversation_id", "position"],
+          "name": "sp_conversation_public_root_index_conversation_id_position_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_public_root_position": {
+          "name": "sp_public_root_position",
+          "value": "\"sp_conversation_public_root_index\".\"position\" >= 0"
+        },
+        "sp_public_root_segment_index": {
+          "name": "sp_public_root_segment_index",
+          "value": "\"sp_conversation_public_root_index\".\"segment_root_index\" >= 0"
+        },
+        "sp_public_root_archive_ordinal_check": {
+          "name": "sp_public_root_archive_ordinal_check",
+          "value": "\"sp_conversation_public_root_index\".\"archive_ordinal\" >= 0"
+        },
+        "sp_public_root_bytes": {
+          "name": "sp_public_root_bytes",
+          "value": "\"sp_conversation_public_root_index\".\"encoded_bytes\" >= 0"
+        }
+      }
+    },
+    "sp_conversation_public_segments": {
+      "name": "sp_conversation_public_segments",
+      "columns": {
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "previous_segment_id": {
+          "name": "previous_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "min_position": {
+          "name": "min_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_position": {
+          "name": "max_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "roots_json": {
+          "name": "roots_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encoded_bytes": {
+          "name": "encoded_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_public_segment_conversation_position": {
+          "name": "sp_public_segment_conversation_position",
+          "columns": ["conversation_id", "min_position", "max_position"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_public_segment_min_position": {
+          "name": "sp_public_segment_min_position",
+          "value": "\"sp_conversation_public_segments\".\"min_position\" >= 0"
+        },
+        "sp_public_segment_positions": {
+          "name": "sp_public_segment_positions",
+          "value": "\"sp_conversation_public_segments\".\"max_position\" >= \"sp_conversation_public_segments\".\"min_position\""
+        },
+        "sp_public_segment_bytes": {
+          "name": "sp_public_segment_bytes",
+          "value": "\"sp_conversation_public_segments\".\"encoded_bytes\" >= 0"
+        }
+      }
+    },
+    "sp_conversation_terminal_segments": {
+      "name": "sp_conversation_terminal_segments",
+      "columns": {
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "logical_turn_id": {
+          "name": "logical_turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "publication_key": {
+          "name": "publication_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "previous_segment_id": {
+          "name": "previous_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "first_position": {
+          "name": "first_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_position": {
+          "name": "last_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entries_json": {
+          "name": "entries_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_terminal_segment_publication": {
+          "name": "sp_terminal_segment_publication",
+          "columns": ["conversation_id", "publication_key"],
+          "isUnique": true
+        },
+        "sp_terminal_segment_conversation_position": {
+          "name": "sp_terminal_segment_conversation_position",
+          "columns": ["conversation_id", "first_position", "last_position"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_terminal_segment_first_position": {
+          "name": "sp_terminal_segment_first_position",
+          "value": "\"sp_conversation_terminal_segments\".\"first_position\" >= 0"
+        },
+        "sp_terminal_segment_positions": {
+          "name": "sp_terminal_segment_positions",
+          "value": "\"sp_conversation_terminal_segments\".\"last_position\" >= \"sp_conversation_terminal_segments\".\"first_position\""
+        }
+      }
+    },
+    "sp_execution_control": {
+      "name": "sp_execution_control",
+      "columns": {
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "control_revision": {
+          "name": "control_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_fence": {
+          "name": "owner_fence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root_task_id": {
+          "name": "root_task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stop_generation": {
+          "name": "stop_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_disposition": {
+          "name": "requested_disposition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "control_json": {
+          "name": "control_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_execution_control_status": {
+          "name": "sp_execution_control_status",
+          "value": "\"sp_execution_control\".\"status\" IN ('active', 'parked', 'cancelling', 'terminal')"
+        },
+        "sp_execution_control_disposition": {
+          "name": "sp_execution_control_disposition",
+          "value": "\"sp_execution_control\".\"requested_disposition\" IS NULL OR \"sp_execution_control\".\"requested_disposition\" IN ('cancelled', 'superseded')"
+        },
+        "sp_execution_control_revision": {
+          "name": "sp_execution_control_revision",
+          "value": "\"sp_execution_control\".\"control_revision\" >= 0"
+        },
+        "sp_execution_control_owner_fence": {
+          "name": "sp_execution_control_owner_fence",
+          "value": "\"sp_execution_control\".\"owner_fence\" >= 0"
+        },
+        "sp_execution_control_stop_generation": {
+          "name": "sp_execution_control_stop_generation",
+          "value": "\"sp_execution_control\".\"stop_generation\" >= 0"
+        }
+      }
+    },
+    "sp_execution_journal_segments": {
+      "name": "sp_execution_journal_segments",
+      "columns": {
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "previous_segment_id": {
+          "name": "previous_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "first_sequence": {
+          "name": "first_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_sequence": {
+          "name": "last_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entries_json": {
+          "name": "entries_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encoded_bytes": {
+          "name": "encoded_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_journal_task_range": {
+          "name": "sp_journal_task_range",
+          "columns": ["execution_id", "task_id", "first_sequence", "last_sequence"],
+          "isUnique": true
+        },
+        "sp_journal_task_sequence": {
+          "name": "sp_journal_task_sequence",
+          "columns": ["execution_id", "task_id", "first_sequence"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_journal_segment_first_sequence": {
+          "name": "sp_journal_segment_first_sequence",
+          "value": "\"sp_execution_journal_segments\".\"first_sequence\" >= 0"
+        },
+        "sp_journal_segment_positions": {
+          "name": "sp_journal_segment_positions",
+          "value": "\"sp_execution_journal_segments\".\"last_sequence\" >= \"sp_execution_journal_segments\".\"first_sequence\""
+        },
+        "sp_journal_segment_bytes": {
+          "name": "sp_journal_segment_bytes",
+          "value": "\"sp_execution_journal_segments\".\"encoded_bytes\" >= 0"
+        }
+      }
+    },
+    "sp_execution_objects": {
+      "name": "sp_execution_objects",
+      "columns": {
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lifetime_scope": {
+          "name": "lifetime_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_owner_id": {
+          "name": "scope_owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_kind": {
+          "name": "object_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_length": {
+          "name": "byte_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "json_body": {
+          "name": "json_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_execution_object_scope_index": {
+          "name": "sp_execution_object_scope_index",
+          "columns": ["lifetime_scope", "scope_owner_id", "object_kind"],
+          "isUnique": false
+        },
+        "sp_execution_object_created": {
+          "name": "sp_execution_object_created",
+          "columns": ["created_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_execution_object_scope": {
+          "name": "sp_execution_object_scope",
+          "value": "\"sp_execution_objects\".\"lifetime_scope\" IN ('execution', 'conversation')"
+        },
+        "sp_execution_object_bytes": {
+          "name": "sp_execution_object_bytes",
+          "value": "\"sp_execution_objects\".\"byte_length\" >= 0"
+        }
+      }
+    },
+    "sp_execution_replay_segments": {
+      "name": "sp_execution_replay_segments",
+      "columns": {
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "previous_segment_id": {
+          "name": "previous_segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "first_sequence": {
+          "name": "first_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_sequence": {
+          "name": "last_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entries_json": {
+          "name": "entries_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "encoded_bytes": {
+          "name": "encoded_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sp_replay_task_range": {
+          "name": "sp_replay_task_range",
+          "columns": ["execution_id", "task_id", "first_sequence", "last_sequence"],
+          "isUnique": true
+        },
+        "sp_replay_task_sequence": {
+          "name": "sp_replay_task_sequence",
+          "columns": ["execution_id", "task_id", "first_sequence"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sp_replay_segment_first_sequence": {
+          "name": "sp_replay_segment_first_sequence",
+          "value": "\"sp_execution_replay_segments\".\"first_sequence\" >= 0"
+        },
+        "sp_replay_segment_positions": {
+          "name": "sp_replay_segment_positions",
+          "value": "\"sp_execution_replay_segments\".\"last_sequence\" >= \"sp_execution_replay_segments\".\"first_sequence\""
+        },
+        "sp_replay_segment_bytes": {
+          "name": "sp_replay_segment_bytes",
+          "value": "\"sp_execution_replay_segments\".\"encoded_bytes\" >= 0"
+        }
+      }
     }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
 }

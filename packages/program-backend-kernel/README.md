@@ -15,11 +15,11 @@ Effection backend, or an explicit backend:
 
 ```ts
 const backend = createKernelProgramBackend({
-    kernelIdentity,
-    createKernel,
-    loadProgram,
-    manifest,
-    bindOperation,
+  kernelIdentity,
+  createKernel,
+  loadProgram,
+  manifest,
+  bindOperation,
 });
 const driver = createWorkflowProgramDriver(backend);
 ```

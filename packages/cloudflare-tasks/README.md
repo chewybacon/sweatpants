@@ -14,9 +14,9 @@ do not call `process.exit()` inside tasks.
 import type { WranglerTask } from "@sweatpants/cloudflare-tasks";
 
 export default (async ({ env, args }) => {
-    await env.DB.prepare("INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)")
-        .bind("demo", args[0] ?? "Demo user")
-        .run();
+  await env.DB.prepare("INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)")
+    .bind("demo", args[0] ?? "Demo user")
+    .run();
 }) satisfies WranglerTask<Cloudflare.Env>;
 ```
 
@@ -32,10 +32,10 @@ For programmatic callback access (this does not install the CLI import hook):
 import { withWranglerEnv } from "@sweatpants/cloudflare-tasks";
 
 await withWranglerEnv<Cloudflare.Env, void>(
-    { config: "wrangler.jsonc", persistTo: ".wrangler/worker-state" },
-    async (env) => {
-        await env.DB.prepare("SELECT 1").first();
-    },
+  { config: "wrangler.jsonc", persistTo: ".wrangler/worker-state" },
+  async (env) => {
+    await env.DB.prepare("SELECT 1").first();
+  },
 );
 ```
 
@@ -52,20 +52,18 @@ config a `script_name` matching that Worker's name:
 
 ```jsonc
 {
-    "name": "maintenance",
-    "compatibility_date": "2026-10-05",
-    "durable_objects": {
-        "bindings": [
-            { "name": "COUNTERS", "class_name": "Counter", "script_name": "counter-worker" },
-        ],
-    },
+  "name": "maintenance",
+  "compatibility_date": "2026-10-05",
+  "durable_objects": {
+    "bindings": [{ "name": "COUNTERS", "class_name": "Counter", "script_name": "counter-worker" }],
+  },
 }
 ```
 
 ```ts
 export default (async ({ env }) => {
-    const counter = env.COUNTERS.get(env.COUNTERS.idFromName("demo"));
-    await counter.fetch("https://counter/seed", { method: "POST", body: "10" });
+  const counter = env.COUNTERS.get(env.COUNTERS.idFromName("demo"));
+  await counter.fetch("https://counter/seed", { method: "POST", body: "10" });
 }) satisfies WranglerTask<Cloudflare.Env>;
 ```
 

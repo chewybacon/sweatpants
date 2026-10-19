@@ -254,35 +254,39 @@ function typeDiagnostics(source) {
 }
 
 /** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
-export const workflowCompiler = createWorkflowCompiler({ driver: {
-  sourceLanguage: "typescript",
-  definitionFormat: HOOT_DEFINITION_FORMAT,
-  *compile({ source, entry, exports, bindings }) {
-    try {
-      if (source.language !== "typescript") {
-        throw Error("Workflow compiler requires TypeScript source");
+export const workflowCompiler = createWorkflowCompiler({
+  driver: {
+    sourceLanguage: "typescript",
+    definitionFormat: HOOT_DEFINITION_FORMAT,
+    *compile({ source, entry, exports, bindings }) {
+      try {
+        if (source.language !== "typescript") {
+          throw Error("Workflow compiler requires TypeScript source");
+        }
+        const definitions = compileDefinitions(source.text, source.id, exports, bindings);
+        const module = Object.values(definitions).find((d) => d.entry === entry);
+        if (!module) {
+          throw Error(`Unknown workflow entry: ${entry}`);
+        }
+        if (exports.some((e) => !definitions[e.name] || definitions[e.name].entry !== e.entry)) {
+          throw Error("Unknown declared workflow export");
+        }
+        const diagnostics = typeDiagnostics(source);
+        if (diagnostics.some((d) => d.severity === "error")) {
+          return { ok: false, diagnostics };
+        }
+        return { ok: true, module, diagnostics };
+      } catch (error) {
+        return {
+          ok: false,
+          diagnostics: [
+            { severity: "error", code: "typescript_workflow_compile", message: error.message },
+          ],
+        };
       }
-      const definitions = compileDefinitions(source.text, source.id, exports, bindings);
-      const module = Object.values(definitions).find((d) => d.entry === entry);
-      if (!module) {
-        throw Error(`Unknown workflow entry: ${entry}`);
-      }
-      if (exports.some((e) => !definitions[e.name] || definitions[e.name].entry !== e.entry)) {
-        throw Error("Unknown declared workflow export");
-      }
-      const diagnostics = typeDiagnostics(source);
-      if (diagnostics.some((d) => d.severity === "error")) {return { ok: false, diagnostics };}
-      return { ok: true, module, diagnostics };
-    } catch (error) {
-      return {
-        ok: false,
-        diagnostics: [
-          { severity: "error", code: "typescript_workflow_compile", message: error.message },
-        ],
-      };
-    }
+    },
   },
-}});
+});
 
 /** Bundler representation is separate from the portable compiler output.
  * @returns {import("effection").Operation<string>}

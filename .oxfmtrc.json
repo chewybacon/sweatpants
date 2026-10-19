@@ -1,20 +1,20 @@
 {
-    "$schema": "./node_modules/oxfmt/configuration_schema.json",
-    "ignorePatterns": [
-        "**/dist/**",
-        "**/coverage/**",
-        "**/test-results/**",
-        "**/playwright-report/**",
-        "**/node_modules/**",
-        "docs/**",
-        "specs/**",
-        ".pi/**",
-        ".tasuku/**",
-        ".opencode/**",
-        "apps/**/docs/**",
-        "packages/framework/docs/**",
-        "apps/yo-chat/src/routeTree.gen.ts",
-        "apps/yo-chat/src/__generated__/**",
-        "packages/scheme-runtime/generated/**"
-    ]
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "**/node_modules/**",
+    "docs/**",
+    "specs/**",
+    ".pi/**",
+    ".tasuku/**",
+    ".opencode/**",
+    "apps/**/docs/**",
+    "packages/framework/docs/**",
+    "apps/yo-chat/src/routeTree.gen.ts",
+    "apps/yo-chat/src/__generated__/**",
+    "packages/scheme-runtime/generated/**"
+  ]
 }

@@ -90,27 +90,35 @@ function kernel(observe, source, digest, loadMachine, identity) {
       throw Error("Wrong program");
     }
   }
-  return createWorkflowKernel({ driver: {
-    identity,
-    *start(program, input) {
-      validate(program);
-      machine = yield* call(loadMachine);
-      return createKernelExecution({ initial: transition("start", () => machine.start(source, input)), driver: driver });
+  return createWorkflowKernel({
+    driver: {
+      identity,
+      *start(program, input) {
+        validate(program);
+        machine = yield* call(loadMachine);
+        return createKernelExecution({
+          initial: transition("start", () => machine.start(source, input)),
+          driver: driver,
+        });
+      },
+      *restore(program, snapshot) {
+        validate(program, snapshot);
+        if (typeof snapshot.state !== "string") {
+          throw Error("Invalid snapshot");
+        }
+        observe("checkpoint-selected", { snapshot });
+        machine = yield* call(loadMachine);
+        return createKernelExecution({
+          initial: transition("restore", () => machine.restore(source, snapshot.state)),
+          driver: driver,
+        });
+      },
+      *close() {
+        yield* driver.dispose();
+        closed = true;
+      },
     },
-    *restore(program, snapshot) {
-      validate(program, snapshot);
-      if (typeof snapshot.state !== "string") {
-        throw Error("Invalid snapshot");
-      }
-      observe("checkpoint-selected", { snapshot });
-      machine = yield* call(loadMachine);
-      return createKernelExecution({ initial: transition("restore", () => machine.restore(source, snapshot.state)), driver: driver });
-    },
-    *close() {
-      yield* driver.dispose();
-      closed = true;
-    },
-  }});
+  });
 }
 export function createPortableHootProgram(
   { source, contract, bindOperation, bindings = [] },

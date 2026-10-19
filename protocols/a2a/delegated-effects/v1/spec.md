@@ -54,15 +54,15 @@ A response binds:
 
 ```ts
 interface DelegatedEffectResponseV1 {
-    taskId: string;
-    effectId: string;
-    responseId: string;
-    grantId: string;
-    grantVersion: number;
-    contractDigest: string;
-    outcome: OperationOutcome;
-    outcomeDigest: string;
-    eventCursor: number;
+  taskId: string;
+  effectId: string;
+  responseId: string;
+  grantId: string;
+  grantVersion: number;
+  contractDigest: string;
+  outcome: OperationOutcome;
+  outcomeDigest: string;
+  eventCursor: number;
 }
 ```
 

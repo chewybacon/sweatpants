@@ -1,71 +1,71 @@
 {
-    "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "yo-tisyn",
-    "main": "src/server/cloudflare.ts",
-    "compatibility_date": "2026-10-05",
-    "compatibility_flags": ["nodejs_compat"],
-    "assets": {
-        "binding": "ASSETS",
-        "not_found_handling": "single-page-application",
-        "run_worker_first": ["/api/*", "/health"],
-    },
-    "durable_objects": {
-        "bindings": [
-            { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
-            { "name": "CONVERSATIONS", "class_name": "Conversations" },
-            { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
-            { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },
-        ],
-    },
-    "migrations": [
-        { "tag": "v1", "new_sqlite_classes": ["Conversations", "ToolExecutors", "ResponseStream"] },
-        { "tag": "v2-execution-lab", "new_sqlite_classes": ["ExecutionLab"] },
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yo-tisyn",
+  "main": "src/server/cloudflare.ts",
+  "compatibility_date": "2026-10-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/health"],
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
+      { "name": "CONVERSATIONS", "class_name": "Conversations" },
+      { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
+      { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },
     ],
-    "d1_databases": [
-        {
-            "binding": "JOURNAL",
-            "database_name": "yo-tisyn-local-journal",
-            // Local-only placeholder. Production uses its separate database below.
-            "database_id": "00000000-0000-0000-0000-000000000001",
-        },
-    ],
-    "env": {
-        "production": {
-            "name": "yo-tisyn",
-            "workers_dev": true,
-            "preview_urls": false,
-            "secrets": {
-                "required": [
-                    "MODEL_CREDENTIALS",
-                    "PROGRAM_DRIVER_CAPABILITY_SECRET",
-                    "DEFAULT_CHAT_MODEL_PROVIDER",
-                    "DEFAULT_CHAT_MODEL_ID",
-                ],
-            },
-            "durable_objects": {
-                "bindings": [
-                    { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
-                    { "name": "CONVERSATIONS", "class_name": "Conversations" },
-                    { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
-                    { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },
-                ],
-            },
-            "d1_databases": [
-                {
-                    "binding": "JOURNAL",
-                    "database_name": "yo-tisyn-journal",
-                    "database_id": "00000000-0000-0000-0000-000000000004",
-                },
-            ],
-        },
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Conversations", "ToolExecutors", "ResponseStream"] },
+    { "tag": "v2-execution-lab", "new_sqlite_classes": ["ExecutionLab"] },
+  ],
+  "d1_databases": [
+    {
+      "binding": "JOURNAL",
+      "database_name": "yo-tisyn-local-journal",
+      // Local-only placeholder. Production uses its separate database below.
+      "database_id": "00000000-0000-0000-0000-000000000001",
     },
-    "secrets": {
+  ],
+  "env": {
+    "production": {
+      "name": "yo-tisyn",
+      "workers_dev": true,
+      "preview_urls": false,
+      "secrets": {
         "required": [
-            "MODEL_CREDENTIALS",
-            "PROGRAM_DRIVER_CAPABILITY_SECRET",
-            "DEFAULT_CHAT_MODEL_PROVIDER",
-            "DEFAULT_CHAT_MODEL_ID",
-            "DEFAULT_CHAT_MODEL_THINKING",
+          "MODEL_CREDENTIALS",
+          "PROGRAM_DRIVER_CAPABILITY_SECRET",
+          "DEFAULT_CHAT_MODEL_PROVIDER",
+          "DEFAULT_CHAT_MODEL_ID",
         ],
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "EXECUTION_LABS", "class_name": "ExecutionLab" },
+          { "name": "CONVERSATIONS", "class_name": "Conversations" },
+          { "name": "TOOL_EXECUTORS", "class_name": "ToolExecutors" },
+          { "name": "RESPONSE_STREAMS", "class_name": "ResponseStream" },
+        ],
+      },
+      "d1_databases": [
+        {
+          "binding": "JOURNAL",
+          "database_name": "yo-tisyn-journal",
+          "database_id": "00000000-0000-0000-0000-000000000004",
+        },
+      ],
     },
+  },
+  "secrets": {
+    "required": [
+      "MODEL_CREDENTIALS",
+      "PROGRAM_DRIVER_CAPABILITY_SECRET",
+      "DEFAULT_CHAT_MODEL_PROVIDER",
+      "DEFAULT_CHAT_MODEL_ID",
+      "DEFAULT_CHAT_MODEL_THINKING",
+    ],
+  },
 }

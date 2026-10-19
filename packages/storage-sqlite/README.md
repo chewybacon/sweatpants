@@ -11,21 +11,21 @@ import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlit
 
 // Path mode: the kernel creates, owns, and closes the connection.
 const handle =
-    yield *
-    openBetterSqliteStorage("/var/lib/app/authority.sqlite", {
-        initialize: true,
-        wal: true,
-    });
+  yield *
+  openBetterSqliteStorage("/var/lib/app/authority.sqlite", {
+    initialize: true,
+    wal: true,
+  });
 await handle.close();
 
 // Database mode (binding inversion): the caller owns the connection.
 const mine = new Database("/var/lib/app/authority.sqlite");
 const adapted =
-    yield *
-    openBetterSqliteStorage(undefined, {
-        database: mine,
-        initialize: true,
-    });
+  yield *
+  openBetterSqliteStorage(undefined, {
+    database: mine,
+    initialize: true,
+  });
 await adapted.close(); // `mine` stays open — the kernel never closes it.
 ```
 

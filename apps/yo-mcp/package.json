@@ -1,39 +1,39 @@
 {
-    "name": "yo-mcp",
-    "version": "0.1.0",
-    "private": true,
-    "bin": {
-        "yo-mcp": "./dist/cli.js"
-    },
-    "type": "module",
-    "scripts": {
-        "dev": "tsx ../../scripts/dev-app.ts yo-mcp tsx --conditions=development src/cli.ts",
-        "dev:silent": "pnpm --silent dev",
-        "build": "tsup",
-        "check": "tsc --noEmit",
-        "start": "node dist/cli.js",
-        "inspect": "pnpm dev & sleep 1 && pnpm exec mcp-inspector --web --protocol-era modern --transport http --server-url http://localhost:3001/mcp",
-        "test": "vitest run src",
-        "test:inspector": "playwright test",
-        "test:ui": "playwright test --ui",
-        "test:headed": "playwright test --headed"
-    },
-    "dependencies": {
-        "@sweatpants/agent-host": "workspace:*",
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/tool-runtime-local": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
-        "effection": "catalog:",
-        "zod": "catalog:"
-    },
-    "devDependencies": {
-        "@modelcontextprotocol/inspector": "2.9.0",
-        "@playwright/test": "^1.49.0",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "tsup": "catalog:",
-        "tsx": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    }
+  "name": "yo-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "yo-mcp": "./dist/cli.js"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "tsx ../../scripts/dev-app.ts yo-mcp tsx --conditions=development src/cli.ts",
+    "dev:silent": "pnpm --silent dev",
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "start": "node dist/cli.js",
+    "inspect": "pnpm dev & sleep 1 && pnpm exec mcp-inspector --web --protocol-era modern --transport http --server-url http://localhost:3001/mcp",
+    "test": "vitest run src",
+    "test:inspector": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@sweatpants/agent-host": "workspace:*",
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*",
+    "@sweatpants/tool-session": "workspace:*",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "2.9.0",
+    "@playwright/test": "^1.49.0",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

@@ -22,18 +22,18 @@ An implementation advertises the exact Extension URI in `AgentCapabilities.exten
 
 ```ts
 interface DurableInvocationExtensionParamsV1 {
-    protocolVersion: 1;
-    resolveEndpoint: string; // authenticated same-origin HTTPS by default
-    abortEndpoint: string; // authenticated same-origin HTTPS by default
-    messageIdempotency: true;
-    retention: {
-        invocationBindingSeconds: number;
-        abortTombstoneSeconds: number;
-        messageIdempotencySeconds: number;
-        taskSeconds: number;
-        terminalResultSeconds: number;
-        clockSkewSeconds: number;
-    };
+  protocolVersion: 1;
+  resolveEndpoint: string; // authenticated same-origin HTTPS by default
+  abortEndpoint: string; // authenticated same-origin HTTPS by default
+  messageIdempotency: true;
+  retention: {
+    invocationBindingSeconds: number;
+    abortTombstoneSeconds: number;
+    messageIdempotencySeconds: number;
+    taskSeconds: number;
+    terminalResultSeconds: number;
+    clockSkewSeconds: number;
+  };
 }
 ```
 
@@ -47,11 +47,11 @@ For an initial `SendMessage`, extension metadata has this closed shape:
 
 ```ts
 interface DurableInvocationMetadataV1 {
-    protocolVersion: 1;
-    invocationId: string;
-    messageId: string;
-    messageDigest: string; // lowercase SHA-256 of canonical Message content
-    requestExpiresAt: string; // ISO-8601 instant
+  protocolVersion: 1;
+  invocationId: string;
+  messageId: string;
+  messageDigest: string; // lowercase SHA-256 of canonical Message content
+  requestExpiresAt: string; // ISO-8601 instant
 }
 ```
 
@@ -75,9 +75,9 @@ Initial durable-adapter sends SHOULD set non-blocking/return-immediately behavio
 
 ```ts
 interface ResolveInvocationRequestV1 {
-    invocationId: string;
-    messageDigest: string;
-    requestExpiresAt: string;
+  invocationId: string;
+  messageDigest: string;
+  requestExpiresAt: string;
 }
 ```
 
@@ -85,9 +85,9 @@ The response is exactly one of:
 
 ```ts
 type ResolveInvocationResponseV1 =
-    | { status: "not_found" }
-    | { status: "bound"; result: A2ATaskOrDirectMessage }
-    | { status: "aborted"; expiresAt: string };
+  | { status: "not_found" }
+  | { status: "bound"; result: A2ATaskOrDirectMessage }
+  | { status: "aborted"; expiresAt: string };
 ```
 
 Resolve MUST be linearizable with creation. A committed invocation MUST return the same bound object for every authorized lookup during retention. `not_found` describes only the operation's linearization point and MUST NOT be represented as a future-create fence.
@@ -98,8 +98,8 @@ Resolve MUST be linearizable with creation. A committed invocation MUST return t
 
 ```ts
 type AbortInvocationResponseV1 =
-    | { status: "bound"; result: A2ATaskOrDirectMessage }
-    | { status: "aborted"; expiresAt: string };
+  | { status: "bound"; result: A2ATaskOrDirectMessage }
+  | { status: "aborted"; expiresAt: string };
 ```
 
 Abort MUST atomically return an existing binding or install an idempotent abort tombstone. It MUST NOT return bare `not_found`.
@@ -131,17 +131,17 @@ Extension errors use bounded safe text and one of:
 
 ```ts
 type DurableInvocationErrorCodeV1 =
-    | "authentication_failed"
-    | "authorization_denied"
-    | "extension_not_activated"
-    | "protocol_version_unsupported"
-    | "request_expired"
-    | "invocation_aborted"
-    | "invocation_not_found"
-    | "idempotency_conflict"
-    | "payload_too_large"
-    | "retention_expired"
-    | "protocol_error";
+  | "authentication_failed"
+  | "authorization_denied"
+  | "extension_not_activated"
+  | "protocol_version_unsupported"
+  | "request_expired"
+  | "invocation_aborted"
+  | "invocation_not_found"
+  | "idempotency_conflict"
+  | "payload_too_large"
+  | "retention_expired"
+  | "protocol_error";
 ```
 
 Errors MUST NOT contain credentials, unrestricted message content, internal stack traces, or private routing data.

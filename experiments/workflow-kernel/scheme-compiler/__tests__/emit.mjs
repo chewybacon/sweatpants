@@ -19,18 +19,18 @@ assert.deepEqual(reference.debug.sites, emitted.debug.sites);
 assert.deepEqual(reference.debug.locations, emitted.debug.locations);
 assert.ok(reference.program.functions[reference.program.entry].code.length);
 assert.throws(
-    () => emitWorkflowScheme('import { arbitrary } from "library";\n' + source),
-    /Unsupported import/,
+  () => emitWorkflowScheme('import { arbitrary } from "library";\n' + source),
+  /Unsupported import/,
 );
 console.log(
-    "PASS Scheme-only output, source metadata, reference adapter, unsupported import rejection",
+  "PASS Scheme-only output, source metadata, reference adapter, unsupported import rejection",
 );
 const library = emitWorkflowScheme(source, { entryPoint: null });
 assert.equal(library.scheme, emitted.scheme.replace("\n(workflow #f)\n", "\n"));
 assert.deepEqual(library.debug, emitted.debug);
 assert.throws(() => emitWorkflowScheme(source, { entryPoint: "missing" }), /Unknown entry point/);
 const named = emitWorkflowScheme(source.replace("workflow(ctx)", "confirm(ctx)"), {
-    entryPoint: "confirm",
+  entryPoint: "confirm",
 });
 assert.ok(named.scheme.endsWith("\n(confirm #f)\n"));
 console.log("PASS definitions-only emission and explicit named entry points");

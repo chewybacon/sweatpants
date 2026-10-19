@@ -1,48 +1,48 @@
 {
-    "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-    "entry": [
-        "src/index.{ts,tsx,js,jsx}",
-        "src/main.{ts,tsx,js,jsx}",
-        "src/server.{ts,tsx,js,jsx}",
-        "scripts/*.{ts,mts,mjs}"
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "src/index.{ts,tsx,js,jsx}",
+    "src/main.{ts,tsx,js,jsx}",
+    "src/server.{ts,tsx,js,jsx}",
+    "scripts/*.{ts,mts,mjs}"
+  ],
+  "ignorePatterns": ["**/routeTree.gen.ts"],
+  "workspaces": {
+    "patterns": ["packages/*", "apps/*"]
+  },
+  "duplicates": {
+    "ignore": ["apps/hydra/docs/ts/**"]
+  },
+  "health": {
+    "maxCrap": 0,
+    "ignore": [
+      "apps/hydra/docs/ts/**",
+      "**/*.test.{ts,tsx,js,jsx}",
+      "**/*.spec.{ts,tsx,js,jsx}",
+      "**/*.type-test.{ts,tsx}",
+      "**/*.typecheck.{ts,tsx}",
+      "**/__tests__/**",
+      "**/acceptance/**",
+      "**/e2e/**",
+      "**/src/testing/**",
+      "packages/test-rig/**"
     ],
-    "ignorePatterns": ["**/routeTree.gen.ts"],
-    "workspaces": {
-        "patterns": ["packages/*", "apps/*"]
-    },
-    "duplicates": {
-        "ignore": ["apps/hydra/docs/ts/**"]
-    },
-    "health": {
-        "maxCrap": 0,
-        "ignore": [
-            "apps/hydra/docs/ts/**",
-            "**/*.test.{ts,tsx,js,jsx}",
-            "**/*.spec.{ts,tsx,js,jsx}",
-            "**/*.type-test.{ts,tsx}",
-            "**/*.typecheck.{ts,tsx}",
-            "**/__tests__/**",
-            "**/acceptance/**",
-            "**/e2e/**",
-            "**/src/testing/**",
-            "packages/test-rig/**"
-        ],
-        "suggestInlineSuppression": false
-    },
-    "typeAware": {
-        "enabled": true
-    },
-    "ignoreDependencies": ["effect"],
-    "ignoreUnresolvedImports": ["./server/server.js", "**/server/server.js"],
-    "overrides": [
-        {
-            "files": ["apps/hydra/docs/ts/**"],
-            "rules": {
-                "unused-files": "off",
-                "unused-exports": "off",
-                "unused-types": "off",
-                "unlisted-dependencies": "off"
-            }
-        }
-    ]
+    "suggestInlineSuppression": false
+  },
+  "typeAware": {
+    "enabled": true
+  },
+  "ignoreDependencies": ["effect"],
+  "ignoreUnresolvedImports": ["./server/server.js", "**/server/server.js"],
+  "overrides": [
+    {
+      "files": ["apps/hydra/docs/ts/**"],
+      "rules": {
+        "unused-files": "off",
+        "unused-exports": "off",
+        "unused-types": "off",
+        "unlisted-dependencies": "off"
+      }
+    }
+  ]
 }

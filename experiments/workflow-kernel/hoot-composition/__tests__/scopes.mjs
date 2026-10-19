@@ -4,7 +4,7 @@ import { emitWorkflowScheme } from "../../scheme-compiler/emit.mjs";
 import { compile, start, run as runReference } from "../../compiled-finally/engine.mjs";
 import { loadMachine } from "../machine.mjs";
 const { run, ensure, scoped } = createRequire(new URL("../../../../package.json", import.meta.url))(
-    "effection",
+  "effection",
 );
 
 const rootLoop = `
@@ -78,98 +78,98 @@ function* workflow(ctx) {
   return 3;
 }`;
 function reply(effect) {
-    return effect[1] === "reserve" ? `hold-${effect[2]}` : "ok";
+  return effect[1] === "reserve" ? `hold-${effect[2]}` : "ok";
 }
 async function compare(scheme, cancelAt) {
-    const program = compile(scheme);
-    let state = start(program),
-        reference = runReference(program, state);
-    let machine = await loadMachine(),
-        actual = machine.start(scheme);
-    const effects = [];
-    let cancelled = false;
-    for (let count = 0; count < 30; count++) {
-        if (reference.outcome) {
-            assert.equal(actual.kind, reference.outcome.kind);
-            if (actual.kind === "returned") {
-                assert.deepEqual(actual.value, reference.outcome.value);
-            }
-            return { effects, outcome: reference.outcome };
-        }
-        assert.equal(actual.kind, "effect");
-        assert.deepEqual(actual.value, reference.effect);
-        assert.equal(actual.site, state.site);
-        effects.push(actual.value);
-        const snapshot = JSON.parse(JSON.stringify(machine.capture()));
-        machine = null;
-        machine = await loadMachine();
-        assert.deepEqual(machine.restore(scheme, snapshot), actual);
-        assert.equal(machine.capture(), snapshot, "restoration does not step");
-        state = structuredClone(state);
-        if (!cancelled && cancelAt?.(actual.value)) {
-            cancelled = true;
-            actual = machine.cancel();
-            reference = runReference(program, state, { cancel: true });
-            // Repeating cancellation at a pending cleanup must not consume it.
-            if (actual.kind === "effect") {
-                assert.deepEqual(machine.cancel(), actual);
-                reference = runReference(program, state, { cancel: true });
-            }
-        } else {
-            const result = reply(actual.value);
-            actual = machine.resume(result);
-            reference = runReference(program, state, { reply: result });
-        }
+  const program = compile(scheme);
+  let state = start(program),
+    reference = runReference(program, state);
+  let machine = await loadMachine(),
+    actual = machine.start(scheme);
+  const effects = [];
+  let cancelled = false;
+  for (let count = 0; count < 30; count++) {
+    if (reference.outcome) {
+      assert.equal(actual.kind, reference.outcome.kind);
+      if (actual.kind === "returned") {
+        assert.deepEqual(actual.value, reference.outcome.value);
+      }
+      return { effects, outcome: reference.outcome };
     }
-    throw Error("Workflow did not terminate");
+    assert.equal(actual.kind, "effect");
+    assert.deepEqual(actual.value, reference.effect);
+    assert.equal(actual.site, state.site);
+    effects.push(actual.value);
+    const snapshot = JSON.parse(JSON.stringify(machine.capture()));
+    machine = null;
+    machine = await loadMachine();
+    assert.deepEqual(machine.restore(scheme, snapshot), actual);
+    assert.equal(machine.capture(), snapshot, "restoration does not step");
+    state = structuredClone(state);
+    if (!cancelled && cancelAt?.(actual.value)) {
+      cancelled = true;
+      actual = machine.cancel();
+      reference = runReference(program, state, { cancel: true });
+      // Repeating cancellation at a pending cleanup must not consume it.
+      if (actual.kind === "effect") {
+        assert.deepEqual(machine.cancel(), actual);
+        reference = runReference(program, state, { cancel: true });
+      }
+    } else {
+      const result = reply(actual.value);
+      actual = machine.resume(result);
+      reference = runReference(program, state, { reply: result });
+    }
+  }
+  throw Error("Workflow did not terminate");
 }
 async function native(source) {
-    const body = source.replace(/import[^;]+;/g, "");
-    // Native parity oracle: execute only the static generator fixtures defined in this file.
-    // oxlint-disable-next-line typescript/no-implied-eval
-    const workflow = new Function("ensure", "scoped", body + "; return workflow;")(ensure, scoped);
-    const effects = [];
-    const value = await run(function* () {
-        return yield* workflow({
-            *elicit(...args) {
-                const effect = ["elicit", ...args];
-                effects.push(effect);
-                return reply(effect);
-            },
-        });
+  const body = source.replace(/import[^;]+;/g, "");
+  // Native parity oracle: execute only the static generator fixtures defined in this file.
+  // oxlint-disable-next-line typescript/no-implied-eval
+  const workflow = new Function("ensure", "scoped", body + "; return workflow;")(ensure, scoped);
+  const effects = [];
+  const value = await run(function* () {
+    return yield* workflow({
+      *elicit(...args) {
+        const effect = ["elicit", ...args];
+        effects.push(effect);
+        return reply(effect);
+      },
     });
-    return { effects, outcome: { kind: "returned", value } };
+  });
+  return { effects, outcome: { kind: "returned", value } };
 }
 for (const [name, source] of Object.entries({
-    rootLoop,
-    scopedLoop,
-    sharedLoop,
-    nestedScopes,
-    continueLoop: scopedLoop.replace(
-        "remaining = remaining - 1;",
-        "remaining = remaining - 1; continue;",
-    ),
-    breakLoop: scopedLoop.replace(
-        "remaining = remaining - 1;",
-        "remaining = remaining - 1; if (remaining === 1) break;",
-    ),
+  rootLoop,
+  scopedLoop,
+  sharedLoop,
+  nestedScopes,
+  continueLoop: scopedLoop.replace(
+    "remaining = remaining - 1;",
+    "remaining = remaining - 1; continue;",
+  ),
+  breakLoop: scopedLoop.replace(
+    "remaining = remaining - 1;",
+    "remaining = remaining - 1; if (remaining === 1) break;",
+  ),
 })) {
-    const { scheme } = emitWorkflowScheme(source, {
-        allowFinally: true,
-        allowEnsure: true,
-        allowScopes: true,
-    });
-    const normal = await compare(scheme);
-    assert.deepEqual(normal, await native(source), `native Effection parity: ${name}`);
-    for (const key of ["ready", "release"]) {
-        const cancelled = await compare(scheme, (effect) => effect[1] === key);
-        assert.equal(cancelled.outcome.kind, "cancelled");
-    }
-    console.log(
-        "PASS fresh-instance Hoot, reference evaluator, and native Effection",
-        name,
-        normal.effects,
-    );
+  const { scheme } = emitWorkflowScheme(source, {
+    allowFinally: true,
+    allowEnsure: true,
+    allowScopes: true,
+  });
+  const normal = await compare(scheme);
+  assert.deepEqual(normal, await native(source), `native Effection parity: ${name}`);
+  for (const key of ["ready", "release"]) {
+    const cancelled = await compare(scheme, (effect) => effect[1] === key);
+    assert.equal(cancelled.outcome.kind, "cancelled");
+  }
+  console.log(
+    "PASS fresh-instance Hoot, reference evaluator, and native Effection",
+    name,
+    normal.effects,
+  );
 }
 const closures = `
 (define (workflow)
@@ -184,9 +184,9 @@ const closures = `
 (workflow)`;
 const result = await compare(closures);
 assert.deepEqual(result.effects, [
-    ["elicit", "before", 0],
-    ["elicit", "after", 1],
-    ["elicit", "release", 2],
+  ["elicit", "before", 0],
+  ["elicit", "after", 1],
+  ["elicit", "release", 2],
 ]);
 assert.deepEqual(result.outcome, { kind: "returned", value: 2 });
 console.log("PASS shared closure environment identity across capture, mutation, and cleanup");

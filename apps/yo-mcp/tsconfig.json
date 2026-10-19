@@ -1,15 +1,15 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.app.json",
-    "compilerOptions": {
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../../packages/agent-host/tsconfig.lib.json"
     },
-    "include": ["src/**/*"],
-    "references": [
-        {
-            "path": "../../packages/agent-host/tsconfig.lib.json"
-        },
-        {
-            "path": "../../packages/tool-runtime-local/tsconfig.json"
-        }
-    ]
+    {
+      "path": "../../packages/tool-runtime-local/tsconfig.json"
+    }
+  ]
 }

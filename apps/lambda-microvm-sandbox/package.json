@@ -1,28 +1,28 @@
 {
-    "name": "@sweatpants/lambda-microvm-sandbox",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "check": "tsc --noEmit",
-        "test": "vitest run --passWithNoTests",
-        "build:artifact": "./scripts/build-artifact.sh",
-        "sandbox:run": "./scripts/run.sh",
-        "sandbox:state": "./scripts/lifecycle.sh state",
-        "sandbox:suspend": "./scripts/lifecycle.sh suspend",
-        "sandbox:resume": "./scripts/lifecycle.sh resume",
-        "sandbox:terminate": "./scripts/lifecycle.sh terminate",
-        "sandbox:request": "./scripts/request.sh",
-        "sandbox:shell": "./scripts/shell.sh"
-    },
-    "dependencies": {
-        "@sweatpants/workspace-runtime": "workspace:*",
-        "effection": "catalog:"
-    },
-    "devDependencies": {
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    }
+  "name": "@sweatpants/lambda-microvm-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build:artifact": "./scripts/build-artifact.sh",
+    "sandbox:run": "./scripts/run.sh",
+    "sandbox:state": "./scripts/lifecycle.sh state",
+    "sandbox:suspend": "./scripts/lifecycle.sh suspend",
+    "sandbox:resume": "./scripts/lifecycle.sh resume",
+    "sandbox:terminate": "./scripts/lifecycle.sh terminate",
+    "sandbox:request": "./scripts/request.sh",
+    "sandbox:shell": "./scripts/shell.sh"
+  },
+  "dependencies": {
+    "@sweatpants/workspace-runtime": "workspace:*",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

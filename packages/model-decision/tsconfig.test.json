@@ -1,11 +1,11 @@
 {
-    "extends": "./tsconfig.json",
-    "compilerOptions": {
-        "composite": false,
-        "emitDeclarationOnly": false,
-        "noEmit": true,
-        "rootDir": "."
-    },
-    "include": ["src/**/*.ts"],
-    "exclude": []
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
 }

@@ -18,12 +18,12 @@ import { resource } from "effection";
 
 // Create an Effection stream
 const myStream = resource(function* (provide) {
-    yield* provide({
-        *next() {
-            // Your streaming logic here
-            return { done: false, value: "hello" };
-        },
-    });
+  yield* provide({
+    *next() {
+      // Your streaming logic here
+      return { done: false, value: "hello" };
+    },
+  });
 });
 
 // Convert to HTTP Response
@@ -51,11 +51,11 @@ const response = new Response(readableStream);
 
 ```typescript
 const { response } =
-    yield *
-    createStreamResponse(myStream, {
-        serialize: (value) => new TextEncoder().encode(value + "\n"),
-        contentType: "text/plain",
-    });
+  yield *
+  createStreamResponse(myStream, {
+    serialize: (value) => new TextEncoder().encode(value + "\n"),
+    contentType: "text/plain",
+  });
 ```
 
 ## API

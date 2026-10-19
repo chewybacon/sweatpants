@@ -2,14 +2,14 @@
 theme: default
 title: "Context is a Fork-Join Problem"
 info: |
-    ## Lessons from MCP tooling
-    Sweatpants Framework
+  ## Lessons from MCP tooling
+  Sweatpants Framework
 author: Grove Team
 keywords: mcp,context,architecture,tooling
 class: text-center
 highlighter: shiki
 drawings:
-    persist: false
+  persist: false
 transition: slide-left
 mdc: true
 colorSchema: light

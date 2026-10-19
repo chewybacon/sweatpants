@@ -144,12 +144,14 @@ Effectful factories share foundation's `OperationOptions<Driver, Operations>`:
 ```ts
 const compiler = createWorkflowCompiler({
   driver: languageCompiler,
-  middleware: [{
-    *compile([request], next) {
-      const result = yield* next(request);
-      return result;
+  middleware: [
+    {
+      *compile([request], next) {
+        const result = yield* next(request);
+        return result;
+      },
     },
-  }],
+  ],
 });
 ```
 

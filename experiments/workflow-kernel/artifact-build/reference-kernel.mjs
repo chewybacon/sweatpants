@@ -100,33 +100,35 @@ export function createReferenceKernel(bundle, observe = () => {}) {
     executions.add(execution);
     return executionState;
   }
-  return createWorkflowKernel({ driver: {
-    identity: referenceIdentity,
-    *start(program, input) {
-      validate(program);
-      observe("start");
-      return activate(input);
+  return createWorkflowKernel({
+    driver: {
+      identity: referenceIdentity,
+      *start(program, input) {
+        validate(program);
+        observe("start");
+        return activate(input);
+      },
+      *restore(program, snapshot) {
+        validate(program, snapshot);
+        const state = snapshot.state;
+        if (!state || typeof state !== "object" || !("input" in state) || !("machine" in state)) {
+          throw Error("Invalid reference snapshot");
+        }
+        observe("restore");
+        return activate(state.input, state.machine);
+      },
+      *close() {
+        if (closed) {
+          return;
+        }
+        for (const execution of executions) {
+          yield* execution.dispose();
+        }
+        closed = true;
+        observe("close");
+      },
     },
-    *restore(program, snapshot) {
-      validate(program, snapshot);
-      const state = snapshot.state;
-      if (!state || typeof state !== "object" || !("input" in state) || !("machine" in state)) {
-        throw Error("Invalid reference snapshot");
-      }
-      observe("restore");
-      return activate(state.input, state.machine);
-    },
-    *close() {
-      if (closed) {
-        return;
-      }
-      for (const execution of executions) {
-        yield* execution.dispose();
-      }
-      closed = true;
-      observe("close");
-    },
-  }});
+  });
 }
 
 export function createReferenceWorkflowDriver(bundle, observe = () => {}) {

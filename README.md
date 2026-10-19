@@ -31,26 +31,26 @@ pnpm add @sweatpants/react-chat @sweatpants/agent-host @sweatpants/agent-sdk
 import { useChat } from "@sweatpants/react-chat";
 
 function Chat() {
-    const { messages, sendMessage, status } = useChat({
-        threadId: "demo",
-        api: "/api/chat",
-    });
+  const { messages, sendMessage, status } = useChat({
+    threadId: "demo",
+    api: "/api/chat",
+  });
 
-    return (
-        <div>
-            {messages.map((msg) => (
-                <div key={msg.id}>{/* render message parts */}</div>
-            ))}
-            <input
-                disabled={status === "submitted" || status === "streaming"}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                        void sendMessage({ text: e.currentTarget.value });
-                    }
-                }}
-            />
-        </div>
-    );
+  return (
+    <div>
+      {messages.map((msg) => (
+        <div key={msg.id}>{/* render message parts */}</div>
+      ))}
+      <input
+        disabled={status === "submitted" || status === "streaming"}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            void sendMessage({ text: e.currentTarget.value });
+          }
+        }}
+      />
+    </div>
+  );
 }
 ```
 
@@ -62,16 +62,16 @@ import { myTool } from "./tools/my-tool";
 import { installApplicationServices, installModelProvider } from "./server/setup";
 
 export const app = createChatApp({
-    name: "my-app",
-    secret: process.env.MY_APP_SECRET!,
-    storage: chatStorageFromEnv({
-        defaultPath: new URL("./.data/chat.sqlite", import.meta.url),
-    }),
-    programs: [myTool],
-    setup: {
-        application: installApplicationServices,
-        chat: installModelProvider,
-    },
+  name: "my-app",
+  secret: process.env.MY_APP_SECRET!,
+  storage: chatStorageFromEnv({
+    defaultPath: new URL("./.data/chat.sqlite", import.meta.url),
+  }),
+  programs: [myTool],
+  setup: {
+    application: installApplicationServices,
+    chat: installModelProvider,
+  },
 });
 
 // Mount at /api/chat and /api/chat/* in your framework.
@@ -90,29 +90,29 @@ import { createTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 export const bookFlight = createTool("book_flight")
-    .description("Book a flight for the user")
-    .parameters(
-        z.object({
-            from: z.string(),
-            to: z.string(),
-            date: z.string(),
-        }),
-    )
-    .elicits({
-        confirm: {
-            response: z.object({ confirmed: z.boolean() }),
-        },
-    })
-    .execute(function* ({ from, to, date }, ctx) {
-        const response = yield* ctx.elicit("confirm", {
-            message: `Book flight from ${from} to ${to} on ${date}?`,
-        });
-
-        if (response.action === "accept" && response.content.confirmed) {
-            return { status: "booked", confirmation: "ABC123" };
-        }
-        return { status: "cancelled" };
+  .description("Book a flight for the user")
+  .parameters(
+    z.object({
+      from: z.string(),
+      to: z.string(),
+      date: z.string(),
+    }),
+  )
+  .elicits({
+    confirm: {
+      response: z.object({ confirmed: z.boolean() }),
+    },
+  })
+  .execute(function* ({ from, to, date }, ctx) {
+    const response = yield* ctx.elicit("confirm", {
+      message: `Book flight from ${from} to ${to} on ${date}?`,
     });
+
+    if (response.action === "accept" && response.content.confirmed) {
+      return { status: "booked", confirmation: "ABC123" };
+    }
+    return { status: "cancelled" };
+  });
 ```
 
 ### Plugin UI binding
@@ -123,15 +123,15 @@ import { bookFlight } from "./book-flight";
 import { ConfirmFlight } from "./ConfirmFlight";
 
 export const bookFlightPlugin = makePlugin(bookFlight)
-    .onElicit({
-        confirm: function* (input, ctx) {
-            const confirmed = yield* ctx.render(ConfirmFlight, {
-                message: input.message,
-            });
-            return { action: "accept" as const, content: { confirmed } };
-        },
-    })
-    .build();
+  .onElicit({
+    confirm: function* (input, ctx) {
+      const confirmed = yield* ctx.render(ConfirmFlight, {
+        message: input.message,
+      });
+      return { action: "accept" as const, content: { confirmed } };
+    },
+  })
+  .build();
 ```
 
 ## Differentiator demos

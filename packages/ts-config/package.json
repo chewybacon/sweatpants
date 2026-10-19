@@ -1,13 +1,13 @@
 {
-    "name": "@sweatpants/ts-config",
-    "version": "0.1.0",
-    "private": true,
-    "description": "Shared TypeScript configurations for TanStack monorepo",
-    "files": [
-        "tsconfig*.json"
-    ],
-    "type": "module",
-    "devDependencies": {
-        "typescript": "catalog:"
-    }
+  "name": "@sweatpants/ts-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared TypeScript configurations for TanStack monorepo",
+  "files": [
+    "tsconfig*.json"
+  ],
+  "type": "module",
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
 }

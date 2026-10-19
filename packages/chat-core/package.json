@@ -1,87 +1,87 @@
 {
-    "name": "@sweatpants/chat-core",
-    "version": "0.1.0",
-    "description": "Framework-neutral chat types, codecs, projection, and authoring",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./content": {
-            "development": {
-                "import": "./src/content.ts",
-                "types": "./src/content.ts"
-            },
-            "import": {
-                "types": "./dist/content.d.ts",
-                "default": "./dist/content.js"
-            },
-            "default": "./src/content.ts"
-        },
-        "./ag-ui": {
-            "development": {
-                "import": "./src/ag-ui/index.ts",
-                "types": "./src/ag-ui/index.ts"
-            },
-            "import": {
-                "types": "./dist/ag-ui/index.d.ts",
-                "default": "./dist/ag-ui.js"
-            },
-            "default": "./src/ag-ui/index.ts"
-        },
-        "./client": {
-            "development": {
-                "import": "./src/client.ts",
-                "types": "./src/client.ts"
-            },
-            "import": {
-                "types": "./dist/client.d.ts",
-                "default": "./dist/client.js"
-            },
-            "default": "./src/client.ts"
-        }
+  "name": "@sweatpants/chat-core",
+  "version": "0.1.0",
+  "description": "Framework-neutral chat types, codecs, projection, and authoring",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup && tsc -b --force",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./content": {
+      "development": {
+        "import": "./src/content.ts",
+        "types": "./src/content.ts"
+      },
+      "import": {
+        "types": "./dist/content.d.ts",
+        "default": "./dist/content.js"
+      },
+      "default": "./src/content.ts"
     },
-    "dependencies": {
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-contract": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/frame-renderer": "workspace:*",
-        "@sweatpants/model-provider": "workspace:*",
-        "@sweatpants/tool-runtime": "workspace:*",
-        "effection": "catalog:",
-        "partial-json": "0.1.7",
-        "zod": "catalog:"
+    "./ag-ui": {
+      "development": {
+        "import": "./src/ag-ui/index.ts",
+        "types": "./src/ag-ui/index.ts"
+      },
+      "import": {
+        "types": "./dist/ag-ui/index.d.ts",
+        "default": "./dist/ag-ui.js"
+      },
+      "default": "./src/ag-ui/index.ts"
     },
-    "devDependencies": {
-        "@ag-ui/core": "1.0.1",
-        "@sweatpants/journal-authority": "workspace:*",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
-    },
-    "peerDependencies": {
-        "@ag-ui/core": "1.0.1"
+    "./client": {
+      "development": {
+        "import": "./src/client.ts",
+        "types": "./src/client.ts"
+      },
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "default": "./src/client.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup && tsc -b --force",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-contract": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/frame-renderer": "workspace:*",
+    "@sweatpants/model-provider": "workspace:*",
+    "@sweatpants/tool-runtime": "workspace:*",
+    "effection": "catalog:",
+    "partial-json": "0.1.7",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ag-ui/core": "1.0.1",
+    "@sweatpants/journal-authority": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@ag-ui/core": "1.0.1"
+  }
 }

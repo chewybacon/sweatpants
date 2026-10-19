@@ -54,22 +54,22 @@ Example:
 
 ```ts
 yield *
-    setupDurableStreams({
-        bufferStore,
-        registryStore,
-        retentionPolicy: { mode: "retain_until_ttl", ttlMs: 60_000 },
-    });
+  setupDurableStreams({
+    bufferStore,
+    registryStore,
+    retentionPolicy: { mode: "retain_until_ttl", ttlMs: 60_000 },
+  });
 ```
 
 ## Integration Pattern (Framework Consumer)
 
 ```ts
 import {
-    createProtocolReadResponse,
-    createProtocolMutationResponse,
-    parseOffsetParam,
-    parseLiveMode,
-    parseTimeoutMs,
+  createProtocolReadResponse,
+  createProtocolMutationResponse,
+  parseOffsetParam,
+  parseLiveMode,
+  parseTimeoutMs,
 } from "@sweatpants/durable-streams";
 ```
 

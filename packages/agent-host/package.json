@@ -1,115 +1,115 @@
 {
-    "name": "@sweatpants/agent-host",
-    "version": "0.1.0",
-    "description": "Host lifecycle, ingress, chat server, deployment, and logging",
-    "license": "MIT",
-    "files": [
-        "dist",
-        "src"
-    ],
-    "type": "module",
-    "exports": {
-        ".": {
-            "development": {
-                "import": "./src/index.ts",
-                "types": "./src/index.ts"
-            },
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            },
-            "default": "./src/index.ts"
-        },
-        "./server": {
-            "development": {
-                "import": "./src/server/index.ts",
-                "types": "./src/server/index.ts"
-            },
-            "import": {
-                "types": "./dist/server/index.d.ts",
-                "default": "./dist/server/index.js"
-            },
-            "default": "./src/server/index.ts"
-        },
-        "./deployment": {
-            "development": {
-                "import": "./src/deployment/index.ts",
-                "types": "./src/deployment/index.ts"
-            },
-            "import": {
-                "types": "./dist/deployment/index.d.ts",
-                "default": "./dist/deployment/index.js"
-            },
-            "default": "./src/deployment/index.ts"
-        },
-        "./logging": {
-            "development": {
-                "import": "./src/logging/index.ts",
-                "types": "./src/logging/index.ts"
-            },
-            "import": {
-                "types": "./dist/logging/index.d.ts",
-                "default": "./dist/logging/index.js"
-            },
-            "default": "./src/logging/index.ts"
-        },
-        "./mcp": {
-            "development": {
-                "import": "./src/mcp/index.ts",
-                "types": "./src/mcp/index.ts"
-            },
-            "import": {
-                "types": "./dist/mcp/index.d.ts",
-                "default": "./dist/mcp/index.js"
-            },
-            "default": "./src/mcp/index.ts"
-        },
-        "./node": {
-            "development": {
-                "import": "./src/node/index.ts",
-                "types": "./src/node/index.ts"
-            },
-            "import": {
-                "types": "./dist/node/index.d.ts",
-                "default": "./dist/node/index.js"
-            },
-            "default": "./src/node/index.ts"
-        }
+  "name": "@sweatpants/agent-host",
+  "version": "0.1.0",
+  "description": "Host lifecycle, ingress, chat server, deployment, and logging",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
     },
-    "scripts": {
-        "build": "tsup && tsc -b --force",
-        "check": "tsc -b",
-        "test": "vitest run"
+    "./server": {
+      "development": {
+        "import": "./src/server/index.ts",
+        "types": "./src/server/index.ts"
+      },
+      "import": {
+        "types": "./dist/server/index.d.ts",
+        "default": "./dist/server/index.js"
+      },
+      "default": "./src/server/index.ts"
     },
-    "dependencies": {
-        "@sweatpants/agent-sdk": "workspace:*",
-        "@sweatpants/chat-contract": "workspace:*",
-        "@sweatpants/chat-core": "workspace:*",
-        "@sweatpants/durable-chat-runtime": "workspace:*",
-        "@sweatpants/durable-effects": "workspace:*",
-        "@sweatpants/durable-execution": "workspace:*",
-        "@sweatpants/durable-streams": "workspace:*",
-        "@sweatpants/foundation": "workspace:*",
-        "@sweatpants/journal-authority": "workspace:*",
-        "@sweatpants/model-provider": "workspace:*",
-        "@sweatpants/model-sampling": "workspace:*",
-        "@sweatpants/stream-bridge": "workspace:*",
-        "@sweatpants/tool-runtime": "workspace:*",
-        "@sweatpants/tool-session": "workspace:*",
-        "@sweatpants/workspace-runtime": "workspace:*",
-        "effection": "catalog:",
-        "pino": "^9.6.0",
-        "pino-pretty": "^13.0.0",
-        "srvx": "1.0.5",
-        "zod": "catalog:"
+    "./deployment": {
+      "development": {
+        "import": "./src/deployment/index.ts",
+        "types": "./src/deployment/index.ts"
+      },
+      "import": {
+        "types": "./dist/deployment/index.d.ts",
+        "default": "./dist/deployment/index.js"
+      },
+      "default": "./src/deployment/index.ts"
     },
-    "devDependencies": {
-        "@sweatpants/tool-runtime-agentcore": "workspace:*",
-        "@sweatpants/tool-runtime-local": "workspace:*",
-        "@sweatpants/ts-config": "workspace:*",
-        "@types/node": "catalog:",
-        "tsup": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:"
+    "./logging": {
+      "development": {
+        "import": "./src/logging/index.ts",
+        "types": "./src/logging/index.ts"
+      },
+      "import": {
+        "types": "./dist/logging/index.d.ts",
+        "default": "./dist/logging/index.js"
+      },
+      "default": "./src/logging/index.ts"
+    },
+    "./mcp": {
+      "development": {
+        "import": "./src/mcp/index.ts",
+        "types": "./src/mcp/index.ts"
+      },
+      "import": {
+        "types": "./dist/mcp/index.d.ts",
+        "default": "./dist/mcp/index.js"
+      },
+      "default": "./src/mcp/index.ts"
+    },
+    "./node": {
+      "development": {
+        "import": "./src/node/index.ts",
+        "types": "./src/node/index.ts"
+      },
+      "import": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.js"
+      },
+      "default": "./src/node/index.ts"
     }
+  },
+  "scripts": {
+    "build": "tsup && tsc -b --force",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sweatpants/agent-sdk": "workspace:*",
+    "@sweatpants/chat-contract": "workspace:*",
+    "@sweatpants/chat-core": "workspace:*",
+    "@sweatpants/durable-chat-runtime": "workspace:*",
+    "@sweatpants/durable-effects": "workspace:*",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/durable-streams": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "@sweatpants/model-provider": "workspace:*",
+    "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/stream-bridge": "workspace:*",
+    "@sweatpants/tool-runtime": "workspace:*",
+    "@sweatpants/tool-session": "workspace:*",
+    "@sweatpants/workspace-runtime": "workspace:*",
+    "effection": "catalog:",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "srvx": "1.0.5",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/tool-runtime-agentcore": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
 }

@@ -102,9 +102,9 @@ requires two separate setup calls over the same registry and tool set:
 
 ```ts
 yield *
-    ProgramDriverForeignEffectsContext.set(
-        createToolSessionForeignEffectRegistrations({ registry, tools }),
-    );
+  ProgramDriverForeignEffectsContext.set(
+    createToolSessionForeignEffectRegistrations({ registry, tools }),
+  );
 yield * installInvocationToolRuntime({ tools, registry, samplingProvider });
 ```
 

@@ -2,14 +2,14 @@
 theme: default
 title: "MCP-Native: Tools That Live Inside Your App"
 info: |
-    ## Sweatpants Framework
-    Comfy. Powerful. BTW, I use Arch.
+  ## Sweatpants Framework
+  Comfy. Powerful. BTW, I use Arch.
 author: Grove Team
 keywords: mcp,tools,react,generators
 class: text-center
 highlighter: shiki
 drawings:
-    persist: false
+  persist: false
 transition: slide-left
 mdc: true
 colorSchema: light
@@ -38,19 +38,19 @@ Browser UI is attached with plugin elicit handlers.
 
 ```ts
 const pickCardTool = createTool("pick_card")
-    .description("Draw cards and let the user pick one")
-    .parameters(z.object({ count: z.number() }))
-    .elicits({ pickCard })
-    .execute(function* (params, ctx) {
-        const cards = drawCards(params.count);
-        const picked = yield* ctx.elicit("pickCard", {
-            message: "Pick a card",
-            context: { cards },
-        });
-
-        if (picked.action !== "accept") return { success: false };
-        return { success: true, picked: picked.content.card };
+  .description("Draw cards and let the user pick one")
+  .parameters(z.object({ count: z.number() }))
+  .elicits({ pickCard })
+  .execute(function* (params, ctx) {
+    const cards = drawCards(params.count);
+    const picked = yield* ctx.elicit("pickCard", {
+      message: "Pick a card",
+      context: { cards },
     });
+
+    if (picked.action !== "accept") return { success: false };
+    return { success: true, picked: picked.content.card };
+  });
 ```
 
 ---
@@ -59,13 +59,13 @@ const pickCardTool = createTool("pick_card")
 
 ```ts
 const pickCardPlugin = makePlugin(pickCardTool)
-    .onElicit({
-        pickCard: function* (request, ctx) {
-            const response = yield* ctx.render(CardPicker, request.context);
-            return { action: "accept", content: response };
-        },
-    })
-    .build();
+  .onElicit({
+    pickCard: function* (request, ctx) {
+      const response = yield* ctx.render(CardPicker, request.context);
+      return { action: "accept", content: response };
+    },
+  })
+  .build();
 ```
 
 The tool controls the durable flow.
@@ -89,27 +89,27 @@ User wants to book a flight. The tool needs to:
 
 ```ts
 const bookFlightTool = createTool("book_flight")
-    .parameters(BookFlightParams)
-    .elicits({ pickFlight, pickSeat })
-    .samples()
-    .execute(function* (params, ctx) {
-        const flights = yield* searchFlights(params);
+  .parameters(BookFlightParams)
+  .elicits({ pickFlight, pickSeat })
+  .samples()
+  .execute(function* (params, ctx) {
+    const flights = yield* searchFlights(params);
 
-        const flight = yield* ctx.elicit("pickFlight", {
-            message: "Select a flight",
-            context: { flights },
-        });
-        if (flight.action !== "accept") return { success: false };
-
-        const seat = yield* ctx.elicit("pickSeat", {
-            message: "Select a seat",
-            context: { flight: flight.content.flightId },
-        });
-        if (seat.action !== "accept") return { success: false };
-
-        const tip = yield* ctx.sample({ prompt: "Give a short travel tip" });
-        return { success: true, flight: flight.content, seat: seat.content, tip: tip.text };
+    const flight = yield* ctx.elicit("pickFlight", {
+      message: "Select a flight",
+      context: { flights },
     });
+    if (flight.action !== "accept") return { success: false };
+
+    const seat = yield* ctx.elicit("pickSeat", {
+      message: "Select a seat",
+      context: { flight: flight.content.flightId },
+    });
+    if (seat.action !== "accept") return { success: false };
+
+    const tip = yield* ctx.sample({ prompt: "Give a short travel tip" });
+    return { success: true, flight: flight.content, seat: seat.content, tip: tip.text };
+  });
 ```
 
 ---

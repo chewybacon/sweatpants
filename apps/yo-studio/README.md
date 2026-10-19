@@ -68,51 +68,51 @@ and un-resumable as a unit. It emits a program against the projected SDK:
 
 ```ts
 export function* checkoutAudit(input: { figmaFileKey: string; screens: ScreenRef[] }) {
-    const frames = yield* figma.getFrames({ fileKey: input.figmaFileKey });
+  const frames = yield* figma.getFrames({ fileKey: input.figmaFileKey });
 
-    // fan out: one child per screen, bounded
-    const audits = yield* all(input.screens.map((screen) => audit(screen, frames)));
+  // fan out: one child per screen, bounded
+  const audits = yield* all(input.screens.map((screen) => audit(screen, frames)));
 
-    const flagged = audits.filter((a) => a.violations.length > 0);
-    if (flagged.length === 0) {
-        yield* slack.post({ channel: "#checkout-launch", text: summary(audits) });
-        return { filed: [], clean: true };
-    }
+  const flagged = audits.filter((a) => a.violations.length > 0);
+  if (flagged.length === 0) {
+    yield* slack.post({ channel: "#checkout-launch", text: summary(audits) });
+    return { filed: [], clean: true };
+  }
 
-    // HITL gate — may park for days
-    const decision = yield* elicit.review({
-        to: "dana",
-        title: "Checkout drift audit — confirm regressions",
-        items: flagged.map(toReviewCard), // includes image.diff artifact refs
+  // HITL gate — may park for days
+  const decision = yield* elicit.review({
+    to: "dana",
+    title: "Checkout drift audit — confirm regressions",
+    items: flagged.map(toReviewCard), // includes image.diff artifact refs
+  });
+
+  const tickets = [];
+  for (const item of decision.approved) {
+    const ticket = yield* jira.createIssue({
+      project: "CHK",
+      summary: item.title,
+      description: item.evidence,
+      idempotencyKey: item.screenId, // at-least-once discipline
     });
-
-    const tickets = [];
-    for (const item of decision.approved) {
-        const ticket = yield* jira.createIssue({
-            project: "CHK",
-            summary: item.title,
-            description: item.evidence,
-            idempotencyKey: item.screenId, // at-least-once discipline
-        });
-        tickets.push(ticket);
-    }
-    yield* slack.post({ channel: "#checkout-launch", text: summary(audits, tickets) });
-    return { filed: tickets, clean: false };
+    tickets.push(ticket);
+  }
+  yield* slack.post({ channel: "#checkout-launch", text: summary(audits, tickets) });
+  return { filed: tickets, clean: false };
 }
 
 function* audit(screen: ScreenRef, frames: FrameIndex) {
-    const spec = yield* figma.exportFrame({ frameId: frames.byName[screen.name], format: "png" });
-    const prodShot = yield* screenshot.capture({ url: screen.prodUrl });
-    const diff = yield* image.diff({ a: spec.ref, b: prodShot.ref });
-    const contrast = yield* contrast.check({ image: prodShot.ref });
-    const assessment = yield* designReviewer.assess({
-        // vision sub-agent
-        spec: spec.ref,
-        prod: prodShot.ref,
-        diff: diff.ref,
-        contrast,
-    });
-    return { screen, violations: assessment.violations, evidence: diff.ref };
+  const spec = yield* figma.exportFrame({ frameId: frames.byName[screen.name], format: "png" });
+  const prodShot = yield* screenshot.capture({ url: screen.prodUrl });
+  const diff = yield* image.diff({ a: spec.ref, b: prodShot.ref });
+  const contrast = yield* contrast.check({ image: prodShot.ref });
+  const assessment = yield* designReviewer.assess({
+    // vision sub-agent
+    spec: spec.ref,
+    prod: prodShot.ref,
+    diff: diff.ref,
+    contrast,
+  });
+  return { screen, violations: assessment.violations, evidence: diff.ref };
 }
 ```
 
@@ -252,35 +252,35 @@ configuration objects:
 
 ```ts
 const workspace = defineWorkspace({
-    source: workspaceSource.local("."),
-    packageManager: "pnpm",
-    scripts: { test: "pnpm test", typecheck: "pnpm check" },
-    policy: {
-        network: "trusted-development",
-        writes: "approval",
-        externalEffects: "trusted-development",
-    },
-    persistence: "sandbox_lease",
+  source: workspaceSource.local("."),
+  packageManager: "pnpm",
+  scripts: { test: "pnpm test", typecheck: "pnpm check" },
+  policy: {
+    network: "trusted-development",
+    writes: "approval",
+    externalEffects: "trusted-development",
+  },
+  persistence: "sandbox_lease",
 });
 
 export default defineDeployment({
-    name: "yo-studio",
-    mode: "development",
-    authority: developmentJournal(),
-    modelProvider: codingModelProvider,
-    modelSampling: hostModelSampling(codingModelProvider),
-    programs: { code: codingHarness },
-    capabilities: codingCapabilities,
-    workspace,
-    sandbox: lambdaMicrovm({
-        image: {
-            /* exact immutable image */
-        },
-        lifecycle: {
-            /* ... */
-        },
-    }),
-    projections: [reactChat(), headlessHttp(), streamableMcp()],
+  name: "yo-studio",
+  mode: "development",
+  authority: developmentJournal(),
+  modelProvider: codingModelProvider,
+  modelSampling: hostModelSampling(codingModelProvider),
+  programs: { code: codingHarness },
+  capabilities: codingCapabilities,
+  workspace,
+  sandbox: lambdaMicrovm({
+    image: {
+      /* exact immutable image */
+    },
+    lifecycle: {
+      /* ... */
+    },
+  }),
+  projections: [reactChat(), headlessHttp(), streamableMcp()],
 });
 ```
 

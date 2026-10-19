@@ -1,10 +1,7 @@
 import type { WorkflowExecutionDriver as Driver } from "../index.ts";
 import { expect, it } from "vitest";
 import { run, action, spawn, createQueue } from "effection";
-import {
-  createKernelExecution,
-  type WorkflowBoundary,
-} from "../index.ts";
+import { createKernelExecution, type WorkflowBoundary } from "../index.ts";
 
 const effect: WorkflowBoundary = {
   kind: "suspended",

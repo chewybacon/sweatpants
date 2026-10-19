@@ -42,11 +42,11 @@ A fence renderer receives code, language, and fence metadata. The pipeline handl
 import { createPipeline, defineFenceRenderer, markdown, shiki } from "@sweatpants/frame-renderer";
 
 const diagram = defineFenceRenderer({
-    name: "diagram",
-    languages: ["diagram"],
-    *render({ code, meta }) {
-        return yield* renderDiagram(code, meta); // Your Effection operation returning HTML.
-    },
+  name: "diagram",
+  languages: ["diagram"],
+  *render({ code, meta }) {
+    return yield* renderDiagram(code, meta); // Your Effection operation returning HTML.
+  },
 });
 
 const pipeline = createPipeline({ processors: [markdown, shiki, diagram] });

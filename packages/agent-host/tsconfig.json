@@ -1,43 +1,43 @@
 {
-    "extends": "@sweatpants/ts-config/tsconfig.package.json",
-    "compilerOptions": {
-        "composite": true,
-        "emitDeclarationOnly": true,
-        "outDir": "./dist",
-        "rootDir": "./src",
-        "ignoreDeprecations": "5.0",
-        "customConditions": ["development"]
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "ignoreDeprecations": "5.0",
+    "customConditions": ["development"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "tests",
+    "e2e"
+  ],
+  "references": [
+    {
+      "path": "../durable-chat-runtime"
     },
-    "include": ["src/**/*.ts", "src/**/*.tsx"],
-    "exclude": [
-        "dist",
-        "node_modules",
-        "**/__tests__/**",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "tests",
-        "e2e"
-    ],
-    "references": [
-        {
-            "path": "../durable-chat-runtime"
-        },
-        {
-            "path": "../durable-streams"
-        },
-        {
-            "path": "../tool-runtime"
-        },
-        {
-            "path": "../tool-session"
-        },
-        {
-            "path": "../model-provider"
-        },
-        {
-            "path": "../model-sampling"
-        }
-    ]
+    {
+      "path": "../durable-streams"
+    },
+    {
+      "path": "../tool-runtime"
+    },
+    {
+      "path": "../tool-session"
+    },
+    {
+      "path": "../model-provider"
+    },
+    {
+      "path": "../model-sampling"
+    }
+  ]
 }

@@ -5,41 +5,46 @@ import { hootLinker, HOOT_PROGRAM_FORMAT } from "./linker.mts";
 /** Current Hoot composition root. The app consumes validation, linking and preparation seams. */
 export function createHootAuthoring({ loadMachine, createProgram }) {
   /** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
-  const compiler = createWorkflowCompiler({ driver: {
-    sourceLanguage: "scheme",
-    definitionFormat: hootLinker.definitionFormat,
-    *compile({ source, entry, exports, bindings }) {
-      if (source.language !== "scheme") {
+  const compiler = createWorkflowCompiler({
+    driver: {
+      sourceLanguage: "scheme",
+      definitionFormat: hootLinker.definitionFormat,
+      *compile({ source, entry, exports, bindings }) {
+        if (source.language !== "scheme") {
+          return {
+            ok: false,
+            diagnostics: [
+              {
+                severity: "error",
+                code: "source_language",
+                message: "Hoot requires Scheme caller source",
+              },
+            ],
+          };
+        }
+        const machine = yield* call(loadMachine);
+        const message = machine.validate(source.text);
+        if (message) {
+          return {
+            ok: false,
+            diagnostics: [{ severity: "error", code: "scheme_compile", message }],
+          };
+        }
         return {
-          ok: false,
-          diagnostics: [
-            {
-              severity: "error",
-              code: "source_language",
-              message: "Hoot requires Scheme caller source",
-            },
-          ],
+          ok: true,
+          diagnostics: [],
+          module: {
+            source,
+            entry,
+            exports,
+            imports: bindings,
+            implementation: { format: hootLinker.definitionFormat, payload: source.text },
+            debug: { sites: {}, locations: {} },
+          },
         };
-      }
-      const machine = yield* call(loadMachine);
-      const message = machine.validate(source.text);
-      if (message) {
-        return { ok: false, diagnostics: [{ severity: "error", code: "scheme_compile", message }] };
-      }
-      return {
-        ok: true,
-        diagnostics: [],
-        module: {
-          source,
-          entry,
-          exports,
-          imports: bindings,
-          implementation: { format: hootLinker.definitionFormat, payload: source.text },
-          debug: { sites: {}, locations: {} },
-        },
-      };
+      },
     },
-  }});
+  });
   return {
     linker: hootLinker,
     compiler,

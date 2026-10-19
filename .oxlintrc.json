@@ -1,186 +1,180 @@
 {
-    "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "plugins": ["import", "typescript", "unicorn", "oxc", "react", "promise", "vitest"],
-    "categories": {
-        "correctness": "error",
-        "suspicious": "error"
-    },
-    "rules": {
-        "no-console": "off",
-        "no-debugger": "error",
-        "prefer-const": "warn",
-        "no-duplicate-imports": "warn",
-        "eqeqeq": [
-            "error",
-            "always",
-            {
-                "null": "ignore"
-            }
-        ],
-        "curly": ["error", "all"],
-        "no-shadow": "warn",
-        "no-unused-vars": "warn",
-        "require-yield": "off",
-        "typescript/no-explicit-any": "warn",
-        "typescript/no-non-null-assertion": "off",
-        "typescript/consistent-type-imports": [
-            "warn",
-            {
-                "disallowTypeAnnotations": true
-            }
-        ],
-        "typescript/no-import-type-side-effects": "warn",
-        "import/default": "off",
-        "import/no-cycle": "warn",
-        "import/no-duplicates": "warn",
-        "import/no-unassigned-import": "off",
-        "oxc/no-async-endpoint-handlers": "off",
-        "preserve-caught-error": "warn",
-        "no-control-regex": "warn",
-        "no-unmodified-loop-condition": "warn",
-        "no-unsafe-optional-chaining": "warn",
-        "no-useless-escape": "warn",
-        "promise/always-return": "warn",
-        "promise/no-multiple-resolved": "warn",
-        "promise/no-nesting": "off",
-        "react-hooks/exhaustive-deps": "warn",
-        "react/jsx-key": "error",
-        "react/jsx-no-target-blank": "warn",
-        "react/react-in-jsx-scope": "off",
-        "react/style-prop-object": "warn",
-        "react/no-danger-with-children": "error",
-        "react/no-children-prop": "error",
-        "unicorn/consistent-function-scoping": "off",
-        "unicorn/no-array-reverse": "warn",
-        "unicorn/no-array-sort": "warn",
-        "unicorn/no-useless-fallback-in-spread": "warn",
-        "unicorn/no-useless-spread": "warn",
-        "typescript/no-this-alias": "warn",
-        "jest/expect-expect": "warn",
-        "jest/no-conditional-expect": "warn",
-        "jest/no-disabled-tests": "warn",
-        "jest/no-export": "warn",
-        "jest/no-focused-tests": "warn",
-        "jest/require-to-throw-message": "warn",
-        "jest/valid-expect": "warn",
-        "jest/valid-title": "warn",
-        "vitest/expect-expect": "warn",
-        "vitest/no-conditional-expect": "warn",
-        "vitest/no-conditional-tests": "warn",
-        "vitest/no-disabled-tests": "warn",
-        "vitest/no-focused-tests": "error",
-        "vitest/require-mock-type-parameters": "warn",
-        "vitest/valid-expect": "warn",
-        "vitest/warn-todo": "warn",
-        "sweatpants/layered-imports": "error",
-        "sweatpants/documented-scope-crossing": "error",
-        "sweatpants/no-nested-yield": "error",
-        "sweatpants/no-conditional-spread": "error",
-        "typescript/no-deprecated": "warn",
-        "typescript/no-unsafe-type-assertion": "off",
-        "typescript/no-floating-promises": "off",
-        "typescript/no-unnecessary-type-assertion": "warn",
-        "typescript/no-unnecessary-condition": [
-            "warn",
-            {
-                "allowConstantLoopConditions": true
-            }
-        ],
-        "typescript/no-unnecessary-type-arguments": "warn",
-        "typescript/no-base-to-string": "warn",
-        "typescript/no-redundant-type-constituents": "warn",
-        "typescript/unbound-method": "warn",
-        "typescript/no-misused-spread": "warn",
-        "typescript/no-unnecessary-template-expression": "warn",
-        "typescript/restrict-template-expressions": "warn",
-        "typescript/no-unnecessary-boolean-literal-compare": "warn",
-        "typescript/await-thenable": "warn",
-        "typescript/require-array-sort-compare": "warn",
-        "typescript/no-duplicate-type-constituents": "warn"
-    },
-    "env": {
-        "builtin": true
-    },
-    "ignorePatterns": [
-        "**/dist/**",
-        "**/.turbo/**",
-        "**/coverage/**",
-        "**/test-results/**",
-        "**/playwright-report/**",
-        "**/node_modules/**",
-        "docs/**",
-        "specs/**",
-        ".pi/**",
-        ".tasuku/**",
-        ".opencode/**",
-        "apps/**/docs/**",
-        "packages/framework/docs/**",
-        "**/vitest-effection.ts",
-        "apps/yo-chat/src/routeTree.gen.ts",
-        "apps/yo-chat/src/__generated__/**",
-        "packages/scheme-runtime/generated/**"
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["import", "typescript", "unicorn", "oxc", "react", "promise", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    "no-console": "off",
+    "no-debugger": "error",
+    "prefer-const": "warn",
+    "no-duplicate-imports": "warn",
+    "eqeqeq": [
+      "error",
+      "always",
+      {
+        "null": "ignore"
+      }
     ],
-    "overrides": [
-        {
-            "files": [
-                "**/*.test.ts",
-                "**/*.test.tsx",
-                "**/*.spec.ts",
-                "**/*.spec.tsx",
-                "**/e2e/**/*.ts"
-            ],
-            "rules": {
-                "typescript/no-explicit-any": "off"
-            }
-        },
-        {
-            "files": [
-                "packages/session-contract/src/**/*.ts",
-                "packages/journal-authority-redis/src/**/*.ts",
-                "packages/tool-runtime-local/src/**/*.ts",
-                "packages/framework/src/handler/durable/**/*.ts"
-            ],
-            "rules": {
-                "no-restricted-globals": [
-                    "error",
-                    {
-                        "name": "setTimeout",
-                        "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
-                    },
-                    {
-                        "name": "setInterval",
-                        "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
-                    }
-                ]
-            }
-        },
-        {
-            "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
-            "rules": {
-                "no-restricted-globals": "off"
-            }
-        },
-        {
-            "files": [
-                "packages/session-contract/src/**/*.ts",
-                "packages/journal-authority-redis/src/**/*.ts",
-                "packages/framework/src/handler/durable/**/*.ts"
-            ],
-            "rules": {
-                "sweatpants/documented-weld": "error"
-            }
-        },
-        {
-            "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
-            "rules": {
-                "sweatpants/documented-weld": "off"
-            }
-        }
+    "curly": ["error", "all"],
+    "no-shadow": "warn",
+    "no-unused-vars": "warn",
+    "require-yield": "off",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "off",
+    "typescript/consistent-type-imports": [
+      "warn",
+      {
+        "disallowTypeAnnotations": true
+      }
     ],
-    "settings": {
-        "vitest": {
-            "typecheck": true
-        }
+    "typescript/no-import-type-side-effects": "warn",
+    "import/default": "off",
+    "import/no-cycle": "warn",
+    "import/no-duplicates": "warn",
+    "import/no-unassigned-import": "off",
+    "oxc/no-async-endpoint-handlers": "off",
+    "preserve-caught-error": "warn",
+    "no-control-regex": "warn",
+    "no-unmodified-loop-condition": "warn",
+    "no-unsafe-optional-chaining": "warn",
+    "no-useless-escape": "warn",
+    "promise/always-return": "warn",
+    "promise/no-multiple-resolved": "warn",
+    "promise/no-nesting": "off",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/jsx-key": "error",
+    "react/jsx-no-target-blank": "warn",
+    "react/react-in-jsx-scope": "off",
+    "react/style-prop-object": "warn",
+    "react/no-danger-with-children": "error",
+    "react/no-children-prop": "error",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-reverse": "warn",
+    "unicorn/no-array-sort": "warn",
+    "unicorn/no-useless-fallback-in-spread": "warn",
+    "unicorn/no-useless-spread": "warn",
+    "typescript/no-this-alias": "warn",
+    "jest/expect-expect": "warn",
+    "jest/no-conditional-expect": "warn",
+    "jest/no-disabled-tests": "warn",
+    "jest/no-export": "warn",
+    "jest/no-focused-tests": "warn",
+    "jest/require-to-throw-message": "warn",
+    "jest/valid-expect": "warn",
+    "jest/valid-title": "warn",
+    "vitest/expect-expect": "warn",
+    "vitest/no-conditional-expect": "warn",
+    "vitest/no-conditional-tests": "warn",
+    "vitest/no-disabled-tests": "warn",
+    "vitest/no-focused-tests": "error",
+    "vitest/require-mock-type-parameters": "warn",
+    "vitest/valid-expect": "warn",
+    "vitest/warn-todo": "warn",
+    "sweatpants/layered-imports": "error",
+    "sweatpants/documented-scope-crossing": "error",
+    "sweatpants/no-nested-yield": "error",
+    "sweatpants/no-conditional-spread": "error",
+    "typescript/no-deprecated": "warn",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-unnecessary-condition": [
+      "warn",
+      {
+        "allowConstantLoopConditions": true
+      }
+    ],
+    "typescript/no-unnecessary-type-arguments": "warn",
+    "typescript/no-base-to-string": "warn",
+    "typescript/no-redundant-type-constituents": "warn",
+    "typescript/unbound-method": "warn",
+    "typescript/no-misused-spread": "warn",
+    "typescript/no-unnecessary-template-expression": "warn",
+    "typescript/restrict-template-expressions": "warn",
+    "typescript/no-unnecessary-boolean-literal-compare": "warn",
+    "typescript/await-thenable": "warn",
+    "typescript/require-array-sort-compare": "warn",
+    "typescript/no-duplicate-type-constituents": "warn"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.turbo/**",
+    "**/coverage/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "**/node_modules/**",
+    "docs/**",
+    "specs/**",
+    ".pi/**",
+    ".tasuku/**",
+    ".opencode/**",
+    "apps/**/docs/**",
+    "packages/framework/docs/**",
+    "**/vitest-effection.ts",
+    "apps/yo-chat/src/routeTree.gen.ts",
+    "apps/yo-chat/src/__generated__/**",
+    "packages/scheme-runtime/generated/**"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "**/e2e/**/*.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off"
+      }
     },
-    "jsPlugins": ["./scripts/oxlint-plugin-sweatpants.mjs"]
+    {
+      "files": [
+        "packages/session-contract/src/**/*.ts",
+        "packages/journal-authority-redis/src/**/*.ts",
+        "packages/tool-runtime-local/src/**/*.ts",
+        "packages/framework/src/handler/durable/**/*.ts"
+      ],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
+          },
+          {
+            "name": "setInterval",
+            "message": "Durable execution paths must not poll a platform timer: a wait must be a journaled pull the authority owns, not wall-clock polling inside the crank. Use the authored clock (context.clock.sleep / waitUntil)."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/session-contract/src/**/*.ts",
+        "packages/journal-authority-redis/src/**/*.ts",
+        "packages/framework/src/handler/durable/**/*.ts"
+      ],
+      "rules": {
+        "sweatpants/documented-weld": "error"
+      }
+    },
+    {
+      "files": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/testing/**/*.ts"],
+      "rules": {
+        "sweatpants/documented-weld": "off"
+      }
+    }
+  ],
+  "settings": {
+    "vitest": {
+      "typecheck": true
+    }
+  },
+  "jsPlugins": ["./scripts/oxlint-plugin-sweatpants.mjs"]
 }

@@ -6,27 +6,27 @@ Framework acceptance tests use `withTestScenario` and Effection generators. A sc
 
 ```ts
 await withTestScenario(
-    {
-        binding,
-        modelId: ACCEPTANCE_MODEL_ID,
-        createApplication: createAcceptanceApplication,
-    },
-    function* (s) {
-        const conversation = s.conversation({ tools: [bookingTool] });
-        const turn = yield* conversation.send("Book NYC to LAX");
+  {
+    binding,
+    modelId: ACCEPTANCE_MODEL_ID,
+    createApplication: createAcceptanceApplication,
+  },
+  function* (s) {
+    const conversation = s.conversation({ tools: [bookingTool] });
+    const turn = yield* conversation.send("Book NYC to LAX");
 
-        const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
-        yield* request.respond.toolCalls([
-            { id: "call-1", name: "book_flight", arguments: { from: "NYC", to: "LAX" } },
-        ]);
+    const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+    yield* request.respond.toolCalls([
+      { id: "call-1", name: "book_flight", arguments: { from: "NYC", to: "LAX" } },
+    ]);
 
-        const flight = yield* turn.elicit("pickFlight");
-        yield* flight.accept({ flightId: "FL001" });
+    const flight = yield* turn.elicit("pickFlight");
+    yield* flight.accept({ flightId: "FL001" });
 
-        const final = yield* s.model.request();
-        yield* final.respond.text("Booked.");
-        expect((yield* turn.settled()).text).toBe("Booked.");
-    },
+    const final = yield* s.model.request();
+    yield* final.respond.text("Booked.");
+    expect((yield* turn.settled()).text).toBe("Booked.");
+  },
 );
 ```
 

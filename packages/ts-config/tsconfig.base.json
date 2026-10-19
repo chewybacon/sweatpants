@@ -1,55 +1,55 @@
 {
-    "compilerOptions": {
-        // Language & Environment
-        "target": "ES2022",
-        "module": "ESNext",
-        "lib": ["ES2022", "DOM", "DOM.Iterable"],
-        "jsx": "react-jsx",
+  "compilerOptions": {
+    // Language & Environment
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
 
-        // Module Resolution
-        "moduleResolution": "bundler",
-        "allowImportingTsExtensions": true,
-        "resolveJsonModule": true,
-        "esModuleInterop": true,
+    // Module Resolution
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
 
-        // Emit
-        "declaration": true,
-        "declarationMap": true,
-        "sourceMap": true,
-        "noEmit": false,
+    // Emit
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noEmit": false,
 
-        // JavaScript Support
-        "allowJs": true,
-        "checkJs": false,
+    // JavaScript Support
+    "allowJs": true,
+    "checkJs": false,
 
-        // Type Checking
-        "strict": true,
-        "noImplicitAny": true,
-        "strictNullChecks": true,
-        "strictFunctionTypes": true,
-        "strictBindCallApply": true,
-        "strictPropertyInitialization": true,
-        "noImplicitThis": true,
-        "alwaysStrict": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "exactOptionalPropertyTypes": false,
-        "noImplicitReturns": true,
-        "noFallthroughCasesInSwitch": true,
-        "noUncheckedIndexedAccess": false,
-        "noImplicitOverride": true,
-        "noPropertyAccessFromIndexSignature": false,
-        "noUncheckedSideEffectImports": true,
-        "allowUnusedLabels": false,
-        "allowUnreachableCode": false,
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "noUncheckedSideEffectImports": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
 
-        // Completeness
-        "skipDefaultLibCheck": true,
-        "skipLibCheck": true,
+    // Completeness
+    "skipDefaultLibCheck": true,
+    "skipLibCheck": true,
 
-        // Interop Constraints
-        "verbatimModuleSyntax": true,
-        "isolatedModules": true,
-        "moduleDetection": "force"
-    }
+    // Interop Constraints
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force"
+  }
 }
