@@ -41,7 +41,7 @@ export function machineApi(procedures) {
         reject: (error) => boundary(call(5, encodeValue(error))),
         cancel: () => boundary(call(2)),
         capture: () => call(3)[0],
-        inspect: () => inspectSnapshot(call(3)[0]),
+        inspect: (boundary) => inspectSnapshot(call(3)[0], boundary),
         restore: (source, snapshot) => boundary(call(4, source, snapshot)),
     };
 }

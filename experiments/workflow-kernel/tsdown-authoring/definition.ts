@@ -1,17 +1,6 @@
 import type { Operation } from "effection";
 
-/** Portable build output. Input/output types do not add executable validators. */
-export interface CompiledWorkflow<Input, Output> {
-  readonly kind: "compiled-workflow";
-  readonly entry: string;
-  readonly scheme: string;
-  readonly source: string;
-  readonly debug: {
-    readonly sites: Record<string, unknown>;
-    readonly locations: Record<string, unknown>;
-  };
-  readonly types?: { input: Input; output: Output };
-}
+import type { CompiledWorkflow } from "../../../packages/workflow-kernel/src/index.ts";
 
 /** Build marker: the compiler replaces this call with portable data. */
 export function defineCompiledWorkflow<Context, Input, Output>(

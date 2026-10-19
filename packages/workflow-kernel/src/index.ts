@@ -97,3 +97,25 @@ export function assertKernelCompatibility(
 }
 
 export { createKernelExecution, KernelExecutor } from "./execution.ts";
+
+export type {
+  ExecutionInspection,
+  InspectedBoundary,
+  InspectedCall,
+  InspectedEnvironment,
+  InspectedBinding,
+  InspectedValue,
+  InspectedUnwind,
+  PendingCompletion,
+} from "./inspection.ts";
+
+export type {
+  CompiledWorkflow,
+  WorkflowCompiler,
+  WorkflowImplementation,
+  WorkflowSource,
+  WorkflowSourceValidator,
+  WorkflowBinding,
+  WorkflowLinker,
+  WorkflowRuntime,
+} from "./authoring.ts";

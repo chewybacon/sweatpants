@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { executionInspectionSchema } from "./inspection.ts";
 
 export const executionViewSchema = z.object({
   id: z.string(),
@@ -7,6 +8,7 @@ export const executionViewSchema = z.object({
   result: z.json().nullable(),
   inspection: z
     .object({
+      execution: executionInspectionSchema,
       mode: z.string(),
       site: z.string().nullable(),
       steps: z.number(),

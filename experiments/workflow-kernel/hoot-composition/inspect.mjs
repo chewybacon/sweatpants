@@ -1,3 +1,4 @@
+import { projectHootInspection } from "./inspection.mts";
 import { parse } from "../scheme-data/read.mjs";
 
 // Debug projection of evaluator-owned state. Never used to authorize recovery.
@@ -11,7 +12,7 @@ function display(value) {
     if (value && typeof value === "object" && "sym" in value) return value.sym;
     return JSON.stringify(value);
 }
-export function inspectSnapshot(snapshot) {
+export function inspectSnapshot(snapshot, boundary) {
     const state = parse(snapshot)[0];
     if (state?.[0]?.sym !== "workflow-state-v3") throw Error("Unknown inspection format");
     const frames = state[4].map((frame, index) => ({
@@ -20,6 +21,7 @@ export function inspectSnapshot(snapshot) {
         detail: display(frame),
     }));
     return {
+        execution: projectHootInspection(state, boundary),
         mode: state[5].sym,
         site: state[8] === false ? null : state[8][0],
         steps: state[10],

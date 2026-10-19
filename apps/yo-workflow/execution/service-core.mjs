@@ -29,19 +29,26 @@ const sendDefinition = defineDurableEffect({
 import { run, call } from "effection";
 const randomUUID = () => crypto.randomUUID();
 
-export function executionServiceFactory({ loadMachine, createHootProgram }) {
+export function executionServiceFactory({ linker, sourceValidator, createProgram }) {
     async function validateCaller(source) {
         if (typeof source !== "string" || source.length > 12000)
             return "Expected Scheme source of at most 12000 characters";
-        const machine = await loadMachine();
-        const diagnostic = machine.validate(source);
-        if (diagnostic) return diagnostic;
-        // Isolated preflight stops at the first boundary. No effect is dispatched.
         try {
-            const boundary = machine.start(registeredSource(source), confirmationInput);
-            if (boundary.kind !== "effect" || boundary.site !== "review_draft/answer")
-                return "The caller must first request approval through review_draft(input)";
-            return "";
+            return await run(function* () {
+                const diagnostic = yield* sourceValidator.validate({ language: sourceValidator.language, text: source });
+                if (diagnostic) return diagnostic;
+                const program = buildProgram(source);
+                const kernel = program.createKernel();
+                try {
+                    // Preflight runs through the same kernel seam without dispatching effects.
+                    const { boundary } = yield* kernel.start(program.artifact, confirmationInput);
+                    if (boundary.kind !== "suspended" || boundary.request.site !== "review_draft/answer")
+                        return "The caller must first request approval through review_draft(input)";
+                    return "";
+                } finally {
+                    yield* kernel.close();
+                }
+            });
         } catch (error) {
             return error instanceof Error ? error.message : String(error);
         }
@@ -54,15 +61,19 @@ export function executionServiceFactory({ loadMachine, createHootProgram }) {
         recipient: "Sam",
         metadata: null,
     };
-    function registeredSource(callerSource) {
-        return `(registered-program
-          (${reviewDraft.scheme})
-          ((review_draft compiled ${reviewDraft.entry} (#f)) (send_announcement host))
-          (${callerSource}))`;
+    function linkCaller(callerSource) {
+        const linked = linker.link({
+            caller: { language: sourceValidator.language, text: callerSource },
+            bindings: [
+                { kind: "compiled", name: "review_draft", definition: reviewDraft, prefixArguments: [false] },
+                { kind: "host", name: sendDefinition.name, version: sendDefinition.version },
+            ],
+        });
+        return linked;
     }
     function buildProgram(callerSource) {
-        return createHootProgram({
-            source: registeredSource(callerSource),
+        return createProgram({
+            implementation: linkCaller(callerSource),
             contract: {
                 programId: "inspect-confirmation",
                 version: "1",

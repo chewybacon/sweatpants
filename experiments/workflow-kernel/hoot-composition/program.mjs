@@ -1,9 +1,9 @@
-import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
+import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
+import { createKernelProgramBackend, createKernelProgramBundle, loadKernelProgram } from "../../../packages/program-backend-kernel/dist/index.js";
 import {
     assertKernelCompatibility,
     createKernelExecution,
 } from "../../../packages/workflow-kernel/dist/index.js";
-import { canonicalDigest } from "../../../packages/foundation/dist/index.js";
 import { CrankError } from "../../../packages/durable-execution/dist/index.js";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
 import { call } from "effection";
@@ -44,7 +44,7 @@ function kernel(observe, source, digest, loadMachine, identity) {
         }
         observe(event, {
             boundary: result,
-            inspection: machine.inspect(),
+            inspection: machine.inspect(result),
             durationMs: performance.now() - started,
         });
         return result;
@@ -116,11 +116,13 @@ export function createPortableHootProgram(
     { source, contract, bindOperation },
     { loadMachine, identity },
 ) {
-    const digest = canonicalDigest({ source, identity, contract });
-    const manifest = { ...contract, digest };
+    if (identity.programFormat !== HOOT_PROGRAM_FORMAT) throw Error("Incompatible Hoot program format");
+    const bundle = createKernelProgramBundle({ format: identity.programFormat, payload: source }, identity, contract);
+    const { manifest, artifact } = bundle;
+    const digest = artifact.digest;
     return {
         manifest,
-        artifact: { digest, code: source, kernel: identity },
+        artifact,
         createKernel(observe = () => {}) {
             return kernel(observe, source, digest, loadMachine, identity);
         },
@@ -129,7 +131,8 @@ export function createPortableHootProgram(
                 createKernelProgramBackend({
                     *manifest(program) {
                         if (program.digest !== digest) throw Error("Manifest unavailable");
-                        return manifest;
+                        loadKernelProgram(bundle, program.digest);
+                        return structuredClone(manifest);
                     },
                     kernelIdentity: identity,
                     *createKernel() {
@@ -139,7 +142,7 @@ export function createPortableHootProgram(
                         if (requested !== digest) {
                             throw Error("Program unavailable");
                         }
-                        return { digest, code: source, kernel: identity };
+                        return loadKernelProgram(bundle, requested);
                     },
                     bindOperation,
                 }),

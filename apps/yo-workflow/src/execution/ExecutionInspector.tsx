@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { displayInspectedValue } from "./inspection.ts";
 import { CheckpointSummary } from "./CheckpointSummary.tsx";
 import { executionViewSchema, type ExecutionView } from "./contract.ts";
 
@@ -57,6 +58,7 @@ export function ExecutionInspector() {
     if (new URL(location.href).searchParams.has("run")) void request();
   }, []);
   const state = view?.inspection;
+  const execution = state?.execution;
   const parked = view?.status === "parked";
   return (
     <div className="execution-inspector">
@@ -162,8 +164,8 @@ export function ExecutionInspector() {
                 <span className="execution-muted">outer → inner</span>
               </header>
               <ol className="execution-stack">
-                {state?.calls.map((name, index) => (
-                  <li key={`${name}-${index}`}>
+                {execution?.calls.map(({ id, name }, index) => (
+                  <li key={id}>
                     <span className="execution-stack-index">
                       {String(index + 1).padStart(2, "0")}
                     </span>
@@ -214,26 +216,44 @@ export function ExecutionInspector() {
               )}
               <div className="execution-cleanups">
                 <h3>Scope cleanup</h3>
-                {state?.cleanups
-                  .filter((c) => c.remaining.length || c.kind !== "registered")
-                  .map((cleanup, index) => (
+                {execution?.unwind.map((entry, index) => {
+                  const pending =
+                    entry.kind === "scope"
+                      ? entry.pendingCleanup
+                      : entry.kind === "cleanup"
+                        ? entry.remaining
+                        : [];
+                  if (entry.kind === "scope" && !pending.length) {
+                    return null;
+                  }
+                  return (
                     <div key={index}>
-                      <span className="execution-status">{cleanup.kind}</span>
-                      {cleanup.remaining.map((item, i) => (
+                      <span className="execution-status">{entry.kind}</span>
+                      {pending.map((item, i) => (
                         <p key={i}>
-                          <code>{item}</code>
+                          <code>{displayInspectedValue(item)}</code>
                         </p>
                       ))}
-                      {cleanup.completion && (
+                      {entry.kind !== "scope" && (
                         <p>
-                          Then continue <code>{cleanup.completion}</code>
+                          Then continue{" "}
+                          <code>
+                            {entry.completion.kind}
+                            {"value" in entry.completion
+                              ? `: ${displayInspectedValue(entry.completion.value)}`
+                              : ""}
+                          </code>
                         </p>
                       )}
-                      {cleanup.scope && <small>Scope: {cleanup.scope}</small>}
+                      {entry.kind === "scope" && <small>Scope: {entry.label}</small>}
                     </div>
-                  ))}
-                {!state?.cleanups.some((c) => c.remaining.length || c.kind !== "registered") && (
-                  <p className="execution-muted">No pending cleanup.</p>
+                  );
+                })}
+                {!execution?.unwind.some(
+                  (entry) => entry.kind !== "scope" || entry.pendingCleanup.length,
+                ) && <p className="execution-muted">No pending cleanup.</p>}
+                {execution?.truncated && (
+                  <p className="execution-muted">Inspection shortened to its display limits.</p>
                 )}
               </div>
             </section>
@@ -264,15 +284,15 @@ export function ExecutionInspector() {
                       Environment {state?.currentEnvironment} is current. Closures reference shared
                       environment IDs.
                     </p>
-                    {state?.environments.map((env) => (
+                    {execution?.environments.map((env) => (
                       <details
                         key={env.id}
-                        open={env.id === state.currentEnvironment || env.id === 0}
+                        open={env.id === String(state?.currentEnvironment) || env.id === "0"}
                       >
                         <summary>
                           Environment {env.id}{" "}
                           <span className="execution-muted">
-                            {env.parent === null ? "· root" : `→ ${env.parent}`}
+                            {env.parentId === null ? "· root" : `→ ${env.parentId}`}
                           </span>
                         </summary>
                         <dl>
@@ -280,7 +300,7 @@ export function ExecutionInspector() {
                             <div key={binding.name}>
                               <dt>{binding.name}</dt>
                               <dd>
-                                <code>{binding.value}</code>
+                                <code>{displayInspectedValue(binding.value)}</code>
                               </dd>
                             </div>
                           ))}

@@ -54,3 +54,23 @@ The pure `compileWorkflowModule` function is independent of tsdown. The thin
 Rolldown load hook is the first adapter; a Vite adapter can reuse the transform.
 The inspector's source metadata is preserved, but full debugger source maps for
 execution stepping are not provided by this spike.
+
+## Standard definition envelope
+
+`defineCompiledWorkflow` retains its input/output inference and `"use workflow"`
+requirement. Its return type is now the shared `CompiledWorkflow` contract from
+`workflow-kernel`. The build output stores the emitted code in
+`implementation: { format: "workflow-scheme-definitions-v1", payload: ... }`;
+`sourceLanguage: "typescript"`, original source and debug metadata remain separate.
+The old top-level `scheme` field is removed.
+
+The runtime imports no compiler. The Hoot linker owns definition-format checks,
+entry checks, registration syntax, duplicate names and shared-module deduplication.
+A new compiler target would emit another implementation format rather than
+changing the shared definition envelope. The current compiler still targets Hoot.
+
+`workflowCompiler` implements the shared `WorkflowCompiler` interface and returns
+a map of portable definitions. `compileWorkflowModule` wraps that map in ESM
+exports for tsdown. The compiler rejects other source languages explicitly; this
+separates its pure output contract from the bundler adapter without introducing a
+second target.

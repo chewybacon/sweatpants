@@ -1,3 +1,4 @@
+import { createHootAuthoring } from "../../../experiments/workflow-kernel/hoot-composition/authoring.mjs";
 import { DurableObject } from "cloudflare:workers";
 import { Scheme } from "../../../.artifacts/hoot-composition/reflect-worker.mjs";
 import manifest from "../../../.artifacts/hoot-composition/manifest.json" with { type: "json" };
@@ -16,10 +17,10 @@ const identity = {
     programFormat: "workflow-scheme-spike-1",
     snapshotFormat: "workflow-state-v3",
 };
-const { createExecutionService, validateCaller } = executionServiceFactory({
+const { createExecutionService, validateCaller } = executionServiceFactory(createHootAuthoring({
     loadMachine,
-    createHootProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
-});
+    createProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
+}));
 
 export class ExecutionLab extends DurableObject {
     queue = Promise.resolve();

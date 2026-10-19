@@ -1,42 +1,95 @@
 # @sweatpants/workflow-kernel
 
-Review scaffold: portable program/snapshot identities, evaluator interface and
-exact compatibility checks. There is no Hoot/Wasm implementation yet. Building
-this package builds TypeScript declarations and ESM, not Wasm.
+Portable program/snapshot identities, evaluator lifecycle, compatibility checks,
+and a detached inspection contract. The current integrated implementation is the
+experimental Hoot evaluator in `experiments/workflow-kernel/hoot-composition`.
+Building this package produces TypeScript declarations and ESM, not Wasm.
 
-The kernel owns logical calls, environments, scopes and cleanup. External effects
-and journal acceptance belong to the host. dispose/close release compute;
-cancel requests logical unwind and may yield cleanup effects.
+## Execution and ownership
 
-Effection supplies operation types; foundation supplies the existing Json type.
-There is no import-time instance creation. Scheme/TS frontends
-will target a separately specified instruction format; code: unknown does
-not yet define that format.
+The kernel owns calls, lexical environments, scopes and cleanup. It advances to
+an effect or terminal boundary. The shared `program-backend-kernel` adapter binds
+requests to existing durable operations; the shared driver and journal own
+protocol position, accepted outcomes, authorization and recovery provenance.
 
-The host must bind snapshots to input/task identity and an accepted journal
-frontier. Compatibility checks are not content integrity or authorization.
+- `start` advances a pinned program to its first boundary.
+- `resume` addresses a suspension on a live execution handle.
+- `cancel` requests logical unwind and may suspend for cleanup.
+- `capture` exports computation state in the kernel's format.
+- `restore` reconstructs the boundary without executing the prefix.
+- `dispose`/`close` release compute without logical cancellation.
 
-## Review before implementation
+The existing execution state machine serializes command discipline and rejects
+stale suspension IDs. Callers must serialize operations on a handle. Effection
+operations do not make synchronous Wasm interruptible: kernels must bound compute.
 
-- Bounded compute slices behind operation-based advancement.
-- Instruction and snapshot format definition.
-- Fault/fuel exhaustion outcomes and whether failed executions remain usable.
-- Cancellation of completed execution and repeated cancellation during cleanup.
-- Capture boundaries and atomicity on invalid replies.
-- Schema validation ownership at the adapter/kernel boundary.
+Program code and snapshot state are `unknown` at this seam because their owning
+kernel validates their formats. Compatibility checks do not establish content
+integrity, authorization or accepted journal provenance. Fresh restoration may
+still be followed by accepted journal suffix recovery through the shared driver.
 
-A concrete implementation must earn fresh-instance restore and composition
-guarantees through behavioral tests. Current tests cover identity checks only.
+## Inspection
 
-## Intended build and distribution
+`ExecutionInspection` is a read-only projection, never a checkpoint or a resume
+capability. Projection currently stays in the Hoot adapter; inspection adds no
+required methods to `WorkflowKernel` or `KernelExecution`.
 
-Reuse the scheme-runtime pinned Docker/Hoot build pipeline. Later wasm:build
-will generate the kernel and required Hoot support assets; wasm:verify rebuilds
-and compares them. Consumers use prebuilt artifacts. Node/Worker loaders will
-be added when real artifacts exist. No placeholder Wasm exports are provided.
+- `boundary` omits the activation-local suspension ID, which can change on restore.
+- `calls` lists outermost to innermost callers; IDs are inspection-local.
+- `environments` describe lexical ancestry and bindings, independently of calls.
+- `unwind` lists innermost to outermost scope, cleanup and finally continuations.
+- `PendingCompletion` preserves return, throw, cancellation and loop transfer.
+- Values are bounded display summaries or callable/closure descriptions. Closure
+  environment IDs expose lexical sharing; this is not a general heap graph.
+- `truncated` signals omitted entries or shortened displayed values. Referenced
+  environments may be omitted when the collection budget is exhausted.
 
-Execution methods are Effection operations. Each KernelExecution binds its private
-handle; callers do not supply handles or thread a generic Execution type. Code
-and snapshot state are unknown until the selected kernel validates their format.
-Validated effect requests/replies use foundation Json. Operation does not make a
-synchronous Wasm call interruptible.
+Hoot does not retain frame-to-environment ownership or the original scope identity
+while cleanup runs. The contract does not invent those relationships. A running
+cleanup's `remaining` list excludes its currently executing callback.
+
+The lab consumes this projection for calls, lexical bindings and unwinding. It
+also retains Hoot-specific diagnostic data for raw continuation display, evaluator
+step counts and checkpoint explanations. Those diagnostics are not this contract.
+No host capability is granted by inspection data, and the same access policy as
+other execution diagnostics must protect it.
+
+## Validation
+
+Package tests cover compatibility and live command discipline. The lab's
+`execution:test` also runs the Hoot inspection proof and its TypeScript check:
+caller/callee composition, environment references, return/throw/cancel cleanup,
+repeated cancellation, finally, fresh restore, detached views and explicit limits.
+The existing journal/inspector behavior checks remain unchanged.
+
+This increment defines the seam around Hoot. It adds no kernel registry, compiler
+backend, cross-kernel checkpoint compatibility, or source migration.
+
+## Authoring and runtime seams
+
+`CompiledWorkflow` is the shared output of a directive compiler. It carries an
+entry, source/source-language, debug metadata and a `WorkflowImplementation`
+containing `{ format, payload }`. Type parameters preserve developer inference;
+they do not generate schemas or prove portable captures.
+
+`WorkflowLinker` combines language-tagged caller source and explicit bindings:
+compiled guest functions have a definition and portable prefix arguments; host
+capabilities have a public name and contract version. Linking does not authorize
+capability use. `WorkflowSourceValidator` performs language-owned admission and
+returns diagnostics without dispatching effects. The host can then preflight via
+`WorkflowKernel.start` and close compute at the first boundary.
+
+`WorkflowRuntime` owns kernel identity and acquisition. The existing backend
+preparation contract extends it and separately supplies artifact loading. Runtime
+placement, executable format and source language are different choices.
+
+There is no universal instruction encoding. The current Hoot linker accepts
+`workflow-scheme-definitions-v1` definitions and emits `workflow-scheme-spike-1`
+programs. Another target must produce its own format and preserve the agreed
+execution, cleanup and boundary semantics. Formats and snapshots are not
+interchangeable merely because their TypeScript envelopes have the same shape.
+
+`WorkflowCompiler` is the pure source-to-definitions seam: it declares its source
+language and output definition format, accepts source with an optional file ID,
+and returns named portable exports. The tsdown plugin now only wraps this compiler
+output as ESM; the runtime does not depend on bundling or the compiler.

@@ -1,12 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { HOOT_DEFINITION_FORMAT } from "../hoot-composition/linker.mts";
 import { emitWorkflowScheme } from "../scheme-compiler/emit.mjs";
 const babel = createRequire(new URL("../../../packages/vite-plugin/package.json", import.meta.url))(
     "@babel/core",
 );
 
 /** Shared build transform: no module evaluation or bundler state. */
-export function compileWorkflowModule(source, id) {
+function compileDefinitions(source, id) {
     const ast = babel.parseSync(source, {
         filename: id,
         configFile: false,
@@ -69,11 +70,29 @@ export function compileWorkflowModule(source, id) {
     const functions = new Set(
         ast.program.body.filter(t.isFunctionDeclaration).map((node) => node.id.name),
     );
-    return definitions
-        .map(({ name, entry }) => {
-            if (!functions.has(entry)) throw Error(`${id}: unknown workflow entry ${entry}`);
-            return `export const ${name} = ${JSON.stringify({ kind: "compiled-workflow", entry, ...emitted, source })};`;
-        })
+    return Object.fromEntries(definitions.map(({ name, entry }) => {
+        if (!functions.has(entry)) throw Error(`${id}: unknown workflow entry ${entry}`);
+        return [name, { kind: "compiled-workflow", entry,
+            implementation: { format: HOOT_DEFINITION_FORMAT, payload: emitted.scheme },
+            source, sourceLanguage: "typescript", debug: emitted.debug }];
+    }));
+}
+
+/** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
+export const workflowCompiler = {
+    sourceLanguage: "typescript",
+    definitionFormat: HOOT_DEFINITION_FORMAT,
+    compile(source) {
+        if (source.language !== "typescript") throw Error("Workflow compiler requires TypeScript source");
+        return compileDefinitions(source.text, source.id ?? "workflow.ts");
+    },
+};
+
+/** Bundler representation is separate from the portable compiler output. */
+export function compileWorkflowModule(source, id) {
+    const definitions = workflowCompiler.compile({ language: "typescript", text: source, id });
+    return Object.entries(definitions)
+        .map(([name, definition]) => `export const ${name} = ${JSON.stringify(definition)};`)
         .join("\n");
 }
 
