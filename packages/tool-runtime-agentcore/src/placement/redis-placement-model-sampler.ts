@@ -18,6 +18,7 @@ import {
   type ParseResult,
   type Parser,
   canonicalDigest,
+  digestCanonicalJson,
   cloneJson,
 } from "@sweatpants/foundation";
 
@@ -264,7 +265,7 @@ export function createRedisPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalDigest(request.request) !== request.requestDigest) {
+      if (digestCanonicalJson(request.request as unknown as Json) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];

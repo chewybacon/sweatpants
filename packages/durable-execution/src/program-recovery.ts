@@ -1,5 +1,10 @@
 import { call, type Operation } from "effection";
-import { canonicalDigest, canonicalJson, sha256 } from "@sweatpants/foundation";
+import {
+  digestCanonicalJson,
+  encodeCanonicalJson,
+  sha256,
+  type Json,
+} from "@sweatpants/foundation";
 import { CrankError } from "./errors.ts";
 import type {
   ProgramDriver,
@@ -75,7 +80,7 @@ export const replayProgramRecovery = {
       ) {
         throw new CrankError("replay_diverged", "Replay did not reach requested journal position");
       }
-      const frontierDigest = canonicalDigest(frontier);
+      const frontierDigest = digestCanonicalJson(frontier as unknown as Json);
       restored = true;
       return {
         attachment,
@@ -105,10 +110,10 @@ export function verifyProgramReplayEntry(seed: string, entry: ReplayEntry, previ
   }
   const { entryDigest: _ignored, ...body } = entry;
   const expected = sha256(
-    canonicalJson({
+    encodeCanonicalJson({
       replayChainSeed: seed,
       previousEntryDigest: previous,
-      entryWithoutEntryDigest: body,
+      entryWithoutEntryDigest: body as unknown as Json,
     }),
   );
   if (expected !== entry.entryDigest) {
@@ -128,13 +133,13 @@ export function assertProgramReplayFrontier(step: ProgramStep, entry: ReplayEntr
       step.type !== "operation" ||
       step.descriptor.kind !== entry.descriptorKind ||
       (step.descriptor.kind !== "sample" &&
-        canonicalDigest(step.descriptor) !== entry.descriptorDigest)
+        digestCanonicalJson(step.descriptor as unknown as Json) !== entry.descriptorDigest)
     ) {
       throw new CrankError("replay_diverged", "Evaluator operation differs from history");
     }
   } else if (
     step.type !== "emission" ||
-    canonicalDigest(step.descriptor) !== entry.descriptorDigest
+    digestCanonicalJson(step.descriptor as unknown as Json) !== entry.descriptorDigest
   ) {
     throw new CrankError("replay_diverged", "Evaluator emission differs from history");
   }

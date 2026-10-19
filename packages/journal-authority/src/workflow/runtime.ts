@@ -1,4 +1,3 @@
-import { omitUndefinedOptionals } from "@sweatpants/durable-execution/optional-fields";
 import {
   Err,
   Ok,
@@ -48,8 +47,8 @@ import {
   type Json,
   type Parser,
   type SerializedApplicationError,
-  canonicalDigest,
-  canonicalJson,
+  digestCanonicalJson,
+  encodeCanonicalJson,
 } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import {
@@ -204,24 +203,20 @@ const effectOptionsSchema = z.strictObject({
   name: z.string().min(1),
   version: z.string().min(1),
   input: z.json(),
-  resolver: omitUndefinedOptionals(
-    z.strictObject({
-      audience: z.string().min(1),
-      route: z.string().optional(),
-    }),
-  ),
+  resolver: z.strictObject({
+    audience: z.string().min(1),
+    route: z.string().optional(),
+  }),
 });
 
-const elicitOptionsSchema = omitUndefinedOptionals(
-  z.strictObject({
-    key: recordKeySchema,
-    message: z.string(),
-    response: portableSchemaDescriptorSchema,
-    contextContract: portableSchemaDescriptorSchema.optional(),
-    context: z.json().optional(),
-    binding: z.strictObject({ id: z.string().min(1) }).optional(),
-  }),
-);
+const elicitOptionsSchema = z.strictObject({
+  key: recordKeySchema,
+  message: z.string(),
+  response: portableSchemaDescriptorSchema,
+  contextContract: portableSchemaDescriptorSchema.optional(),
+  context: z.json().optional(),
+  binding: z.strictObject({ id: z.string().min(1) }).optional(),
+});
 
 /** Result-oriented parser for elicitation authoring. */
 export const elicitOptionsParser: Parser<DurableElicitDescriptor> =
@@ -249,18 +244,16 @@ export const invokeOptionsParser: Parser<DurableInvokeDescriptor> = parser(invok
       id: options.child.id,
       version: options.child.version,
       digest: options.child.digest,
-      input: asJson(options.child.input),
+      input: options.child.input,
     },
   }),
 );
 
-const waitOptionsSchema = omitUndefinedOptionals(
-  z.strictObject({
-    key: recordKeySchema,
-    notBefore: z.string().optional(),
-    durationMs: z.number().int().positive().optional(),
-  }),
-);
+const waitOptionsSchema = z.strictObject({
+  key: recordKeySchema,
+  notBefore: z.string().optional(),
+  durationMs: z.number().int().positive().optional(),
+});
 
 /** Result-oriented parser for wait authoring. */
 export const waitOptionsParser: Parser<WaitDescriptor> = parser(waitOptionsSchema).map((options) =>
@@ -696,12 +689,10 @@ const effectDescriptorSchema = z.strictObject({
   name: z.string().min(1),
   version: z.string().min(1),
   input: z.json(),
-  resolver: omitUndefinedOptionals(
-    z.strictObject({
-      audience: z.string().min(1),
-      route: z.string().optional(),
-    }),
-  ),
+  resolver: z.strictObject({
+    audience: z.string().min(1),
+    route: z.string().optional(),
+  }),
 });
 
 /**
@@ -788,19 +779,15 @@ export function pullOperation<T extends Json = Json>(descriptor: unknown): Durab
     (settled) => unwrapOutcome<T>(settled as OperationOutcome),
   );
 }
-const serializedApplicationErrorSchema = omitUndefinedOptionals(
-  z.strictObject({
-    code: z.string(),
-    message: z.string(),
-    details: z.json().optional(),
-  }),
-);
+const serializedApplicationErrorSchema = z.strictObject({
+  code: z.string(),
+  message: z.string(),
+  details: z.json().optional(),
+});
 const operationOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: z.json() }),
   z.strictObject({ status: z.literal("error"), error: serializedApplicationErrorSchema }),
-  omitUndefinedOptionals(
-    z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
-  ),
+  z.strictObject({ status: z.literal("cancelled"), partial: z.json().optional() }),
 ]);
 const resolutionReceiptSchema = z.strictObject({
   sessionId: z.string().min(1),
@@ -838,9 +825,7 @@ const programCommandSchema = z.discriminatedUnion("type", [
     receipt: resolutionReceiptSchema,
     replayed: z.boolean(),
   }),
-  omitUndefinedOptionals(
-    z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
-  ),
+  z.strictObject({ type: z.literal("cancel"), reason: z.string().optional() }),
   z.strictObject({
     type: z.literal("ack-emission"),
     actionIndex: z.number().int().nonnegative(),
@@ -858,15 +843,6 @@ const shutdownReasonSchema = z.enum([
 
 const programCommandStructureParser = parser(programCommandSchema);
 
-/**
- * Zod's JSON algebra and Foundation's Json are two spellings of one closed
- * structure; the authority re-validates through assertJson at commit, so this
- * boundary conversion cannot admit non-JSON data.
- */
-function asJson(value: z.infer<ReturnType<typeof z.json>>): Json {
-  return value as unknown as Json;
-}
-
 function normalizeElicitDescriptor(options: z.output<typeof elicitOptionsSchema>) {
   return { kind: "elicit" as const, ...options };
 }
@@ -882,50 +858,18 @@ function normalizeWaitDescriptor(options: z.output<typeof waitOptionsSchema>) {
 function normalizeParsedDescriptor(
   descriptor: z.infer<typeof proposableOperationDescriptorSchema>,
 ): DurableOperationDescriptor {
-  switch (descriptor.kind) {
-    case "record":
-      return { kind: "record", key: descriptor.key, retrySafety: descriptor.retrySafety };
-    case "effect":
-      return normalizeEffectDescriptor(descriptor);
-    case "elicit":
-      return normalizeElicitDescriptor(descriptor);
-    case "wait":
-      return normalizeWaitDescriptor(descriptor);
-    case "invoke":
-      return {
-        kind: "invoke",
-        child: {
-          id: descriptor.child.id,
-          version: descriptor.child.version,
-          digest: descriptor.child.digest,
-          input: asJson(descriptor.child.input),
-        },
-      };
-    case "all":
-      return {
-        kind: "all",
-        supervision: descriptor.supervision,
-        children: descriptor.children,
-        expiry: descriptor.expiry,
-      };
-    case "race":
-      return {
-        kind: "race",
-        supervision: descriptor.supervision,
-        children: descriptor.children,
-        expiry: descriptor.expiry,
-      };
-    case "sample":
-      return { kind: "sample", input: asJson(descriptor.input) };
-    case "ephemeral":
-      return {
-        kind: "ephemeral",
-        driver: descriptor.driver,
-        tool: descriptor.tool,
-        input: asJson(descriptor.input),
-        durability: descriptor.durability,
-      };
+  if (descriptor.kind !== "invoke") {
+    return descriptor;
   }
+  return {
+    kind: "invoke",
+    child: {
+      id: descriptor.child.id,
+      version: descriptor.child.version,
+      digest: descriptor.child.digest,
+      input: descriptor.child.input,
+    },
+  };
 }
 
 /** Result-oriented parser for host commands entering the attachment. */
@@ -1165,7 +1109,9 @@ function stale(): CrankError {
 }
 
 function sameCanonical<T>(left: T, right: T): boolean {
-  return canonicalJson(left) === canonicalJson(right);
+  return (
+    encodeCanonicalJson(left as unknown as Json) === encodeCanonicalJson(right as unknown as Json)
+  );
 }
 
 function verifyResumeReceipt(
@@ -1175,7 +1121,7 @@ function verifyResumeReceipt(
   if (
     command.receipt.sessionId !== state.request.sessionId ||
     command.receipt.taskId !== state.request.taskId ||
-    command.receipt.outcomeDigest !== canonicalDigest(command.outcome)
+    command.receipt.outcomeDigest !== digestCanonicalJson(command.outcome)
   ) {
     throw protocol("resume receipt mismatch");
   }

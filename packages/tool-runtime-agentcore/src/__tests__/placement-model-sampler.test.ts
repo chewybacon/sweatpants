@@ -1,6 +1,7 @@
 import type { ModelSampleRequest } from "@sweatpants/model-sampling";
 import {
   MODEL_SAMPLE_CONTRACT,
+  encodeModelSampleRequest,
   runWithProgramDeliveryWriter,
   type ModelSampleResult,
 } from "@sweatpants/model-sampling";
@@ -34,10 +35,12 @@ const identity = {
 const request: ModelSampleRequest = {
   invocation: {
     context: { messages: [{ role: "user", content: "hello" }], tools: [] },
+    options: { temperature: undefined },
   },
   tools: { type: "none" },
   response: { type: "message" },
   classifications: ["private"],
+  modelPreferences: undefined,
 };
 
 function sampled(text: string): ModelSampleResult {
@@ -53,7 +56,7 @@ function sampled(text: string): ModelSampleResult {
     output: { type: "message" },
   };
 }
-const requestDigest = canonicalDigest(request);
+const requestDigest = canonicalDigest(encodeModelSampleRequest(request));
 const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
 
 function attachRequest(overrides: Record<string, unknown> = {}) {
@@ -172,7 +175,8 @@ describe("in-memory placement model sampler", () => {
       terminalLsn: 2,
     };
     const sampler: PlacementModelSampler = {
-      *attach() {
+      *attach(attached) {
+        expect(attached.requestDigest).toBe(requestDigest);
         attachCount += 1;
         return remoteAttachment;
       },
@@ -259,7 +263,9 @@ describe("in-memory placement model sampler", () => {
     });
     await run(function* () {
       const first = yield* sampler.attach(attachRequest());
-      const duplicate = yield* sampler.attach(attachRequest());
+      const duplicate = yield* sampler.attach(
+        attachRequest({ request: encodeModelSampleRequest(request) }),
+      );
       expect(duplicate.streamId).toBe(first.streamId);
       expect(duplicate.producerEpoch).toBe(first.producerEpoch);
 

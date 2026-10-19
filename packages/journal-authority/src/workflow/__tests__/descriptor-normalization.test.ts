@@ -1,5 +1,5 @@
 import { allDescriptorSchema, raceDescriptorSchema } from "../../pull-kinds/children.ts";
-import { canonicalJson } from "@sweatpants/foundation";
+import { encodeCanonicalJson, type Json } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import {
   effectOptionsParser,
@@ -19,7 +19,7 @@ const response = {
   digest: "digest",
 };
 
-describe("descriptor normalization", () => {
+describe("descriptor admission and serialization", () => {
   it.each([
     {
       kind: "elicit",
@@ -116,9 +116,11 @@ describe("descriptor normalization", () => {
     if (!authored.ok || !command.ok || command.value.type !== "authorize-record") {
       throw new Error("expected a valid descriptor at both boundaries");
     }
-    expect(authored.value).toStrictEqual(expected);
-    expect(command.value.descriptor).toStrictEqual(expected);
-    expect(canonicalJson(authored.value)).toBe(canonicalJson(command.value.descriptor));
+    expect(authored.value).toStrictEqual({ kind, ...options });
+    expect(command.value.descriptor).toStrictEqual(authored.value);
+    const wire = encodeCanonicalJson(authored.value as unknown as Json);
+    expect(JSON.parse(wire)).toStrictEqual(expected);
+    expect(wire).toBe(encodeCanonicalJson(command.value.descriptor as unknown as Json));
     expect(options).toStrictEqual(original);
     if (kind === "effect" || kind === "wait") {
       expect(Object.isFrozen(authored.value)).toBe(true);
@@ -173,7 +175,7 @@ describe("command optional fields", () => {
       { status: "error", error: { code: "failed", message: "Failed", details: 0 } },
       { status: "error", error: { code: "failed", message: "Failed", details: 0 } },
     ],
-  ])("normalizes outcome %j", (outcome, expected) => {
+  ])("preserves optional outcome fields until serialization: %j", (outcome, expected) => {
     const input = { type: "resume-record", actionIndex: 0, outcome, receipt, replayed: false };
     const original = structuredClone(input);
     const result = programCommandParser.parse(input);
@@ -182,8 +184,8 @@ describe("command optional fields", () => {
       throw new Error("expected a valid resume command");
     }
     const parsed = result.value.outcome;
-    expect(parsed).toStrictEqual(expected);
-    expect(() => canonicalJson(parsed)).not.toThrow();
+    expect(parsed).toStrictEqual(outcome);
+    expect(JSON.parse(encodeCanonicalJson(parsed))).toStrictEqual(expected);
     expect(input).toStrictEqual(original);
   });
 
@@ -193,12 +195,13 @@ describe("command optional fields", () => {
     if (!result.ok) {
       throw new Error("expected a valid cancel command");
     }
-    expect(result.value).toStrictEqual(
+    expect(result.value).toStrictEqual({ type: "cancel", reason });
+    expect(JSON.parse(JSON.stringify(result.value))).toStrictEqual(
       reason === undefined ? { type: "cancel" } : { type: "cancel", reason },
     );
   });
 
-  it.each(["all", "race"])("normalizes %s child durability without changing input", (kind) => {
+  it.each(["all", "race"])("preserves %s child durability until serialization", (kind) => {
     const base = { id: "child", version: "1", digest: "digest", input: null };
     const native = { ...base, durability: { kind: "crank_native" } };
     const input = {
@@ -216,8 +219,8 @@ describe("command optional fields", () => {
     const original = structuredClone(input);
     const schema = kind === "all" ? allDescriptorSchema : raceDescriptorSchema;
     const result = schema.parse(input.descriptor);
-    expect(result.children).toStrictEqual([base, native]);
-    expect(() => canonicalJson(result)).not.toThrow();
+    expect(result.children).toStrictEqual(input.descriptor.children);
+    expect(JSON.parse(encodeCanonicalJson(result)).children).toStrictEqual([base, native]);
     expect(input).toStrictEqual(original);
   });
 

@@ -3,7 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    "optional-fields": "src/omit-undefined-optionals.ts",
     contract: "src/contract.ts",
     transitions: "src/transitions.ts",
     checkpoint: "src/checkpoint.ts",

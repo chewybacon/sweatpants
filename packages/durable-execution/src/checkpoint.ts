@@ -1,6 +1,5 @@
-import { omitUndefinedOptionals } from "./omit-undefined-optionals.ts";
 import { durableReferenceSchema } from "./reference-schema.ts";
-import { parser, cloneJson } from "@sweatpants/foundation";
+import { parser, type Parser } from "@sweatpants/foundation";
 import { z } from "zod";
 import {
   InvalidExecutionTransition,
@@ -24,18 +23,16 @@ const checkpointProgramSchema = z.strictObject({
   version: checkpointTextSchema,
   digest: checkpointTextSchema,
 });
-const parkedTaskCheckpointSchema = omitUndefinedOptionals(
-  z.strictObject({
-    taskId: checkpointTextSchema,
-    parentTaskId: checkpointTextSchema.optional(),
-    program: checkpointProgramSchema,
-    input: checkpointStoredJsonSchema,
-    route: z.json(),
-    replayHead: z.union([durableReferenceSchema, z.null()]),
-    parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
-    actionIndex: z.number().int().nonnegative().safe(),
-  }),
-);
+const parkedTaskCheckpointSchema = z.strictObject({
+  taskId: checkpointTextSchema,
+  parentTaskId: checkpointTextSchema.optional(),
+  program: checkpointProgramSchema,
+  input: checkpointStoredJsonSchema,
+  route: z.json(),
+  replayHead: z.union([durableReferenceSchema, z.null()]),
+  parkedFrontier: z.strictObject({ pullId: checkpointTextSchema, kind: checkpointTextSchema }),
+  actionIndex: z.number().int().nonnegative().safe(),
+});
 const recoveryCheckpointSchema = z.strictObject({
   format: z.literal("sweatpants.recovery-checkpoint.v1"),
   executionId: checkpointTextSchema,
@@ -138,8 +135,7 @@ export function proposeQuiescentCut(
 
   const parkedTasks = current.tasks.map((task) => ({
     taskId: task.taskId,
-    /* CONDITIONAL-SPREAD: Omit absent parentTaskId from durable execution records; explicit undefined is not a portable JSON value. */
-    ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+    parentTaskId: task.parentTaskId,
     program: task.program,
     input: task.input,
     route: task.route,
@@ -168,13 +164,12 @@ export function proposeQuiescentCut(
     projection: current.unpublishedProjection,
   };
 
-  return { status: "checkpointed", checkpoint: cloneJson(checkpoint) };
+  return { status: "checkpointed", checkpoint: structuredClone(checkpoint) };
 }
 
 /** Result-oriented parser for malformed or incomplete persisted checkpoints. */
-export const recoveryCheckpointParser = parser(recoveryCheckpointSchema).map(
-  (value): RecoveryCheckpoint => cloneJson(value),
-);
+export const recoveryCheckpointParser: Parser<RecoveryCheckpoint> =
+  parser(recoveryCheckpointSchema);
 
 /** Caller-owned throwing mapping for the checkpoint restoration boundary. */
 export function parseRecoveryCheckpoint(value: unknown): RecoveryCheckpoint {

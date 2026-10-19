@@ -1,9 +1,9 @@
-import { canonicalJson } from "@sweatpants/foundation";
+import { encodeCanonicalJson } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import { durableReferenceSchema } from "../reference-schema.ts";
 
 describe("durable reference schema", () => {
-  it("omits absent metadata without changing the caller's object", () => {
+  it("preserves optional metadata until serialization without changing the caller", () => {
     const input = {
       id: "reference",
       byteLength: undefined,
@@ -11,8 +11,8 @@ describe("durable reference schema", () => {
       integrity: undefined,
     };
     const value = durableReferenceSchema.parse(input);
-    expect(value).toStrictEqual({ id: "reference" });
-    expect(canonicalJson(value)).toBe(canonicalJson({ id: "reference" }));
+    expect(value).toStrictEqual(input);
+    expect(encodeCanonicalJson(value)).toBe(encodeCanonicalJson({ id: "reference" }));
     expect(Object.hasOwn(input, "byteLength")).toBe(true);
   });
 

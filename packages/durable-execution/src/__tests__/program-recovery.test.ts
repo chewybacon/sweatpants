@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { canonicalDigest } from "@sweatpants/foundation";
-import { replayProgramRecovery } from "../program-recovery.ts";
+import {
+  replayProgramRecovery,
+  assertProgramReplayFrontier,
+  verifyProgramReplayEntry,
+} from "../program-recovery.ts";
 import {
   REPLAY_CHECKPOINT_CAPABILITIES,
   type ProgramDriver,
@@ -207,5 +211,68 @@ describe("required program recovery contract", () => {
       run(() => driver.restore({ ...request, replayedThroughActionIndex: 2 })),
     ).rejects.toThrow("requested journal position");
     expect(calls).toEqual(["attach", "start", "shutdown:failed"]);
+  });
+});
+
+it("compares live optional fields with persisted replay identities", async () => {
+  const storedDescriptor = { kind: "wait" as const, key: "pause" };
+  const storedOutcome = {
+    status: "error" as const,
+    error: { code: "failed", message: "Original" },
+  };
+  const body = {
+    type: "operation" as const,
+    actionIndex: 0,
+    descriptorKind: "wait",
+    descriptorDigest: canonicalDigest(storedDescriptor),
+    previousEntryDigest: "seed",
+    outcome: storedOutcome,
+    receipt: {
+      sessionId: "session",
+      taskId: "task",
+      pullId: "pull",
+      resolutionOffset: "0",
+      outcomeDigest: canonicalDigest(storedOutcome),
+      status: "accepted" as const,
+    },
+  };
+  const accepted = {
+    ...body,
+    outcome: { ...storedOutcome, error: { ...storedOutcome.error, details: undefined } },
+    entryDigest: canonicalDigest({
+      replayChainSeed: "seed",
+      previousEntryDigest: "seed",
+      entryWithoutEntryDigest: body,
+    }),
+  };
+  const frontier = {
+    type: "operation" as const,
+    actionIndex: 0,
+    descriptor: { ...storedDescriptor, notBefore: undefined, durationMs: undefined },
+  };
+  expect(() => verifyProgramReplayEntry("seed", accepted, "seed")).not.toThrow();
+  expect(() => assertProgramReplayFrontier(frontier, accepted)).not.toThrow();
+  expect(() =>
+    assertProgramReplayFrontier(
+      { ...frontier, descriptor: { ...frontier.descriptor, durationMs: 1 } },
+      accepted,
+    ),
+  ).toThrow("Evaluator operation differs");
+  expect(() =>
+    verifyProgramReplayEntry(
+      "seed",
+      { ...accepted, outcome: { status: "error", error: { code: "failed", message: "Changed" } } },
+      "seed",
+    ),
+  ).toThrow("Replay entry digest differs");
+  await run(function* () {
+    const { driver } = fixture();
+    driver.step = function* () {
+      return frontier;
+    };
+    const restored = yield* driver.restore(request);
+    expect(restored.frontierDigest).toBe(
+      canonicalDigest({ type: "operation", actionIndex: 0, descriptor: storedDescriptor }),
+    );
   });
 });

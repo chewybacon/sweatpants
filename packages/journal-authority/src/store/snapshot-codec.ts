@@ -5,7 +5,8 @@ import {
   success,
   type ParseResult,
   type Parser,
-  canonicalDigest,
+  digestCanonicalJson,
+  type Json,
 } from "@sweatpants/foundation";
 import {
   DURABLE_AUTHORITY_MAX_SNAPSHOT_BYTES,
@@ -69,7 +70,7 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
           }
           if (
             action.pull.request.proposedDescriptorDigest !==
-              canonicalDigest(action.pull.request.proposedDescriptor) ||
+              digestCanonicalJson(action.pull.request.proposedDescriptor as unknown as Json) ||
             action.pull.request.resultSchemaDigest !==
               (action.pull.request.resultDescriptor as unknown as Record<string, unknown>)["digest"]
           ) {
@@ -77,7 +78,7 @@ function verifyDurableAuthoritySnapshot(value: unknown): ParseResult<DurableAuth
           }
           if (action.pull.resolution.status === "settled") {
             const { outcome, outcomeDigest, receipt } = action.pull.resolution.settlement;
-            if (outcomeDigest !== canonicalDigest(outcome)) {
+            if (outcomeDigest !== digestCanonicalJson(outcome)) {
               return snapshotFailure(path, "pull settlement digest differs");
             }
             if (receipt.sessionId !== sessionId || receipt.taskId !== task.taskId) {

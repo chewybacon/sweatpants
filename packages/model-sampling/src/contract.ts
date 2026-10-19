@@ -117,7 +117,6 @@ const optionsSchema = z.strictObject({
   topK: z.number().optional(),
   thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
 });
-const optionKeys = optionsSchema.keyof().options;
 const toolSourceSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("none") }),
   z.strictObject({
@@ -281,15 +280,13 @@ export const modelSampleRequestParser: Parser<ModelSampleRequest> =
       tools = value.tools;
     }
 
-    return success(
-      normalizeModelSampleRequest({
-        invocation: { context: context.value, options: value.invocation.options },
-        tools,
-        response: value.response as ModelResponseMode,
-        modelPreferences: value.modelPreferences,
-        classifications: value.classifications,
-      }),
-    );
+    return success({
+      invocation: { context: context.value, options: value.invocation.options },
+      tools,
+      response: value.response as ModelResponseMode,
+      modelPreferences: value.modelPreferences,
+      classifications: value.classifications,
+    });
   });
 
 /** Result-oriented parser for one model-sampling result. */
@@ -340,33 +337,11 @@ export function resolveModelSampleSourceRequest(
 export function encodeModelSampleSourceRequest(
   request: ModelSampleSourceRequest,
 ): ModelSampleWireRequest {
-  return assertJson(request) as JsonObject;
+  return JSON.parse(JSON.stringify(request)) as JsonObject;
 }
 
 export function encodeModelSampleRequest(request: ModelSampleRequest): ModelSampleWireRequest {
-  return assertJson(normalizeModelSampleRequest(request)) as JsonObject;
-}
-
-function normalizeModelSampleRequest(request: ModelSampleRequest) {
-  const value = {
-    invocation: { context: request.invocation.context, options: request.invocation.options },
-    tools: request.tools,
-    response: request.response,
-    modelPreferences: request.modelPreferences,
-    classifications: request.classifications,
-  };
-  if (value.invocation.options === undefined) {
-    delete value.invocation.options;
-  } else {
-    value.invocation.options = normalizeOptions(value.invocation.options);
-  }
-  if (value.modelPreferences === undefined) {
-    delete value.modelPreferences;
-  }
-  if (value.classifications === undefined) {
-    delete value.classifications;
-  }
-  return value;
+  return JSON.parse(JSON.stringify(request)) as JsonObject;
 }
 
 export function decodeModelSampleResult(value: unknown): ModelSampleResult {
@@ -374,17 +349,9 @@ export function decodeModelSampleResult(value: unknown): ModelSampleResult {
 }
 
 export function encodeModelSampleResult(result: ModelSampleResult): ModelSampleWireResult {
-  return assertJson({ message: result.message, output: result.output }) as JsonObject;
-}
-
-function normalizeOptions(value: ModelSampleInvocationOptions) {
-  const options = { ...value };
-  for (const key of optionKeys) {
-    if (options[key] === undefined) {
-      delete options[key];
-    }
-  }
-  return options;
+  return JSON.parse(
+    JSON.stringify({ message: result.message, output: result.output }),
+  ) as JsonObject;
 }
 
 function requireParsed<T>(

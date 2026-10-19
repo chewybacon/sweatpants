@@ -10,7 +10,7 @@ import {
   type ModelSamplingService,
   type ProgramDeliveryEnvelope,
 } from "@sweatpants/model-sampling";
-import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
+import { stableTupleHash, type Json, digestCanonicalJson } from "@sweatpants/foundation";
 
 export const AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION = 1 as const;
 
@@ -203,7 +203,7 @@ export function createPlacementModelSamplingService(options: {
           "Execution-local sampling release is unavailable",
         );
       }
-      const requestDigest = canonicalDigest(request);
+      const requestDigest = digestCanonicalJson(request as unknown as Json);
       const contractDigest = effectContractDigest(MODEL_SAMPLE_CONTRACT);
       if (context.effectContractDigest !== contractDigest) {
         throw new CrankError(

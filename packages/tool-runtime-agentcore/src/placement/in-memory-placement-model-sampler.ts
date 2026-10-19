@@ -2,7 +2,12 @@ import { CrankError } from "@sweatpants/durable-execution";
 import { createSignal, race, sleep, spawn, type Operation, type Signal } from "effection";
 import { StaleTokenWriterError } from "@sweatpants/durable-streams";
 import { type ModelSampleDisposition } from "@sweatpants/model-sampling";
-import { stableTupleHash, type Json, canonicalDigest } from "@sweatpants/foundation";
+import {
+  stableTupleHash,
+  type Json,
+  canonicalDigest,
+  digestCanonicalJson,
+} from "@sweatpants/foundation";
 
 import {
   AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
@@ -144,7 +149,7 @@ export function createInMemoryPlacementModelSampler(options: {
       if (request.releaseId !== options.releaseId) {
         throw new CrankError("sampling_placement_unavailable", "Sampling release is unavailable");
       }
-      if (canonicalDigest(request.request) !== request.requestDigest) {
+      if (digestCanonicalJson(request.request as unknown as Json) !== request.requestDigest) {
         throw new CrankError("remote_sample_protocol_error", "Sampling request digest differs");
       }
       const classifications = request.request.classifications ?? [];

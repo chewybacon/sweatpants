@@ -1,4 +1,3 @@
-import { canonicalJson } from "@sweatpants/foundation";
 import { describe, expect, it } from "vitest";
 import { parseWorkspaceRequest } from "../index.ts";
 
@@ -11,11 +10,11 @@ const request = {
 };
 
 describe("workspace read request codec", () => {
-  it("normalizes line bounds at the request boundary without mutating the caller", () => {
+  it("preserves optional line bounds until serialization without mutating the caller", () => {
     const input = { ...request, startLine: undefined, endLine: undefined };
     const value = parseWorkspaceRequest(input);
-    expect(value).toStrictEqual(request);
-    expect(canonicalJson(value)).toBe(canonicalJson(request));
+    expect(value).toStrictEqual(input);
+    expect(JSON.parse(JSON.stringify(value))).toStrictEqual(request);
     expect(Object.hasOwn(input, "startLine")).toBe(true);
   });
 

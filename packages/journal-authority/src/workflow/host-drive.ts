@@ -15,7 +15,7 @@ import {
   type ProgramShutdownReason,
   type ProgramStep,
 } from "@sweatpants/durable-execution";
-import { type Json, canonicalDigest } from "@sweatpants/foundation";
+import { type Json, digestCanonicalJson } from "@sweatpants/foundation";
 
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import { InstalledEffectPort } from "./runtime.ts";
@@ -78,7 +78,7 @@ export function driveActivation(request: DriveActivationRequest): Operation<Adva
                   yield* request.onEffectResolved!({
                     pullId: authorization.pullId,
                     attemptId: authorization.attemptId,
-                    outcomeDigest: canonicalDigest(outcome),
+                    outcomeDigest: digestCanonicalJson(outcome),
                     effect: {
                       name: authorization.descriptor.name,
                       version: authorization.descriptor.version,

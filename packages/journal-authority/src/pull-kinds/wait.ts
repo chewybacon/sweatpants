@@ -1,4 +1,3 @@
-import { omitUndefinedOptionals } from "@sweatpants/durable-execution/optional-fields";
 import { sleep, type Operation } from "effection";
 import { z } from "zod";
 import { CrankError } from "@sweatpants/durable-execution";
@@ -7,14 +6,12 @@ import type { PullResolver } from "./registry.ts";
 import { registerPullKind } from "./registry.ts";
 import { recordKeySchema } from "./wire.ts";
 
-export const waitDescriptorSchema = omitUndefinedOptionals(
-  z.strictObject({
-    kind: z.literal("wait"),
-    key: recordKeySchema,
-    notBefore: z.string().optional(),
-    durationMs: z.number().int().positive().optional(),
-  }),
-);
+export const waitDescriptorSchema = z.strictObject({
+  kind: z.literal("wait"),
+  key: recordKeySchema,
+  notBefore: z.string().optional(),
+  durationMs: z.number().int().positive().optional(),
+});
 
 export function createWaitPullResolver(
   options: {

@@ -1,19 +1,17 @@
-import { omitUndefinedOptionals } from "@sweatpants/durable-execution/optional-fields";
 import { CrankError } from "@sweatpants/durable-execution";
 import { spawn as spawnProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import {
-  assertJson,
-  canonicalJson,
+  encodeCanonicalJson,
   hasControlCharacter,
   parser,
   sha256,
   sortStrings,
   stableTupleHash,
   type Json,
-  canonicalDigest,
+  digestCanonicalJson,
 } from "@sweatpants/foundation";
 
 import { useProgramExecution } from "@sweatpants/durable-execution";
@@ -130,17 +128,15 @@ const workspaceRequestSchema = z.discriminatedUnion("type", [
     fence: workspaceFenceSchema,
     operationId: boundedWorkspaceText,
   }),
-  omitUndefinedOptionals(
-    z.strictObject({
-      protocolVersion: z.literal(1),
-      type: z.literal("read"),
-      fence: workspaceFenceSchema,
-      operationId: boundedWorkspaceText,
-      path: boundedWorkspaceText,
-      startLine: z.number().int().positive().safe().optional(),
-      endLine: z.number().int().positive().safe().optional(),
-    }),
-  ),
+  z.strictObject({
+    protocolVersion: z.literal(1),
+    type: z.literal("read"),
+    fence: workspaceFenceSchema,
+    operationId: boundedWorkspaceText,
+    path: boundedWorkspaceText,
+    startLine: z.number().int().positive().safe().optional(),
+    endLine: z.number().int().positive().safe().optional(),
+  }),
   z.strictObject({
     protocolVersion: z.literal(1),
     type: z.literal("list"),
@@ -259,7 +255,10 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
       if (activeFence.sandboxGeneration !== fence.sandboxGeneration) {
         throw new CrankError("sandbox_generation_stale", "generation cannot change in one service");
       }
-      if (normalizedScripts && canonicalJson(normalizedScripts) !== canonicalJson(scripts)) {
+      if (
+        normalizedScripts &&
+        encodeCanonicalJson(normalizedScripts) !== encodeCanonicalJson(scripts)
+      ) {
         throw new CrankError(
           "nondeterminism_detected",
           "declared scripts cannot change within a sandbox generation",
@@ -499,11 +498,11 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
 
   function beginMutation(
     kind: "write" | "run-script",
-    input: unknown,
+    input: Json,
     execution: WorkspaceOperationExecution,
   ): { requestDigest: string; previous?: CommittedOperation } {
     assertExecution(execution);
-    const requestDigest = canonicalDigest(assertJson({ kind, input, execution }));
+    const requestDigest = digestCanonicalJson({ kind, input, execution } as unknown as Json);
     const previous = committed.get(execution.operationId);
     if (previous && previous.requestDigest !== requestDigest) {
       throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");
@@ -950,7 +949,12 @@ function parseFence(value: unknown): WorkspaceFence {
 }
 
 function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFence): void {
-  if (!expected || canonicalJson(expected) !== canonicalJson(received)) {
+  if (
+    !expected ||
+    expected.taskId !== received.taskId ||
+    expected.sandboxGeneration !== received.sandboxGeneration ||
+    expected.activationEpoch !== received.activationEpoch
+  ) {
     throw new CrankError("sandbox_generation_stale", "workspace activation fence is stale");
   }
 }
@@ -1153,8 +1157,8 @@ function errorResponse(status: number, code: string, message: string, details?: 
     {
       error: {
         code,
-        message /* CONDITIONAL-SPREAD: Omit absent details from workspace commands and snapshot metadata; explicit undefined is not a portable JSON value. */,
-        ...(details === undefined ? {} : { details }),
+        message,
+        details,
       },
     },
     { status },

@@ -20,7 +20,7 @@ import {
   type ProgramStep,
 } from "@sweatpants/durable-execution";
 import { durableEffectKey, type DurableEffectRegistry } from "@sweatpants/durable-effects";
-import { assertJson, canonicalDigest, type Json } from "@sweatpants/foundation";
+import { assertJson, digestCanonicalJson, type Json } from "@sweatpants/foundation";
 import { call, createScope, withResolvers, type Operation } from "effection";
 import {
   InstalledEffectPort,
@@ -298,7 +298,7 @@ export function createWorkflowProgramDriver(
           identity: recoveryIdentity(handle.request),
           index: handle.frontier.actionIndex,
           backend: checkpoint.state,
-          frontierDigest: canonicalDigest(handle.frontier),
+          frontierDigest: digestCanonicalJson(handle.frontier as unknown as Json),
         }),
       };
     },
@@ -333,7 +333,7 @@ export function createWorkflowProgramDriver(
       let success = false;
       try {
         let frontier = yield* this.step(attachment, { type: "start", input: request.attach.input });
-        if (canonicalDigest(frontier) !== state.frontierDigest) {
+        if (digestCanonicalJson(frontier as unknown as Json) !== state.frontierDigest) {
           throw new CrankError("replay_diverged", "Restored workflow frontier differs");
         }
         let previous = checkpoint.resumeAfter.replayChainDigest;
@@ -388,7 +388,7 @@ export function createWorkflowProgramDriver(
         return {
           attachment,
           frontier,
-          frontierDigest: canonicalDigest(frontier),
+          frontierDigest: digestCanonicalJson(frontier as unknown as Json),
           replayedThroughActionIndex: through,
           replayChainDigest: previous,
         };
@@ -483,7 +483,7 @@ function protocol(message: string): CrankError {
 }
 
 function recoveryIdentity(request: AttachProgramRequest): string {
-  return canonicalDigest({
+  return digestCanonicalJson({
     sessionId: request.sessionId,
     taskId: request.taskId,
     program: request.program,
