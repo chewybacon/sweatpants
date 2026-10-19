@@ -6,12 +6,7 @@ import {
   type DurableRaceDescriptor,
 } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
-import {
-  stableTupleHash,
-  digestCanonicalJson,
-  canonicalJson,
-  encodeCanonicalJson,
-} from "@sweatpants/foundation";
+import { stableTupleHash, digestCanonicalJson, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { TaskState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { AuthorityKernel } from "../state/authority-transaction.ts";
@@ -102,7 +97,7 @@ export function openForkGroup(
       expected.id !== member.child.id ||
       expected.version !== member.child.version ||
       expected.digest !== member.child.digest ||
-      encodeCanonicalJson(expected.input) !== canonicalJson(member.child.input)
+      encodeCanonicalJson(expected.input) !== encodeCanonicalJson(member.child.input)
     ) {
       throw new CrankError("nondeterminism_detected", "Fork member differs from the descriptor");
     }

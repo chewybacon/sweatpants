@@ -5,7 +5,7 @@ import {
   type ReplayEntry,
   type ReplayOperationEntry,
 } from "@sweatpants/durable-execution";
-import { canonicalJson, encodeCanonicalJson, sha256 } from "@sweatpants/foundation";
+import { encodeCanonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import type { DecisionDraft } from "./decision-draft.ts";
 import type { DraftSession, DraftTask } from "./decision-state.ts";
 import type {
@@ -63,7 +63,7 @@ export function prepareRestore(
   }
   const restoreNonce = draft.nonce();
   const replayChainSeed = sha256(
-    canonicalJson({
+    encodeCanonicalJson({
       domain: request.replayDomain,
       protocolVersion: 1,
       releaseId: request.releaseId,
@@ -243,7 +243,7 @@ export function consumeRestoredFrontier(
     throw new CrankError("restore_stale");
   }
   const expected = sha256(
-    canonicalJson({
+    encodeCanonicalJson({
       domain: claims.frontierDomain,
       protocolVersion: 1,
       releaseId: claims.releaseId,
@@ -251,7 +251,7 @@ export function consumeRestoredFrontier(
       activationEpoch: task.execution.epoch,
       replayedThroughActionIndex: claims.replayedThroughActionIndex,
       replayChainDigest: claims.replayChainDigest,
-      step,
+      step: step as unknown as Json,
     }),
   );
   if (proof.frontierDigest !== expected) {

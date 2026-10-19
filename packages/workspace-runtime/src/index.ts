@@ -419,10 +419,10 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
   };
 
   function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
-    // `WorkspaceService.execute` is itself a public structural boundary; its
-    // interface type cannot prevent arbitrary extension callers constructing
-    // an invalid object.
-    request = parseWorkspaceRequest(request);
+    return yield* executeAccepted(parseWorkspaceRequest(request));
+  }
+
+  function* executeAccepted(request: WorkspaceRequest): Operation<WorkspaceResponse> {
     const execution = { fence: request.fence, operationId: request.operationId };
     switch (request.type) {
       case "inspect": {
@@ -544,7 +544,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
     }
     try {
       const body = yield* readBoundedBody(request, MAX_BODY_BYTES);
-      return Response.json(yield* execute(parseWorkspaceRequest(body)));
+      return Response.json(yield* executeAccepted(parseWorkspaceRequest(body)));
     } catch (error) {
       const code = error instanceof CrankError ? error.code : "internal_error";
       const status =

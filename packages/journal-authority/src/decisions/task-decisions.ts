@@ -5,14 +5,7 @@ import {
   type DurableProgramManifest,
   type Mandate,
 } from "@sweatpants/durable-execution";
-import {
-  stableTupleHash,
-  type Json,
-  sha256,
-  encodeCanonicalJson,
-  canonicalJson,
-  cloneJson,
-} from "@sweatpants/foundation";
+import { stableTupleHash, type Json, sha256, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { AuthorityState, TaskState } from "../contract/authority-contract.ts";
 import { parseDurableProgramManifest } from "../store/durable-authority-snapshot-schema.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
@@ -60,7 +53,7 @@ export function openTask(
       "Catalog and catalog digest must be supplied together",
     );
   }
-  const catalog = request.catalog === undefined ? undefined : cloneJson(request.catalog);
+  const catalog = request.catalog;
   if (
     catalog !== undefined &&
     (typeof catalog !== "object" ||
@@ -377,7 +370,7 @@ export function ensureChild(
     expected.id !== request.child.id ||
     expected.version !== request.child.version ||
     expected.digest !== request.child.digest ||
-    encodeCanonicalJson(expected.input) !== canonicalJson(request.child.input)
+    encodeCanonicalJson(expected.input) !== encodeCanonicalJson(request.child.input)
   ) {
     throw new CrankError("nondeterminism_detected", "Child descriptor differs from parent pull");
   }

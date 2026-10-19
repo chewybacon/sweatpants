@@ -1,5 +1,5 @@
 import { CrankError } from "@sweatpants/durable-execution";
-import { canonicalDigest, canonicalJson } from "@sweatpants/foundation";
+import { digestCanonicalJson, encodeCanonicalJson } from "@sweatpants/foundation";
 import type { DurableAuthoritySnapshot } from "../contract/authority-contract.ts";
 import type { DurableSemanticRecord } from "../contract/semantic-record.ts";
 
@@ -116,7 +116,7 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
         opening.payload.programId !== task.program.artifact.id ||
         opening.payload.programVersion !== task.program.artifact.version ||
         opening.payload.programDigest !== task.program.artifact.digest ||
-        opening.payload.inputDigest !== canonicalDigest(task.program.input)
+        opening.payload.inputDigest !== digestCanonicalJson(task.program.input)
       ) {
         corrupt(sessionId, `opening ${task.taskId}`);
       }
@@ -169,7 +169,8 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
         const closure = indexed.closures.get(task.taskId);
         if (
           closure?.payload.type !== "TaskClosed" ||
-          canonicalJson(closure.payload.outcome) !== canonicalJson(task.lifecycle.outcome) ||
+          encodeCanonicalJson(closure.payload.outcome) !==
+            encodeCanonicalJson(task.lifecycle.outcome) ||
           closure.offset !== task.lifecycle.receipt.offset
         ) {
           corrupt(sessionId, `closure ${task.taskId}`);
@@ -189,8 +190,8 @@ export function verifyMaterializedIndexes(snapshot: DurableAuthoritySnapshot): v
         if (
           group?.payload.type !== "ForkGroupOpened" ||
           group.payload.descriptorDigest !== task.forkGroup.descriptorDigest ||
-          canonicalJson(group.payload.memberTaskIds) !==
-            canonicalJson(task.forkGroup.members.map((member) => member.taskId))
+          encodeCanonicalJson(group.payload.memberTaskIds) !==
+            encodeCanonicalJson(task.forkGroup.members.map((member) => member.taskId))
         ) {
           corrupt(sessionId, `fork group ${task.forkGroup.groupId}`);
         }

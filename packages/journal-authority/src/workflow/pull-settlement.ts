@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
+import type { Json } from "@sweatpants/foundation";
 import { CrankError, type AttachProgramRequest } from "@sweatpants/durable-execution";
-import { assertJson } from "@sweatpants/foundation";
 
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 import type { PullResolver } from "../pull-kinds/registry.ts";
@@ -26,7 +26,8 @@ export function* settleParkedPull(request: {
   if (operation.status !== "found") {
     throw new CrankError("invalid_journal", "Parked pull is absent from authority state");
   }
-  const descriptor = assertJson(operation.descriptor);
+  // Authority queries already return detached, admitted descriptors.
+  const descriptor = operation.descriptor as unknown as Json;
   const execution = yield* request.authority.query({
     type: "task.execution-state",
     sessionId: request.attach.sessionId,

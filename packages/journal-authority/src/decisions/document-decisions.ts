@@ -1,4 +1,4 @@
-import { canonicalDigest, stableTupleHash, type Json } from "@sweatpants/foundation";
+import { digestCanonicalJson, stableTupleHash, type Json } from "@sweatpants/foundation";
 import {
   CrankError,
   assertInlineSize,
@@ -21,11 +21,12 @@ export function operateDocument(
   const task = draft.readTask(request.sessionId, request.taskId);
   const pull = pullById(task, request.pullId);
   const descriptor = pull.request.proposedDescriptor;
+  const digest = digestCanonicalJson(request.input);
   if (
     descriptor.kind !== "effect" ||
     descriptor.name !== "document.operate" ||
     descriptor.version !== "1" ||
-    canonicalDigest(descriptor.input) !== canonicalDigest(request.input)
+    digestCanonicalJson(descriptor.input) !== digest
   ) {
     throw new CrankError("invalid_descriptor", "Document request does not match its admitted pull");
   }
@@ -35,7 +36,6 @@ export function operateDocument(
     receipts: [],
   };
   const key = stableTupleHash([request.taskId, request.pullId]);
-  const digest = canonicalDigest(request.input);
   const receipt = previous.receipts.find((entry) => entry.key === key);
   if (receipt) {
     if (receipt.digest !== digest) {

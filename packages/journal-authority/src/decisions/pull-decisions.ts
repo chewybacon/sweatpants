@@ -10,8 +10,7 @@ import type { OperationOutcome } from "@sweatpants/durable-effects";
 import {
   stableTupleHash,
   type Json,
-  canonicalDigest,
-  canonicalSnapshot,
+  digestCanonicalJson,
   encodeCanonicalJson,
   sha256,
 } from "@sweatpants/foundation";
@@ -50,7 +49,6 @@ import {
   parseProgramElicitResult,
   pendingReason,
   sanitizeCancellationReason,
-  snapshotOutcome,
 } from "../state/authority-support.ts";
 import type {
   AcceptAssistantPartialRequest,
@@ -190,9 +188,9 @@ export function reservePull(
   if (request.turnId !== observed.turnId) {
     throw new CrankError("invalid_descriptor", "Turn identity mismatch");
   }
-  const encoded = canonicalSnapshot(request.descriptor);
-  const descriptor = encoded.value;
-  const descriptorDigest = sha256(encoded.canonical);
+  // The journal owns this typed command; encoding needs neither another copy nor admission.
+  const descriptor = request.descriptor;
+  const descriptorDigest = digestCanonicalJson(descriptor as unknown as Json);
   const existingAction = observed.actions.find(
     (action) => action.kind === "pull" && action.actionIndex === request.actionIndex,
   );
@@ -408,7 +406,7 @@ export function acceptPreparation(
   if (!matchesModelPreparationOwner(task, observed, request.expectedOwnerFence)) {
     return { status: "stale_owner" };
   }
-  const digest = canonicalDigest(request.fact);
+  const digest = digestCanonicalJson(request.fact as unknown as Json);
   if (observed.acceptedFacts.preparation) {
     return observed.acceptedFacts.preparationDigest === digest
       ? { status: "duplicate" }
@@ -471,7 +469,7 @@ export function acceptAssistantPartial(
   ) {
     return { status: "identity_conflict" };
   }
-  const digest = canonicalDigest(request.fact);
+  const digest = digestCanonicalJson(request.fact as unknown as Json);
   if (observed.acceptedFacts.assistantPartial) {
     return observed.acceptedFacts.assistantPartialDigest === digest
       ? { status: "duplicate" }
@@ -566,7 +564,7 @@ export function resolvePull(
     | "payload_too_large"
     | "schema_version_unavailable"
     | undefined;
-  let outcome = snapshotOutcome(request.outcome);
+  let outcome = request.outcome;
   if (outcome.status === "cancelled" && outcome.partial !== undefined) {
     const definition =
       observedPull.request.proposedDescriptor.kind === "effect"
@@ -769,9 +767,8 @@ export function appendEmission(
   if (!observed.program.manifest.capabilities.durableEmissions) {
     throw new CrankError("invalid_descriptor", "Program does not declare durable emissions");
   }
-  const encoded = canonicalSnapshot(request.descriptor);
-  const descriptor = encoded.value;
-  const digest = sha256(encoded.canonical);
+  const descriptor = request.descriptor;
+  const digest = digestCanonicalJson(descriptor as unknown as Json);
   const existing = emissionByAction(observed, request.actionIndex);
   if (existing) {
     if (existing.descriptorDigest !== digest) {
@@ -841,7 +838,7 @@ export function completeTask(
   const { draft } = kernel;
   const observed = draft.readTask(request.sessionId, request.taskId);
   draft.assertProgram(request.programCapability, observed, request.sessionId);
-  const proposed = snapshotOutcome(request.outcome);
+  const proposed = request.outcome;
   let outcome: OperationOutcome =
     observed.lifecycle.status === "active" && observed.lifecycle.cancellation.type === "unwinding"
       ? { status: "cancelled" }

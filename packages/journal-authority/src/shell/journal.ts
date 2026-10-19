@@ -124,7 +124,7 @@ export function createJournal(
           const { store, options, executionId } = owner;
           let acknowledged = false;
           try {
-            // Capture external input before the first suspension. Every draft and retry
+            // Take ownership of the command before the first suspension. Every draft and retry
             // belongs to this operation, independent of later caller mutations.
             const command = structuredClone(input);
             // Retry identical staged payloads under the same identity. Different CAS

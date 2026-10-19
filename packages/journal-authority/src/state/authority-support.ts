@@ -6,8 +6,8 @@ import {
   type DurableOperationDescriptor,
   type DurableProgramManifest,
 } from "@sweatpants/durable-execution";
-import type { EffectDefinition, OperationOutcome } from "@sweatpants/durable-effects";
-import { stableTupleHash, type Json, digestCanonicalJson, cloneJson } from "@sweatpants/foundation";
+import type { EffectDefinition } from "@sweatpants/durable-effects";
+import { stableTupleHash, type Json, digestCanonicalJson } from "@sweatpants/foundation";
 import type { PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { parser } from "@sweatpants/foundation/parser";
 import { z } from "zod";
@@ -212,10 +212,6 @@ export function parseProgramElicitResult(
   | undefined {
   const parsed = programElicitResultParser.parse(value);
   return parsed.ok ? parsed.value : undefined;
-}
-
-export function snapshotOutcome(outcome: OperationOutcome): OperationOutcome {
-  return cloneJson(outcome);
 }
 
 export function pendingReason(
