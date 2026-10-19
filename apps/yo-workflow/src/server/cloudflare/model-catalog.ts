@@ -11,14 +11,18 @@ export function createWorkflowModels(
   const models = createModels({ credentials });
   models.setProvider(githubCopilotProvider());
   const openai = openaiProvider();
-  const baseUrl = options.openaiBaseUrl ?? openai.baseUrl;
-  models.setProvider({
-    ...openai,
-    baseUrl,
-    getModels: () => openai.getModels().map((model) => ({ ...model, baseUrl })),
-    getAllModels: () =>
-      (openai.getAllModels?.() ?? openai.getModels()).map((model) => ({ ...model, baseUrl })),
-  });
+  const baseUrl = options.openaiBaseUrl;
+  models.setProvider(
+    baseUrl === undefined
+      ? openai
+      : {
+          ...openai,
+          baseUrl,
+          getModels: () => openai.getModels().map((model) => ({ ...model, baseUrl })),
+          getAllModels: () =>
+            (openai.getAllModels?.() ?? openai.getModels()).map((model) => ({ ...model, baseUrl })),
+        },
+  );
   const provider = opencodeProvider();
   // OpenCode's /zen/v1/models and models.dev catalog, verified 2026-10-08.
   const haiku: Model<"anthropic-messages"> = {
