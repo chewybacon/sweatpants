@@ -12,10 +12,15 @@ const completionSchema = z.union([
 ]);
 
 export const executionInspectionSchema = z.object({
+  availability: z.object({
+    calls: z.enum(["available", "unavailable"]),
+    environments: z.enum(["available", "unavailable"]),
+    unwind: z.enum(["available", "unavailable"]),
+  }),
   boundary: z.discriminatedUnion("kind", [
     z.object({
       kind: z.literal("suspended"),
-      request: z.object({ site: z.string(), request: z.json() }),
+      request: z.object({ site: z.string(), binding: z.string(), input: z.json() }),
     }),
     z.object({ kind: z.literal("completed"), value: z.json() }),
     z.object({ kind: z.literal("failed"), error: z.json() }),

@@ -1,4 +1,4 @@
-import { reviewDraft } from "../dist/review-draft.workflow.mjs";
+import { reviewDraft } from "../dist/review-draft.workflow.artifact.mjs";
 type Contract = NonNullable<typeof reviewDraft.types>;
 const input: Contract["input"] = { title: "Launch", recipient: "Sam", metadata: null };
 const output: Contract["output"] = "Draft approved";

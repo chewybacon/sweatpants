@@ -4,11 +4,13 @@ import type {
   KernelIdentity,
   WorkflowImplementation,
   WorkflowProgram,
+  WorkflowBinding,
 } from "@sweatpants/workflow-kernel";
 
 /** Persistable code and its host contract. Runtime handles never enter this bundle. */
 export interface KernelProgramBundle {
-  readonly artifact: WorkflowProgram & { readonly code: Json };
+  readonly artifact: WorkflowProgram;
+  readonly bindings: readonly WorkflowBinding[];
   readonly manifest: DurableProgramManifest;
 }
 
@@ -16,8 +18,15 @@ function digest(
   code: Json,
   identity: KernelIdentity,
   contract: Omit<DurableProgramManifest, "digest">,
+  bindings: readonly WorkflowBinding[],
 ): string {
-  return canonicalDigest({ format: "sweatpants.kernel-program.v1", code, identity, contract });
+  return canonicalDigest({
+    format: "sweatpants.kernel-program.v2",
+    code,
+    identity,
+    contract,
+    bindings: assertJson(bindings),
+  });
 }
 
 /** Pin the exact linked implementation, kernel identity and durable contract. */
@@ -25,6 +34,7 @@ export function createKernelProgramBundle(
   implementation: WorkflowImplementation,
   identity: KernelIdentity,
   contract: Omit<DurableProgramManifest, "digest">,
+  bindings: readonly WorkflowBinding[] = [],
 ): KernelProgramBundle {
   if (implementation.format !== identity.programFormat) {
     throw Error("Program format differs from kernel");
@@ -32,8 +42,9 @@ export function createKernelProgramBundle(
   const code = structuredClone(assertJson(implementation.payload));
   const kernel = structuredClone(identity);
   const descriptor = structuredClone(contract);
-  const programDigest = digest(code, kernel, descriptor);
+  const programDigest = digest(code, kernel, descriptor, bindings);
   return {
+    bindings: structuredClone(bindings),
     artifact: { digest: programDigest, kernel, code },
     manifest: { ...descriptor, digest: programDigest },
   };
@@ -45,7 +56,12 @@ export function loadKernelProgram(
   requestedDigest: string,
 ): WorkflowProgram {
   const { digest: manifestDigest, ...contract } = bundle.manifest;
-  const actual = digest(assertJson(bundle.artifact.code), bundle.artifact.kernel, contract);
+  const actual = digest(
+    assertJson(bundle.artifact.code),
+    bundle.artifact.kernel,
+    contract,
+    bundle.bindings,
+  );
   if (
     actual !== requestedDigest ||
     actual !== bundle.artifact.digest ||

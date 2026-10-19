@@ -69,11 +69,13 @@
     },
     "devDependencies": {
         "@earendil-works/pi-ai": "1.0.1",
+        "@sweatpants/agent-sdk": "workspace:*",
         "@sweatpants/durable-execution": "workspace:*",
         "@sweatpants/foundation": "workspace:*",
         "@sweatpants/history-store": "workspace:*",
         "@sweatpants/journal-authority": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
+        "@sweatpants/workflow-kernel": "workspace:*",
         "@types/node": "catalog:",
         "fallow": "3.19.0",
         "oxc-parser": "^0.123.0",
@@ -81,6 +83,7 @@
         "oxlint": "^1.58.0",
         "oxlint-tsgolint": "^7.0.2001",
         "tsx": "catalog:",
+        "zod": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"
     },

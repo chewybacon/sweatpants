@@ -11,8 +11,8 @@ import {
 import {
   KernelExecutor,
   createKernelExecution,
-  type KernelExecutionState,
-  type KernelBoundary,
+  type WorkflowExecutionState,
+  type WorkflowBoundary,
   type WorkflowKernel,
 } from "@sweatpants/workflow-kernel";
 import { createKernelProgramBackend } from "../index.ts";
@@ -37,12 +37,12 @@ function fixture(
   startError?: Error,
 ) {
   const events: string[] = [];
-  const boundary: KernelBoundary = {
+  const boundary: WorkflowBoundary = {
     kind: "suspended",
     suspensionId: "1",
-    request: { site: "approval", request: null },
+    request: { site: "approval", binding: "approval", input: null },
   };
-  function executionState(): KernelExecutionState {
+  function executionState(): WorkflowExecutionState {
     return createKernelExecution(boundary, {
       *turn(command) {
         if (command.kind === "cancel") {

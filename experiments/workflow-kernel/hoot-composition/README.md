@@ -257,3 +257,8 @@ identity helpers. This changes program digests for newly prepared programs. No
 migration of existing pinned executions is promised. The evaluator, guest semantics,
 Wasm binary and snapshot format are unchanged. Run `__tests__/linker.mjs` or the
 lab's `execution:test` for linking rejection and fresh-restore evidence.
+
+Hoot linking implements the Effection `WorkflowLinker.link` operation. The pure
+Scheme registration transform stays internal to the adapter. The lab yields
+linking during validation/preflight and bridges its Promise service entry points
+with `run()`, so another target can wait for caller checking or compilation.

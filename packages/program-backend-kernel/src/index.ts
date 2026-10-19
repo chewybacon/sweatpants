@@ -5,3 +5,5 @@ export {
   loadKernelProgram,
   type KernelProgramBundle,
 } from "./program.ts";
+
+export { createWorkflowBindingResolver, type WorkflowHostCapability } from "./bindings.ts";

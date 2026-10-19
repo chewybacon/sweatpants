@@ -11,7 +11,8 @@ function boundary(step, id = "original-handle") {
             return {
                 kind: "suspended",
                 suspensionId: id,
-                request: { site: step.site, request: step.value },
+                // These inspection-only fixtures bind each site to its raw payload.
+                request: { site: step.site, binding: step.site, input: step.value },
             };
         case "returned":
             return { kind: "completed", value: step.value };

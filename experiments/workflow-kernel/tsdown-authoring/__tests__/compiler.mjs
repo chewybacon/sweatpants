@@ -1,22 +1,34 @@
+import { reviewExports, reviewImports } from "../contracts.mts";
+import { requireCompiledWorkflow } from "../../../../packages/workflow-kernel/src/index.ts";
+import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { workflowCompiler } from "../plugin.mjs";
 const source = await readFile(new URL("../review-draft.workflow.ts", import.meta.url), "utf8");
-const definitions = workflowCompiler.compile({
-    language: "typescript",
-    text: source,
-    id: "review.workflow.ts",
-});
+const compile = async (workflowSource) =>
+  requireCompiledWorkflow(
+    await run(() =>
+      workflowCompiler.compile({
+        source: workflowSource,
+        entry: "review_draft",
+        exports: reviewExports,
+        bindings: reviewImports,
+      }),
+    ),
+  );
+const definitions = {
+  reviewDraft: await compile({ language: "typescript", text: source, id: "review.workflow.ts" }),
+};
 assert.equal(definitions.reviewDraft.implementation.format, workflowCompiler.definitionFormat);
 assert.equal(typeof definitions.reviewDraft.implementation.payload, "string");
-assert.equal(definitions.reviewDraft.sourceLanguage, workflowCompiler.sourceLanguage);
-assert.equal(definitions.reviewDraft.source, source);
+assert.equal(definitions.reviewDraft.source.language, workflowCompiler.sourceLanguage);
+assert.equal(definitions.reviewDraft.source.text, source);
 assert.equal("scheme" in definitions.reviewDraft, false);
 assert.deepEqual(JSON.parse(JSON.stringify(definitions)), definitions);
-assert.throws(
-    () => workflowCompiler.compile({ language: "rune", text: source }),
-    /TypeScript source/,
+await assert.rejects(
+  () => compile({ language: "rune", text: source, id: "wrong.rune" }),
+  /TypeScript source/,
 );
 console.log(
-    "PASS compiler contract: portable definitions, explicit source/target and language rejection",
+  "PASS compiler contract: portable definitions, explicit source/target and language rejection",
 );

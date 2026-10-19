@@ -1,7 +1,12 @@
-import type { KernelBoundary } from "./index.ts";
+import type { WorkflowBoundary } from "./index.ts";
 
 /** A detached observation, never a checkpoint or authority to resume execution. */
 export interface ExecutionInspection {
+  readonly availability: {
+    readonly calls: "available" | "unavailable";
+    readonly environments: "available" | "unavailable";
+    readonly unwind: "available" | "unavailable";
+  };
   /** Live suspension IDs are deliberately excluded: they can change on restore. */
   readonly boundary: InspectedBoundary;
   /** Outermost caller first. IDs are local to this inspection. */
@@ -15,8 +20,8 @@ export interface ExecutionInspection {
 }
 
 export type InspectedBoundary =
-  | Omit<Extract<KernelBoundary, { kind: "suspended" }>, "suspensionId">
-  | Exclude<KernelBoundary, { kind: "suspended" }>;
+  | Omit<Extract<WorkflowBoundary, { kind: "suspended" }>, "suspensionId">
+  | Exclude<WorkflowBoundary, { kind: "suspended" }>;
 
 export interface InspectedCall {
   readonly id: string;

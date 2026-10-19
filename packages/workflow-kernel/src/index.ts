@@ -1,5 +1,12 @@
 import type { Operation } from "effection";
-import type { Execution, ExecutionBoundary, Executor, Json } from "@sweatpants/foundation";
+import type {
+  Execution,
+  ExecutionBoundary,
+  Executor,
+  Exchange,
+  Flow,
+  Json,
+} from "@sweatpants/foundation";
 
 export interface KernelIdentity {
   readonly kind: string;
@@ -12,17 +19,21 @@ export interface KernelIdentity {
 export interface WorkflowProgram {
   readonly digest: string;
   readonly kernel: KernelIdentity;
-  readonly code: unknown;
+  readonly code: Json;
 }
 
-export interface KernelRequest {
+export interface ExchangeRequest {
   readonly site: string;
-  readonly request: Json;
+  readonly binding: string;
+  readonly input: Json;
 }
 
-export type KernelBoundary = ExecutionBoundary<KernelRequest, Json, Json>;
+export type WorkflowExchange = Exchange<ExchangeRequest, ExchangeReply>;
+export type WorkflowFlow = Flow<Json, Json, ExchangeRequest, ExchangeReply>;
 
-export type KernelReply =
+export type WorkflowBoundary = ExecutionBoundary<ExchangeRequest, Json, Json>;
+
+export type ExchangeReply =
   | { readonly kind: "value"; readonly value: Json }
   | { readonly kind: "throw"; readonly value: Json };
 
@@ -30,7 +41,7 @@ export type KernelReply =
 export interface KernelSnapshot {
   readonly kernel: KernelIdentity;
   readonly programDigest: string;
-  readonly state: unknown;
+  readonly state: Json;
 }
 
 /**
@@ -38,21 +49,21 @@ export interface KernelSnapshot {
  * implementation. Operations on one execution must be serialized by the host.
  * resume stops at the next effect/terminal boundary; it does not execute effects.
  */
-export interface KernelExecution extends Execution<KernelRequest, KernelReply, Json, Json> {
+export interface WorkflowExecution extends Execution<ExchangeRequest, ExchangeReply, Json, Json> {
   capture(): Operation<KernelSnapshot>;
 }
 
 /** Execution/boundary pair with capture on the handle; no separate lifecycle. */
-export interface KernelExecutionState {
-  readonly execution: KernelExecution;
-  readonly boundary: KernelBoundary;
+export interface WorkflowExecutionState {
+  readonly execution: WorkflowExecution;
+  readonly boundary: WorkflowBoundary;
 }
 
 /**
  * Instance-local evaluator. Operations may suspend for transport or scheduling.
  * Operation does not make synchronous Wasm interruptible: implementations must
  * bound each compute slice. Programs and snapshots require kernel-owned format
- * validation; unknown payloads are not permission to persist arbitrary objects.
+ * validation; JSON payloads are not permission to bypass target format checks.
  *
  * restore does not execute the prefix or issue external effects. cancel may
  * yield cleanup effects; repeated cancellation must not interrupt cleanup.
@@ -61,14 +72,14 @@ export interface KernelExecutionState {
 export interface WorkflowKernel extends Executor<
   WorkflowProgram,
   Json,
-  KernelRequest,
-  KernelReply,
+  ExchangeRequest,
+  ExchangeReply,
   Json,
   Json
 > {
   readonly identity: KernelIdentity;
-  start(program: WorkflowProgram, input: Json): Operation<KernelExecutionState>;
-  restore(program: WorkflowProgram, snapshot: KernelSnapshot): Operation<KernelExecutionState>;
+  start(program: WorkflowProgram, input: Json): Operation<WorkflowExecutionState>;
+  restore(program: WorkflowProgram, snapshot: KernelSnapshot): Operation<WorkflowExecutionState>;
   /** Idempotently release all instance resources, without logical unwind. */
   close(): Operation<void>;
 }
@@ -97,6 +108,7 @@ export function assertKernelCompatibility(
 }
 
 export { createKernelExecution, KernelExecutor } from "./execution.ts";
+export { createWorkflowFlow, WorkflowFailure } from "./flow.ts";
 
 export type {
   ExecutionInspection,
@@ -109,13 +121,7 @@ export type {
   PendingCompletion,
 } from "./inspection.ts";
 
-export type {
-  CompiledWorkflow,
-  WorkflowCompiler,
-  WorkflowImplementation,
-  WorkflowSource,
-  WorkflowSourceValidator,
-  WorkflowBinding,
-  WorkflowLinker,
-  WorkflowRuntime,
-} from "./authoring.ts";
+export type * from "./authoring.ts";
+export { assertWorkflowLink, requireCompiledWorkflow } from "./link.ts";
+
+export { createWorkflowAuthoring } from "./guidance.ts";

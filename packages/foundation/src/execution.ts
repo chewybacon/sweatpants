@@ -61,9 +61,11 @@ export interface ExecutionDriver<Request, Reply, Output, Failure> {
 export function createExecution<Request, Reply, Output, Failure>(
   initial: ExecutionBoundary<Request, Output, Failure>,
   driver: ExecutionDriver<Request, Reply, Output, Failure>,
-): ExecutionState<Request, Reply, Output, Failure> {
+): ExecutionState<Request, Reply, Output, Failure> & {
+  observe<T>(read: () => Operation<T>): Operation<T>;
+} {
   let boundary = initial;
-  let state: "ready" | "advancing" | "unknown" | "closed" = "ready";
+  let state: "ready" | "advancing" | "observing" | "unknown" | "closed" = "ready";
   let disposal: "pending" | "running" | "done" = "pending";
 
   function assertReady() {
@@ -73,7 +75,7 @@ export function createExecution<Request, Reply, Output, Failure>(
     if (state === "unknown") {
       throw new Error("execution_outcome_unknown");
     }
-    if (state === "advancing") {
+    if (state === "advancing" || state === "observing") {
       throw new Error("execution_command_in_progress");
     }
   }
@@ -104,6 +106,15 @@ export function createExecution<Request, Reply, Output, Failure>(
 
   return {
     boundary: initial,
+    *observe<T>(read: () => Operation<T>): Operation<T> {
+      assertReady();
+      state = "observing";
+      try {
+        return yield* read();
+      } finally {
+        state = "ready";
+      }
+    },
     execution: {
       resume: (suspensionId, reply) => turn({ kind: "resume", suspensionId, reply }),
       cancel: (reason) => turn({ kind: "cancel", reason }),
@@ -114,7 +125,7 @@ export function createExecution<Request, Reply, Output, Failure>(
         if (disposal === "running") {
           throw new Error("execution_command_in_progress");
         }
-        if (state === "advancing") {
+        if (state === "advancing" || state === "observing") {
           throw new Error("execution_command_in_progress");
         }
         // Closing revokes advancement immediately; release is acknowledged only

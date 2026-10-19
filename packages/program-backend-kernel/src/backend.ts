@@ -1,7 +1,8 @@
 import { resource, type Operation } from "effection";
-import { assertJson, canonicalDigest, type Json } from "@sweatpants/foundation";
+import { assertJson, canonicalDigest } from "@sweatpants/foundation";
 import {
   CrankError,
+  DurableProgramCancellation,
   type DurableOperationDescriptor,
   type DurableProgramManifest,
   type PinnedProgram,
@@ -9,15 +10,20 @@ import {
 } from "@sweatpants/durable-execution";
 import {
   InstalledEffectPort,
+  EffectionKernel,
+  ProgramEffectRuntimeContext,
   type ProgramBackend,
   type ProgramComputation,
   type ProgramExecutionState,
-  type ProgramReply,
 } from "@sweatpants/journal-authority";
 import {
   assertKernelCompatibility,
   KernelExecutor,
-  type KernelExecutionState,
+  createWorkflowFlow,
+  WorkflowFailure,
+  type WorkflowExchange,
+  type WorkflowExecutionState,
+  type ExchangeRequest,
   type KernelSnapshot,
 } from "@sweatpants/workflow-kernel";
 import { prepareWorkflow, type KernelBackendDependencies } from "./prepare.ts";
@@ -27,7 +33,7 @@ const checkpointFormat = "sweatpants.kernel-backend.v1";
 export interface KernelProgramBackendOptions extends KernelBackendDependencies {
   manifest(program: PinnedProgram): Operation<DurableProgramManifest>;
   /** Bind portable kernel requests to existing installed operation contracts. */
-  bindOperation(request: Json, site: string): DurableOperationDescriptor;
+  bindOperation(request: ExchangeRequest): DurableOperationDescriptor;
 }
 
 /** Adapts a kernel to the existing attachment runtime, not a second ProgramDriver. */
@@ -57,13 +63,27 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
             throw new CrankError("program_protocol_error", "Workflow kernel snapshot differs");
           }
           // Check claimed identity before passing opaque state to the kernel.
-          saved = value as unknown as KernelSnapshot;
+          saved = {
+            kernel: options.kernelIdentity,
+            programDigest: value.programDigest,
+            state: value.state,
+          };
         }
         const prepared = yield* prepareWorkflow(options, request.program.digest, saved);
         const kernelExecutor = prepared.kernel;
-        let executionState: KernelExecutionState | undefined;
+        let executionState: WorkflowExecutionState | undefined;
+        let flowExecution: ProgramExecutionState["execution"] | undefined;
         let disposed = false;
         let failed = false;
+        function* disposeExecution(): Operation<void> {
+          // Revoke the live exchange before releasing the guest it would resume.
+          if (flowExecution) {
+            yield* flowExecution.dispose();
+          }
+          if (executionState) {
+            yield* executionState.execution.dispose();
+          }
+        }
         const computation: ProgramComputation = {
           start() {
             return resource<ProgramExecutionState>(function* (provideExecution) {
@@ -82,95 +102,54 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
                 );
               }
               const executor = yield* KernelExecutor.use();
-              try {
-                executionState = yield* executor.start(prepared.program, request.input);
-              } catch (error) {
-                failed = true;
-                throw error;
-              }
-              const { execution } = executionState;
-              function bind(
-                boundary: KernelExecutionState["boundary"],
-              ): ProgramExecutionState["boundary"] {
-                if (boundary.kind === "failed") {
-                  failed = true;
-                  return {
-                    kind: "failed",
-                    error: new CrankError("workflow_failed", JSON.stringify(boundary.error)),
-                  };
-                }
-                if (boundary.kind !== "suspended") {
-                  return boundary;
-                }
-                const descriptor = options.bindOperation(
-                  boundary.request.request,
-                  boundary.request.site,
-                );
-                return {
-                  kind: "suspended",
-                  suspensionId: boundary.suspensionId,
-                  request: {
-                    kind: "record",
-                    boundary: {
-                      serializable: { type: "operation", descriptor },
-                      *execute(attempt: RecordAttemptContext) {
-                        if (descriptor.kind !== "effect") {
-                          throw new CrankError(
-                            "program_protocol_error",
-                            "Operation settles through the host",
-                          );
-                        }
-                        return yield* InstalledEffectPort.api.operations.run(descriptor, attempt);
-                      },
-                    },
+              const flow = createWorkflowFlow(function* (input) {
+                executionState = yield* executor.start(prepared.program, input);
+                return executionState;
+              });
+              const exchange: WorkflowExchange = function* (exchangeRequest) {
+                const descriptor = options.bindOperation(exchangeRequest);
+                const runtime = yield* ProgramEffectRuntimeContext.expect();
+                const outcome = yield* runtime.perform({
+                  serializable: { type: "operation", descriptor },
+                  *execute(attempt: RecordAttemptContext) {
+                    if (descriptor.kind !== "effect") {
+                      throw new CrankError(
+                        "program_protocol_error",
+                        "Operation settles through the host",
+                      );
+                    }
+                    return yield* InstalledEffectPort.api.operations.run(descriptor, attempt);
                   },
-                };
-              }
-              // Translate the evaluator's value/throw vocabulary. The attachment
-              // owns the driving loop; this adapter never performs host requests.
-              let initial: ProgramExecutionState["boundary"];
-              try {
-                initial = bind(executionState.boundary);
-              } catch (error) {
-                failed = true;
-                throw error;
-              }
+                });
+                if (outcome.status === "cancelled") {
+                  throw new DurableProgramCancellation();
+                }
+                return outcome.status === "ok"
+                  ? { kind: "value", value: outcome.value }
+                  : { kind: "throw", value: assertJson(outcome.error) };
+              };
+              // The existing evaluator exposes Flow's exchanges as attachment
+              // boundaries. Its JS stack is ephemeral; capture still reads the VM.
+              const state = yield* EffectionKernel.start(function* (input) {
+                try {
+                  return yield* flow(input, exchange);
+                } catch (error) {
+                  if (!(error instanceof DurableProgramCancellation)) {
+                    failed = true;
+                  }
+                  if (error instanceof WorkflowFailure) {
+                    throw new CrankError("workflow_failed", error.message);
+                  }
+                  throw error;
+                }
+              }, request.input);
+              flowExecution = state.execution;
               yield* provideExecution({
-                boundary: initial,
+                boundary: state.boundary,
                 execution: {
-                  *resume(suspensionId, reply: ProgramReply) {
-                    if (reply.kind !== "record") {
-                      throw new CrankError("program_protocol_error", "Expected record reply");
-                    }
-                    try {
-                      const outcome = reply.outcome;
-                      let next: KernelExecutionState["boundary"];
-                      if (outcome.status === "cancelled") {
-                        next = yield* execution.cancel();
-                      } else {
-                        next = yield* execution.resume(
-                          suspensionId,
-                          outcome.status === "ok"
-                            ? { kind: "value", value: outcome.value }
-                            : { kind: "throw", value: assertJson(outcome.error) },
-                        );
-                      }
-                      return bind(next);
-                    } catch (error) {
-                      failed = true;
-                      throw error;
-                    }
-                  },
-                  *cancel(reason) {
-                    try {
-                      const next = yield* execution.cancel(reason);
-                      return bind(next);
-                    } catch (error) {
-                      failed = true;
-                      throw error;
-                    }
-                  },
-                  dispose: () => execution.dispose(),
+                  resume: (id, reply) => state.execution.resume(id, reply),
+                  cancel: (reason) => state.execution.cancel(reason),
+                  dispose: disposeExecution,
                 },
               });
             });
@@ -199,9 +178,7 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
             }
             disposed = true;
             try {
-              if (executionState) {
-                yield* executionState.execution.dispose();
-              }
+              yield* disposeExecution();
             } finally {
               yield* prepared.kernel.close();
             }

@@ -5,13 +5,24 @@
         "emitDeclarationOnly": true,
         "outDir": "./dist",
         "rootDir": "./src",
-        "customConditions": ["development"]
+        "customConditions": [
+            "development"
+        ]
     },
-    "include": ["src/**/*.ts"],
-    "exclude": ["dist", "node_modules", "**/*.test.ts"],
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "dist",
+        "node_modules",
+        "**/*.test.ts"
+    ],
     "references": [
         {
             "path": "../foundation"
+        },
+        {
+            "path": "../durable-execution"
         }
     ]
 }

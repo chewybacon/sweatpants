@@ -27,7 +27,8 @@
     },
     "dependencies": {
         "@sweatpants/foundation": "workspace:*",
-        "effection": "catalog:"
+        "effection": "catalog:",
+        "@sweatpants/durable-execution": "workspace:*"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",

@@ -1,16 +1,21 @@
 import type { ExecutionDriver, Json } from "@sweatpants/foundation";
-import type { KernelRequest, KernelReply, KernelSnapshot } from "../index.ts";
-type Driver = ExecutionDriver<KernelRequest, KernelReply, Json, Json> & {
-  capture(): import("effection").Operation<KernelSnapshot>;
+type Driver = ExecutionDriver<ExchangeRequest, ExchangeReply, Json, Json> & {
+  capture(): Operation<KernelSnapshot>;
 };
 import { expect, it } from "vitest";
-import { run, action, spawn, createQueue } from "effection";
-import { createKernelExecution, type KernelBoundary } from "../index.ts";
+import { run, action, spawn, createQueue, type Operation } from "effection";
+import {
+  createKernelExecution,
+  type WorkflowBoundary,
+  type ExchangeRequest,
+  type ExchangeReply,
+  type KernelSnapshot,
+} from "../index.ts";
 
-const effect: KernelBoundary = {
+const effect: WorkflowBoundary = {
   kind: "suspended",
   suspensionId: "1",
-  request: { site: "loop", request: null },
+  request: { site: "loop", binding: "loop", input: null },
 };
 
 it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", async () => {
@@ -22,7 +27,7 @@ it("distinguishes repeated sites, rejects stale replies, and resumes cleanup", a
         return {
           kind: "suspended",
           suspensionId: "3",
-          request: { site: "cleanup", request: "release" },
+          request: { site: "cleanup", binding: "release", input: null },
         };
       }
       replies.push(command.reply);
@@ -85,11 +90,11 @@ it("fails closed after an unknown advance outcome but still releases compute", a
 
 it("rejects overlapping commands while an advance is in progress", async () => {
   await run(function* () {
-    let release!: (value: KernelBoundary) => void;
+    let release!: (value: WorkflowBoundary) => void;
     const entered = createQueue<void, never>();
     const kernel: Driver = {
       *turn() {
-        return yield* action<KernelBoundary>((resolve) => {
+        return yield* action<WorkflowBoundary>((resolve) => {
           release = resolve;
           entered.add();
           return () => {};
@@ -126,7 +131,7 @@ it("does not send another command after the caller abandons an in-flight resume"
       *turn() {
         commands++;
         entered.add();
-        return yield* action<KernelBoundary>(() => () => {});
+        return yield* action<WorkflowBoundary>(() => () => {});
       },
 
       *capture() {

@@ -38,7 +38,7 @@ consumers still use `advanceToolInvocation` with journal-owned command identitie
 
 - `WorkflowKernel` directly implements `Executor.start(program, input)` and adds
   snapshot restoration. Fresh and restored executions return the same
-  `KernelExecution`: the shared execution handle with a `capture()` capability.
+  `WorkflowExecution`: the shared execution handle with a `capture()` capability.
   Evaluators use `createKernelExecution(boundary, driver)` to install the shared
   command state machine once. There is no forwarding executor or WeakMap of handles.
   The evaluator supplies suspension IDs and converts its internal machine result

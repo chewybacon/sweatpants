@@ -43,3 +43,12 @@ export type {
 
 export { createExecution } from "./execution.ts";
 export type { ExecutionCommand, ExecutionDriver } from "./execution.ts";
+
+export type {
+  Exchange,
+  Flow,
+  ExchangeMiddleware,
+  ExchangeSignature,
+  TypedExchangeRequest,
+  TypedExchange,
+} from "./exchange.ts";

@@ -2,7 +2,7 @@ import type {
   ExecutionInspection,
   InspectedUnwind,
   InspectedValue,
-  KernelBoundary,
+  WorkflowBoundary,
   PendingCompletion,
 } from "../../../packages/workflow-kernel/src/index.ts";
 
@@ -28,7 +28,7 @@ function environmentId(value: unknown): string {
 /** Projects trusted evaluator data; does not validate or authorize a checkpoint. */
 export function projectHootInspection(
   state: unknown,
-  boundary: KernelBoundary,
+  boundary: WorkflowBoundary,
 ): ExecutionInspection {
   const fields = list(state);
   if (symbol(fields[0]) !== "workflow-state-v3") {
@@ -167,5 +167,12 @@ export function projectHootInspection(
     boundary.kind === "suspended"
       ? { kind: boundary.kind, request: structuredClone(boundary.request) }
       : structuredClone(boundary);
-  return { boundary: observedBoundary, calls, environments, unwind, truncated };
+  return {
+    availability: { calls: "available", environments: "available", unwind: "available" },
+    boundary: observedBoundary,
+    calls,
+    environments,
+    unwind,
+    truncated,
+  };
 }

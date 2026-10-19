@@ -23,7 +23,7 @@ The existing execution state machine serializes command discipline and rejects
 stale suspension IDs. Callers must serialize operations on a handle. Effection
 operations do not make synchronous Wasm interruptible: kernels must bound compute.
 
-Program code and snapshot state are `unknown` at this seam because their owning
+Program code and snapshot state are `Json` at this seam; their owning
 kernel validates their formats. Compatibility checks do not establish content
 integrity, authorization or accepted journal provenance. Fresh restoration may
 still be followed by accepted journal suffix recovery through the shared driver.
@@ -32,7 +32,7 @@ still be followed by accepted journal suffix recovery through the shared driver.
 
 `ExecutionInspection` is a read-only projection, never a checkpoint or a resume
 capability. Projection currently stays in the Hoot adapter; inspection adds no
-required methods to `WorkflowKernel` or `KernelExecution`.
+required methods to `WorkflowKernel` or `WorkflowExecution`.
 
 - `boundary` omits the activation-local suspension ID, which can change on restore.
 - `calls` lists outermost to innermost callers; IDs are inspection-local.
@@ -65,31 +65,67 @@ The existing journal/inspector behavior checks remain unchanged.
 This increment defines the seam around Hoot. It adds no kernel registry, compiler
 backend, cross-kernel checkpoint compatibility, or source migration.
 
-## Authoring and runtime seams
+## Exchange and authoring seams
 
-`CompiledWorkflow` is the shared output of a directive compiler. It carries an
-entry, source/source-language, debug metadata and a `WorkflowImplementation`
-containing `{ format, payload }`. Type parameters preserve developer inference;
-they do not generate schemas or prove portable captures.
+The semantic primitive is `Exchange<Request, Reply> = (request) => Operation<Reply>`.
+`Flow` receives input and an exchange capability; `ExchangeMiddleware` wraps that
+capability. These are live functions, never checkpointed JavaScript stacks.
 
-`WorkflowLinker` combines language-tagged caller source and explicit bindings:
-compiled guest functions have a definition and portable prefix arguments; host
-capabilities have a public name and contract version. Linking does not authorize
-capability use. `WorkflowSourceValidator` performs language-owned admission and
-returns diagnostics without dispatching effects. The host can then preflight via
-`WorkflowKernel.start` and close compute at the first boundary.
+`createWorkflowFlow(start)` implements `WorkflowFlow`. Its startup callback takes
+the input and returns a fresh or restored `WorkflowExecutionState`. The flow calls
+`exchange(request)` at each guest suspension, supplies the reply to the guest,
+and returns its completed value. An uncaught guest error raises `WorkflowFailure`
+with the original JSON value. `DurableProgramCancellation` raised by an exchange
+requests guest cancellation; cleanup can make further exchanges. Other exchange
+errors propagate without being injected into the guest.
 
-`WorkflowRuntime` owns kernel identity and acquisition. The existing backend
-preparation contract extends it and separately supplies artifact loading. Runtime
-placement, executable format and source language are different choices.
+The backend invokes this Flow through the existing `EffectionKernel`, which
+exposes exchanges as record boundaries to the shared attachment driver. The owner
+retains the guest execution for capture and disposal, including after completion.
+Restoration rebuilds this live bridge around the saved guest boundary, without
+executing the guest prefix. Only VM state is checkpointed; any future exchange
+middleware must tolerate activation restart. Disposing the bridge halts host
+compute and releases the VM without requesting logical guest cancellation.
 
-There is no universal instruction encoding. The current Hoot linker accepts
-`workflow-scheme-definitions-v1` definitions and emits `workflow-scheme-spike-1`
-programs. Another target must produce its own format and preserve the agreed
-execution, cleanup and boundary semantics. Formats and snapshots are not
-interchangeable merely because their TypeScript envelopes have the same shape.
+`WorkflowExchange` specializes it with `{ site, binding, input }` requests and
+`value | throw` replies. Site is diagnostic; binding selects a declared capability.
+The journal's pull ID supplies durable identity. Cancellation and disposal remain
+separate execution commands. Cancellation may produce cleanup exchanges; disposal
+only releases compute. Language adapters decode their private request encodings.
 
-`WorkflowCompiler` is the pure source-to-definitions seam: it declares its source
-language and output definition format, accepts source with an optional file ID,
-and returns named portable exports. The tsdown plugin now only wraps this compiler
-output as ESM; the runtime does not depend on bundling or the compiler.
+`WorkflowCompiler.compile` accepts source, an entry, explicit `WorkflowExport`
+declarations and imported binding declarations. It returns structured diagnostics
+or a `CompiledWorkflow`. Each export maps a public name to a guest entry and a
+schema-bearing contract supplied by the host/extractor. Compilation never invents
+schema identities. Lua compilation checks syntax, not static types.
+
+`WorkflowLinker.link` accepts a compiled caller and resolved bindings. Compiled
+bindings name a module export; host bindings reference a versioned capability;
+child bindings pin an existing durable program. Compiled helpers share the guest
+continuation. Host/child calls cross the exchange boundary. Hoot's SDK context
+placeholder is private to its calling convention.
+
+`assertWorkflowLink` checks imports, duplicate bindings and export schema contracts.
+Export aliases can have different local names/IDs while retaining the exported
+input/output schema identities. Resolution and authorization remain distinct.
+`program-backend-kernel` resolves exchanges to the existing operation descriptors;
+the existing authority validates and journals their outcomes. No second driver loop
+is introduced. Bundle digests include code, identity, manifest and binding catalog.
+
+Compiler/linker operations use Effection; bundler and HTTP entry points bridge
+with `run`. Preflight is a separate bounded kernel execution without host dispatch.
+Restoration uses the pinned artifact and snapshot, never an authoring callback.
+
+`WorkflowRuntime` owns kernel identity and acquisition. Source language, target
+format and runtime identity stay separate. Snapshots do not become interchangeable
+merely because both adapters implement these interfaces.
+
+Inspection reports availability for calls, environments and unwind independently.
+An unavailable projection must not be displayed as an empty guest stack.
+
+The directive build recognizes a statically analyzable
+`createDurableTool(...).execute(namedGenerator)` with `"use workflow"`. Normal
+imports retain the SDK `DurableTool`. A separate `.artifact.mjs` exports the
+`CompiledWorkflow`, with declarations inferred from the tool's input/output types.
+The linker and yo-workflow import that artifact explicitly. The compiler never
+executes arbitrary author modules to discover their declarations.

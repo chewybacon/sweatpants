@@ -52,6 +52,9 @@ export function emitWorkflowScheme(
             throw Error("Unsupported import");
         }
         for (const spec of imp.specifiers) {
+            if (spec.importKind === "type") {
+                continue;
+            }
             if (!t.isImportSpecifier(spec)) {
                 throw Error("Unsupported import");
             }
@@ -215,7 +218,15 @@ export function emitWorkflowScheme(
                             ? { key: call.arguments[0].value }
                             : {}),
                     };
-                    return `(yield-at ${JSON.stringify(site)} (list "elicit" ${call.arguments.map((a) => expr(a, site)).join(" ")}))`;
+                    const args = [...call.arguments];
+                    if (t.isObjectExpression(args[1])) {
+                        const properties = args[1].properties;
+                        if (properties.length !== 1 || !t.isObjectProperty(properties[0]) || properties[0].computed || !t.isIdentifier(properties[0].key, { name: "message" })) {
+                            throw Error("Compiled elicitation currently supports only { message }");
+                        }
+                        args[1] = properties[0].value;
+                    }
+                    return `(yield-at ${JSON.stringify(site)} (list "elicit" ${args.map((a) => expr(a, site)).join(" ")}))`;
                 }
                 if (t.isIdentifier(c) && scopeNames.has(c.name)) {
                     const callback = call.arguments[0];
