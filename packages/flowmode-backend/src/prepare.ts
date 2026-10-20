@@ -5,7 +5,7 @@ import {
   type KernelSnapshot,
   type WorkflowKernel,
   type WorkflowProgram,
-} from "@sweatpants/workflow-kernel";
+} from "@sweatpants/flowmode-runtime";
 
 /**
  * Opt-in dependencies for a kernel computation backend.

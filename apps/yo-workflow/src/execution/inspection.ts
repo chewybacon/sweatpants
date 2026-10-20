@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ExecutionInspection, InspectedValue } from "@sweatpants/workflow-kernel";
+import type { ExecutionInspection, InspectedValue } from "@sweatpants/flowmode-runtime";
 
 const valueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("display"), text: z.string(), truncated: z.boolean() }),

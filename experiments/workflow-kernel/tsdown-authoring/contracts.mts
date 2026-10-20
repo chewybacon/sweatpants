@@ -2,7 +2,7 @@ import type {
   BindingContract,
   BindingDeclaration,
   WorkflowExport,
-} from "../../../packages/workflow-kernel/src/index.ts";
+} from "../../../packages/flowmode-runtime/src/index.ts";
 import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "../../../packages/durable-execution/dist/index.js";
 
 // Explicit contracts for this permissive MVP. These are host declarations, not inferred types.

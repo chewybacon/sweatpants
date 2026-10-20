@@ -11,7 +11,7 @@ import {
   ProgramRecovery,
   ProgramDriverRegistryContext,
 } from "../../../../packages/durable-execution/dist/index.js";
-import { KernelExecutor } from "../../../../packages/workflow-kernel/src/execution.ts";
+import { KernelExecutor } from "../../../../packages/flowmode-runtime/src/execution.ts";
 
 // The test host composes the production authority and activation/tree drivers.
 // It exposes parks directly; this is not HTTP, provider, or deployment coverage.

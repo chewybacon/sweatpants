@@ -1,4 +1,4 @@
-# @sweatpants/program-backend-kernel
+# @sweatpants/flowmode-backend
 
 Adapts a `WorkflowKernel` to the shared `ProgramBackend` contract exported by
 `journal-authority`. It does not implement another ProgramDriver or routing layer.

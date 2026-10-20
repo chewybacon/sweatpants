@@ -2,12 +2,12 @@ import { encodeValue } from "../scheme-data/values.mjs";
 import type {
   WorkflowImplementation,
   WorkflowLinker,
-} from "../../../packages/workflow-kernel/src/index.ts";
+} from "../../../packages/flowmode-runtime/src/index.ts";
 import { parse } from "../scheme-data/read.mjs";
 import {
   assertWorkflowLink,
   createWorkflowLinker,
-} from "../../../packages/workflow-kernel/dist/index.js";
+} from "../../../packages/flowmode-runtime/dist/index.js";
 
 export const HOOT_DEFINITION_FORMAT = "workflow-scheme-definitions-v1";
 export const HOOT_PROGRAM_FORMAT = "workflow-scheme-spike-1";

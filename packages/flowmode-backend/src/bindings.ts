@@ -3,7 +3,7 @@ import type {
   BindingContract,
   ExchangeRequest,
   WorkflowBinding,
-} from "@sweatpants/workflow-kernel";
+} from "@sweatpants/flowmode-runtime";
 
 /** Installed host mechanics. Only their versioned references enter the artifact. */
 export interface WorkflowHostCapability {

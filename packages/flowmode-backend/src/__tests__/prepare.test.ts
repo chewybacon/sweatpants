@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { run, scoped, suspend, createSignal } from "effection";
-import type { WorkflowKernel, WorkflowProgram } from "@sweatpants/workflow-kernel";
+import type { WorkflowKernel, WorkflowProgram } from "@sweatpants/flowmode-runtime";
 import { prepareWorkflow, type KernelBackendDependencies } from "../index.ts";
 
 const identity = {

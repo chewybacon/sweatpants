@@ -14,7 +14,7 @@ import {
   type WorkflowExecutionState,
   type WorkflowBoundary,
   type WorkflowKernel,
-} from "@sweatpants/workflow-kernel";
+} from "@sweatpants/flowmode-runtime";
 import { createKernelProgramBackend } from "../index.ts";
 import {
   createWorkflowProgramDriver,

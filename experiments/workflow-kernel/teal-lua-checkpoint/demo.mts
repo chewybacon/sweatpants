@@ -2,7 +2,7 @@ import { invoke } from "./native.mts";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { run, call } from "effection";
 import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "../../../packages/durable-execution/src/index.ts";
-import { loadKernelProgram } from "../../../packages/program-backend-kernel/src/program.ts";
+import { loadKernelProgram } from "../../../packages/flowmode-backend/src/program.ts";
 import { createLuaProgramBundle, createLuaRuntime } from "./kernel.mts";
 
 const mode = process.argv[2] ?? "approve";

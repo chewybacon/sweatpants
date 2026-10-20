@@ -3,12 +3,12 @@ import { createWorkflowProgramDriver } from "../../../packages/journal-authority
 // This is reference evidence, not the Hoot implementation.
 import { createPullMachine, createCompiledPullTool } from "./pull-adapter.mjs";
 import { hash, copy } from "../compiled-finally/journal.mjs";
-import { createKernelProgramBackend } from "../../../packages/program-backend-kernel/dist/index.js";
+import { createKernelProgramBackend } from "../../../packages/flowmode-backend/dist/index.js";
 import {
   assertKernelCompatibility,
   createKernelExecution,
   createWorkflowKernel,
-} from "../../../packages/workflow-kernel/dist/index.js";
+} from "../../../packages/flowmode-runtime/dist/index.js";
 
 export const referenceIdentity = {
   kind: "js-reference",

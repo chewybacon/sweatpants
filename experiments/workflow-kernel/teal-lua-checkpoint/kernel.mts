@@ -12,8 +12,8 @@ import {
   type WorkflowKernel,
   type WorkflowProgram,
   type WorkflowRuntime,
-} from "../../../packages/workflow-kernel/dist/index.js";
-import { createKernelProgramBundle } from "../../../packages/program-backend-kernel/dist/index.js";
+} from "../../../packages/flowmode-runtime/dist/index.js";
+import { createKernelProgramBundle } from "../../../packages/flowmode-backend/dist/index.js";
 import type { DurableProgramManifest } from "../../../packages/durable-execution/src/index.ts";
 
 export const luaIdentity: KernelIdentity = Object.freeze({

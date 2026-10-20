@@ -1,4 +1,4 @@
-import { createWorkflowGuidance } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowGuidance } from "../../../packages/flowmode-runtime/dist/index.js";
 import { reviewDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.artifact.mjs";
 export function schemeStack(authoring) {
   return {

@@ -1,11 +1,11 @@
-import { createWorkflowGuidance } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowGuidance } from "../../../packages/flowmode-runtime/dist/index.js";
 import { reviewDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.lua.artifact.mjs";
 import { createLuaAuthoring } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/authoring.mts";
 import { createLuaProgram } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/program.mjs";
 export function createLuaStack(invoke) {
   const { luaCompiler, luaLinker } = createLuaAuthoring(invoke);
   return {
-    authoring: /** @type {import("@sweatpants/workflow-kernel").WorkflowAuthoring} */ (
+    authoring: /** @type {import("@sweatpants/flowmode-runtime").WorkflowAuthoring} */ (
       createWorkflowGuidance(
         "lua",
         `Write a Lua caller for Piccolo. Return only Lua source without Markdown. The local input is a JSON object with title, recipient and metadata. Call review_draft(input), a compiled developer function that asks for approval, then asks to release a reservation during cleanup. It returns "Draft approved" or "Draft declined". After approval only, call send_announcement(input) and return its receipt. On decline return an explanation string. Do not redefine these functions or call workflow.effect directly. Use local variables, functions, if, tables, arithmetic and ordinary calls. No imports, IO, eval, coroutine or standard library beyond assert, type, pcall, error. JSON null is workflow.null. Empty arrays use workflow.array({}). Return one JSON-compatible result. The outbox is local; no email is sent.`,
@@ -22,7 +22,7 @@ export function createLuaStack(invoke) {
     createProgram: (options) => createLuaProgram(options, invoke),
     caller:
       "local function main(input)\n  local result = review_draft(input)\n  return result\nend\nlocal result = main(input)\nreturn result",
-    /** @returns {import("effection").Operation<import("@sweatpants/workflow-kernel").CompiledWorkflow>} */
+    /** @returns {import("effection").Operation<import("@sweatpants/flowmode-runtime").CompiledWorkflow>} */
     *definition() {
       return reviewDraft;
     },

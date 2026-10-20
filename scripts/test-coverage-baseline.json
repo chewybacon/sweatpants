@@ -4,6 +4,11 @@
     "skipped": 17,
     "total": 1096
   },
+  "test:platform-acceptance": {
+    "passed": 151,
+    "skipped": 0,
+    "total": 151
+  },
   "test:tooling": {
     "passed": 27,
     "skipped": 0,

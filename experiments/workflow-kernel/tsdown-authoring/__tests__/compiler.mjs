@@ -1,5 +1,5 @@
 import { reviewExports, reviewImports } from "../contracts.mts";
-import { requireCompiledWorkflow } from "../../../../packages/workflow-kernel/src/index.ts";
+import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/src/index.ts";
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

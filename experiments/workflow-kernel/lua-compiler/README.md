@@ -51,7 +51,7 @@ Build the workspace dependencies and Lua Wasm using the existing tools:
 ```sh
 pnpm install --frozen-lockfile
 pnpm exec tsc -b
-pnpm --filter @sweatpants/program-backend-kernel... --workspace-concurrency=1 run build
+pnpm --filter @sweatpants/flowmode-backend... --workspace-concurrency=1 run build
 pnpm -C apps/yo-workflow execution:lua:build
 node --import tsx --test experiments/workflow-kernel/lua-compiler/__tests__/*.mjs
 ```
