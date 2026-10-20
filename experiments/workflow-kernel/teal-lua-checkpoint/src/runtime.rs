@@ -62,7 +62,7 @@ pub fn execute(mut command: Command) -> Result<State, String> {
     let source = format!("{PRELUDE}\n{}", command.source);
     let program = format!(
         "{:x}",
-        Sha256::digest(format!("piccolo-runtime-2;{source}"))
+        Sha256::digest(format!("piccolo-runtime-3;{source}"))
     );
     if command.action == Action::Validate {
         let mut lua = Lua::empty();
@@ -241,7 +241,7 @@ pub fn execute(mut command: Command) -> Result<State, String> {
             let native_values = natives.iter().map(|n|ctx.fetch(n)).collect::<Vec<_>>();
             let protos = checkpoint::prototypes(ctx.fetch(&root).prototype());
             let snapshot = checkpoint::capture(ctx,thread,&program,&protos,&native_values)?;
-            let calls = snapshot.frames.iter().filter_map(|frame| {
+            let calls = snapshot.threads[0].frames.iter().filter_map(|frame| {
                 if let SavedFrame::Lua { closure, .. } = frame {
                     if let Node::Closure { prototype, .. } = &snapshot.nodes[*closure] {
                         return Some(protos[*prototype].reference.map_strings(|name| String::from_utf8_lossy(name.as_bytes()).into_owned()).to_string());

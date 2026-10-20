@@ -1,3 +1,5 @@
+import { createLuaTool } from "./lua/tool.ts";
+import type { WorkflowLanguage } from "./language.ts";
 import { createSchemeTool } from "./scheme/tool.ts";
 import {
   documentCreate,
@@ -20,14 +22,17 @@ const primitives: readonly BoundTool[] = [
   displayDocument,
 ];
 export const scheme = createSchemeTool(primitives);
-export const programs: readonly BoundTool[] = [scheme, ...primitives];
-export const workflowExposure: ToolExposurePolicy = {
-  *filter({ entries }) {
-    if (!entries) {
-      throw new Error("Workflow authoring requires an installed tool inventory");
-    }
-    return entries
-      .filter((entry) => entry.definition.name === "scheme")
-      .map((entry) => entry.definition);
-  },
-};
+export const lua = createLuaTool(primitives);
+export const programs: readonly BoundTool[] = [scheme, lua, ...primitives];
+export function createWorkflowExposure(language: WorkflowLanguage = "scheme"): ToolExposurePolicy {
+  return {
+    *filter({ entries }) {
+      if (!entries) {
+        throw new Error("Workflow authoring requires an installed tool inventory");
+      }
+      return entries
+        .filter((entry) => entry.definition.name === language)
+        .map((entry) => entry.definition);
+    },
+  };
+}

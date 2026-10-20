@@ -10,10 +10,11 @@ import { PendingToolReply, readReply, stringField } from "./reply.tsx";
 type ToolPart = Extract<ReactChatUIPart, { type: "tool-call" }>;
 
 function ToolCard({ part }: { part: ToolPart }) {
+  const isWorkflow = part.name === "scheme" || part.name === "lua";
   const complete = part.state === "output-available";
   const status = toolStatus(part);
   const failure = workflowFailure(part);
-  const source = part.name === "scheme" ? stringField(part.input, "program") : undefined;
+  const source = isWorkflow ? stringField(part.input, "program") : undefined;
   const echo = complete && part.name === "echo" ? stringField(part.output, "message") : undefined;
   const reply = complete && part.name === "ask" ? readReply(part.output) : undefined;
   const askInput = part.name === "ask" ? askParameters.safeParse(part.input) : undefined;
@@ -35,7 +36,7 @@ function ToolCard({ part }: { part: ToolPart }) {
       >
         <div className="tool-heading">
           <strong>
-            {part.name === "scheme"
+            {isWorkflow
               ? stringField(part.input, "title") || toolLabel(part.name)
               : toolLabel(part.name)}
           </strong>
@@ -81,16 +82,25 @@ function ToolCard({ part }: { part: ToolPart }) {
             {part.errorText}
           </p>
         )}
-        {part.name === "scheme" && source !== undefined && part.state !== "input-streaming" && (
+        {isWorkflow && source !== undefined && part.state !== "input-streaming" && (
           <section className="workflow-program" aria-label="Workflow program">
             <h3>Program</h3>
-            <ProgramPreview source={source} />
+            {part.name === "lua" ? (
+              <details className="source">
+                <summary>Lua source</summary>
+                <pre>
+                  <code>{source}</code>
+                </pre>
+              </details>
+            ) : (
+              <ProgramPreview source={source} />
+            )}
           </section>
         )}
-        {part.name === "scheme" && (
+        {isWorkflow && (
           <WorkflowActivity part={part} render={(child) => <Part key={child.id} part={child} />} />
         )}
-        {part.name !== "scheme" && children.length > 0 && (
+        {!isWorkflow && children.length > 0 && (
           <div className="tool-children">
             {children.map((child) =>
               child.type === "elicit" &&
@@ -108,13 +118,13 @@ function ToolCard({ part }: { part: ToolPart }) {
             )}
           </div>
         )}
-        {part.name === "scheme" && complete && (
+        {isWorkflow && complete && (
           <details className="tool-data">
             <summary>Workflow result</summary>
             <pre>{JSON.stringify(part.output, null, 2)}</pre>
           </details>
         )}
-        {complete && part.name !== "scheme" && (
+        {complete && !isWorkflow && (
           <details className="tool-data">
             <summary>Result</summary>
             <pre>{JSON.stringify(part.output, null, 2)}</pre>

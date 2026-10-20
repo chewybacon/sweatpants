@@ -20,7 +20,7 @@ it("adds task-independent policy while preserving the authored chat command and 
   expect(await requests[0].json()).toEqual({
     command: { type: "send-message" },
     userMessage: { content: "Make a list" },
-    systemPrompt: authoringPolicy,
+    systemPrompt: authoringPolicy(),
   });
   expect(requests[0].headers.get("X-Request-ID")).toBe("one");
 });
@@ -34,4 +34,26 @@ it("leaves history reads and other endpoints untouched", async () => {
   await fetchWithAuthoringPolicy("http://localhost/api/chat/history");
   expect(requests[0].method).toBe("GET");
   expect(await requests[0].text()).toBe("");
+});
+
+it("replaces an existing selection with Lua without changing the user's message", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => {
+    requests.push(request);
+    return new Response("ok");
+  });
+  await fetchWithAuthoringPolicy(
+    "http://localhost/api/chat",
+    {
+      method: "POST",
+      headers: { "X-Workflow-Language": "scheme" },
+      body: JSON.stringify({ userMessage: { content: "lets play paper rock scissors" } }),
+    },
+    "lua",
+  );
+  expect(requests[0].headers.get("X-Workflow-Language")).toBe("lua");
+  expect(await requests[0].json()).toMatchObject({
+    userMessage: { content: "lets play paper rock scissors" },
+    systemPrompt: expect.stringContaining("workflows in Lua"),
+  });
 });

@@ -4,5 +4,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 import { ExecutionInspector } from "../execution/ExecutionInspector.tsx";
 ---
 <SiteLayout title="Execution · yo-workflow">
-  <ExecutionInspector client:load />
+  <ExecutionInspector client:only="react">
+    <p slot="fallback">Loading execution inspector…</p>
+  </ExecutionInspector>
 </SiteLayout>

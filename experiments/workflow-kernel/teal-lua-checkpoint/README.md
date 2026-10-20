@@ -1,8 +1,9 @@
 # Piccolo Lua workflow kernel experiment
 
 The current increment runs **ordinary Lua**, through the shared `WorkflowKernel`
-and `WorkflowRuntime` interfaces. Teal and TypeScript-to-Lua compilation are
-postponed. This folder retains the original experiment name.
+and `WorkflowRuntime` interfaces. Teal is postponed. The adjacent `lua-compiler`
+experiment lowers bounded TypeScript through shared workflow Scheme into Lua.
+This folder retains the original experiment name.
 
 ## What works in the demonstration
 
@@ -194,9 +195,9 @@ driver, and journal protocol are shared.
 compiler accepts a named module returning a function; it uses Piccolo's compiler
 without executing the module. The linker composes these definitions and explicit
 host bindings with the caller, then compiles the linked source for admission.
-This checks Lua syntax, not static types. Teal and TypeScript-to-Lua lowering are
-not implemented. Scheme retains the TypeScript `"use workflow"` developer surface;
-the Lua confirmation fixture is authored in Lua.
+This checks Lua syntax, not static types. Teal is not implemented. The adjacent
+`lua-compiler` spike handles bounded TypeScript lowering through workflow Scheme;
+the Lua confirmation fixture in the app remains authored in Lua.
 
 The Wasm artifact must be built as described above before starting the app.
 Cloudflare advertises both Scheme and Lua. There is no fallback between languages and no snapshot migration.
@@ -206,3 +207,11 @@ Lexical binding names and semantic unwind projections are not implemented for
 Lua. The UI leaves unavailable step counts and current environments null. Restore
 compares the captured computation state with the accepted checkpoint for both
 runtimes. Prototype line numbers refer to the linked source including the prelude.
+
+## Shared task checkpoint foundation
+
+The version 3 codec stores one heap/cell graph and a list of suspended task
+stacks. Open upvalues record their owning task and stack slot. The existing
+runtime uses one task root; `scoped-handoffs/lua` proves three shared roots through
+two fresh restores in native and Wasm executions. This is checkpoint support,
+not yet a guest `spawn` API or a concurrent authority handoff implementation.

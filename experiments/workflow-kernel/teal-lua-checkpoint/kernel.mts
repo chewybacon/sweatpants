@@ -20,7 +20,7 @@ export const luaIdentity: KernelIdentity = Object.freeze({
   kind: "piccolo-lua-spike",
   version: "2",
   programFormat: "piccolo-lua-source-2",
-  snapshotFormat: "piccolo-continuation-2",
+  snapshotFormat: "piccolo-continuation-3",
 });
 export type LuaState = Record<string, Json>;
 export type LuaInvoker = (command: Json) => Operation<LuaState>;

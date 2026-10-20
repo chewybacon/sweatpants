@@ -1,4 +1,3 @@
-import { executionPlayground } from "./execution/plugin.mjs";
 import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
@@ -48,7 +47,7 @@ export default defineConfig({
       exclude: ["@earendil-works/pi-ai"],
       include: ["@earendil-works/pi-ai > @anthropic-ai/sdk"],
     },
-    plugins: [executionPlayground(), stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
+    plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
     build: { minify: true },
     ssr: {
       optimizeDeps: {

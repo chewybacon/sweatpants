@@ -11,7 +11,7 @@ const babel = createRequire(new URL("../../../packages/vite-plugin/package.json"
 );
 
 /** Shared build transform: no module evaluation or bundler state. */
-function compileDefinitions(source, id, declaredExports, bindings) {
+function compileDefinitions(source, id, declaredExports, bindings, target) {
   const ast = babel.parseSync(source, {
     filename: id,
     configFile: false,
@@ -140,7 +140,7 @@ function compileDefinitions(source, id, declaredExports, bindings) {
     staticValue(node.arguments[0]);
     validateBuilder(node.callee.object);
   }
-  // Keep source line positions; only the target ABI reorders input/context parameters.
+  // Strip SDK declarations without evaluating the module; targets own their calling convention.
   const edits = removed.map((node) => ({
     start: node.start,
     end: node.end,
@@ -160,25 +160,12 @@ function compileDefinitions(source, id, declaredExports, bindings) {
     ) {
       throw Error("Workflow execute requires (input, ctx)");
     }
-    edits.push({
-      start: fn.params[0].start,
-      end: fn.params[1].end,
-      text:
-        source.slice(fn.params[1].start, fn.params[1].end) +
-        ", " +
-        source.slice(fn.params[0].start, fn.params[0].end),
-    });
   }
   let input = source;
   for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
     input = input.slice(0, edit.start) + edit.text + input.slice(edit.end);
   }
-  const emitted = emitWorkflowScheme(input, {
-    entryPoint: null,
-    entryInput: true,
-    allowEnsure: true,
-    allowFinally: true,
-  });
+  const emitted = target.emit(input, definitions);
   for (const site of Object.values(emitted.debug.sites)) {
     const bindingId =
       site.operation === "elicit"
@@ -203,7 +190,7 @@ function compileDefinitions(source, id, declaredExports, bindings) {
         name,
         {
           entry,
-          implementation: { format: HOOT_DEFINITION_FORMAT, payload: emitted.scheme },
+          implementation: { format: target.definitionFormat, payload: emitted.payload },
           source: { id, language: "typescript", text: source },
           exports: declaredExports,
           imports: bindings,
@@ -253,46 +240,90 @@ function typeDiagnostics(source) {
   });
 }
 
-/** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
-export const workflowCompiler = createWorkflowCompiler({
-  driver: {
-    sourceLanguage: "typescript",
-    definitionFormat: HOOT_DEFINITION_FORMAT,
-    *compile({ source, entry, exports, bindings }) {
-      try {
-        if (source.language !== "typescript") {
-          throw Error("Workflow compiler requires TypeScript source");
+/**
+ * Target-local emission after shared SDK extraction; no new persisted IR or runtime protocol.
+ * @param {{ definitionFormat: string, emit: (source: string, definitions: {name: string, entry: string}[]) => {payload: string, debug: import('../../../packages/workflow-kernel/src/index.ts').WorkflowDebugInfo} }} target
+ * @returns {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler}
+ */
+export function createTypeScriptWorkflowCompiler(target) {
+  return createWorkflowCompiler({
+    driver: {
+      sourceLanguage: "typescript",
+      definitionFormat: target.definitionFormat,
+      *compile({ source, entry, exports, bindings }) {
+        try {
+          if (source.language !== "typescript") {
+            throw Error("Workflow compiler requires TypeScript source");
+          }
+          const definitions = compileDefinitions(source.text, source.id, exports, bindings, target);
+          const module = Object.values(definitions).find((d) => d.entry === entry);
+          if (!module) {
+            throw Error(`Unknown workflow entry: ${entry}`);
+          }
+          if (exports.some((e) => !definitions[e.name] || definitions[e.name].entry !== e.entry)) {
+            throw Error("Unknown declared workflow export");
+          }
+          const diagnostics = typeDiagnostics(source);
+          if (diagnostics.some((d) => d.severity === "error")) {
+            return { ok: false, diagnostics };
+          }
+          return { ok: true, module, diagnostics };
+        } catch (error) {
+          return {
+            ok: false,
+            diagnostics: [
+              { severity: "error", code: "typescript_workflow_compile", message: error.message },
+            ],
+          };
         }
-        const definitions = compileDefinitions(source.text, source.id, exports, bindings);
-        const module = Object.values(definitions).find((d) => d.entry === entry);
-        if (!module) {
-          throw Error(`Unknown workflow entry: ${entry}`);
-        }
-        if (exports.some((e) => !definitions[e.name] || definitions[e.name].entry !== e.entry)) {
-          throw Error("Unknown declared workflow export");
-        }
-        const diagnostics = typeDiagnostics(source);
-        if (diagnostics.some((d) => d.severity === "error")) {
-          return { ok: false, diagnostics };
-        }
-        return { ok: true, module, diagnostics };
-      } catch (error) {
-        return {
-          ok: false,
-          diagnostics: [
-            { severity: "error", code: "typescript_workflow_compile", message: error.message },
-          ],
-        };
-      }
+      },
     },
-  },
+  });
+}
+
+export function emitTypeScriptWorkflowScheme(source, definitions) {
+  const ast = babel.parseSync(source, {
+    configFile: false,
+    babelrc: false,
+    parserOpts: { plugins: ["typescript"] },
+  });
+  // Scheme privately takes ctx before input. The shared extractor preserves source order.
+  const edits = definitions.map(({ entry }) => {
+    const fn = ast.program.body.find(
+      (node) => babel.types.isFunctionDeclaration(node) && node.id.name === entry,
+    );
+    return {
+      start: fn.params[0].start,
+      end: fn.params[1].end,
+      text:
+        source.slice(fn.params[1].start, fn.params[1].end) +
+        ", " +
+        source.slice(fn.params[0].start, fn.params[0].end),
+    };
+  });
+  let input = source;
+  for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
+    input = input.slice(0, edit.start) + edit.text + input.slice(edit.end);
+  }
+  const emitted = emitWorkflowScheme(input, {
+    entryPoint: null,
+    entryInput: true,
+    allowEnsure: true,
+    allowFinally: true,
+  });
+  return { payload: emitted.scheme, debug: emitted.debug };
+}
+
+export const workflowCompiler = createTypeScriptWorkflowCompiler({
+  definitionFormat: HOOT_DEFINITION_FORMAT,
+  emit: emitTypeScriptWorkflowScheme,
 });
 
 /** Bundler representation is separate from the portable compiler output.
  * @returns {import("effection").Operation<string>}
  */
-export function* compileWorkflowModule(source, id, declarations) {
-  const result = yield* workflowCompiler.compile({
+export function* compileWorkflowModule(source, id, declarations, compiler = workflowCompiler) {
+  const result = yield* compiler.compile({
     source: { language: "typescript", text: source, id },
     ...declarations,
   });
@@ -305,7 +336,10 @@ export function* compileWorkflowModule(source, id, declarations) {
 }
 
 /** A Rolldown load hook sees TypeScript before built-in lowering. */
-export function workflowPlugin(declarations) {
+export function workflowPlugin(
+  declarations,
+  { compiler = workflowCompiler, artifactName = "artifact" } = {},
+) {
   return {
     name: "sweatpants-workflow",
     async load(id) {
@@ -315,14 +349,14 @@ export function workflowPlugin(declarations) {
       this.addWatchFile(id);
       return run(function* () {
         const source = yield* call(() => readFile(id, "utf8"));
-        const code = yield* compileWorkflowModule(source, id, declarations);
+        const code = yield* compileWorkflowModule(source, id, declarations, compiler);
         const stem = basename(id, ".ts");
         return { code, stem };
       }).then(({ code, stem }) => {
-        this.emitFile({ type: "asset", fileName: `${stem}.artifact.mjs`, source: code });
+        this.emitFile({ type: "asset", fileName: `${stem}.${artifactName}.mjs`, source: code });
         this.emitFile({
           type: "asset",
-          fileName: `${stem}.artifact.d.mts`,
+          fileName: `${stem}.${artifactName}.d.mts`,
           source: [
             'import type { CompiledWorkflow } from "@sweatpants/workflow-kernel";',
             'import type { DurableTool } from "@sweatpants/durable-execution";',

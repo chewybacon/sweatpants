@@ -90,11 +90,12 @@ export function ExecutionInspector() {
           <p className="execution-eyebrow">WORKFLOW LAB</p>
           <h1>Inside the execution.</h1>
           <p className="execution-muted">
-            Follow the stack, inspect captured state, and restore into a fresh runtime instance.
+            Compare the same compiled TypeScript tool in Scheme and Lua. Inspect its state and
+            restore into a fresh runtime instance.
           </p>
         </div>
         <label className="execution-language">
-          Language for new run
+          Caller language for new run
           <select
             value={language}
             disabled={busy || !languages.length}
@@ -130,15 +131,18 @@ export function ExecutionInspector() {
           {busy ? "Working…" : "Author and run"}
         </button>
         <p className="execution-muted">
-          The model composes two registered tools. Only the compiled tool expands into evaluator
-          frames.
+          The model writes the caller in your selected language. Both runtimes run the same
+          TypeScript review_draft tool, including its ensure cleanup, then call the uncompiled host
+          tool.
         </p>
       </section>
       <div className="execution-tool-catalog">
         <div>
           <span className="execution-status">Compiled workflow</span>
           <h3>review_draft</h3>
-          <p>Approval and scoped cleanup. The evaluator can step inside.</p>
+          <p>
+            One TypeScript generator, compiled for each runtime. Its ensure cleanup can suspend.
+          </p>
         </div>
         <div>
           <span className="execution-status waiting">Host tool</span>

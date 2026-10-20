@@ -982,3 +982,19 @@ summary:hover {
     overflow-wrap: anywhere;
   }
 }
+
+.workflow-language {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.workflow-language select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 6px 12px;
+}

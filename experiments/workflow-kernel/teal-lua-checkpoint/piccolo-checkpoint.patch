@@ -116,10 +116,9 @@ index a03d4c2..9bb1e2a 100644
  impl<'gc> OpenUpValue<'gc> {
 diff --git a/src/thread/checkpoint.rs b/src/thread/checkpoint.rs
 new file mode 100644
-index 0000000..68c8cf0
 --- /dev/null
 +++ b/src/thread/checkpoint.rs
-@@ -0,0 +1,636 @@
+@@ -0,0 +1,714 @@
 +//! Experimental trusted-state checkpoint codec. Not an untrusted snapshot loader.
 +//! Only a single thread parked at a direct callback yield is supported.
 +use super::thread::{Frame, LuaReturn, OpenUpValue};
@@ -155,7 +154,7 @@ index 0000000..68c8cf0
 +}
 +#[derive(Debug, Serialize, Deserialize)]
 +pub enum Cell {
-+    Open(usize),
++    Open { thread: usize, index: usize },
 +    Closed(SavedValue),
 +}
 +#[derive(Debug, Serialize, Deserialize)]
@@ -177,10 +176,14 @@ index 0000000..68c8cf0
 +pub struct Snapshot {
 +    pub format: String,
 +    pub program: String,
-+    pub stack: Vec<SavedValue>,
-+    pub frames: Vec<SavedFrame>,
++    pub threads: Vec<SavedThread>,
 +    pub nodes: Vec<Node>,
 +    pub cells: Vec<Cell>,
++}
++#[derive(Debug, Serialize, Deserialize)]
++pub struct SavedThread {
++    pub stack: Vec<SavedValue>,
++    pub frames: Vec<SavedFrame>,
 +    pub open_cells: Vec<usize>,
 +}
 +
@@ -285,16 +288,25 @@ index 0000000..68c8cf0
 +    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
 +    natives: &[Callback<'gc>],
 +) -> Result<Snapshot> {
-+    if thread.mode() != ThreadMode::Suspended {
-+        return Err("thread must be suspended after taking its request".into());
++    capture_threads(ctx, &[thread], program, protos, natives)
++}
++
++/// Capture suspended task roots together, preserving shared cells and objects.
++pub fn capture_threads<'gc>(
++    ctx: Context<'gc>,
++    threads: &[Thread<'gc>],
++    program: &str,
++    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
++    natives: &[Callback<'gc>],
++) -> Result<Snapshot> {
++    if threads.is_empty() || threads.len() > LIMIT {
++        return Err("invalid thread count".into());
 +    }
-+    let inner = thread.into_inner();
-+    let state = inner.borrow();
-+    if !matches!(state.frames.last(), Some(Frame::Yielded)) {
-+        return Err("expected yielded sentinel".into());
-+    }
-+    if state.frames.len() > LIMIT || state.stack.len() > LIMIT {
-+        return Err("stack budget exceeded".into());
++    let mut identities = HashSet::new();
++    for thread in threads {
++        if !identities.insert(Gc::as_ptr(thread.into_inner()) as usize) {
++            return Err("duplicate task root".into());
++        }
 +    }
 +    let mut enc = Encoder {
 +        protos,
@@ -306,61 +318,87 @@ index 0000000..68c8cf0
 +        work: 0,
 +        bytes: 0,
 +    };
-+    let mut frames = Vec::new();
-+    for frame in &state.frames[..state.frames.len() - 1] {
-+        if let Frame::Sequence {
-+            bottom,
-+            sequence,
-+            pending_error: None,
-+        } = frame
-+        {
-+            match sequence.checkpoint() {
-+                Some(SequenceCheckpoint::ProtectedCall) => {
-+                    frames.push(SavedFrame::ProtectedCall { bottom: *bottom })
-+                }
-+                None => return Err("unknown native sequence is not checkpointable".into()),
-+            }
-+            continue;
++    let mut saved_threads = Vec::new();
++    let mut stack_work = 0usize;
++    for thread in threads {
++        if thread.mode() != ThreadMode::Suspended {
++            return Err("thread must be suspended after taking its request".into());
 +        }
-+        let Frame::Lua {
-+            bottom,
-+            closure,
-+            base,
-+            is_variable,
-+            pc,
-+            stack_size,
-+            expected_return,
-+        } = frame
-+        else {
-+            return Err("native sequence/callback frames are not checkpointable".into());
-+        };
-+        let Some(LuaReturn::Normal(count)) = expected_return else {
-+            return Err("unsupported frame return state".into());
-+        };
-+        let SavedValue::Closure(id) = enc.value(Value::Function(Function::Closure(*closure)))?
-+        else {
-+            unreachable!()
-+        };
-+        frames.push(SavedFrame::Lua {
-+            bottom: *bottom,
-+            closure: id,
-+            base: *base,
-+            variable: *is_variable,
-+            pc: *pc,
-+            stack_size: *stack_size,
-+            returns: count.to_constant(),
++        let inner = thread.into_inner();
++        let state = inner.borrow();
++        if !matches!(state.frames.last(), Some(Frame::Yielded)) {
++            return Err("expected yielded sentinel".into());
++        }
++        stack_work = stack_work
++            .checked_add(state.frames.len())
++            .and_then(|n| n.checked_add(state.stack.len()))
++            .and_then(|n| n.checked_add(state.open_upvalues.len()))
++            .ok_or("stack budget overflow")?;
++        if stack_work > LIMIT {
++            return Err("aggregate stack budget exceeded".into());
++        }
++        let mut frames = Vec::new();
++        for frame in &state.frames[..state.frames.len() - 1] {
++            if let Frame::Sequence {
++                bottom,
++                sequence,
++                pending_error: None,
++            } = frame
++            {
++                match sequence.checkpoint() {
++                    Some(SequenceCheckpoint::ProtectedCall) => {
++                        frames.push(SavedFrame::ProtectedCall { bottom: *bottom })
++                    }
++                    None => return Err("unknown native sequence is not checkpointable".into()),
++                }
++                continue;
++            }
++            let Frame::Lua {
++                bottom,
++                closure,
++                base,
++                is_variable,
++                pc,
++                stack_size,
++                expected_return,
++            } = frame
++            else {
++                return Err("native sequence/callback frames are not checkpointable".into());
++            };
++            let Some(LuaReturn::Normal(count)) = expected_return else {
++                return Err("unsupported frame return state".into());
++            };
++            let SavedValue::Closure(id) =
++                enc.value(Value::Function(Function::Closure(*closure)))?
++            else {
++                unreachable!()
++            };
++            frames.push(SavedFrame::Lua {
++                bottom: *bottom,
++                closure: id,
++                base: *base,
++                variable: *is_variable,
++                pc: *pc,
++                stack_size: *stack_size,
++                returns: count.to_constant(),
++            });
++        }
++        let stack = state
++            .stack
++            .iter()
++            .map(|v| enc.value(*v))
++            .collect::<Result<Vec<_>>>()?;
++        let open_cells = state
++            .open_upvalues
++            .iter()
++            .map(|v| enc.cell(*v))
++            .collect::<Result<Vec<_>>>()?;
++        saved_threads.push(SavedThread {
++            stack,
++            frames,
++            open_cells,
 +        });
 +    }
-+    let stack = state
-+        .stack
-+        .iter()
-+        .map(|v| enc.value(*v))
-+        .collect::<Result<Vec<_>>>()?;
-+    let open_cells = state
-+        .open_upvalues
-+        .iter()
-+        .map(|v| enc.cell(*v))
-+        .collect::<Result<Vec<_>>>()?;
 +    let mut nodes = Vec::new();
 +    let mut cells = Vec::new();
 +    while nodes.len() < enc.objects.len() || cells.len() < enc.cells.len() {
@@ -400,23 +438,25 @@ index 0000000..68c8cf0
 +                UpValueState::Closed(v) => Cell::Closed(enc.value(v)?),
 +                UpValueState::Open(v) => {
 +                    let owner = v.thread.upgrade(&ctx).ok_or("dead open upvalue")?;
-+                    if !Gc::ptr_eq(owner, inner) {
-+                        return Err("cross-thread upvalue".into());
++                    let thread = threads
++                        .iter()
++                        .position(|t| Gc::ptr_eq(owner, t.into_inner()))
++                        .ok_or("open cell owner missing from task roots")?;
++                    Cell::Open {
++                        thread,
++                        index: v.stack_index,
 +                    }
-+                    Cell::Open(v.stack_index)
 +                }
 +            };
 +            cells.push(cell);
 +        }
 +    }
 +    let saved = Snapshot {
-+        format: "piccolo-trusted-spike-2".into(),
++        format: "piccolo-trusted-spike-3".into(),
 +        program: program.into(),
-+        stack,
-+        frames,
++        threads: saved_threads,
 +        nodes,
 +        cells,
-+        open_cells,
 +    };
 +    validate(&saved, protos, natives.len())?;
 +    Ok(saved)
@@ -459,18 +499,31 @@ index 0000000..68c8cf0
 +    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
 +    natives: &[Callback<'gc>],
 +) -> Result<Thread<'gc>> {
-+    if saved.format != "piccolo-trusted-spike-2" || saved.program != program {
++    if saved.threads.len() != 1 {
++        return Err("single execution requires one task root".into());
++    }
++    Ok(restore_threads(ctx, saved, program, protos, natives)?.remove(0))
++}
++
++pub fn restore_threads<'gc>(
++    ctx: Context<'gc>,
++    saved: &Snapshot,
++    program: &str,
++    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
++    natives: &[Callback<'gc>],
++) -> Result<Vec<Thread<'gc>>> {
++    if saved.format != "piccolo-trusted-spike-3" || saved.program != program {
 +        return Err("snapshot/program mismatch".into());
 +    }
 +    if saved.nodes.len() > LIMIT
 +        || saved.cells.len() > LIMIT
-+        || saved.stack.len() > LIMIT
-+        || saved.frames.len() > LIMIT
++        || saved.threads.is_empty()
++        || saved.threads.len() > LIMIT
 +    {
 +        return Err("snapshot budget exceeded".into());
 +    }
 +    validate(saved, protos, natives.len())?;
-+    let thread = Thread::new(ctx);
++    let threads: Vec<_> = saved.threads.iter().map(|_| Thread::new(ctx)).collect();
 +    let cells: Vec<_> = saved
 +        .cells
 +        .iter()
@@ -522,75 +575,72 @@ index 0000000..68c8cf0
 +            &ctx,
 +            match cell {
 +                Cell::Closed(v) => UpValueState::Closed(decode(v, ctx, &nodes, natives)?),
-+                Cell::Open(index) => {
-+                    if *index >= saved.stack.len() {
-+                        return Err("open cell outside stack".into());
-+                    }
-+                    UpValueState::Open(OpenUpValue {
-+                        thread: Gc::downgrade(thread.into_inner()),
-+                        stack_index: *index,
-+                    })
-+                }
++                Cell::Open { thread, index } => UpValueState::Open(OpenUpValue {
++                    thread: Gc::downgrade(threads[*thread].into_inner()),
++                    stack_index: *index,
++                }),
 +            },
 +        );
 +    }
-+    let mut restored_stack = AVec::new_in(MetricsAlloc::new(&ctx));
-+    for v in &saved.stack {
-+        restored_stack.push(decode(v, ctx, &nodes, natives)?);
-+    }
-+    let mut frames = AVec::new_in(MetricsAlloc::new(&ctx));
-+    for f in &saved.frames {
-+        match f {
-+            SavedFrame::ProtectedCall { bottom } => frames.push(Frame::Sequence {
-+                bottom: *bottom,
-+                sequence: BoxSequence::new(&ctx, crate::stdlib::PCall),
-+                pending_error: None,
-+            }),
-+            SavedFrame::Lua {
-+                bottom,
-+                closure,
-+                base,
-+                variable,
-+                pc,
-+                stack_size,
-+                returns,
-+            } => {
-+                let Some(Value::Function(Function::Closure(c))) = nodes.get(*closure) else {
-+                    return Err("frame closure missing".into());
-+                };
-+                let count = match returns {
-+                    None => VarCount::variable(),
-+                    Some(n) => VarCount::try_constant(*n).ok_or("invalid return count")?,
-+                };
-+                frames.push(Frame::Lua {
++    for (thread, saved_thread) in threads.iter().zip(&saved.threads) {
++        let mut restored_stack = AVec::new_in(MetricsAlloc::new(&ctx));
++        for v in &saved_thread.stack {
++            restored_stack.push(decode(v, ctx, &nodes, natives)?);
++        }
++        let mut frames = AVec::new_in(MetricsAlloc::new(&ctx));
++        for f in &saved_thread.frames {
++            match f {
++                SavedFrame::ProtectedCall { bottom } => frames.push(Frame::Sequence {
 +                    bottom: *bottom,
-+                    closure: *c,
-+                    base: *base,
-+                    is_variable: *variable,
-+                    pc: *pc,
-+                    stack_size: *stack_size,
-+                    expected_return: Some(LuaReturn::Normal(count)),
-+                });
++                    sequence: BoxSequence::new(&ctx, crate::stdlib::PCall),
++                    pending_error: None,
++                }),
++                SavedFrame::Lua {
++                    bottom,
++                    closure,
++                    base,
++                    variable,
++                    pc,
++                    stack_size,
++                    returns,
++                } => {
++                    let Some(Value::Function(Function::Closure(c))) = nodes.get(*closure) else {
++                        return Err("frame closure missing".into());
++                    };
++                    let count = match returns {
++                        None => VarCount::variable(),
++                        Some(n) => VarCount::try_constant(*n).ok_or("invalid return count")?,
++                    };
++                    frames.push(Frame::Lua {
++                        bottom: *bottom,
++                        closure: *c,
++                        base: *base,
++                        is_variable: *variable,
++                        pc: *pc,
++                        stack_size: *stack_size,
++                        expected_return: Some(LuaReturn::Normal(count)),
++                    });
++                }
 +            }
 +        }
-+    }
-+    let mut open = AVec::new_in(MetricsAlloc::new(&ctx));
-+    for id in &saved.open_cells {
-+        let cell = *cells.get(*id).ok_or("invalid open cell ID")?;
-+        if !matches!(cell.get(), UpValueState::Open(_)) {
-+            return Err("closed cell in open list".into());
++        let mut open = AVec::new_in(MetricsAlloc::new(&ctx));
++        for id in &saved_thread.open_cells {
++            let cell = *cells.get(*id).ok_or("invalid open cell ID")?;
++            if !matches!(cell.get(), UpValueState::Open(_)) {
++                return Err("closed cell in open list".into());
++            }
++            open.push(cell);
 +        }
-+        open.push(cell);
++        frames.push(Frame::Yielded);
++        {
++            let inner = thread.into_inner();
++            let mut state = inner.borrow_mut(&ctx);
++            state.stack = restored_stack;
++            state.frames = frames;
++            state.open_upvalues = open;
++        }
 +    }
-+    frames.push(Frame::Yielded);
-+    {
-+        let inner = thread.into_inner();
-+        let mut state = inner.borrow_mut(&ctx);
-+        state.stack = restored_stack;
-+        state.frames = frames;
-+        state.open_upvalues = open;
-+    }
-+    Ok(thread)
++    Ok(threads)
 +}
 +
 +/// Validate the reachable graph and aggregate budgets before installing VM state.
@@ -600,9 +650,20 @@ index 0000000..68c8cf0
 +    protos: &[Gc<'_, FunctionPrototype<'_>>],
 +    native_count: usize,
 +) -> Result<()> {
-+    let mut work = saved.stack.len() + saved.frames.len() + saved.nodes.len() + saved.cells.len();
++    let mut work = saved.nodes.len() + saved.cells.len();
 +    let mut bytes = 0usize;
-+    let mut values: Vec<&SavedValue> = saved.stack.iter().collect();
++    let mut values: Vec<&SavedValue> = Vec::new();
++    for thread in &saved.threads {
++        work = work
++            .checked_add(thread.stack.len())
++            .and_then(|n| n.checked_add(thread.frames.len()))
++            .and_then(|n| n.checked_add(thread.open_cells.len()))
++            .ok_or("budget overflow")?;
++        if work > LIMIT {
++            return Err("aggregate snapshot work limit".into());
++        }
++        values.extend(&thread.stack);
++    }
 +    for node in &saved.nodes {
 +        match node {
 +            Node::Table(entries) => {
@@ -636,26 +697,40 @@ index 0000000..68c8cf0
 +    for (id, cell) in saved.cells.iter().enumerate() {
 +        match cell {
 +            Cell::Closed(v) => values.push(v),
-+            Cell::Open(index) => {
-+                if *index >= saved.stack.len() || !indices.insert(*index) {
++            Cell::Open { thread, index } => {
++                if saved
++                    .threads
++                    .get(*thread)
++                    .is_none_or(|t| *index >= t.stack.len())
++                    || !indices.insert((*thread, *index))
++                {
 +                    return Err("invalid/duplicate open stack cell".into());
 +                }
 +                expected_open.insert(id);
 +            }
 +        }
 +    }
-+    let mut last = None;
-+    for id in &saved.open_cells {
-+        if !expected_open.remove(id) {
-+            return Err("open cell list mismatch".into());
++    for (thread_id, thread) in saved.threads.iter().enumerate() {
++        let mut last = None;
++        for id in &thread.open_cells {
++            if !expected_open.remove(id) {
++                return Err("open cell list mismatch".into());
++            }
++            let Cell::Open {
++                thread: owner,
++                index,
++            } = saved.cells[*id]
++            else {
++                unreachable!()
++            };
++            if owner != thread_id {
++                return Err("open cell owner mismatch".into());
++            }
++            if last.is_some_and(|prev| prev >= index) {
++                return Err("open cells must be ordered".into());
++            }
++            last = Some(index);
 +        }
-+        let Cell::Open(index) = saved.cells[*id] else {
-+            unreachable!()
-+        };
-+        if last.is_some_and(|prev| prev >= index) {
-+            return Err("open cells must be ordered".into());
-+        }
-+        last = Some(index);
 +    }
 +    if !expected_open.is_empty() {
 +        return Err("missing open cell".into());
@@ -688,40 +763,42 @@ index 0000000..68c8cf0
 +            return Err("snapshot string byte limit".into());
 +        }
 +    }
-+    let mut previous_bottom = 0;
-+    for f in &saved.frames {
-+        let bottom = match f {
-+            SavedFrame::ProtectedCall { bottom } => *bottom,
-+            SavedFrame::Lua {
-+                bottom,
-+                closure,
-+                base,
-+                pc,
-+                stack_size,
-+                returns,
-+                ..
-+            } => {
-+                let Some(Node::Closure { prototype, .. }) = saved.nodes.get(*closure) else {
-+                    return Err("invalid frame closure".into());
-+                };
-+                let proto = protos[*prototype];
-+                if bottom > base
-+                    || *base > saved.stack.len()
-+                    || *pc == 0
-+                    || *pc >= proto.opcodes.len()
-+                    || *stack_size != proto.stack_size as usize
-+                    || returns == &Some(255)
-+                    || base.checked_add(*stack_size).is_none_or(|n| n > LIMIT)
-+                {
-+                    return Err("invalid frame geometry".into());
++    for thread in &saved.threads {
++        let mut previous_bottom = 0;
++        for f in &thread.frames {
++            let bottom = match f {
++                SavedFrame::ProtectedCall { bottom } => *bottom,
++                SavedFrame::Lua {
++                    bottom,
++                    closure,
++                    base,
++                    pc,
++                    stack_size,
++                    returns,
++                    ..
++                } => {
++                    let Some(Node::Closure { prototype, .. }) = saved.nodes.get(*closure) else {
++                        return Err("invalid frame closure".into());
++                    };
++                    let proto = protos[*prototype];
++                    if bottom > base
++                        || *base > thread.stack.len()
++                        || *pc == 0
++                        || *pc >= proto.opcodes.len()
++                        || *stack_size != proto.stack_size as usize
++                        || returns == &Some(255)
++                        || base.checked_add(*stack_size).is_none_or(|n| n > LIMIT)
++                    {
++                        return Err("invalid frame geometry".into());
++                    }
++                    *bottom
 +                }
-+                *bottom
++            };
++            if bottom < previous_bottom || bottom > thread.stack.len() {
++                return Err("invalid frame ordering".into());
 +            }
-+        };
-+        if bottom < previous_bottom || bottom > saved.stack.len() {
-+            return Err("invalid frame ordering".into());
++            previous_bottom = bottom;
 +        }
-+        previous_bottom = bottom;
 +    }
 +    // A tail call can leave only the Yielded sentinel (omitted from saved frames).
 +    // Restoring it lets the host reply become the thread result.

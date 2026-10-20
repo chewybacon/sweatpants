@@ -356,7 +356,8 @@ describe("tool loop semantics", () => {
 
 describe("tool loop HTTP parity", () => {
   // binding-conformance: mixed routing crosses the complete HTTP shell once.
+  // This scenario takes ~6s on the validation host, including three cold worker attachments.
   it("routes ordinary and durable calls from one response", async () => {
     await runMixedRoutingScenario("http");
-  });
+  }, 10_000);
 });
