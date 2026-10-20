@@ -4,12 +4,12 @@ import {
   createKernelProgramBackend,
   createKernelProgramBundle,
   loadKernelProgram,
-} from "../../../packages/program-backend-kernel/dist/index.js";
+} from "../../../packages/flowmode-backend/dist/index.js";
 import {
   assertKernelCompatibility,
   createKernelExecution,
   createWorkflowKernel,
-} from "../../../packages/workflow-kernel/dist/index.js";
+} from "../../../packages/flowmode-runtime/dist/index.js";
 import { CrankError } from "../../../packages/durable-execution/dist/index.js";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
 import { call } from "effection";

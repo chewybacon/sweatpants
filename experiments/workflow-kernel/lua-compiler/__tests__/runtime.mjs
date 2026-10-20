@@ -15,7 +15,7 @@ import {
   reviewContract,
   callerContract,
 } from "../../tsdown-authoring/contracts.mts";
-import { requireCompiledWorkflow } from "../../../../packages/workflow-kernel/dist/index.js";
+import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/dist/index.js";
 
 const source = await readFile(
   new URL("../../tsdown-authoring/review-draft.workflow.ts", import.meta.url),

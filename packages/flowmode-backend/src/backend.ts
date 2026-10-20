@@ -27,7 +27,7 @@ import {
   type WorkflowExecutionState,
   type ExchangeRequest,
   type KernelSnapshot,
-} from "@sweatpants/workflow-kernel";
+} from "@sweatpants/flowmode-runtime";
 import { prepareWorkflow, type KernelBackendDependencies } from "./prepare.ts";
 
 const checkpointFormat = "sweatpants.kernel-backend.v1";

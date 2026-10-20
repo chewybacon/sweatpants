@@ -1,7 +1,7 @@
 {
-  "name": "@sweatpants/program-backend-kernel",
+  "name": "@sweatpants/flowmode-runtime",
   "version": "0.1.0",
-  "description": "WorkflowKernel execution backend for the shared program attachment runtime",
+  "description": "Portable workflow kernel contract and compatibility checks",
   "license": "MIT",
   "files": [
     "dist",
@@ -28,8 +28,6 @@
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
-    "@sweatpants/journal-authority": "workspace:*",
-    "@sweatpants/workflow-kernel": "workspace:*",
     "effection": "catalog:"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { createWorkflowCompiler } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowCompiler } from "../../../packages/flowmode-runtime/dist/index.js";
 import { basename, resolve } from "node:path";
 import ts from "typescript";
 import { call, run } from "effection";
@@ -242,8 +242,8 @@ function typeDiagnostics(source) {
 
 /**
  * Target-local emission after shared SDK extraction; no new persisted IR or runtime protocol.
- * @param {{ definitionFormat: string, emit: (source: string, definitions: {name: string, entry: string}[]) => {payload: string, debug: import('../../../packages/workflow-kernel/src/index.ts').WorkflowDebugInfo} }} target
- * @returns {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler}
+ * @param {{ definitionFormat: string, emit: (source: string, definitions: {name: string, entry: string}[]) => {payload: string, debug: import('../../../packages/flowmode-runtime/src/index.ts').WorkflowDebugInfo} }} target
+ * @returns {import('../../../packages/flowmode-runtime/src/index.ts').WorkflowCompiler}
  */
 export function createTypeScriptWorkflowCompiler(target) {
   return createWorkflowCompiler({
@@ -358,7 +358,7 @@ export function workflowPlugin(
           type: "asset",
           fileName: `${stem}.${artifactName}.d.mts`,
           source: [
-            'import type { CompiledWorkflow } from "@sweatpants/workflow-kernel";',
+            'import type { CompiledWorkflow } from "@sweatpants/flowmode-runtime";',
             'import type { DurableTool } from "@sweatpants/durable-execution";',
             `import type * as tools from "./${stem}.mjs";`,
             "type Artifact<T> = T extends DurableTool<infer I, infer O> ? CompiledWorkflow<I, O> : never;",

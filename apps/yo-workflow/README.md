@@ -22,7 +22,7 @@ used by this developer-authored fixture. Chat retains the existing engine.
 ```sh
 # From the workspace root, build package dependencies first if needed.
 pnpm --filter 'yo-workflow^...' build
-pnpm --filter '@sweatpants/program-backend-kernel...' build
+pnpm --filter '@sweatpants/flowmode-backend...' build
 # Uses the scheme-runtime pinned Docker toolchain image (build it via scheme:build if absent).
 pnpm --filter yo-workflow execution:build
 pnpm --filter yo-workflow execution:test

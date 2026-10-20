@@ -1,12 +1,12 @@
 import type {
   WorkflowCompiler,
   WorkflowLinker,
-} from "../../../packages/workflow-kernel/src/authoring.ts";
+} from "../../../packages/flowmode-runtime/src/authoring.ts";
 import {
   assertWorkflowLink,
   createWorkflowCompiler,
   createWorkflowLinker,
-} from "../../../packages/workflow-kernel/dist/index.js";
+} from "../../../packages/flowmode-runtime/dist/index.js";
 import { luaIdentity, type LuaInvoker } from "./kernel.mts";
 
 export function createLuaAuthoring(invoke: LuaInvoker) {

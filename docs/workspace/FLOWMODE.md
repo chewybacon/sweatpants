@@ -4,11 +4,13 @@ Names follow `flowmode-{layer}-{lang}`. The language suffix is omitted for
 shared layers. Lexical sorting groups the family, then each layer and its
 language implementations; it does not imply dependency order.
 
-These are documentation-only directory scaffolds, not workspace members or
-promoted implementations. They have no package manifests, exports, dependencies,
-or placeholder APIs. Current consumers continue to use the existing packages
-and experiments. Add a manifest and a member-ledger entry when a concrete
-implementation moves, with its tests and consumer.
+`flowmode-runtime` and `flowmode-backend` are workspace packages containing the
+existing kernel contracts and backend adapter. Their files, tests, and consumers
+have moved mechanically; interfaces and runtime behavior are unchanged.
+
+The other five directories remain documentation-only scaffolds without manifests,
+exports, dependencies, or placeholder APIs. Add a manifest and a member-ledger
+entry when a concrete implementation moves, with its tests and consumer.
 
 ## Ownership map
 
@@ -40,11 +42,14 @@ artifact path. Promoting that path must preserve its compiled developer tool,
 model-authored caller, uncompiled host tool, suspended cleanup, and fresh-instance
 restore behavior in both languages.
 
-The shared runtime and backend already have package owners. Their promotion is
-a deliberate rename/migration of `workflow-kernel` and `program-backend-kernel`,
-not a reason to introduce duplicate contracts. Scheme runtime promotion also
-needs an explicit decision about the packaged Playground evaluator and the
-experimental Execution evaluator; moving directories does not unify them.
+The shared runtime and backend now use the Flowmode package names. Compiler and
+authoring interfaces still live in the runtime package pending a separate
+interface-ownership decision. The rename does not establish new capabilities or
+change the packages' parked status in the member ledger.
+
+Scheme runtime promotion still needs an explicit decision about the packaged
+Playground evaluator and the experimental Execution evaluator; moving directories
+does not unify them.
 
 Compiler boundaries should be checked against their actual consumers before
 creating separate workspace members. A scaffold reserves a name; it does not

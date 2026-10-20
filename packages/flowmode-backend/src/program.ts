@@ -5,7 +5,7 @@ import type {
   WorkflowImplementation,
   WorkflowProgram,
   WorkflowBinding,
-} from "@sweatpants/workflow-kernel";
+} from "@sweatpants/flowmode-runtime";
 
 /** Persistable code and its host contract. Runtime handles never enter this bundle. */
 export interface KernelProgramBundle {

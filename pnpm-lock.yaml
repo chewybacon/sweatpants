@@ -197,9 +197,9 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:packages/ts-config
-      '@sweatpants/workflow-kernel':
+      '@sweatpants/flowmode-runtime':
         specifier: workspace:*
-        version: link:packages/workflow-kernel
+        version: link:packages/flowmode-runtime
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
@@ -1083,9 +1083,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
-      '@sweatpants/program-backend-kernel':
+      '@sweatpants/flowmode-backend':
         specifier: workspace:*
-        version: link:../../packages/program-backend-kernel
+        version: link:../../packages/flowmode-backend
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
@@ -1107,9 +1107,9 @@ importers:
       '@sweatpants/vite-plugin':
         specifier: workspace:*
         version: link:../../packages/vite-plugin
-      '@sweatpants/workflow-kernel':
+      '@sweatpants/flowmode-runtime':
         specifier: workspace:*
-        version: link:../../packages/workflow-kernel
+        version: link:../../packages/flowmode-runtime
       '@xyflow/react':
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(immer@11.1.15)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -2094,7 +2094,7 @@ importers:
         specifier: 'catalog:'
         version: 8.21.0
 
-  packages/program-backend-kernel:
+  packages/flowmode-backend:
     dependencies:
       '@sweatpants/durable-execution':
         specifier: workspace:*
@@ -2105,9 +2105,9 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:../journal-authority
-      '@sweatpants/workflow-kernel':
+      '@sweatpants/flowmode-runtime':
         specifier: workspace:*
-        version: link:../workflow-kernel
+        version: link:../flowmode-runtime
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -2768,7 +2768,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
 
-  packages/workflow-kernel:
+  packages/flowmode-runtime:
     dependencies:
       '@sweatpants/durable-execution':
         specifier: workspace:*

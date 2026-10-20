@@ -3,7 +3,7 @@ import {
   createKernelProgramBackend,
   createKernelProgramBundle,
   loadKernelProgram,
-} from "../../../packages/program-backend-kernel/dist/index.js";
+} from "../../../packages/flowmode-backend/dist/index.js";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
 
 export function createLuaProgram(

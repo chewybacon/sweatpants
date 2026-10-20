@@ -1,4 +1,4 @@
-# @sweatpants/workflow-kernel
+# @sweatpants/flowmode-runtime
 
 Portable program/snapshot identities, evaluator lifecycle, compatibility checks,
 and a detached inspection contract. The current integrated implementation is the
@@ -8,7 +8,7 @@ Building this package produces TypeScript declarations and ESM, not Wasm.
 ## Execution and ownership
 
 The kernel owns calls, lexical environments, scopes and cleanup. It advances to
-an effect or terminal boundary. The shared `program-backend-kernel` adapter binds
+an effect or terminal boundary. The shared `flowmode-backend` adapter binds
 requests to existing durable operations; the shared driver and journal own
 protocol position, accepted outcomes, authorization and recovery provenance.
 
@@ -115,7 +115,7 @@ placeholder is private to its calling convention.
 `assertWorkflowLink` checks imports, duplicate bindings and export schema contracts.
 Export aliases can have different local names/IDs while retaining the exported
 input/output schema identities. Resolution and authorization remain distinct.
-`program-backend-kernel` resolves exchanges to the existing operation descriptors;
+`flowmode-backend` resolves exchanges to the existing operation descriptors;
 the existing authority validates and journals their outcomes. No second driver loop
 is introduced. Bundle digests include code, identity, manifest and binding catalog.
 

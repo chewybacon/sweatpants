@@ -236,7 +236,7 @@ Real Hoot tests prove snapshot/suffix and full replay reach the same frontier.
 `ProgramComputation.run` publishes boundaries through the shared attachment runtime;
 `capture` captures computation state, and `dispose` releases compute without logical
 cancellation. Effection generators use `createEffectionProgramBackend` and replay.
-`program-backend-kernel` adapts WorkflowKernel implementations, including Hoot.
+`flowmode-backend` adapts WorkflowKernel implementations, including Hoot.
 
 `createWorkflowProgramDriver` accepts either an existing tool registry or an explicit
 backend. Both use `openProgramAttachment` for command parsing, receipts, pending

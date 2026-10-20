@@ -1,10 +1,10 @@
-import { createWorkflowCompiler } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowCompiler } from "../../../packages/flowmode-runtime/dist/index.js";
 import { call } from "effection";
 import { hootLinker, HOOT_PROGRAM_FORMAT } from "./linker.mts";
 
 /** Current Hoot composition root. The app consumes validation, linking and preparation seams. */
 export function createHootAuthoring({ loadMachine, createProgram }) {
-  /** @type {import('../../../packages/workflow-kernel/src/index.ts').WorkflowCompiler} */
+  /** @type {import('../../../packages/flowmode-runtime/src/index.ts').WorkflowCompiler} */
   const compiler = createWorkflowCompiler({
     driver: {
       sourceLanguage: "scheme",

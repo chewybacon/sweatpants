@@ -59,7 +59,7 @@ still scans the complete journal prefix to verify integrity.
 
 ## Kernel-driver integration spike
 
-The optional program-backend-kernel package maps kernel operations to the shared ProgramBackend
+The optional flowmode-backend package maps kernel operations to the shared ProgramBackend
 for elicitation-only workflows. Its reference-kernel adapter wraps the existing
 explicit-state JS evaluator; it is not a Hoot implementation. The direct
 kernel-driver proof captures while scoped cleanup is suspended, discards compute,

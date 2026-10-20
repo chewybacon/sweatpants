@@ -1,5 +1,5 @@
-import { createWorkflowBindingResolver } from "../../../packages/program-backend-kernel/dist/index.js";
-import { requireCompiledWorkflow } from "../../../packages/workflow-kernel/dist/index.js";
+import { createWorkflowBindingResolver } from "../../../packages/flowmode-backend/dist/index.js";
+import { requireCompiledWorkflow } from "../../../packages/flowmode-runtime/dist/index.js";
 import {
   reviewContract,
   callerContract,

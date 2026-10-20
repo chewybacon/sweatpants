@@ -207,7 +207,7 @@ all are recorded so the docs match the shipped code:
    `complete-task` threw `schema_validation_failed`). Normalized:
    value-level refusals on completion (`schema_validation_failed`,
    `payload_too_large`) return `{status:"rejected"}` data; all three drive
-   loops (legacy wrapper, workflow-kernel runner, host-drive) respond by
+   loops (legacy wrapper, flowmode-runtime runner, host-drive) respond by
    closing through the standard error envelope so journals record
    `TaskClosed{error}` exactly like thrown bodies — collapsing channel-B
    ambiguity for program-authored badness. True invariants

@@ -16,7 +16,7 @@ current evaluator or register an application driver.
 - `machine.mjs` loads fresh instances through the existing reflection bridge.
   It checks artifact/input hashes before loading. Host code marshals data; it does
   not execute workflow control flow.
-- `driver.mjs` adapts the experiment to the existing program-backend-kernel. The stored
+- `driver.mjs` adapts the experiment to the existing flowmode-backend. The stored
   journal test uses the ordinary authority bind, checkpoint persistence, and
   accepted-suffix recovery path over the memory Execution Store.
 
@@ -219,7 +219,7 @@ suite restores all value kinds into fresh Wasm instances without stepping.
 ## Shared inspection projection
 
 `inspection.mts` projects Hoot's explicit state into the `ExecutionInspection`
-contract exported by `workflow-kernel`. `machine.inspect(boundary)` returns this
+contract exported by `flowmode-runtime`. `machine.inspect(boundary)` returns this
 as `execution` alongside the Hoot diagnostics. The supplied boundary is the
 kernel adapter's actual transition result; its live suspension ID is excluded
 from the projection. Inspection does not step the evaluator or authorize recovery.

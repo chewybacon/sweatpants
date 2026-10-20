@@ -47,7 +47,7 @@ add a parallel driver solely to run another language.
 - `createWorkflowProgramDriver` accepts a durable-tool registry (Effection) or an
   explicit backend. `openProgramAttachment` owns pending operations, receipt
   checks, authorization, and command ordering for both.
-- `program-backend-kernel` adapts `WorkflowKernel` to that computation contract.
+- `flowmode-backend` adapts `WorkflowKernel` to that computation contract.
   It translates evaluator requests; the attachment owns the shared execution loop.
   Experimental Hoot and reference evaluators consume it; production yo-workflow's
   existing Scheme runtime has not been replaced by these experiments.
@@ -56,8 +56,8 @@ add a parallel driver solely to run another language.
 - Backend snapshots contain computation state. The shared driver adds protocol
   position and identity; the authority adds accepted journal provenance.
 
-Dependency direction: `program-backend-kernel` → `journal-authority` and
-`workflow-kernel`; the shared runtime does not import kernel backends or Wasm.
+Dependency direction: `flowmode-backend` → `journal-authority` and
+`flowmode-runtime`; the shared runtime does not import kernel backends or Wasm.
 
 ### Names that look related but are not
 

@@ -119,11 +119,22 @@ async function main(): Promise<void> {
         args: [
           "--filter",
           "./packages/**",
+          "--filter",
+          "!@sweatpants/platform-acceptance",
           `--workspace-concurrency=${packageTestConcurrency}`,
           "--aggregate-output",
           "run",
           "test",
         ],
+        timeoutMs: 15 * 60_000,
+      },
+      // The normal and SQLite acceptance lanes take about ten minutes together.
+      // Give them their own bounded stage instead of consuming the time left
+      // after the rest of the dependency-ordered package suite.
+      {
+        name: "test:platform-acceptance",
+        command: "pnpm",
+        args: ["--filter", "@sweatpants/platform-acceptance", "test"],
         timeoutMs: 15 * 60_000,
       },
       // Real Hoot recovery uses built workspace packages and the Hoot artifact used by yo-workflow.

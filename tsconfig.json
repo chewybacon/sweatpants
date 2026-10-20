@@ -99,10 +99,10 @@
       "path": "./packages/scheme-runtime"
     },
     {
-      "path": "./packages/workflow-kernel"
+      "path": "./packages/flowmode-runtime"
     },
     {
-      "path": "./packages/program-backend-kernel"
+      "path": "./packages/flowmode-backend"
     }
   ],
   "files": []
