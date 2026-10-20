@@ -1,3 +1,6 @@
+import { LuaEvaluationPort } from "../workflow/lua/evaluation.ts";
+import { invokeWasm } from "../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm-node.mts";
+import { workflowLanguage, type WorkflowLanguage } from "../workflow/language.ts";
 import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
 import { createNodeSchemeDriver } from "@sweatpants/scheme-runtime/node";
 import { createServer } from "node:http";
@@ -7,20 +10,33 @@ import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bri
 import { createWorkflowApp } from "./application.ts";
 import { reasoningLevel } from "./model-settings.ts";
 
-const app = createWorkflowApp({
-  decisionProvider: createPiAiDecisionProvider(),
-  execution: inProcess({
-    *setup() {
-      yield* SchemeEvaluationPort.installDriver(createNodeSchemeDriver());
-    },
-  }),
-  storage: chatStorageFromEnv({ defaultPath: new URL("../../.data/chat.sqlite", import.meta.url) }),
-  model: pi({
-    provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
-    model: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-5.5",
-    streamOptions: { thinking: reasoningLevel(process.env["DEFAULT_CHAT_MODEL_THINKING"]) },
-  }),
-});
+const apps = new Map<WorkflowLanguage, ReturnType<typeof createWorkflowApp>>();
+function application(language: WorkflowLanguage) {
+  const existing = apps.get(language);
+  if (existing) {
+    return existing;
+  }
+  const app = createWorkflowApp({
+    language,
+    decisionProvider: createPiAiDecisionProvider(),
+    execution: inProcess({
+      *setup() {
+        yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
+        yield* SchemeEvaluationPort.installDriver(createNodeSchemeDriver());
+      },
+    }),
+    storage: chatStorageFromEnv({
+      defaultPath: new URL("../../.data/chat.sqlite", import.meta.url),
+    }),
+    model: pi({
+      provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+      model: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-5.5",
+      streamOptions: { thinking: reasoningLevel(process.env["DEFAULT_CHAT_MODEL_THINKING"]) },
+    }),
+  });
+  apps.set(language, app);
+  return app;
+}
 const server = createServer((request, response) => {
   const url = request.url ?? "/";
   if (url === "/health") {
@@ -32,7 +48,20 @@ const server = createServer((request, response) => {
     response.end("Not found");
     return;
   }
-  void app
+  let language: WorkflowLanguage;
+  try {
+    language = workflowLanguage(
+      typeof request.headers["x-workflow-language"] === "string"
+        ? request.headers["x-workflow-language"]
+        : null,
+    );
+  } catch (error) {
+    // Invalid client selection is an observable HTTP error, not a process crash.
+    response.statusCode = 400;
+    response.end(String(error));
+    return;
+  }
+  void application(language)
     .handler(nodeRequestToWebRequest(request, "http://127.0.0.1:8102"))
     .then((result) => sendWebResponse(response, result))
     .catch((error: unknown) => {
@@ -51,7 +80,7 @@ async function close() {
   }
   closing = true;
   server.close();
-  await app.close();
+  await Promise.all([...apps.values()].map((app) => app.close()));
 }
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

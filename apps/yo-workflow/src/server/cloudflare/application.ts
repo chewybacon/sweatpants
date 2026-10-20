@@ -1,3 +1,4 @@
+import type { WorkflowLanguage } from "../../workflow/language.ts";
 import { documentEffectRegistration } from "../document-effect.ts";
 import {
   createDecisionEffectRegistration,
@@ -14,7 +15,7 @@ import {
 import { setupDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { cloudflare, type ToolExecutorNamespace } from "@sweatpants/tool-runtime-cloudflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { workflowExposure } from "../../workflow/agent.ts";
+import { createWorkflowExposure } from "../../workflow/agent.ts";
 import { programs } from "../../workflow/agent.ts";
 
 export interface CloudflareBindings {
@@ -29,6 +30,7 @@ export function createCloudflareWorkflowApp(
   bindings: CloudflareBindings,
   model: ChatModel,
   decisionProvider?: DecisionProviderDriver,
+  language: WorkflowLanguage = "scheme",
 ) {
   if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET) {
     throw new Error("PROGRAM_DRIVER_CAPABILITY_SECRET is required");
@@ -55,7 +57,7 @@ export function createCloudflareWorkflowApp(
         });
       },
       chat: function* () {
-        yield* ToolExposurePolicyContext.set(workflowExposure);
+        yield* ToolExposurePolicyContext.set(createWorkflowExposure(language));
       },
     },
   });

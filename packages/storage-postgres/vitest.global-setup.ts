@@ -12,13 +12,12 @@ export default async function globalSetup() {
   if (result.status !== 0) {
     throw new Error(`Postgres test harness failed:\n${result.stdout}\n${result.stderr}`);
   }
-  // Assign only when found; assigning `undefined` coerces to the string
-  // "undefined" and poisons connection parsing downstream.
   const found = result.stdout
     .split("\n")
     .map((line) => line.trim())
     .find((line) => line.startsWith("postgres://"));
-  if (found) {
-    process.env.SWEATPANTS_DATABASE_URL = found;
+  if (!found) {
+    throw new Error("Postgres test harness did not return its database URL");
   }
+  process.env.SWEATPANTS_DATABASE_URL = found;
 }

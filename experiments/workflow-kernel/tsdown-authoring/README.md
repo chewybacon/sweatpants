@@ -3,10 +3,11 @@
 `review-draft.workflow.ts` authors an ordinary `createDurableTool(...).execute`
 generator containing `"use workflow"`.
 
-The tsdown plugin emits two separate surfaces:
+The tsdown plugin emits separate surfaces:
 
 - `dist/review-draft.workflow.mjs`: the normal SDK DurableTool and its declarations.
-- `dist/review-draft.workflow.artifact.mjs`: portable CompiledWorkflow data and a
+- `dist/review-draft.workflow.artifact.mjs` (Scheme) and
+  `dist/review-draft.workflow.lua.artifact.mjs` (Lua): portable CompiledWorkflow data and a
   declaration that infers input/output from the normal tool type.
 
 The build config supplies explicit export contracts and imported binding

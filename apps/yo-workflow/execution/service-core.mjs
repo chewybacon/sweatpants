@@ -55,7 +55,10 @@ export function executionServiceFactory(stacks) {
         try {
           // Preflight runs through the same kernel seam without dispatching effects.
           const { boundary } = yield* kernel.start(program.artifact, confirmationInput);
-          if (boundary.kind !== "suspended" || boundary.request.site !== "review_draft/answer") {
+          if (
+            boundary.kind !== "suspended" ||
+            boundary.request.binding !== JSON.stringify(["elicit", "approval"])
+          ) {
             return "The caller must first request approval through review_draft(input)";
           }
           return "";

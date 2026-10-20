@@ -1,3 +1,4 @@
+import { workflowLanguage } from "../workflow/language.ts";
 import { executionFetch } from "../../execution/worker.mjs";
 export { ExecutionLab } from "../../execution/worker.mjs";
 import schemeManifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
@@ -45,6 +46,7 @@ export class Conversations extends DurableObject<Env> {
           streamOptions: { thinking: reasoningLevel(this.env.DEFAULT_CHAT_MODEL_THINKING) },
         }),
         createPiAiDecisionProvider({ models }),
+        workflowLanguage(request.headers.get("X-Workflow-Language")),
       );
     })(request);
   }

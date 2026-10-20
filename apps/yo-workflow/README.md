@@ -4,9 +4,17 @@ Author, run, and inspect durable workflows. This app was renamed from yo-tisyn;
 its deployed Cloudflare worker, D1 databases, signing-secret file, and existing
 workers.dev hostname deliberately retain their resource identities.
 
+## Playground languages
+
+Choose **Scheme** or **Lua** in the task composer, then send the same natural-language
+message. The real model authors and validates a program in the selected language;
+the program drives the shared interaction cards and journaled tools. The selection
+is locked while a task is active. See [language parity](docs/language-parity.md) for
+supported capabilities, explicit limits, conformance evidence and the update process.
+
 ## Execution inspector
 
-The **Execution** navigation opens `/execution`. A Scheme caller invokes a compiled
+The **Execution** navigation opens `/execution`. A Scheme or Lua caller invokes the same compiled TypeScript
 developer confirmation generator through the experimental Hoot backend, the shared
 program driver, and the real journal authority. No model or external email API is
 used by this developer-authored fixture. Chat retains the existing engine.
@@ -29,14 +37,14 @@ path. Park already disposes compute. The source panel shows the actual generator
 and emitted Scheme; the timeline distinguishes kernel transitions from accepted
 journal outcomes. Raw frames remain available below the environments.
 
-Runs survive browser reload through the `?run=` URL while this dev server lives.
-The local memory journal is bounded to 32 runs, with 100 trace events per run;
-restart the dev server to clear it. State inspection is private to this local
+Runs survive browser reload and local workerd replacement through the `?run=` URL.
+The Cloudflare journal uses local D1 and run metadata uses Durable Object storage.
+Each run retains at most 100 trace events. State inspection is private to this local
 playground and is never fed into model history. This is boundary inspection, not
 single-expression stepping or historical state time travel.
 
-The local Node Vite middleware and Cloudflare ExecutionLab Durable Object share
-one service and evaluator protocol. Cloudflare bundles static WASM modules,
+The local Cloudflare ExecutionLab Durable Object uses the same service and evaluator
+protocol as the Node test harness. Cloudflare bundles static WASM modules,
 stores the authoritative execution journal in D1, and persists source, inspection
 metadata, and idempotent announcement receipts in Durable Object storage. Each
 request reconstructs the service from storage; each park releases the evaluator.
@@ -56,7 +64,7 @@ Scheme workflows drive existing Sweatpants durable tools. The journal owns accep
 
 ## Scheme engine
 
-Conversations use the Hoot Scheme engine.
+Scheme conversations use the Hoot Scheme engine; Lua uses Piccolo/Wasm through the same durable tool hosting protocol.
 
 - One Scheme expression executes in WASM, with proper tail calls, lexical functions,
   named loops and local hygienic `syntax-rules` macros.
@@ -174,12 +182,21 @@ pnpm --dir apps/yo-workflow build:cloudflare
 Scheme acceptance exercises the real Cloudflare runtime through Test Rig. Product
 apps use real model providers. Run tests sequentially to bound worker processes.
 
-### OpenAI-compatible proxy for local authoring
+### Same compiled tool in both runtimes
 
-The local execution inspector can author Scheme or Lua using an OpenAI Responses
-endpoint. Set `DEFAULT_CHAT_MODEL_PROVIDER=openai`, `DEFAULT_CHAT_MODEL_ID` to a
-model in the installed catalog, `OPENAI_BASE_URL` to the proxy API root (including
-`/v1`), and `OPENAI_API_KEY` to its credential. Run Astro with these variables after
-building the execution artifacts. The proxy override is passed explicitly to the
-Node authoring catalog; it does not configure the Cloudflare conversation engine
-or its separate decision provider.
+`execution:compile` emits both Scheme and Lua artifacts from
+`experiments/workflow-kernel/tsdown-authoring/review-draft.workflow.ts`. Its ordinary
+SDK DurableTool export remains separate. The model authors only the caller;
+`send_announcement` stays a host effect. Approve/decline/cancel all pass through
+the compiled tool's yielding `ensure` cleanup. Release cleanup before a successful
+caller can enqueue its announcement. Neither runtime imports a compiler at run time.
+
+Both runtimes capture and verify restoration of accepted checkpoints. Scheme
+projects lexical environments and cleanup frames; Lua exposes VM frames, stack
+references and checkpoint data, but its lexical-environment and cleanup projections
+are explicitly unavailable. The UI must not equate these inspection capabilities.
+
+Evidence: `execution/__tests__/service.mjs` covers both runtimes and both park points;
+`tsdown-authoring/__tests__/runtime.mjs` verifies common source, host composition and
+compiler-free artifact imports; `lua-compiler/__tests__/runtime.mjs` covers return,
+throw, cancellation, yielding cleanup and shared captures in Lua and Hoot.

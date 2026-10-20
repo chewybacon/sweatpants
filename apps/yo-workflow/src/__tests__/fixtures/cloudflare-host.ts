@@ -22,6 +22,7 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
       "scheme-kernel.wasm",
       "scheme-reflect.wasm",
       "scheme-wtf8.wasm",
+      "execution-lua.wasm",
     ],
     banner: {
       js: 'import { createRequire } from "node:module"; const require = createRequire("file:///worker.js");',
@@ -33,6 +34,7 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
           .filter((name) => !name.startsWith("node:"))
           .map((name) => [name, `node:${name}`]),
       ),
+      "#execution-lua-wasm": "execution-lua.wasm",
       "#scheme-kernel-wasm": "scheme-kernel.wasm",
       "#scheme-reflect-wasm": "scheme-reflect.wasm",
       "#scheme-wtf8-wasm": "scheme-wtf8.wasm",
@@ -50,6 +52,15 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
             mainModule: "index.js",
             modules: {
               "index.js": { type: "esm", contents: bundle.outputFiles[0].text },
+              "execution-lua.wasm": {
+                type: "wasm",
+                contents: await readFile(
+                  new URL(
+                    "../../../../../.artifacts/teal-lua-checkpoint/kernel.wasm",
+                    import.meta.url,
+                  ),
+                ),
+              },
               ...Object.fromEntries(
                 await Promise.all(
                   ["kernel", "reflect", "wtf8"].map(async (name) => [

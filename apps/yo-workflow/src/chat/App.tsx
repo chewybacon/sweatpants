@@ -1,3 +1,4 @@
+import { workflowLanguage, type WorkflowLanguage } from "../workflow/language.ts";
 import { CancelWorkflow, CurrentWorkflowActivity } from "./workflow-activity.tsx";
 import { activeWork } from "./activity.ts";
 import { ReplyFocusProvider } from "./reply-focus.tsx";
@@ -21,6 +22,11 @@ export function App({ initialThreadId }: AppProps) {
     rememberThread(initialThreadId);
     return initialThreadId;
   });
+  const [language, setLanguage] = useState<WorkflowLanguage>(() =>
+    workflowLanguage(localStorage.getItem(`workflow-language:${initialThreadId}`)),
+  );
+  const selectedLanguage = useRef(language);
+  selectedLanguage.current = language;
   const [prompt, setPrompt] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -41,7 +47,7 @@ export function App({ initialThreadId }: AppProps) {
     loadOlder,
   } = useChat({
     api: "/api/chat",
-    fetcher: fetchWithAuthoringPolicy,
+    fetcher: (input, init) => fetchWithAuthoringPolicy(input, init, selectedLanguage.current),
     threadId,
     plugins: [askPlugin, choicesPlugin, documentDisplayPlugin],
     pipeline: "markdown",
@@ -191,6 +197,26 @@ export function App({ initialThreadId }: AppProps) {
               }
             }}
           >
+            <label className="workflow-language">
+              Workflow language
+              <select
+                value={language}
+                disabled={!canSendMessage}
+                onChange={(event) => {
+                  const next = workflowLanguage(event.target.value);
+                  setLanguage(next);
+                  localStorage.setItem(`workflow-language:${threadId}`, next);
+                }}
+              >
+                <option value="scheme">Scheme</option>
+                <option value="lua">Lua</option>
+              </select>
+            </label>
+            <p className="hint">
+              {language === "lua"
+                ? "Lua supports conversational steps and loops. Child workflows, timers and concurrent tasks are not available."
+                : "Scheme supports conversational steps, loops and child workflows. Timers and concurrent tasks are not available."}
+            </p>
             <TextArea
               ref={textarea}
               label="Describe a workflow"

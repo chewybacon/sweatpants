@@ -1,3 +1,4 @@
+import { luaWorkflowCompiler } from "../lua-compiler/compiler.mjs";
 import { reviewExports, reviewImports } from "./contracts.mts";
 import { fileURLToPath } from "node:url";
 import { workflowPlugin } from "./plugin.mjs";
@@ -10,5 +11,9 @@ export default {
   dts: true,
   plugins: [
     workflowPlugin({ entry: "review_draft", exports: reviewExports, bindings: reviewImports }),
+    workflowPlugin(
+      { entry: "review_draft", exports: reviewExports, bindings: reviewImports },
+      { compiler: luaWorkflowCompiler, artifactName: "lua.artifact" },
+    ),
   ],
 };

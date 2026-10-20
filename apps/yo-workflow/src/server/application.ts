@@ -1,3 +1,4 @@
+import type { WorkflowLanguage } from "../workflow/language.ts";
 import { documentEffectRegistration } from "./document-effect.ts";
 import {
   createDecisionEffectRegistration,
@@ -11,7 +12,7 @@ import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
 } from "@sweatpants/durable-chat-runtime/response-streams";
-import { programs, workflowExposure } from "../workflow/agent.ts";
+import { programs, createWorkflowExposure } from "../workflow/agent.ts";
 
 type AppOptions = Parameters<typeof createChatApp>[0];
 
@@ -19,6 +20,7 @@ type AppOptions = Parameters<typeof createChatApp>[0];
 export function createWorkflowApp(
   options: Pick<AppOptions, "storage" | "model" | "execution"> & {
     decisionProvider?: DecisionProviderDriver;
+    language?: WorkflowLanguage;
   },
 ) {
   return createChatApp({
@@ -41,7 +43,7 @@ export function createWorkflowApp(
       },
       chat: function* () {
         // Child contracts stay installed; only model exposure is filtered.
-        yield* ToolExposurePolicyContext.set(workflowExposure);
+        yield* ToolExposurePolicyContext.set(createWorkflowExposure(options.language));
       },
     },
   });

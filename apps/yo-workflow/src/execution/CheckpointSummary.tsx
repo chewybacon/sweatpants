@@ -51,7 +51,11 @@ export function CheckpointSummary({ view }: { view: ExecutionView }) {
           </div>
           <div>
             <dt>Remaining work</dt>
-            <dd>{state.frames.length} continuation frames, including scope and cleanup state</dd>
+            <dd>
+              {state.execution.availability.unwind === "unavailable"
+                ? "Saved in the VM checkpoint; scope and cleanup inspection is unavailable"
+                : `${state.frames.length} continuation frames, including scope and cleanup state`}
+            </dd>
           </div>
         </dl>
         <details>

@@ -93,6 +93,23 @@ export function emitWorkflowScheme(
     const name = f.id.name,
       bound = new Set(),
       mutable = new Set();
+    const callables = new Map([...names].map((id) => [id, { kind: "generator" }]));
+    function callableOf(node) {
+      if (t.isIdentifier(node)) {
+        return callables.get(node.name);
+      }
+      if (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) {
+        const result = t.isBlockStatement(node.body) ? node.body.body.at(-1)?.argument : node.body;
+        return {
+          kind: node.generator ? "generator" : "sync",
+          result: result && callableOf(result),
+        };
+      }
+      if (t.isCallExpression(node) && t.isIdentifier(node.callee)) {
+        return callables.get(node.callee.name)?.result;
+      }
+      return undefined;
+    }
     let loopDepth = 0;
     for (const p of f.params) {
       if (!t.isIdentifier(p) || bound.has(p.name)) {
@@ -120,7 +137,7 @@ export function emitWorkflowScheme(
         return typeof n.value === "boolean" ? (n.value ? "#t" : "#f") : JSON.stringify(n.value);
       }
       if (t.isIdentifier(n)) {
-        if (!bound.has(n.name)) {
+        if (!bound.has(n.name) && !names.has(n.name)) {
           throw Error("Unbound local " + n.name);
         }
         return n.name;
@@ -142,12 +159,18 @@ export function emitWorkflowScheme(
         const value = `(${operation} ${expr(n.left, site)} ${expr(n.right, site)})`;
         return n.operator === "!==" ? `(not ${value})` : value;
       }
+      if (allowFinally && t.isUnaryExpression(n, { operator: "!" })) {
+        return `(not (truthy ${expr(n.argument, site)}))`;
+      }
       if (
         allowFinally &&
         t.isAssignmentExpression(n) &&
         n.operator === "=" &&
         t.isIdentifier(n.left)
       ) {
+        if (callables.has(n.left.name) || callableOf(n.right)) {
+          throw Error("Callable bindings must be immutable");
+        }
         if (!bound.has(n.left.name) || !mutable.has(n.left.name)) {
           throw Error("Assignment requires mutable local");
         }
@@ -161,6 +184,55 @@ export function emitWorkflowScheme(
       }
       if (t.isArrayExpression(n)) {
         return `(list ${n.elements.map((e) => expr(e, site)).join(" ")})`;
+      }
+      if (allowFinally && (t.isFunctionExpression(n) || t.isArrowFunctionExpression(n))) {
+        if (n.async || (t.isFunctionExpression(n) && n.id)) {
+          throw Error("Only anonymous synchronous workflow closures are supported");
+        }
+        validateCleanupPolicy(n, t);
+        const saved = new Set(bound),
+          savedMutable = new Set(mutable),
+          savedCallables = new Map(callables),
+          savedLoop = loopDepth;
+        const params = new Set();
+        for (const parameter of n.params) {
+          if (
+            !t.isIdentifier(parameter) ||
+            params.has(parameter.name) ||
+            apiNames.has(parameter.name) ||
+            names.has(parameter.name)
+          ) {
+            throw Error("Unsupported closure parameter");
+          }
+          params.add(parameter.name);
+          bound.add(parameter.name);
+          mutable.delete(parameter.name);
+          callables.delete(parameter.name);
+        }
+        loopDepth = 0;
+        const result = t.isBlockStatement(n.body)
+          ? statements(n.body.body, `${site}/lambda`)
+          : [`(workflow-return ${expr(n.body, `${site}/lambda/return`)})`];
+        if (t.isBlockStatement(n.body) && !completes(n.body.body.at(-1))) {
+          throw Error("Closure requires an explicit final return or throw");
+        }
+        loopDepth = savedLoop;
+        bound.clear();
+        saved.forEach((v) => bound.add(v));
+        mutable.clear();
+        savedMutable.forEach((v) => mutable.add(v));
+        callables.clear();
+        savedCallables.forEach((value, key) => callables.set(key, value));
+        return `(lambda (${[...params].join(" ")}) ${result.join(" ")})`;
+      }
+      if (
+        allowFinally &&
+        t.isCallExpression(n) &&
+        t.isIdentifier(n.callee) &&
+        bound.has(n.callee.name) &&
+        callables.get(n.callee.name)?.kind === "sync"
+      ) {
+        return `(${n.callee.name} ${n.arguments.map((a) => expr(a, site)).join(" ")})`;
       }
       if (t.isYieldExpression(n) && n.delegate && t.isCallExpression(n.argument)) {
         const call = n.argument,
@@ -285,6 +357,9 @@ export function emitWorkflowScheme(
           }
           return `(ensure (lambda () ${body.map((s, i) => expr(s.expression, `${site}/cleanup-${i}`)).join(" ")}))`;
         }
+        if (t.isIdentifier(c) && bound.has(c.name) && callables.get(c.name)?.kind === "generator") {
+          return `(${c.name} ${call.arguments.map((a) => expr(a, site)).join(" ")})`;
+        }
         if (t.isIdentifier(c) && names.has(c.name)) {
           const target = functions.find((f) => f.id.name === c.name);
           if (call.arguments.length !== target.params.length) {
@@ -313,7 +388,16 @@ export function emitWorkflowScheme(
           ) {
             throw Error("Unsupported binding");
           }
+          const callable = callableOf(d.init);
+          if (callable && s.kind !== "const") {
+            throw Error("Callable bindings must be immutable");
+          }
           const value = expr(d.init, `${path}/${d.id.name}`);
+          if (callable) {
+            callables.set(d.id.name, callable);
+          } else {
+            callables.delete(d.id.name);
+          }
           bound.add(d.id.name);
           if (s.kind === "let") {
             mutable.add(d.id.name);

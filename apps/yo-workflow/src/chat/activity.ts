@@ -5,6 +5,7 @@ export function toolLabel(name: string): string {
     (
       {
         scheme: "Scheme workflow",
+        lua: "Lua workflow",
         ask: "Ask you",
         sample: "Model sample",
         random: "Random draw",
@@ -77,7 +78,7 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
 
 /** Workflow failures are successful tool deliveries carrying a diagnostic outcome. */
 export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-call" }>) {
-  if (part.state !== "output-available" || part.name !== "scheme") {
+  if (part.state !== "output-available" || (part.name !== "scheme" && part.name !== "lua")) {
     return;
   }
   const output = part.output;

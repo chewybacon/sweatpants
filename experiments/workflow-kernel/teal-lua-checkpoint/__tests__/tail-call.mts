@@ -9,7 +9,7 @@ test("a tail-called host effect restores with no remaining Lua frames and return
   await run(function* () {
     const parked = yield* invokeWasm({ action: "start", source, input: null });
     assert.equal((parked.boundary as { kind: string }).kind, "suspended");
-    assert.deepEqual((parked.vm as { frames: unknown[] }).frames, []);
+    assert.deepEqual((parked.vm as { threads: { frames: unknown[] }[] }).threads[0].frames, []);
     const state = JSON.parse(JSON.stringify(parked));
     const restored = yield* invokeWasm({ action: "restore", source, state });
     assert.deepEqual(restored.boundary, parked.boundary);

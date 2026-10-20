@@ -255,3 +255,20 @@ it("preserves other child content when a saved document context cannot be decode
   );
   expect(screen.getByText("Retained content")).toBeTruthy();
 });
+
+it("renders authored Lua source and workflow diagnostics in the conversation", () => {
+  const program = 'return ask({message="Continue?"})';
+  const { container } = render(
+    <Part
+      part={completed(
+        "lua",
+        { program },
+        { status: "failed", diagnostic: { message: "bad request" } },
+      )}
+    />,
+  );
+  expect(screen.getByText("Lua source")).toBeTruthy();
+  expect(screen.getByText("Program failed")).toBeTruthy();
+  expect(container.querySelector(".source code")?.textContent).toBe(program);
+  expect(screen.queryByLabelText("Expanded program canvas")).toBeNull();
+});

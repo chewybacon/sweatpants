@@ -1,3 +1,4 @@
+import { workflowLanguage } from "../../workflow/language.ts";
 import { DurableObject } from "cloudflare:workers";
 import { createChatFetchHandler, type ChatModel } from "@sweatpants/agent-host/server";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
@@ -25,10 +26,15 @@ export class Conversations extends DurableObject<Env> {
   override fetch(request: Request) {
     const model = JSON.parse(this.env.MODEL) as Pick<ChatModel, "model" | "streamOptions">;
     return createChatFetchHandler(() =>
-      createCloudflareWorkflowApp(this.env, {
-        ...model,
-        driver: createPiAiModelProvider().driver,
-      }),
+      createCloudflareWorkflowApp(
+        this.env,
+        {
+          ...model,
+          driver: createPiAiModelProvider().driver,
+        },
+        undefined,
+        workflowLanguage(request.headers.get("X-Workflow-Language")),
+      ),
     )(request);
   }
 }

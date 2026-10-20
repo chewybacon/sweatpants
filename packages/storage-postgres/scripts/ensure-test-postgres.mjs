@@ -91,7 +91,8 @@ async function main() {
     ? URL.replace(/\/postgres$/, "/sweatpants_test")
     : `postgres://postgres:postgres@localhost:${PORT}/sweatpants_test`;
   process.env.SWEATPANTS_DATABASE_URL = connectionString;
-  console.log(`Postgres test harness ready: ${connectionString}`);
+  // Machine-readable output consumed by vitest.global-setup.ts.
+  console.log(connectionString);
 }
 
 main().catch((error) => {
