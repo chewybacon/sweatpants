@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { run } from "effection";
 import { readFile } from "node:fs/promises";
 import { analyzeWorkflowTools, emitTypeScriptWorkflowScheme } from "@sweatpants/flowmode-compiler";
-import { luaWorkflowCompiler } from "../index.mjs";
+import { luaWorkflowCompiler } from "../index.js";
 const id = new URL(
   "../../../../apps/yo-workflow/execution/review-draft.workflow.ts",
   import.meta.url,
@@ -17,6 +17,9 @@ test("the public Lua target retains cleanup and rejects unsupported workflow con
     }),
   );
   expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error(JSON.stringify(result.diagnostics));
+  }
   expect(result.module.implementation.payload).toContain("workflow.scope");
   expect(result.module.source.text).toBe(text);
   const invalid = text.replace(

@@ -1,12 +1,59 @@
-import { createWorkflowCompiler } from "@sweatpants/flowmode-runtime";
+import type * as Babel from "@babel/core";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "./emit-scheme.mjs";
-const babel = createRequire(import.meta.url)("@babel/core");
+import { emitWorkflowScheme } from "./emit-scheme.js";
 
+import {
+  createWorkflowCompiler,
+  type CompileRequest,
+  type CompiledWorkflow,
+  type Diagnostic,
+  type SourcePosition,
+  type WorkflowSource,
+  type WorkflowCompiler,
+} from "@sweatpants/flowmode-runtime";
+import type { Operation } from "effection";
+import type { TypeScriptWorkflowTarget, WorkflowEntry, WorkflowEmission } from "./types.js";
+const babel = createRequire(import.meta.url)("@babel/core") as typeof Babel;
+
+function compileErrorPosition(error: unknown, sourceId: string): SourcePosition {
+  if (error && typeof error === "object") {
+    if ("position" in error && error.position && typeof error.position === "object") {
+      const p = error.position;
+      if (
+        "sourceId" in p &&
+        typeof p.sourceId === "string" &&
+        "line" in p &&
+        typeof p.line === "number" &&
+        "column" in p &&
+        typeof p.column === "number"
+      ) {
+        return { sourceId: p.sourceId, line: p.line, column: p.column };
+      }
+    }
+    if ("loc" in error && error.loc && typeof error.loc === "object") {
+      const p = error.loc;
+      if (
+        "line" in p &&
+        typeof p.line === "number" &&
+        "column" in p &&
+        typeof p.column === "number"
+      ) {
+        return { sourceId, line: p.line, column: p.column + 1 };
+      }
+    }
+  }
+  return { sourceId, line: 1, column: 1 };
+}
 /** Shared build transform: no module evaluation or bundler state. */
-function compileDefinitions(source, id, declaredExports, bindings, target) {
+function compileDefinitions(
+  source: string,
+  id: string,
+  declaredExports: CompileRequest["exports"],
+  bindings: CompileRequest["bindings"],
+  target: TypeScriptWorkflowTarget,
+): Record<string, CompiledWorkflow> {
   const ast = babel.parseSync(source, {
     filename: id,
     configFile: false,
@@ -14,11 +61,11 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
     parserOpts: { plugins: ["typescript"] },
   });
   const t = babel.types;
-  let builderName;
-  let schemaName;
-  const definitions = [];
-  const removed = [];
-  for (const node of ast.program.body) {
+  let builderName: string | undefined;
+  let schemaName: string | undefined;
+  const definitions: (WorkflowEntry & { inline?: Babel.types.FunctionExpression })[] = [];
+  const removed: Babel.types.Node[] = [];
+  for (const node of ast!.program.body) {
     if (
       t.isImportDeclaration(node) &&
       ["@sweatpants/agent-sdk", "@sweatpants/agent-sdk/tool"].includes(node.source.value)
@@ -26,7 +73,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
       if (
         node.specifiers.length !== 1 ||
         !t.isImportSpecifier(node.specifiers[0]) ||
-        node.specifiers[0].imported.name !== "createDurableTool"
+        !t.isIdentifier(node.specifiers[0].imported, { name: "createDurableTool" })
       ) {
         throw Error(`${id}: expected createDurableTool import`);
       }
@@ -36,7 +83,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
       if (
         node.specifiers.length !== 1 ||
         !t.isImportSpecifier(node.specifiers[0]) ||
-        node.specifiers[0].imported.name !== "z"
+        !t.isIdentifier(node.specifiers[0].imported, { name: "z" })
       ) {
         throw Error(`${id}: expected z import`);
       }
@@ -68,10 +115,15 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
         }
         validateBuilder(init.callee.object);
         const execute = init.arguments[0];
-        const declared = declaredExports.find((e) => e.name === binding.id.name);
+        const name = binding.id.name;
+        const declared = declaredExports.find((e) => e.name === name);
+        const entry = t.isIdentifier(execute) ? execute.name : declared?.entry;
+        if (!entry) {
+          throw Error(`${id}: missing export contract for ${name}`);
+        }
         definitions.push({
           name: binding.id.name,
-          entry: t.isIdentifier(execute) ? execute.name : declared?.entry,
+          entry,
           inline: t.isFunctionExpression(execute) ? execute : undefined,
         });
       }
@@ -81,7 +133,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
   if (!definitions.length) {
     throw Error(`${id}: no compiled workflow definitions`);
   }
-  function staticValue(node) {
+  function staticValue(node: Babel.types.Node | null | undefined): void {
     if (
       t.isStringLiteral(node) ||
       t.isNumericLiteral(node) ||
@@ -109,6 +161,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
       t.isCallExpression(node) &&
       t.isMemberExpression(node.callee) &&
       !node.callee.computed &&
+      t.isIdentifier(node.callee.property) &&
       t.isIdentifier(node.callee.object, { name: schemaName }) &&
       ["object", "string", "boolean", "number", "null", "enum", "array", "literal"].includes(
         node.callee.property.name,
@@ -121,7 +174,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
     }
     throw Error("Dynamic workflow declaration; supply a statically supported builder");
   }
-  function validateBuilder(node) {
+  function validateBuilder(node: Babel.types.Node): void {
     if (t.isCallExpression(node) && t.isIdentifier(node.callee, { name: builderName })) {
       if (node.arguments.length !== 2 || !t.isStringLiteral(node.arguments[0])) {
         throw Error("Workflow tool requires static name and version");
@@ -133,6 +186,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
       !t.isCallExpression(node) ||
       !t.isMemberExpression(node.callee) ||
       node.callee.computed ||
+      !t.isIdentifier(node.callee.property) ||
       !["description", "parameters", "output", "elicits"].includes(node.callee.property.name) ||
       node.arguments.length !== 1
     ) {
@@ -143,15 +197,16 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
   }
   // Strip SDK declarations without evaluating the module; targets own their calling convention.
   const edits = removed.map((node) => ({
-    start: node.start,
-    end: node.end,
-    text: source.slice(node.start, node.end).replace(/[^\r\n]/g, " "),
+    start: node.start!,
+    end: node.end!,
+    text: source.slice(node.start!, node.end!).replace(/[^\r\n]/g, " "),
   }));
   for (const definition of definitions) {
     const fn =
       definition.inline ??
-      ast.program.body.find(
-        (node) => t.isFunctionDeclaration(node) && node.id.name === definition.entry,
+      ast!.program.body.find(
+        (node): node is Babel.types.FunctionDeclaration =>
+          t.isFunctionDeclaration(node) && node.id?.name === definition.entry,
       );
     if (!fn) {
       throw Error(`${id}: unknown workflow entry ${definition.entry}`);
@@ -169,15 +224,15 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
       continue;
     }
     const fn = definition.inline;
-    const edit = edits.find((e) => e.start <= fn.start && e.end >= fn.end);
-    const prefix = source.slice(fn.start, fn.params[0].start);
+    const edit = edits.find((e) => e.start <= fn.start! && e.end >= fn.end!)!;
+    const prefix = source.slice(fn.start!, fn.params[0].start!);
     const parameterStart = prefix.indexOf("(");
     const replacement =
-      `function* ${definition.entry}` + source.slice(fn.start + parameterStart, fn.end);
+      `function* ${definition.entry}` + source.slice(fn.start! + parameterStart, fn.end!);
     edit.text =
-      edit.text.slice(0, fn.start - edit.start) +
+      edit.text.slice(0, fn.start! - edit.start) +
       replacement +
-      edit.text.slice(fn.end - edit.start);
+      edit.text.slice(fn.end! - edit.start);
   }
   let input = source;
   for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
@@ -191,19 +246,22 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
     if (!fn) {
       continue;
     }
-    const parameterStart = source.slice(fn.start, fn.params[0].start).indexOf("(");
+    const parameterStart = source.slice(fn.start!, fn.params[0].start!).indexOf("(");
     const delta = `function* ${definition.entry}`.length - parameterStart;
     for (const site of Object.values(emitted.debug.sites)) {
-      if (site.function === definition.entry && site.line === fn.loc.start.line) {
+      if (site.function === definition.entry && site.line === fn.loc!.start.line) {
         site.column -= delta;
       }
     }
     emitted.debug.locations[definition.entry] = {
-      line: fn.loc.start.line,
-      column: fn.loc.start.column,
+      line: fn.loc!.start.line,
+      column: fn.loc!.start.column,
     };
   }
   for (const site of Object.values(emitted.debug.sites)) {
+    if (site.operation === "scoped") {
+      throw Error(`Undeclared workflow exchange: ${JSON.stringify(["effect", null, null])}`);
+    }
     const bindingId =
       site.operation === "elicit"
         ? JSON.stringify(["elicit", site.key])
@@ -213,7 +271,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
     }
   }
   const functions = new Set(
-    ast.program.body.filter(t.isFunctionDeclaration).map((node) => node.id.name),
+    ast!.program.body.filter((node) => t.isFunctionDeclaration(node)).map((node) => node.id!.name),
   );
   return Object.fromEntries(
     definitions.map(({ name, entry }) => {
@@ -239,7 +297,7 @@ function compileDefinitions(source, id, declaredExports, bindings, target) {
 }
 
 /** Type-check the supplied source without evaluating its module or emitting JavaScript. */
-function typeDiagnostics(source) {
+function typeDiagnostics(source: WorkflowSource): Diagnostic[] {
   const filename = resolve(source.id);
   const options = {
     strict: true,
@@ -262,7 +320,12 @@ function typeDiagnostics(source) {
       : readSource(path, languageVersion, onError, shouldCreateNewSourceFile);
   const program = ts.createProgram([filename], options, host);
   return ts.getPreEmitDiagnostics(program).map((diagnostic) => {
-    const result = {
+    const result: {
+      severity: "error" | "warning";
+      code: string;
+      message: string;
+      position?: SourcePosition;
+    } = {
       severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" : "warning",
       code: `TS${diagnostic.code}`,
       message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
@@ -281,10 +344,10 @@ function typeDiagnostics(source) {
 
 /**
  * Target-local emission after shared SDK extraction; no new persisted IR or runtime protocol.
- * @param {{ definitionFormat: string, emit: (source: string, definitions: {name: string, entry: string}[]) => {payload: string, debug: import('@sweatpants/flowmode-runtime').WorkflowDebugInfo} }} target
- * @returns {import('@sweatpants/flowmode-runtime').WorkflowCompiler}
  */
-export function createTypeScriptWorkflowCompiler(target) {
+export function createTypeScriptWorkflowCompiler(
+  target: TypeScriptWorkflowTarget,
+): WorkflowCompiler {
   return createWorkflowCompiler({
     driver: {
       sourceLanguage: "typescript",
@@ -314,12 +377,8 @@ export function createTypeScriptWorkflowCompiler(target) {
               {
                 severity: "error",
                 code: "typescript_workflow_compile",
-                message: error.message,
-                position:
-                  error.position ??
-                  (error.loc
-                    ? { sourceId: source.id, line: error.loc.line, column: error.loc.column + 1 }
-                    : { sourceId: source.id, line: 1, column: 1 }),
+                message: error instanceof Error ? error.message : String(error),
+                position: compileErrorPosition(error, source.id),
               },
             ],
           };
@@ -329,12 +388,10 @@ export function createTypeScriptWorkflowCompiler(target) {
   });
 }
 
-/**
- * @param {string} source
- * @param {{ name: string, entry: string }[]} definitions
- * @returns {{ payload: string, debug: import("@sweatpants/flowmode-runtime").WorkflowDebugInfo }}
- */
-export function emitTypeScriptWorkflowScheme(source, definitions) {
+export function emitTypeScriptWorkflowScheme(
+  source: string,
+  definitions: WorkflowEntry[],
+): WorkflowEmission {
   const ast = babel.parseSync(source, {
     configFile: false,
     babelrc: false,
@@ -342,16 +399,20 @@ export function emitTypeScriptWorkflowScheme(source, definitions) {
   });
   // Scheme privately takes ctx before input. The shared extractor preserves source order.
   const edits = definitions.map(({ entry }) => {
-    const fn = ast.program.body.find(
-      (node) => babel.types.isFunctionDeclaration(node) && node.id.name === entry,
+    const fn = ast!.program.body.find(
+      (node): node is Babel.types.FunctionDeclaration =>
+        babel.types.isFunctionDeclaration(node) && node.id?.name === entry,
     );
+    if (!fn) {
+      throw Error(`Unknown workflow entry: ${entry}`);
+    }
     return {
-      start: fn.params[0].start,
-      end: fn.params[1].end,
+      start: fn.params[0].start!,
+      end: fn.params[1].end!,
       text:
-        source.slice(fn.params[1].start, fn.params[1].end) +
+        source.slice(fn.params[1].start!, fn.params[1].end!) +
         ", " +
-        source.slice(fn.params[0].start, fn.params[0].end),
+        source.slice(fn.params[0].start!, fn.params[0].end!),
     };
   });
   let input = source;
@@ -368,13 +429,13 @@ export function emitTypeScriptWorkflowScheme(source, definitions) {
 }
 
 /** Bundler representation is separate from the portable compiler output.
- * @param {string} source
- * @param {string} id
- * @param {Omit<import("@sweatpants/flowmode-runtime").CompileRequest, "source">} declarations
- * @param {import("@sweatpants/flowmode-runtime").WorkflowCompiler} compiler
- * @returns {import("effection").Operation<string>}
  */
-export function* compileWorkflowModule(source, id, declarations, compiler) {
+export function* compileWorkflowModule(
+  source: string,
+  id: string,
+  declarations: Omit<CompileRequest, "source">,
+  compiler: WorkflowCompiler,
+): Operation<string> {
   const result = yield* compiler.compile({
     source: { language: "typescript", text: source, id },
     ...declarations,

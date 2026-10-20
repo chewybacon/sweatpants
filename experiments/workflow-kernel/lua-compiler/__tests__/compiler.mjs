@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { run } from "effection";
-import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/src/index.mjs";
-import { transpileWorkflowScheme } from "../../../../packages/flowmode-compiler-lua/src/scheme-to-lua.mjs";
-import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/src/index.mjs";
+import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
+import { transpileWorkflowScheme } from "../../../../packages/flowmode-compiler-lua/dist/scheme-to-lua.js";
+import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
 import { reviewExports, reviewImports } from "../../tsdown-authoring/contracts.mts";
 
 const source = await readFile(

@@ -1,16 +1,26 @@
+import type * as Babel from "@babel/core";
 // Compile the supported developer generator subset to workflow Scheme and source metadata.
 import { createRequire } from "node:module";
-import { validateCleanupPolicy } from "./cleanup-policy.mjs";
-const babel = createRequire(import.meta.url)("@babel/core");
-import { schemeString } from "./scheme-data/values.mjs";
+import { validateCleanupPolicy } from "./cleanup-policy.js";
+import { schemeString } from "./scheme-data/values.js";
+import type { EmittedWorkflowDebug } from "./types.js";
+const babel = createRequire(import.meta.url)("@babel/core") as typeof Babel;
 const t = babel.types;
-/**
- * @param {string} source
- * @param {{ allowEnsure?: boolean, allowFinally?: boolean, allowScopes?: boolean, entryInput?: boolean, entryPoint?: string | null, installedEffects?: readonly { module: string, export: string, definition: { name: string, version: string } }[] }} options
- * @returns {{ scheme: string, debug: import("@sweatpants/flowmode-runtime").WorkflowDebugInfo }}
- */
+export interface SchemeEmissionOptions {
+  allowEnsure?: boolean;
+  allowFinally?: boolean;
+  allowScopes?: boolean;
+  entryInput?: boolean;
+  entryPoint?: string | null;
+  installedEffects?: readonly {
+    module: string;
+    export: string;
+    definition: { name: string; version: string };
+  }[];
+}
+type Callable = { kind: "generator" | "sync"; result?: Callable };
 export function emitWorkflowScheme(
-  source,
+  source: string,
   {
     allowEnsure = false,
     allowFinally = false,
@@ -18,33 +28,37 @@ export function emitWorkflowScheme(
     entryInput = false,
     entryPoint = "workflow",
     installedEffects = [],
-  } = {},
+  }: SchemeEmissionOptions = {},
 ) {
   const ast = babel.parseSync(source, {
     configFile: false,
     babelrc: false,
     parserOpts: { plugins: ["typescript"] },
   });
-  let currentNode = ast.program;
-  function sourceError(message) {
-    const error = new Error(message);
-    error.loc = currentNode.loc.start;
+  let currentNode: Babel.types.Node = ast!.program;
+  function sourceError(message: string) {
+    const error = Object.assign(new Error(message), { loc: currentNode.loc!.start });
     return error;
   }
-  const imports = ast.program.body.filter((n) => t.isImportDeclaration(n));
+  const imports = ast!.program.body.filter((n) => t.isImportDeclaration(n));
   if (allowScopes && !allowFinally) {
     throw sourceError("Scopes require the explicit unwind backend");
   }
-  const ensureNames = new Set(),
-    scopeNames = new Set(),
-    apiNames = new Set();
-  const effectNames = new Map();
+  const ensureNames = new Set<string>(),
+    scopeNames = new Set<string>(),
+    apiNames = new Set<string>();
+  const effectNames = new Map<string, { name: string; version: string }>();
   for (const imp of imports) {
     const bindings = installedEffects.filter((binding) => binding.module === imp.source.value);
     if (bindings.length) {
       for (const spec of imp.specifiers) {
         const binding =
-          t.isImportSpecifier(spec) && bindings.find((b) => b.export === spec.imported.name);
+          t.isImportSpecifier(spec) &&
+          bindings.find(
+            (b) =>
+              b.export ===
+              (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value),
+          );
         if (!binding || effectNames.has(spec.local.name)) {
           throw sourceError("Unknown installed effect import");
         }
@@ -60,15 +74,21 @@ export function emitWorkflowScheme(
       throw sourceError("Unsupported import");
     }
     for (const spec of imp.specifiers) {
-      if (spec.importKind === "type") {
+      if (t.isImportSpecifier(spec) && spec.importKind === "type") {
         continue;
       }
       if (!t.isImportSpecifier(spec)) {
         throw sourceError("Unsupported import");
       }
-      if (spec.imported.name === "ensure" && allowEnsure) {
+      if (
+        (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value) === "ensure" &&
+        allowEnsure
+      ) {
         ensureNames.add(spec.local.name);
-      } else if (spec.imported.name === "scoped" && allowScopes) {
+      } else if (
+        (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value) === "scoped" &&
+        allowScopes
+      ) {
         scopeNames.add(spec.local.name);
       } else {
         throw sourceError("Unsupported import");
@@ -76,43 +96,53 @@ export function emitWorkflowScheme(
       apiNames.add(spec.local.name);
     }
   }
-  const functions = ast.program.body.filter((n) => !t.isImportDeclaration(n));
-  const names = new Set();
-  for (const f of functions) {
+  const declarations = ast!.program.body.filter((n) => !t.isImportDeclaration(n));
+  const functions: Babel.types.FunctionDeclaration[] = [];
+  const names = new Set<string>();
+  for (const f of declarations) {
     if (
       !t.isFunctionDeclaration(f) ||
+      !f.id ||
       !f.generator ||
       f.async ||
       !f.body.directives.some((d) => d.value.value === "use workflow")
     ) {
       throw sourceError("Expected named function* with use workflow directive");
     }
+    functions.push(f);
     validateCleanupPolicy(f, t);
-    if (apiNames.has(f.id.name)) {
+    if (apiNames.has(f.id!.name)) {
       throw sourceError("Shadowed Effection import");
     }
-    if (names.has(f.id.name)) {
+    if (names.has(f.id!.name)) {
       throw sourceError("Duplicate function");
     }
-    names.add(f.id.name);
+    names.add(f.id!.name);
   }
-  const sites = {},
-    locations = {};
-  function emitFunction(f) {
+  const sites: EmittedWorkflowDebug["sites"] = {},
+    locations: EmittedWorkflowDebug["locations"] = {};
+  function emitFunction(f: Babel.types.FunctionDeclaration): string {
     currentNode = f;
-    const name = f.id.name,
-      bound = new Set(),
-      mutable = new Set();
-    const callables = new Map([...names].map((id) => [id, { kind: "generator" }]));
-    function callableOf(node) {
+    const name = f.id!.name,
+      bound = new Set<string>(),
+      mutable = new Set<string>();
+    const callables = new Map<string, Callable>(
+      [...names].map((id) => [id, { kind: "generator" }]),
+    );
+    function callableOf(node: Babel.types.Node | null | undefined): Callable | undefined {
       if (t.isIdentifier(node)) {
         return callables.get(node.name);
       }
       if (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) {
-        const result = t.isBlockStatement(node.body) ? node.body.body.at(-1)?.argument : node.body;
+        const last = t.isBlockStatement(node.body) ? node.body.body.at(-1) : undefined;
+        const result = t.isBlockStatement(node.body)
+          ? t.isReturnStatement(last) || t.isThrowStatement(last)
+            ? last.argument
+            : undefined
+          : node.body;
         return {
           kind: node.generator ? "generator" : "sync",
-          result: result && callableOf(result),
+          result: result ? callableOf(result) : undefined,
         };
       }
       if (t.isCallExpression(node) && t.isIdentifier(node.callee)) {
@@ -133,10 +163,13 @@ export function emitWorkflowScheme(
       }
       bound.add(p.name);
     }
-    if (f.params[0]?.name !== "ctx") {
+    if (!t.isIdentifier(f.params[0], { name: "ctx" })) {
       throw sourceError("First parameter must be ctx");
     }
-    function expr(n, site) {
+    function expr(n: Babel.types.Node | null | undefined, site: string): string {
+      if (!n) {
+        throw sourceError("Missing expression");
+      }
       currentNode = n;
       if (t.isNullLiteral(n)) {
         return "(quote json-null)";
@@ -188,10 +221,14 @@ export function emitWorkflowScheme(
         return `(set! ${n.left.name} ${expr(n.right, site)})`;
       }
       if (t.isObjectExpression(n)) {
-        if (n.properties.some((p) => !t.isObjectProperty(p) || p.computed)) {
+        if (
+          !n.properties.every(
+            (p): p is Babel.types.ObjectProperty => t.isObjectProperty(p) && !p.computed,
+          )
+        ) {
           throw sourceError("Unsupported object property");
         }
-        return `(object ${n.properties.map((p) => `(list ${schemeString(String(p.key.name ?? p.key.value))} ${expr(p.value, site)})`).join(" ")})`;
+        return `(object ${n.properties.map((p) => `(list ${schemeString(String(t.isIdentifier(p.key) ? p.key.name : "value" in p.key ? p.key.value : undefined))} ${expr(p.value, site)})`).join(" ")})`;
       }
       if (t.isArrayExpression(n)) {
         return `(list ${n.elements.map((e) => expr(e, site)).join(" ")})`;
@@ -205,7 +242,7 @@ export function emitWorkflowScheme(
           savedMutable = new Set(mutable),
           savedCallables = new Map(callables),
           savedLoop = loopDepth;
-        const params = new Set();
+        const params = new Set<string>();
         for (const parameter of n.params) {
           if (
             !t.isIdentifier(parameter) ||
@@ -264,8 +301,8 @@ export function emitWorkflowScheme(
           }
           sites[site] = {
             function: name,
-            line: n.loc.start.line,
-            column: n.loc.start.column,
+            line: n.loc!.start.line,
+            column: n.loc!.start.column,
             operation: "effect",
             name: definition.name,
             version: definition.version,
@@ -283,13 +320,13 @@ export function emitWorkflowScheme(
           }
           sites[site] = {
             function: name,
-            line: n.loc.start.line,
-            column: n.loc.start.column,
+            line: n.loc!.start.line,
+            column: n.loc!.start.column,
             operation: "elicit",
             /* CONDITIONAL-SPREAD: Only a literal request site has a statically known key in emitted compiler metadata. */
             ...(t.isStringLiteral(call.arguments[0]) ? { key: call.arguments[0].value } : {}),
           };
-          const args = [...call.arguments];
+          const args: Babel.types.Node[] = [...call.arguments];
           if (t.isObjectExpression(args[1])) {
             const properties = args[1].properties;
             if (
@@ -331,8 +368,8 @@ export function emitWorkflowScheme(
           saved.forEach((v) => bound.add(v));
           sites[site] = {
             function: name,
-            line: n.loc.start.line,
-            column: n.loc.start.column,
+            line: n.loc!.start.line,
+            column: n.loc!.start.column,
             operation: "scoped",
           };
           return `(scope ${JSON.stringify(site)} (lambda () ${body.join(" ")}))`;
@@ -363,7 +400,7 @@ export function emitWorkflowScheme(
             return `(ensure (lambda () ${cleanup.join(" ")}))`;
           }
           const body = callback.body.body;
-          if (!body.length || body.some((s) => !t.isExpressionStatement(s))) {
+          if (!body.length || !body.every((s) => t.isExpressionStatement(s))) {
             throw sourceError("Cleanup supports effect statements only in this spike");
           }
           return `(ensure (lambda () ${body.map((s, i) => expr(s.expression, `${site}/cleanup-${i}`)).join(" ")}))`;
@@ -372,8 +409,8 @@ export function emitWorkflowScheme(
           return `(${c.name} ${call.arguments.map((a) => expr(a, site)).join(" ")})`;
         }
         if (t.isIdentifier(c) && names.has(c.name)) {
-          const target = functions.find((f) => f.id.name === c.name);
-          if (call.arguments.length !== target.params.length) {
+          const target = functions.find((f) => f.id!.name === c.name);
+          if (call.arguments.length !== target!.params.length) {
             throw sourceError("Helper arity mismatch");
           }
           return `(${c.name} ${call.arguments.map((a) => expr(a, site)).join(" ")})`;
@@ -381,8 +418,8 @@ export function emitWorkflowScheme(
       }
       throw sourceError("Unsupported expression " + n.type);
     }
-    function statements(xs, path) {
-      const body = [];
+    function statements(xs: Babel.types.Statement[], path: string): string[] {
+      const body: string[] = [];
       for (const [i, s] of xs.entries()) {
         currentNode = s;
         const site = `${path}/statement-${i}`;
@@ -432,7 +469,7 @@ export function emitWorkflowScheme(
           beforeMutable.forEach((v) => mutable.add(v));
           body.push(`(while (truthy ${expr(s.test, site)}) (block ${inner.join(" ")}))`);
         } else if (allowFinally && t.isIfStatement(s)) {
-          const branch = (node) => {
+          const branch = (node: Babel.types.Statement | null | undefined) => {
             const before = new Set(bound),
               beforeMutable = new Set(mutable);
             const result = statements(
@@ -484,7 +521,7 @@ export function emitWorkflowScheme(
       return body;
     }
     const body = statements(f.body.body, name);
-    function completes(s) {
+    function completes(s: Babel.types.Statement | undefined): boolean {
       return (
         t.isReturnStatement(s) ||
         t.isThrowStatement(s) ||
@@ -494,8 +531,8 @@ export function emitWorkflowScheme(
     if (allowFinally ? !completes(f.body.body.at(-1)) : !t.isReturnStatement(f.body.body.at(-1))) {
       throw sourceError("Explicit final return or throw required");
     }
-    locations[name] = { line: f.loc.start.line, column: f.loc.start.column };
-    return `(define (${name} ${f.params.map((p) => p.name).join(" ")}) ${body.join(" ")})`;
+    locations[name] = { line: f.loc!.start.line, column: f.loc!.start.column };
+    return `(define (${name} ${f.params.map((p) => (p as Babel.types.Identifier).name).join(" ")}) ${body.join(" ")})`;
   }
   if (entryPoint !== null && !names.has(entryPoint)) {
     throw sourceError("Unknown entry point");

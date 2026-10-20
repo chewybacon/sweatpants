@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { loadMachine } from "../machine.mjs";
 import { source } from "../fixture.mjs";
 import { projectHootInspection } from "../inspection.mts";
-import { parse } from "../../../../packages/flowmode-compiler/src/scheme-data/read.mjs";
+import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
 import { executionInspectionSchema } from "../../../../apps/yo-workflow/src/execution/inspection.ts";
 
 function boundary(step, id = "original-handle") {

@@ -1,6 +1,6 @@
 // Optional bytecode reference backend for compiler and recovery comparisons.
 import { compile } from "../continuation-compiler/engine.mjs";
-import { emitWorkflowScheme } from "../../../packages/flowmode-compiler/src/emit-scheme.mjs";
+import { emitWorkflowScheme } from "../../../packages/flowmode-compiler/dist/emit-scheme.js";
 
 export function compileWorkflow(source, { compileScheme = compile, ...options } = {}) {
   const emitted = emitWorkflowScheme(source, options);

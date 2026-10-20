@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { encodeValue, decodeValue } from "../values.mjs";
+import { encodeValue, decodeValue } from "../values.js";
 test("portable Scheme data preserves JSON distinctions and rejects host values", () => {
   const values = [
     null,
@@ -27,8 +27,8 @@ test("portable Scheme data preserves JSON distinctions and rejects host values",
   for (const value of values) {
     assert.deepEqual(decodeValue(encodeValue(value)), value);
   }
-  assert.equal({}.polluted, undefined);
-  const cyclic = {};
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  const cyclic: { self?: unknown } = {};
   cyclic.self = cyclic;
   let getterCalls = 0;
   const getter = {

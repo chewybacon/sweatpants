@@ -1,12 +1,13 @@
-import { emitTypeScriptWorkflowScheme } from "@sweatpants/flowmode-compiler";
-import { transpileWorkflowScheme } from "./scheme-to-lua.mjs";
+import {
+  emitTypeScriptWorkflowScheme,
+  type WorkflowEntry,
+  type WorkflowEmission,
+} from "@sweatpants/flowmode-compiler";
+import { transpileWorkflowScheme } from "./scheme-to-lua.js";
 
 /** Both targets consume the existing workflow Scheme dialect.
- * @param {string} source
- * @param {{ name: string, entry: string }[]} definitions
- * @returns {{ payload: string, debug: import("@sweatpants/flowmode-runtime").WorkflowDebugInfo }}
  */
-export function emitWorkflowLua(source, definitions) {
+export function emitWorkflowLua(source: string, definitions: WorkflowEntry[]): WorkflowEmission {
   if (definitions.length !== 1) {
     throw Error("Lua spike requires one exported workflow");
   }

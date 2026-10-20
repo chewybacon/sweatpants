@@ -1,7 +1,11 @@
-import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
+import {
+  parse,
+  symbolName,
+  type SchemeDatum,
+} from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 // Decimal escapes encode UTF-8 independently of the source file's encoding.
-function quote(value) {
+function quote(value: string): string {
   return (
     '"' +
     [...new TextEncoder().encode(value)]
@@ -16,22 +20,24 @@ function quote(value) {
 }
 
 /** Trusted compiler output only: this is a bounded dialect translator, not a Scheme evaluator. */
-export function transpileWorkflowScheme(source, entry) {
+export function transpileWorkflowScheme(source: string, entry: string): string {
   const forms = parse(source);
-  const is = (form, head) => Array.isArray(form) && form[0]?.sym === head;
-  const fail = (form) => {
+  const is = (form: SchemeDatum | undefined, head: string): form is SchemeDatum[] =>
+    Array.isArray(form) && symbolName(form[0]) === head;
+  const fail = (form: SchemeDatum | undefined): never => {
     throw Error(`Unsupported workflow Scheme form: ${JSON.stringify(form)}`);
   };
   let nextBinding = 0;
-  function bind(symbol, env) {
-    if (!symbol?.sym) {
+  function bind(symbol: SchemeDatum, env: Map<string, string>): string {
+    const symbolId = symbolName(symbol);
+    if (!symbolId) {
       return fail(symbol);
     }
     const name = `v_${nextBinding++}`;
-    env.set(symbol.sym, name);
+    env.set(symbolId, name);
     return name;
   }
-  function expr(form, env) {
+  function expr(form: SchemeDatum, env: Map<string, string>): string {
     if (typeof form === "string") {
       return quote(form);
     }
@@ -41,16 +47,17 @@ export function transpileWorkflowScheme(source, entry) {
     if (typeof form === "number" && Number.isFinite(form)) {
       return String(form);
     }
-    if (form?.sym && env.has(form.sym)) {
-      return env.get(form.sym);
+    const symbolId = symbolName(form);
+    if (symbolId && env.has(symbolId)) {
+      return env.get(symbolId)!;
     }
     if (!Array.isArray(form)) {
       return fail(form);
     }
     const [head, ...args] = form;
-    switch (head?.sym) {
+    switch (symbolName(head)) {
       case "quote":
-        if (args.length === 1 && args[0]?.sym === "json-null") {
+        if (args.length === 1 && symbolName(args[0]) === "json-null") {
           return "workflow.null";
         }
         break;
@@ -62,7 +69,7 @@ export function transpileWorkflowScheme(source, entry) {
       case "truthy":
       case "not":
         if (args.length === 1) {
-          return head.sym === "truthy"
+          return symbolName(head) === "truthy"
             ? `truthy(${expr(args[0], env)})`
             : `(not ${expr(args[0], env)})`;
         }
@@ -91,7 +98,7 @@ export function transpileWorkflowScheme(source, entry) {
       case "<=":
       case ">=":
         if (args.length === 2) {
-          return `(${expr(args[0], env)} ${head.sym} ${expr(args[1], env)})`;
+          return `(${expr(args[0], env)} ${symbolName(head)} ${expr(args[1], env)})`;
         }
         break;
       case "yield-at": {
@@ -109,16 +116,20 @@ export function transpileWorkflowScheme(source, entry) {
         return `workflow.effect(${quote(site)}, {binding = ${quote(JSON.stringify(["elicit", request[2]]))}, input = {message = ${expr(request[3], env)}}})`;
       }
     }
-    if (head?.sym && env.has(head.sym)) {
+    if (symbolName(head) && env.has(symbolName(head)!)) {
       return `${expr(head, env)}(${args.map((arg) => expr(arg, env)).join(", ")})`;
     }
     return fail(form);
   }
-  function body(statements, inherited, { cleanup = false, root = false } = {}) {
+  function body(
+    statements: SchemeDatum[],
+    inherited: Map<string, string>,
+    { cleanup = false, root = false } = {},
+  ): string {
     const env = new Map(inherited);
     const output = [];
     for (const [index, form] of statements.entries()) {
-      if (is(form, "define") && form.length === 3 && form[1]?.sym) {
+      if (is(form, "define") && form.length === 3 && symbolName(form[1])) {
         const value = expr(form[2], env);
         const name = bind(form[1], env);
         output.push(`local ${name} = ${value}`);
@@ -152,9 +163,12 @@ export function transpileWorkflowScheme(source, entry) {
           `return workflow.scope(function()\n${continuation}\nend, function()\n${release}\nend)`,
         );
         return output.join("\n");
-      } else if (is(form, "set!") && form.length === 3 && env.has(form[1]?.sym)) {
+      } else if (is(form, "set!") && form.length === 3 && env.has(symbolName(form[1])!)) {
         output.push(`${expr(form[1], env)} = ${expr(form[2], env)}`);
-      } else if (is(form, "yield-at") || (form[0]?.sym && env.has(form[0].sym))) {
+      } else if (
+        is(form, "yield-at") ||
+        (Array.isArray(form) && symbolName(form[0]) && env.has(symbolName(form[0])!))
+      ) {
         output.push(expr(form, env));
       } else {
         return fail(form);
@@ -165,13 +179,13 @@ export function transpileWorkflowScheme(source, entry) {
     }
     return output.join("\n");
   }
-  const env = new Map();
+  const env = new Map<string, string>();
   for (const form of forms) {
     if (
       !is(form, "define") ||
       !Array.isArray(form[1]) ||
-      !form[1][0]?.sym ||
-      env.has(form[1][0].sym)
+      !symbolName(form[1][0]) ||
+      env.has(symbolName(form[1][0])!)
     ) {
       return fail(form);
     }
@@ -181,17 +195,26 @@ export function transpileWorkflowScheme(source, entry) {
     throw Error("Unknown workflow entry");
   }
   const declarations = [`local ${[...env.values()].join(", ")}`];
-  for (const [, signature, ...statements] of forms) {
+  for (const form of forms) {
+    if (!Array.isArray(form) || !Array.isArray(form[1])) {
+      return fail(form);
+    }
+    const [, signature, ...statements] = form;
+    if (!Array.isArray(signature)) {
+      return fail(form);
+    }
     const local = new Map(env);
     const params = signature.slice(1).map((parameter) => bind(parameter, local));
     if (
-      signature[0].sym === entry &&
-      (signature.length !== 3 || signature[1]?.sym !== "ctx" || signature[2]?.sym !== "input")
+      symbolName(signature[0]) === entry &&
+      (signature.length !== 3 ||
+        symbolName(signature[1]) !== "ctx" ||
+        symbolName(signature[2]) !== "input")
     ) {
       return fail(signature);
     }
     declarations.push(
-      `${env.get(signature[0].sym)} = function(${params.join(", ")})\n${body(statements, local, { root: signature[0].sym === entry })}\nend`,
+      `${env.get(symbolName(signature[0])!)} = function(${params.join(", ")})\n${body(statements, local, { root: symbolName(signature[0]) === entry })}\nend`,
     );
   }
   const code = declarations.join("\n");

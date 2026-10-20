@@ -62,3 +62,8 @@ Run package tests and `pnpm -C packages/vite-plugin test` for static admission,
 target output, production emission, real file watching, failure/recovery and
 transitive type dependency invalidation. `pnpm -C apps/yo-workflow execution:test`
 exercises the real evaluators, cleanup, restore and changed-build rejection.
+
+The compiler sources and tests are strict TypeScript. `tsc -b` emits JavaScript,
+declarations and source maps to `dist`; package exports and standalone Node
+experiments consume that build. The Scheme datum codec remains a separate pure
+subpath with no compiler dependency at runtime.

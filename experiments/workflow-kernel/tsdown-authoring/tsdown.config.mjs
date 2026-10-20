@@ -1,8 +1,8 @@
-import { luaWorkflowCompiler } from "../../../packages/flowmode-compiler-lua/src/index.mjs";
+import { luaWorkflowCompiler } from "../../../packages/flowmode-compiler-lua/dist/index.js";
 import { reviewExports, reviewImports } from "./contracts.mts";
 import { fileURLToPath } from "node:url";
-import { workflowArtifactPlugin } from "../../../packages/vite-plugin/src/workflow-artifacts.mjs";
-import { schemeWorkflowCompiler } from "../../../packages/flowmode-compiler-scheme/src/index.mjs";
+import { workflowArtifactPlugin } from "../../../packages/vite-plugin/src/workflow-artifacts.ts";
+import { schemeWorkflowCompiler } from "../../../packages/flowmode-compiler-scheme/dist/index.js";
 export default {
   entry: [
     fileURLToPath(

@@ -7,7 +7,7 @@ is unchanged. The compiler implementation now lives in `packages/flowmode-compil
 Vite automatically compiles the Execution page tool into both language artifacts.
 This directory retains evaluator integration tests and research.
 
-The shared `createTypeScriptWorkflowCompiler` in `packages/flowmode-compiler/src/compiler.mjs`
+The shared `createTypeScriptWorkflowCompiler` in `packages/flowmode-compiler/src/compiler.ts`
 owns static SDK builder extraction, declared export checks, TypeScript checking,
 exchange admission, and artifact metadata. Its target supplies a definition
 format and an emitter. Both targets now call `emitTypeScriptWorkflowScheme`: the

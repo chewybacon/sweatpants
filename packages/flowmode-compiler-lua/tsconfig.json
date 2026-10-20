@@ -2,10 +2,13 @@
   "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
     "composite": true,
-    "emitDeclarationOnly": true,
+    "emitDeclarationOnly": false,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "allowImportingTsExtensions": false,
+    "allowJs": false,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/**/*.mjs"],
+  "include": ["src/**/*.ts"],
   "exclude": ["src/**/__tests__/**"]
 }

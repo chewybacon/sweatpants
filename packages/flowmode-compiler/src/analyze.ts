@@ -1,15 +1,14 @@
+import type { WorkflowToolDeclaration } from "./types.js";
+import type * as Babel from "@babel/core";
 import { createRequire } from "node:module";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import { createPortableSchemaDescriptor } from "@sweatpants/foundation";
-const { parseSync, types: t } = createRequire(import.meta.url)("@babel/core");
+import { createPortableSchemaDescriptor, type Json } from "@sweatpants/foundation";
+const { parseSync, types: t } = createRequire(import.meta.url)("@babel/core") as typeof Babel;
 
 /** Static SDK admission. Never imports or evaluates the author's module.
  * The result supplies the declarations expected by the lower-level compiler.
- * @param {string} source
- * @param {string} id
- * @returns {(Omit<import("@sweatpants/flowmode-runtime").CompileRequest, "source"> & { exportName: string })[]}
  */
-export function analyzeWorkflowTools(source, id) {
+export function analyzeWorkflowTools(source: string, id: string): WorkflowToolDeclaration[] {
   if (!source.includes("use workflow")) {
     return [];
   }
@@ -19,9 +18,9 @@ export function analyzeWorkflowTools(source, id) {
     babelrc: false,
     parserOpts: { plugins: ["typescript"] },
   });
-  const builders = new Set();
-  const schemas = new Set();
-  for (const node of ast.program.body) {
+  const builders = new Set<string>();
+  const schemas = new Set<string>();
+  for (const node of ast!.program.body) {
     if (!t.isImportDeclaration(node)) {
       continue;
     }
@@ -31,21 +30,30 @@ export function analyzeWorkflowTools(source, id) {
       }
       if (
         ["@sweatpants/agent-sdk", "@sweatpants/agent-sdk/tool"].includes(node.source.value) &&
-        spec.imported.name === "createDurableTool"
+        (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value) ===
+          "createDurableTool"
       ) {
         builders.add(spec.local.name);
       }
-      if (node.source.value === "zod" && spec.imported.name === "z") {
+      if (
+        node.source.value === "zod" &&
+        (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value) === "z"
+      ) {
         schemas.add(spec.local.name);
       }
     }
   }
-  function fail(node, message) {
-    const error = new Error(message);
-    error.position = { sourceId: id, line: node.loc.start.line, column: node.loc.start.column + 1 };
+  function fail(node: Babel.types.Node | null | undefined, message: string): never {
+    const error = Object.assign(new Error(message), {
+      position: {
+        sourceId: id,
+        line: node?.loc?.start.line ?? 1,
+        column: (node?.loc?.start.column ?? 0) + 1,
+      },
+    });
     throw error;
   }
-  function fields(node) {
+  function fields(node: Babel.types.Node | null | undefined): Record<string, Babel.types.Node> {
     if (!t.isObjectExpression(node)) {
       return fail(node, "Workflow declarations must be static object literals");
     }
@@ -54,11 +62,18 @@ export function analyzeWorkflowTools(source, id) {
         if (!t.isObjectProperty(p) || p.computed || p.shorthand) {
           return fail(p, "Unsupported workflow declaration property");
         }
-        return [p.key.name ?? p.key.value, p.value];
+        return [
+          t.isIdentifier(p.key)
+            ? p.key.name
+            : t.isStringLiteral(p.key) || t.isNumericLiteral(p.key)
+              ? p.key.value
+              : fail(p.key, "Unsupported workflow declaration key"),
+          p.value,
+        ];
       }),
     );
   }
-  function literal(node) {
+  function literal(node: Babel.types.Node | null | undefined): string | number | boolean | null {
     if (t.isStringLiteral(node) || t.isNumericLiteral(node) || t.isBooleanLiteral(node)) {
       return node.value;
     }
@@ -67,11 +82,13 @@ export function analyzeWorkflowTools(source, id) {
     }
     return fail(node, "Expected a literal workflow declaration");
   }
-  function jsonSchema(node) {
+  function jsonSchema(node: Babel.types.Node | null | undefined): Json {
     if (
       !t.isCallExpression(node) ||
       !t.isMemberExpression(node.callee) ||
       node.callee.computed ||
+      !t.isIdentifier(node.callee.object) ||
+      !t.isIdentifier(node.callee.property) ||
       !schemas.has(node.callee.object.name)
     ) {
       return fail(node, "Unsupported workflow schema; use a static z schema");
@@ -116,7 +133,7 @@ export function analyzeWorkflowTools(source, id) {
         return fail(node, "Unsupported workflow schema constructor");
     }
   }
-  function descriptor(node, identity, role) {
+  function descriptor(node: Babel.types.Node | undefined, identity: string, role: string) {
     if (!node) {
       throw new Error(`Workflow requires an explicit ${role} schema`);
     }
@@ -132,8 +149,8 @@ export function analyzeWorkflowTools(source, id) {
       fidelity: { input: "explicit", output: "explicit" },
     });
   }
-  const result = [];
-  for (const node of ast.program.body) {
+  const result: WorkflowToolDeclaration[] = [];
+  for (const node of ast!.program.body) {
     if (!t.isExportNamedDeclaration(node) || !t.isVariableDeclaration(node.declaration)) {
       continue;
     }
@@ -142,13 +159,14 @@ export function analyzeWorkflowTools(source, id) {
       if (
         !t.isCallExpression(execute) ||
         !t.isMemberExpression(execute.callee) ||
-        execute.callee.property.name !== "execute"
+        !t.isIdentifier(execute.callee.property, { name: "execute" })
       ) {
         continue;
       }
-      let fn = execute.arguments[0];
+      let fn: Babel.types.Node | undefined = execute.arguments[0];
       if (t.isIdentifier(fn)) {
-        fn = ast.program.body.find((n) => t.isFunctionDeclaration(n) && n.id.name === fn.name);
+        const entryName = fn.name;
+        fn = ast!.program.body.find((n) => t.isFunctionDeclaration(n) && n.id?.name === entryName);
       }
       if (
         !fn ||
@@ -160,16 +178,24 @@ export function analyzeWorkflowTools(source, id) {
       if (!fn.generator || fn.async || !t.isIdentifier(binding.id)) {
         fail(fn, "Workflow execute must be a synchronous generator");
       }
-      const chain = {};
+      const chain: Record<string, Babel.types.Node> = {};
       let builder = execute.callee.object;
       while (t.isCallExpression(builder) && t.isMemberExpression(builder.callee)) {
-        if (builder.callee.computed || builder.arguments.length !== 1) {
+        if (
+          builder.callee.computed ||
+          !t.isIdentifier(builder.callee.property) ||
+          builder.arguments.length !== 1
+        ) {
           fail(builder, "Unsupported workflow builder");
         }
         chain[builder.callee.property.name] = builder.arguments[0];
         builder = builder.callee.object;
       }
-      if (!t.isCallExpression(builder) || !builders.has(builder.callee.name)) {
+      if (
+        !t.isCallExpression(builder) ||
+        !t.isIdentifier(builder.callee) ||
+        !builders.has(builder.callee.name)
+      ) {
         fail(builder, "Workflow directive requires createDurableTool");
       }
       if (builder.arguments.length !== 2) {
@@ -179,16 +205,20 @@ export function analyzeWorkflowTools(source, id) {
       if (typeof name !== "string" || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
         fail(builder, "Workflow name must be an identifier");
       }
-      const entry = t.isFunctionDeclaration(fn) ? fn.id.name : name;
+      const entry = t.isFunctionDeclaration(fn) ? fn.id!.name : name;
+      const description = chain.description ? literal(chain.description) : name;
+      if (typeof description !== "string") {
+        fail(chain.description, "Workflow description must be a string");
+      }
       const contract = {
         id: name,
         name,
-        description: chain.description ? literal(chain.description) : name,
+        description,
         inputSchema: descriptor(chain.parameters, `${name}:input`, "input"),
         outputSchema: descriptor(chain.output, `${name}:output`, "output"),
       };
       const bindings = Object.keys(chain.elicits ? fields(chain.elicits) : {}).map((key) => ({
-        kind: /** @type {const} */ ("host"),
+        kind: "host" as const,
         contract: {
           id: JSON.stringify(["elicit", key]),
           name: key,
@@ -207,23 +237,24 @@ export function analyzeWorkflowTools(source, id) {
   }
   if (!result.length) {
     // A directive that is not attached to a supported export must not silently run as JS.
-    let directive;
-    const walk = (node) => {
+    let directive: Babel.types.Directive | undefined;
+    const walk = (node: Babel.types.Node | null | undefined): void => {
       if (!node || typeof node !== "object") {
         return;
       }
-      if (node.type === "Directive" && node.value.value === "use workflow") {
+      if (t.isDirective(node) && node.value.value === "use workflow") {
         directive = node;
       }
-      for (const value of Object.values(node)) {
+      for (const key of t.VISITOR_KEYS[node.type] ?? []) {
+        const value: unknown = (node as unknown as Record<string, unknown>)[key];
         if (Array.isArray(value)) {
-          value.forEach(walk);
+          value.forEach((child: Babel.types.Node) => walk(child));
         } else if (value && typeof value === "object") {
-          walk(value);
+          walk(value as Babel.types.Node);
         }
       }
     };
-    walk(ast.program);
+    walk(ast!.program);
     if (directive) {
       fail(
         directive,

@@ -1,7 +1,8 @@
-import { encodeNumber } from "./numbers.mjs";
-import { parse } from "./read.mjs";
+import type { Json } from "@sweatpants/foundation";
+import { encodeNumber } from "./numbers.js";
+import { parse, symbolName, type SchemeDatum } from "./read.js";
 
-export function schemeString(value) {
+export function schemeString(value: string): string {
   if (!value.isWellFormed()) {
     throw Error("Invalid Unicode string");
   }
@@ -15,10 +16,10 @@ export function schemeString(value) {
 }
 
 // Portable JSON values only. Inspect descriptors without invoking host getters.
-export function encodeValue(value) {
-  const active = new Set();
+export function encodeValue(value: unknown): string {
+  const active = new Set<object>();
   let count = 0;
-  function encode(value, depth) {
+  function encode(value: unknown, depth: number): string {
     if (++count > 10000 || depth > 128) {
       throw Error("Portable value budget exceeded");
     }
@@ -48,7 +49,7 @@ export function encodeValue(value) {
     if (Object.getOwnPropertySymbols(value).length) {
       throw Error("Symbol properties are not portable");
     }
-    const read = (key) => {
+    const read = (key: string) => {
       const property = descriptors[key];
       if (!property || !("value" in property) || !property.enumerable) {
         throw Error("Unsupported value property");
@@ -80,21 +81,21 @@ export function encodeValue(value) {
   return encode(value, 0);
 }
 
-export function decodeValue(source) {
+export function decodeValue(source: string): Json {
   const forms = parse(source);
   if (forms.length !== 1) {
     throw Error("Expected one boundary value");
   }
   let count = 0;
-  function decode(value, depth) {
+  function decode(value: SchemeDatum, depth: number): Json {
     if (++count > 10000 || depth > 128) {
       throw Error("Portable value budget exceeded");
     }
-    if (value?.sym === "json-null") {
+    if (symbolName(value) === "json-null") {
       return null;
     }
     if (Array.isArray(value)) {
-      if (value[0]?.sym === "json-object") {
+      if (symbolName(value[0]) === "json-object") {
         const result = {};
         for (const entry of value.slice(1)) {
           if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string") {

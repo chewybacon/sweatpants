@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { loadMachine } from "../machine.mjs";
-import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/src/emit-scheme.mjs";
+import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/dist/emit-scheme.js";
 const values = [
   null,
   [],

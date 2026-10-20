@@ -1,5 +1,6 @@
+import assert from "node:assert/strict";
 import { test, expect } from "vitest";
-import { analyzeWorkflowTools, workflowSourceDependencies } from "../index.mjs";
+import { analyzeWorkflowTools, workflowSourceDependencies } from "../index.js";
 import { readFile } from "node:fs/promises";
 const id = new URL(
   "../../../../apps/yo-workflow/execution/review-draft.workflow.ts",
@@ -9,16 +10,13 @@ const source = await readFile(id, "utf8");
 
 test("SDK declarations supply contracts without evaluating author code", () => {
   const [declaration] = analyzeWorkflowTools(source, id);
+  const input = declaration.exports[0].contract.inputSchema.inputProjection;
+  const output = declaration.exports[0].contract.outputSchema.inputProjection;
+  assert(input && typeof input === "object" && !Array.isArray(input));
+  assert(output && typeof output === "object" && !Array.isArray(output));
   expect(declaration.entry).toBe("review_draft");
-  expect(declaration.exports[0].contract.inputSchema.inputProjection.required).toEqual([
-    "title",
-    "recipient",
-    "metadata",
-  ]);
-  expect(declaration.exports[0].contract.outputSchema.inputProjection.enum).toEqual([
-    "Draft approved",
-    "Draft declined",
-  ]);
+  expect(input.required).toEqual(["title", "recipient", "metadata"]);
+  expect(output.enum).toEqual(["Draft approved", "Draft declined"]);
   expect(declaration.bindings.map((b) => b.contract.id)).toEqual([
     '["elicit","approval"]',
     '["elicit","cleanup"]',

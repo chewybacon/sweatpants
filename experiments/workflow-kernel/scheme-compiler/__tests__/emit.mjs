@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/src/emit-scheme.mjs";
+import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/dist/emit-scheme.js";
 import { compileWorkflow } from "../../compiled-frames/compiler.mjs";
 
 const source = `function* workflow(ctx) {

@@ -3,14 +3,11 @@ import { resolve } from "node:path";
 
 /** Local source/type imports admitted by the frontend participate in Vite invalidation.
  * Package imports are SDK/compiler inputs managed by the package build graph.
- * @param {string} source
- * @param {string} id
- * @returns {string[]}
  */
-export function workflowSourceDependencies(source, id) {
+export function workflowSourceDependencies(source: string, id: string): string[] {
   const visited = new Set([resolve(id)]);
-  const dependencies = [];
-  function visit(text, filename) {
+  const dependencies: string[] = [];
+  function visit(text: string, filename: string): void {
     for (const imported of ts.preProcessFile(text).importedFiles) {
       if (!imported.fileName.startsWith(".")) {
         continue;

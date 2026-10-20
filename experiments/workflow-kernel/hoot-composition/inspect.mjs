@@ -1,5 +1,5 @@
 import { projectHootInspection } from "./inspection.mts";
-import { parse } from "../../../packages/flowmode-compiler/src/scheme-data/read.mjs";
+import { parse } from "../../../packages/flowmode-compiler/dist/scheme-data/read.js";
 
 // Debug projection of evaluator-owned state. Never used to authorize recovery.
 function display(value) {

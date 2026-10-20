@@ -1,13 +1,15 @@
+import type { CompileRequest, WorkflowCompiler } from "@sweatpants/flowmode-runtime";
+import type { Plugin } from "vite";
 import { basename } from "node:path";
 import { readFile } from "node:fs/promises";
 import { call, run } from "effection";
 import { compileWorkflowModule } from "@sweatpants/flowmode-compiler";
 /** A Rolldown load hook sees TypeScript before built-in lowering.
- * @param {Omit<import("@sweatpants/flowmode-runtime").CompileRequest, "source">} declarations
- * @param {{ compiler: import("@sweatpants/flowmode-runtime").WorkflowCompiler, artifactName?: string }} options
- * @returns {import("vite").Plugin}
  */
-export function workflowArtifactPlugin(declarations, { compiler, artifactName = "artifact" }) {
+export function workflowArtifactPlugin(
+  declarations: Omit<CompileRequest, "source">,
+  { compiler, artifactName = "artifact" }: { compiler: WorkflowCompiler; artifactName?: string },
+): Plugin {
   return {
     name: "sweatpants-workflow",
     async load(id) {

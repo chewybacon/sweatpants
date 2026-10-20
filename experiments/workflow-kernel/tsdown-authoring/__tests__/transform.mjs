@@ -1,9 +1,9 @@
-import { schemeWorkflowCompiler } from "../../../../packages/flowmode-compiler-scheme/src/index.mjs";
+import { schemeWorkflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
 import { reviewExports, reviewImports } from "../contracts.mts";
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { compileWorkflowModule } from "../../../../packages/flowmode-compiler/src/compiler.mjs";
+import { compileWorkflowModule } from "../../../../packages/flowmode-compiler/dist/compiler.js";
 const compile = (source, id) =>
   run(() =>
     compileWorkflowModule(

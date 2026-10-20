@@ -86,4 +86,4 @@ export function frameworkPlugin(options: FrameworkOptions = {}): Plugin[] {
 
 export default frameworkPlugin;
 
-export { workflowArtifactPlugin } from "./workflow-artifacts.mjs";
+export { workflowArtifactPlugin } from "./workflow-artifacts.js";

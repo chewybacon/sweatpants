@@ -1,7 +1,15 @@
+export type {
+  WorkflowToolDeclaration,
+  WorkflowEntry,
+  WorkflowSite,
+  EmittedWorkflowDebug,
+  WorkflowEmission,
+  TypeScriptWorkflowTarget,
+} from "./types.js";
 export {
   createTypeScriptWorkflowCompiler,
   emitTypeScriptWorkflowScheme,
   compileWorkflowModule,
-} from "./compiler.mjs";
-export { analyzeWorkflowTools } from "./analyze.mjs";
-export { workflowSourceDependencies } from "./dependencies.mjs";
+} from "./compiler.js";
+export { analyzeWorkflowTools } from "./analyze.js";
+export { workflowSourceDependencies } from "./dependencies.js";

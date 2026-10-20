@@ -10,24 +10,24 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./src/index.mjs"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./compiler": {
-      "types": "./dist/compiler.d.mts",
-      "default": "./src/compiler.mjs"
+      "types": "./dist/compiler.d.ts",
+      "default": "./dist/compiler.js"
     },
     "./emit-scheme": {
-      "types": "./dist/emit-scheme.d.mts",
-      "default": "./src/emit-scheme.mjs"
+      "types": "./dist/emit-scheme.d.ts",
+      "default": "./dist/emit-scheme.js"
     },
     "./scheme-data/read": {
-      "types": "./dist/scheme-data/read.d.mts",
-      "default": "./src/scheme-data/read.mjs"
+      "types": "./dist/scheme-data/read.d.ts",
+      "default": "./dist/scheme-data/read.js"
     },
     "./scheme-data/values": {
-      "types": "./dist/scheme-data/values.d.mts",
-      "default": "./src/scheme-data/values.mjs"
+      "types": "./dist/scheme-data/values.d.ts",
+      "default": "./dist/scheme-data/values.js"
     }
   },
   "scripts": {
@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
+    "@types/babel__core": "^7.20.5",
     "@types/node": "catalog:",
     "vitest": "catalog:"
   }

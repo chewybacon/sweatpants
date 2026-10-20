@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { run } from "effection";
 import { readFile } from "node:fs/promises";
 import { analyzeWorkflowTools } from "@sweatpants/flowmode-compiler";
-import { schemeWorkflowCompiler } from "../index.mjs";
+import { schemeWorkflowCompiler } from "../index.js";
 const id = new URL(
   "../../../../apps/yo-workflow/execution/review-draft.workflow.ts",
   import.meta.url,
@@ -17,9 +17,16 @@ test("the public Scheme target compiles the actual developer tool and retains in
     }),
   );
   expect(result.ok, JSON.stringify(result.diagnostics)).toBe(true);
+  if (!result.ok) {
+    throw new Error(JSON.stringify(result.diagnostics));
+  }
   expect(result.module.implementation.format).toBe("workflow-scheme-definitions-v1");
   expect(result.module.source.text).toBe(text);
-  expect(Object.values(result.module.debug.sites).map((site) => site.key)).toContain("cleanup");
+  expect(
+    Object.values(result.module.debug.sites).map((site) =>
+      site && typeof site === "object" && !Array.isArray(site) ? site.key : undefined,
+    ),
+  ).toContain("cleanup");
 }, 30_000);
 
 test("inline generator inspection sites point into the original source columns", async () => {
@@ -34,6 +41,9 @@ export const tool = createDurableTool("tool", { version: "1" }).description("Inl
     }),
   );
   expect(result.ok, JSON.stringify(result.diagnostics)).toBe(true);
+  if (!result.ok) {
+    throw new Error(JSON.stringify(result.diagnostics));
+  }
   const line = inline.split("\n")[3];
   expect(result.module.debug.sites["tool/answer"]).toMatchObject({
     line: 4,
