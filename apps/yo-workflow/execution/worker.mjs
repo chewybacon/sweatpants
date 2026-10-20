@@ -1,3 +1,5 @@
+import { reviewDraft } from "./review-draft.workflow.ts";
+import { getCompiledWorkflow } from "@sweatpants/flowmode-runtime/compiled-tool";
 import luaWasm from "#execution-lua-wasm";
 import { createWasmLuaInvoker } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm.mts";
 import { createLuaStack } from "./lua.mjs";
@@ -27,8 +29,12 @@ const { createExecutionService, validateCaller, languages, authoring } = executi
       loadMachine,
       createProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
     }),
+    getCompiledWorkflow(reviewDraft, "scheme"),
   ),
-  createLuaStack(createWasmLuaInvoker(async () => luaWasm)),
+  createLuaStack(
+    createWasmLuaInvoker(async () => luaWasm),
+    getCompiledWorkflow(reviewDraft, "lua"),
+  ),
 ]);
 
 export class ExecutionLab extends DurableObject {

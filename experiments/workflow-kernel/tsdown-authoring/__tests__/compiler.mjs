@@ -3,8 +3,11 @@ import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/s
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { workflowCompiler } from "../plugin.mjs";
-const source = await readFile(new URL("../review-draft.workflow.ts", import.meta.url), "utf8");
+import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/src/index.mjs";
+const source = await readFile(
+  new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
+  "utf8",
+);
 const compile = async (workflowSource) =>
   requireCompiledWorkflow(
     await run(() =>

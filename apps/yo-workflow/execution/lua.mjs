@@ -1,8 +1,7 @@
 import { createWorkflowGuidance } from "../../../packages/flowmode-runtime/dist/index.js";
-import { reviewDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.lua.artifact.mjs";
 import { createLuaAuthoring } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/authoring.mts";
 import { createLuaProgram } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/program.mjs";
-export function createLuaStack(invoke) {
+export function createLuaStack(invoke, reviewDraft) {
   const { luaCompiler, luaLinker } = createLuaAuthoring(invoke);
   return {
     authoring: /** @type {import("@sweatpants/flowmode-runtime").WorkflowAuthoring} */ (

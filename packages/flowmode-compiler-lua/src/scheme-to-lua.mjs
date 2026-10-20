@@ -1,4 +1,4 @@
-import { parse } from "../scheme-data/read.mjs";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 // Decimal escapes encode UTF-8 independently of the source file's encoding.
 function quote(value) {

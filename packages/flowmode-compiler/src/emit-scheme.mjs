@@ -1,11 +1,14 @@
 // Compile the supported developer generator subset to workflow Scheme and source metadata.
 import { createRequire } from "node:module";
-import { validateCleanupPolicy } from "../compiler-shared/cleanup-policy.mjs";
-const babel = createRequire(new URL("../../../packages/vite-plugin/package.json", import.meta.url))(
-  "@babel/core",
-);
-import { schemeString } from "../scheme-data/values.mjs";
+import { validateCleanupPolicy } from "./cleanup-policy.mjs";
+const babel = createRequire(import.meta.url)("@babel/core");
+import { schemeString } from "./scheme-data/values.mjs";
 const t = babel.types;
+/**
+ * @param {string} source
+ * @param {{ allowEnsure?: boolean, allowFinally?: boolean, allowScopes?: boolean, entryInput?: boolean, entryPoint?: string | null, installedEffects?: readonly { module: string, export: string, definition: { name: string, version: string } }[] }} options
+ * @returns {{ scheme: string, debug: import("@sweatpants/flowmode-runtime").WorkflowDebugInfo }}
+ */
 export function emitWorkflowScheme(
   source,
   {
@@ -22,9 +25,15 @@ export function emitWorkflowScheme(
     babelrc: false,
     parserOpts: { plugins: ["typescript"] },
   });
+  let currentNode = ast.program;
+  function sourceError(message) {
+    const error = new Error(message);
+    error.loc = currentNode.loc.start;
+    return error;
+  }
   const imports = ast.program.body.filter((n) => t.isImportDeclaration(n));
   if (allowScopes && !allowFinally) {
-    throw Error("Scopes require the explicit unwind backend");
+    throw sourceError("Scopes require the explicit unwind backend");
   }
   const ensureNames = new Set(),
     scopeNames = new Set(),
@@ -37,10 +46,10 @@ export function emitWorkflowScheme(
         const binding =
           t.isImportSpecifier(spec) && bindings.find((b) => b.export === spec.imported.name);
         if (!binding || effectNames.has(spec.local.name)) {
-          throw Error("Unknown installed effect import");
+          throw sourceError("Unknown installed effect import");
         }
         if (!binding.definition?.name || !binding.definition?.version) {
-          throw Error("Invalid installed effect binding");
+          throw sourceError("Invalid installed effect binding");
         }
         effectNames.set(spec.local.name, binding.definition);
         apiNames.add(spec.local.name);
@@ -48,21 +57,21 @@ export function emitWorkflowScheme(
       continue;
     }
     if ((!allowEnsure && !allowScopes) || imp.source.value !== "effection") {
-      throw Error("Unsupported import");
+      throw sourceError("Unsupported import");
     }
     for (const spec of imp.specifiers) {
       if (spec.importKind === "type") {
         continue;
       }
       if (!t.isImportSpecifier(spec)) {
-        throw Error("Unsupported import");
+        throw sourceError("Unsupported import");
       }
       if (spec.imported.name === "ensure" && allowEnsure) {
         ensureNames.add(spec.local.name);
       } else if (spec.imported.name === "scoped" && allowScopes) {
         scopeNames.add(spec.local.name);
       } else {
-        throw Error("Unsupported import");
+        throw sourceError("Unsupported import");
       }
       apiNames.add(spec.local.name);
     }
@@ -76,20 +85,21 @@ export function emitWorkflowScheme(
       f.async ||
       !f.body.directives.some((d) => d.value.value === "use workflow")
     ) {
-      throw Error("Expected named function* with use workflow directive");
+      throw sourceError("Expected named function* with use workflow directive");
     }
     validateCleanupPolicy(f, t);
     if (apiNames.has(f.id.name)) {
-      throw Error("Shadowed Effection import");
+      throw sourceError("Shadowed Effection import");
     }
     if (names.has(f.id.name)) {
-      throw Error("Duplicate function");
+      throw sourceError("Duplicate function");
     }
     names.add(f.id.name);
   }
   const sites = {},
     locations = {};
   function emitFunction(f) {
+    currentNode = f;
     const name = f.id.name,
       bound = new Set(),
       mutable = new Set();
@@ -113,20 +123,21 @@ export function emitWorkflowScheme(
     let loopDepth = 0;
     for (const p of f.params) {
       if (!t.isIdentifier(p) || bound.has(p.name)) {
-        throw Error("Unsupported parameter");
+        throw sourceError("Unsupported parameter");
       }
       if (apiNames.has(p.name)) {
-        throw Error("Shadowed Effection import");
+        throw sourceError("Shadowed Effection import");
       }
       if (names.has(p.name)) {
-        throw Error("Shadowed workflow function");
+        throw sourceError("Shadowed workflow function");
       }
       bound.add(p.name);
     }
     if (f.params[0]?.name !== "ctx") {
-      throw Error("First parameter must be ctx");
+      throw sourceError("First parameter must be ctx");
     }
     function expr(n, site) {
+      currentNode = n;
       if (t.isNullLiteral(n)) {
         return "(quote json-null)";
       }
@@ -138,7 +149,7 @@ export function emitWorkflowScheme(
       }
       if (t.isIdentifier(n)) {
         if (!bound.has(n.name) && !names.has(n.name)) {
-          throw Error("Unbound local " + n.name);
+          throw sourceError("Unbound local " + n.name);
         }
         return n.name;
       }
@@ -169,16 +180,16 @@ export function emitWorkflowScheme(
         t.isIdentifier(n.left)
       ) {
         if (callables.has(n.left.name) || callableOf(n.right)) {
-          throw Error("Callable bindings must be immutable");
+          throw sourceError("Callable bindings must be immutable");
         }
         if (!bound.has(n.left.name) || !mutable.has(n.left.name)) {
-          throw Error("Assignment requires mutable local");
+          throw sourceError("Assignment requires mutable local");
         }
         return `(set! ${n.left.name} ${expr(n.right, site)})`;
       }
       if (t.isObjectExpression(n)) {
         if (n.properties.some((p) => !t.isObjectProperty(p) || p.computed)) {
-          throw Error("Unsupported object property");
+          throw sourceError("Unsupported object property");
         }
         return `(object ${n.properties.map((p) => `(list ${schemeString(String(p.key.name ?? p.key.value))} ${expr(p.value, site)})`).join(" ")})`;
       }
@@ -187,7 +198,7 @@ export function emitWorkflowScheme(
       }
       if (allowFinally && (t.isFunctionExpression(n) || t.isArrowFunctionExpression(n))) {
         if (n.async || (t.isFunctionExpression(n) && n.id)) {
-          throw Error("Only anonymous synchronous workflow closures are supported");
+          throw sourceError("Only anonymous synchronous workflow closures are supported");
         }
         validateCleanupPolicy(n, t);
         const saved = new Set(bound),
@@ -202,7 +213,7 @@ export function emitWorkflowScheme(
             apiNames.has(parameter.name) ||
             names.has(parameter.name)
           ) {
-            throw Error("Unsupported closure parameter");
+            throw sourceError("Unsupported closure parameter");
           }
           params.add(parameter.name);
           bound.add(parameter.name);
@@ -214,7 +225,7 @@ export function emitWorkflowScheme(
           ? statements(n.body.body, `${site}/lambda`)
           : [`(workflow-return ${expr(n.body, `${site}/lambda/return`)})`];
         if (t.isBlockStatement(n.body) && !completes(n.body.body.at(-1))) {
-          throw Error("Closure requires an explicit final return or throw");
+          throw sourceError("Closure requires an explicit final return or throw");
         }
         loopDepth = savedLoop;
         bound.clear();
@@ -246,10 +257,10 @@ export function emitWorkflowScheme(
           const [reference, input] = call.arguments;
           const definition = t.isIdentifier(reference) && effectNames.get(reference.name);
           if (!definition || call.arguments.length !== 2) {
-            throw Error("ctx.effect requires an installed effect and input");
+            throw sourceError("ctx.effect requires an installed effect and input");
           }
           if (sites[site]) {
-            throw Error("Duplicate effect site");
+            throw sourceError("Duplicate effect site");
           }
           sites[site] = {
             function: name,
@@ -268,7 +279,7 @@ export function emitWorkflowScheme(
           t.isIdentifier(c.property, { name: "elicit" })
         ) {
           if (sites[site]) {
-            throw Error("Duplicate effect site");
+            throw sourceError("Duplicate effect site");
           }
           sites[site] = {
             function: name,
@@ -287,7 +298,7 @@ export function emitWorkflowScheme(
               properties[0].computed ||
               !t.isIdentifier(properties[0].key, { name: "message" })
             ) {
-              throw Error("Compiled elicitation currently supports only { message }");
+              throw sourceError("Compiled elicitation currently supports only { message }");
             }
             args[1] = properties[0].value;
           }
@@ -302,11 +313,11 @@ export function emitWorkflowScheme(
             callback.async ||
             callback.params.length
           ) {
-            throw Error("scoped requires a zero-argument generator callback");
+            throw sourceError("scoped requires a zero-argument generator callback");
           }
           validateCleanupPolicy(callback, t);
           if (!completes(callback.body.body.at(-1))) {
-            throw Error("Scope callback requires an explicit final return or throw");
+            throw sourceError("Scope callback requires an explicit final return or throw");
           }
           const saved = new Set(bound),
             savedMutable = new Set(mutable),
@@ -335,7 +346,7 @@ export function emitWorkflowScheme(
             callback.async ||
             callback.params.length
           ) {
-            throw Error("ensure requires a zero-argument generator callback");
+            throw sourceError("ensure requires a zero-argument generator callback");
           }
           validateCleanupPolicy(callback, t);
           if (allowFinally) {
@@ -353,7 +364,7 @@ export function emitWorkflowScheme(
           }
           const body = callback.body.body;
           if (!body.length || body.some((s) => !t.isExpressionStatement(s))) {
-            throw Error("Cleanup supports effect statements only in this spike");
+            throw sourceError("Cleanup supports effect statements only in this spike");
           }
           return `(ensure (lambda () ${body.map((s, i) => expr(s.expression, `${site}/cleanup-${i}`)).join(" ")}))`;
         }
@@ -363,16 +374,17 @@ export function emitWorkflowScheme(
         if (t.isIdentifier(c) && names.has(c.name)) {
           const target = functions.find((f) => f.id.name === c.name);
           if (call.arguments.length !== target.params.length) {
-            throw Error("Helper arity mismatch");
+            throw sourceError("Helper arity mismatch");
           }
           return `(${c.name} ${call.arguments.map((a) => expr(a, site)).join(" ")})`;
         }
       }
-      throw Error("Unsupported expression " + n.type);
+      throw sourceError("Unsupported expression " + n.type);
     }
     function statements(xs, path) {
       const body = [];
       for (const [i, s] of xs.entries()) {
+        currentNode = s;
         const site = `${path}/statement-${i}`;
         if (
           t.isVariableDeclaration(s) &&
@@ -386,11 +398,11 @@ export function emitWorkflowScheme(
             apiNames.has(d.id.name) ||
             names.has(d.id.name)
           ) {
-            throw Error("Unsupported binding");
+            throw sourceError("Unsupported binding");
           }
           const callable = callableOf(d.init);
           if (callable && s.kind !== "const") {
-            throw Error("Callable bindings must be immutable");
+            throw sourceError("Callable bindings must be immutable");
           }
           const value = expr(d.init, `${path}/${d.id.name}`);
           if (callable) {
@@ -438,14 +450,14 @@ export function emitWorkflowScheme(
           );
         } else if (allowFinally && (t.isBreakStatement(s) || t.isContinueStatement(s))) {
           if (!loopDepth || s.label) {
-            throw Error("Only unlabeled loop exits supported");
+            throw sourceError("Only unlabeled loop exits supported");
           }
           body.push(t.isBreakStatement(s) ? "(break)" : "(continue)");
         } else if ((allowEnsure || allowFinally) && t.isExpressionStatement(s)) {
           body.push(expr(s.expression, site));
         } else if (allowFinally && t.isTryStatement(s)) {
           if (s.handler || !s.finalizer) {
-            throw Error("Only try/finally supported");
+            throw sourceError("Only try/finally supported");
           }
           const before = new Set(bound),
             beforeMutable = new Set(mutable);
@@ -466,7 +478,7 @@ export function emitWorkflowScheme(
           const value = expr(s.argument, `${path}/return`);
           body.push(allowFinally ? `(workflow-return ${value})` : value);
         } else {
-          throw Error("Unsupported statement " + s.type);
+          throw sourceError("Unsupported statement " + s.type);
         }
       }
       return body;
@@ -480,13 +492,13 @@ export function emitWorkflowScheme(
       );
     }
     if (allowFinally ? !completes(f.body.body.at(-1)) : !t.isReturnStatement(f.body.body.at(-1))) {
-      throw Error("Explicit final return or throw required");
+      throw sourceError("Explicit final return or throw required");
     }
     locations[name] = { line: f.loc.start.line, column: f.loc.start.column };
     return `(define (${name} ${f.params.map((p) => p.name).join(" ")}) ${body.join(" ")})`;
   }
   if (entryPoint !== null && !names.has(entryPoint)) {
-    throw Error("Unknown entry point");
+    throw sourceError("Unknown entry point");
   }
   const scheme =
     functions.map(emitFunction).join("\n") +

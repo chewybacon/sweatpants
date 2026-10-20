@@ -4,6 +4,8 @@ import { registerHooks } from "node:module";
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (
+      (specifier.includes("flowmode-compiler") && !specifier.includes("/scheme-data/")) ||
+      specifier === "typescript" ||
       specifier.includes("scheme-compiler") ||
       specifier.includes("lua-compiler") ||
       specifier.includes("@babel") ||

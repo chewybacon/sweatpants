@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { run } from "effection";
-import { luaWorkflowCompiler } from "../compiler.mjs";
-import { transpileWorkflowScheme } from "../scheme-to-lua.mjs";
-import { workflowCompiler } from "../../tsdown-authoring/plugin.mjs";
+import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/src/index.mjs";
+import { transpileWorkflowScheme } from "../../../../packages/flowmode-compiler-lua/src/scheme-to-lua.mjs";
+import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/src/index.mjs";
 import { reviewExports, reviewImports } from "../../tsdown-authoring/contracts.mts";
 
 const source = await readFile(
-  new URL("../../tsdown-authoring/review-draft.workflow.ts", import.meta.url),
+  new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
   "utf8",
 );
 function compile(compiler, text = source, bindings = reviewImports) {

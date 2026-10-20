@@ -7,6 +7,6 @@
     "rootDir": "./src",
     "ignoreDeprecations": "5.0"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.mjs"],
   "exclude": ["dist", "node_modules"]
 }

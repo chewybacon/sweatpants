@@ -2,7 +2,7 @@ import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
 import { unplugin as stylex } from "@stylexjs/unplugin";
-import { clientContractPlugin } from "@sweatpants/vite-plugin";
+import { clientContractPlugin, workflowPlugin } from "@sweatpants/vite-plugin";
 
 export default defineConfig({
   output: "server",
@@ -47,7 +47,7 @@ export default defineConfig({
       exclude: ["@earendil-works/pi-ai"],
       include: ["@earendil-works/pi-ai > @anthropic-ai/sdk"],
     },
-    plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin()],
+    plugins: [stylex.vite({ useCSSLayers: true }), clientContractPlugin(), workflowPlugin()],
     build: { minify: true },
     ssr: {
       optimizeDeps: {

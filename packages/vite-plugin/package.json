@@ -33,8 +33,13 @@
   },
   "dependencies": {
     "@babel/core": "^7.24.0",
+    "@sweatpants/flowmode-compiler": "workspace:*",
+    "@sweatpants/flowmode-compiler-lua": "workspace:*",
+    "@sweatpants/flowmode-compiler-scheme": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
     "@sweatpants/tool-runtime-local": "workspace:*",
+    "effection": "catalog:",
     "fast-glob": "^3.3.2",
     "magic-string": "catalog:"
   },

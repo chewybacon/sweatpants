@@ -1,0 +1,11 @@
+{
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.mjs"],
+  "exclude": ["src/**/__tests__/**"]
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "../../scheme-compiler/emit.mjs";
+import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/src/emit-scheme.mjs";
 import { compile, start, run as runReference } from "../../compiled-finally/engine.mjs";
 import { loadMachine } from "../machine.mjs";
 const { run, ensure, scoped } = createRequire(new URL("../../../../package.json", import.meta.url))(

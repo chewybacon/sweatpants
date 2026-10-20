@@ -8,9 +8,11 @@ language implementations; it does not imply dependency order.
 existing kernel contracts and backend adapter. Their files, tests, and consumers
 have moved mechanically; interfaces and runtime behavior are unchanged.
 
-The other five directories remain documentation-only scaffolds without manifests,
-exports, dependencies, or placeholder APIs. Add a manifest and a member-ledger
-entry when a concrete implementation moves, with its tests and consumer.
+The three compiler packages now contain the shared TypeScript frontend and both
+language targets, consumed automatically through the Sweatpants Vite integration.
+`flowmode-runtime-lua` and `flowmode-runtime-scheme` remain documentation-only
+scaffolds. Compiler promotion does not promote the experimental evaluators or
+scoped scheduler.
 
 ## Ownership map
 
@@ -42,10 +44,11 @@ artifact path. Promoting that path must preserve its compiled developer tool,
 model-authored caller, uncompiled host tool, suspended cleanup, and fresh-instance
 restore behavior in both languages.
 
-The shared runtime and backend now use the Flowmode package names. Compiler and
-authoring interfaces still live in the runtime package pending a separate
-interface-ownership decision. The rename does not establish new capabilities or
-change the packages' parked status in the member ledger.
+The shared runtime and backend now use the Flowmode package names. The shared
+compiler protocol, portable artifact contracts and language authoring interfaces
+stay in the runtime package so model-authored language stacks can implement that
+protocol without depending on the TypeScript frontend. The rename does not
+establish new capabilities or change those packages' parked status in the ledger.
 
 Scheme runtime promotion still needs an explicit decision about the packaged
 Playground evaluator and the experimental Execution evaluator; moving directories

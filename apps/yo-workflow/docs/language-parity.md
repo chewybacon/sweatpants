@@ -78,7 +78,7 @@ The Execution page preserves its confirmation demo: a model-authored caller invo
 `review_draft`, waits for approval and suspended `ensure` cleanup, then invokes the
 uncompiled `send_announcement` host tool. The language selector controls both caller
 authoring and execution. Both developer artifacts come from the same TypeScript
-`experiments/workflow-kernel/tsdown-authoring/review-draft.workflow.ts`; the SDK
+`apps/yo-workflow/execution/review-draft.workflow.ts`; the SDK
 DurableTool export remains distinct from those compiled artifacts.
 
 | Capability | Scheme Execution | Lua Execution | Source and evidence |
@@ -143,3 +143,17 @@ Validation on 2026-10-20:
 Full summary: `.artifacts/landing/2026-10-20T08-41-08-344Z-full/summary.json`.
 Narrow logs: `.artifacts/workflow-second-pass/`. The earlier real-provider browser
 runs above remain targeted evidence, not a passing full live gate.
+
+## Automatic compiler integration
+
+The shared frontend and Scheme/Lua targets now live in `packages/flowmode-compiler*`.
+Execution's Cloudflare worker imports the ordinary SDK tool; `workflowPlugin()` in
+Astro's Vite configuration attaches both artifacts, and the selected language
+chooses its compiled definition. The Node conformance adapter retains standalone
+artifact imports to verify compiler-free artifact consumption.
+
+The Vite tests exercise edits, invalid source, recovery, type dependency changes,
+inline execute generators and production builds. Persisted Execution runs pin the
+program digest and explicitly reject loading changed code (`workflow_source_changed`).
+This adds no hot migration of continuations and promotes no experimental evaluator,
+structured scheduler or timer capability.
