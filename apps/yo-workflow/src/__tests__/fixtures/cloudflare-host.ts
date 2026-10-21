@@ -56,7 +56,7 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
                 type: "wasm",
                 contents: await readFile(
                   new URL(
-                    "../../../../../.artifacts/teal-lua-checkpoint/kernel.wasm",
+                    "../../../../../packages/flowmode-runtime-lua/generated/kernel.wasm",
                     import.meta.url,
                   ),
                 ),

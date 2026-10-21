@@ -1,4 +1,4 @@
-# Flowmode package scaffolds
+# Flowmode package ownership
 
 Names follow `flowmode-{layer}-{lang}`. The language suffix is omitted for
 shared layers. Lexical sorting groups the family, then each layer and its
@@ -10,9 +10,9 @@ have moved mechanically; interfaces and runtime behavior are unchanged.
 
 The three compiler packages now contain the shared TypeScript frontend and both
 language targets, consumed automatically through the Sweatpants Vite integration.
-`flowmode-runtime-lua` and `flowmode-runtime-scheme` remain documentation-only
-scaffolds. Compiler promotion does not promote the experimental evaluators or
-scoped scheduler.
+`flowmode-runtime-lua` and `flowmode-runtime-scheme` own the evaluators used by
+yo-workflow Playground and Execution. Their package gates cover evaluator behavior
+and generated assets. The scoped scheduler remains experimental.
 
 ## Ownership map
 
@@ -33,11 +33,11 @@ scoped scheduler.
 
 ## Promotion order
 
-Start with the runtime ownership boundaries used by the Playground. Scheme
-currently uses `packages/scheme-runtime`; Lua reaches into
-`experiments/workflow-kernel/teal-lua-checkpoint`. Both Playground language tools
-use durable-tool replay for recovery. Portable Lua state between VM commands is
-not an authority-owned continuation checkpoint.
+Lua owns Piccolo/Wasm, portable VM state, its evaluation port and reusable compute
+replay. Scheme owns both existing evaluator paths: the Playground session API and
+Execution's checkpoint kernel. These have distinct entry points and are not
+silently unified. Both Playground tools use durable-tool replay for recovery;
+portable Lua state between VM commands is not an authority checkpoint.
 
 The Execution inspector separately consumes the kernel/backend and compiled
 artifact path. Promoting that path must preserve its compiled developer tool,
@@ -47,12 +47,12 @@ restore behavior in both languages.
 The shared runtime and backend now use the Flowmode package names. The shared
 compiler protocol, portable artifact contracts and language authoring interfaces
 stay in the runtime package so model-authored language stacks can implement that
-protocol without depending on the TypeScript frontend. The rename does not
-establish new capabilities or change those packages' parked status in the ledger.
+protocol without depending on the TypeScript frontend. Both shared packages now
+have product consumers through the promoted language runtimes and are recorded
+as libraries in the workspace ledger.
 
-Scheme runtime promotion still needs an explicit decision about the packaged
-Playground evaluator and the experimental Execution evaluator; moving directories
-does not unify them.
+The Scheme package preserves both evaluators. Unifying their language or recovery
+contracts would require a separate design change.
 
 Compiler boundaries should be checked against their actual consumers before
 creating separate workspace members. A scaffold reserves a name; it does not

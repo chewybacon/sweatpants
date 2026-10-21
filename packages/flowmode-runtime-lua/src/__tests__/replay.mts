@@ -1,0 +1,99 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { run, type Operation } from "effection";
+import type {
+  DurableProgramContext,
+  RecordOptions,
+  RecordAttemptContext,
+} from "@sweatpants/durable-execution";
+import type { Json } from "@sweatpants/foundation";
+import { LuaEvaluationPort } from "../evaluation.ts";
+import { runLuaReplay } from "../replay.ts";
+import { luaFuelPolicy } from "../fuel.ts";
+import { invokeWasm } from "../wasm-node.mts";
+
+// Mechanical record harness: accepted values survive reconstruction of compute.
+function recorded(values: Map<string, Json>): Pick<DurableProgramContext, "record"> {
+  return {
+    *record<T extends Json>(
+      options: RecordOptions,
+      operation: (attempt: RecordAttemptContext) => Operation<T>,
+    ): Operation<T> {
+      if (!values.has(options.key)) {
+        const value = yield* operation({
+          pullId: "invocation-1",
+          attemptId: "attempt-1",
+          cancellation: new AbortController().signal,
+        });
+        values.set(options.key, value);
+      }
+      return structuredClone(values.get(options.key)) as T;
+    },
+  };
+}
+
+test("durable-tool replay reconstructs accepted compute without calling the evaluator", async () => {
+  const values = new Map<string, Json>();
+  const options = {
+    source: "return {answer = 42}",
+    context: recorded(values),
+    fuelPolicy: luaFuelPolicy,
+    *approveComputation() {
+      throw Error("Unexpected approval");
+    },
+    *executeCapability() {
+      throw Error("Unexpected capability");
+    },
+  };
+  const first = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
+    return yield* runLuaReplay(options);
+  });
+  assert.deepEqual(first, { answer: 42 });
+  assert.equal(values.size, 2);
+  const replay = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({
+      *execute() {
+        throw Error("Replayed compute executed");
+      },
+    });
+    return yield* runLuaReplay({ ...options, context: recorded(values) });
+  });
+  assert.deepEqual(replay, first);
+  assert.equal(values.size, 2);
+});
+
+test("evaluator failure becomes a recorded diagnostic and remains observable on replay", async () => {
+  const values = new Map<string, Json>();
+  const options = {
+    source: "return 42",
+    context: recorded(values),
+    fuelPolicy: luaFuelPolicy,
+    *approveComputation() {
+      throw Error("Unexpected approval");
+    },
+    *executeCapability() {
+      throw Error("Unexpected capability");
+    },
+  };
+  const result = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({
+      *execute() {
+        throw Error("VM unavailable");
+      },
+    });
+    return yield* runLuaReplay(options);
+  });
+  assert.deepEqual(result, {
+    status: "failed",
+    diagnostic: {
+      message: JSON.stringify({ code: "lua_execution_error", message: "Error: VM unavailable" }),
+    },
+    completedEffects: 0,
+  });
+  const replay = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
+    return yield* runLuaReplay({ ...options, context: recorded(values) });
+  });
+  assert.deepEqual(replay, result);
+});

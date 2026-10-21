@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import language from "@sweatpants/scheme-runtime/language" with { type: "json" };
-import { limits } from "@sweatpants/scheme-runtime";
+import language from "@sweatpants/flowmode-runtime-scheme/language" with { type: "json" };
+import { limits } from "@sweatpants/flowmode-runtime-scheme";
 import { createSchemeReference } from "../reference.ts";
 
 it("documents the built evaluator and the installed capabilities", () => {
@@ -24,7 +24,7 @@ it("documents the built evaluator and the installed capabilities", () => {
 
 it("executes the documented example through real Scheme effect boundaries", async () => {
   const { run } = await import("effection");
-  const { createNodeSchemeDriver } = await import("@sweatpants/scheme-runtime/node");
+  const { createNodeSchemeDriver } = await import("@sweatpants/flowmode-runtime-scheme/node");
   const { schemeExamples } = await import("../examples.ts");
   await run(function* () {
     const driver = createNodeSchemeDriver();

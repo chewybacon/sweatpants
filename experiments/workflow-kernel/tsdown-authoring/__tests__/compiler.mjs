@@ -1,4 +1,4 @@
-import { reviewExports, reviewImports } from "../contracts.mts";
+import { reviewExports, reviewImports } from "../../../../apps/yo-workflow/execution/contracts.mts";
 import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/src/index.ts";
 import { run } from "effection";
 import assert from "node:assert/strict";

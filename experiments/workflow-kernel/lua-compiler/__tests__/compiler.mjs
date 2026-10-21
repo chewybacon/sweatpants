@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -9,16 +10,16 @@ import {
 } from "../../../../packages/flowmode-compiler/dist/index.js";
 import { luaWorkflowTarget } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
 import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
-import { reviewExports, reviewImports } from "../../tsdown-authoring/contracts.mts";
+import { reviewExports, reviewImports } from "../../../../apps/yo-workflow/execution/contracts.mts";
 
-const source = await readFile(
+const sourceId = fileURLToPath(
   new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
-  "utf8",
 );
+const source = await readFile(sourceId, "utf8");
 function compile(compiler, text = source, bindings = reviewImports) {
   return run(() =>
     compiler.compile({
-      source: { id: "review-draft.workflow.ts", language: "typescript", text },
+      source: { id: sourceId, language: "typescript", text },
       entry: "review_draft",
       exports: reviewExports,
       bindings,
@@ -40,7 +41,7 @@ test("one SDK workflow produces separate Scheme and Lua artifacts with the same 
     lua.module.implementation.payload,
     emitPreparedWorkflow(
       prepareWorkflow({
-        source: { id: "review-draft.workflow.ts", language: "typescript", text: source },
+        source: { id: sourceId, language: "typescript", text: source },
         entry: "review_draft",
         exports: reviewExports,
         bindings: reviewImports,

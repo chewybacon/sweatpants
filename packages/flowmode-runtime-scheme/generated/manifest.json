@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "toolchain": {
+    "baseImage": "debian@sha256:1f11c32b03195c1b28c55e4579755659edae5c76dd76a69b4e4fb34c58fa8744",
+    "platform": "linux/arm64",
+    "debianSnapshot": "20261014T000000Z",
+    "packages": {
+      "guile-hoot": "0.9.0-4",
+      "guile-3.0": "3.0.11-2+b1",
+      "guile-3.0-libs": "3.0.11-2+b1"
+    }
+  },
+  "metering": {
+    "functions": 19813,
+    "loops": 169
+  },
+  "files": {
+    "toolchain.json": "1f0cd0508429cd5de49203afac36d3e31bb596cc4626d0a1a73677df6c0d0660",
+    "scripts/Dockerfile": "f0ba465563e3b147c5e7ec40cc2b032f1ff93486f1d1ad73435da4cb3e34e9af",
+    "scripts/build.py": "3f2f4ec0afdb12f49ea235abe37929001b98c8c0de14cd188e0a2917667c28f1",
+    "scripts/compile.scm": "14920cefb02a822cadbd3075395ee3e189b98434f14db7df7dfde928efc5d55b",
+    "scripts/kernel.scm": "4a766967177193058791d3b6ea2ad9fe15740c701c193073178d162626cfb8f5",
+    "scripts/language.scm": "57afbc957967954d8c26bde6f1d791d8629e6ecaee696c23ca3f1b001faf991e",
+    "scripts/manifest.py": "cdbdbde10ac8a50a6119654d2e280efc6c5c54f0315084ae97a03b94ae034b16",
+    "scripts/meter.scm": "69053d6710d046c8579a6e85873a66558b880778fec80627f6381c7ff7edee1b",
+    "scripts/prepare.py": "9041bc41e7960d5d402177b29f9a737e8dc6c43b976593f4dfce780906aff599",
+    "licenses/Apache-2.0": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "licenses/GPL-3": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/LGPL-3": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+    "licenses/NOTICE": "e33328e9e0bc41db73d0716243158c70dc164ee8051310e515f9f9918597e078",
+    "generated/kernel.wasm": "6d79a051a4a9932a1940fd3ad5f1d45d2380add78646af864d617e1ebbd90f1a",
+    "generated/reflect.wasm": "9f89d65fc87cc037fb7c74591eb9c0e8b0237328c0cd98dd4fef50cd11d95701",
+    "generated/wtf8.wasm": "594b0493af12257e37006cd5b2df39588936033696780fdcc2d077a69ba2e7fd",
+    "generated/reflect.cjs": "f576ee07a6ea5e7bb1ec7c54688256399ee90d79a3e0284026654f3a23364d5d",
+    "generated/reflect-worker.mjs": "966499068fc70259cdb3b4373a43cb2440d018b8dbd552e2c69866044dbfae9f",
+    "generated/reflect-worker.d.mts": "d48c155d4d670cba65c712ceb8c1ff5eba22352fabb7694e24b7990fec29322a",
+    "generated/metering.json": "e7d401103bdf2d0e920ba5f4ad1fa217aeef7a9eef9e5a5976807470c99675c1",
+    "generated/language.json": "0814b08e3998d5ec9523c12394865ce97fe715e3d7aaa1e73a05c662c6860335"
+  }
+}

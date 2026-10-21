@@ -54,7 +54,8 @@ status here. Statuses:
 | `packages/react-chat` | library | |
 | `packages/durable-streams-cloudflare` | library | Durable Object response buffers and registry storage for yo-chat |
 | `packages/storage-d1` | library | D1 durable kernel for the conversation and execution repositories |
-| `packages/scheme-runtime` | library | Hoot evaluator and pinned WASM build consumed by yo-workflow |
+| `packages/flowmode-runtime-scheme` | library | Playground Scheme sessions and Execution checkpoint evaluator consumed by yo-workflow |
+| `packages/flowmode-runtime-lua` | library | Piccolo Lua VM, kernel and durable-tool replay consumed by yo-workflow |
 | `packages/storage-sqlite` | library | |
 | `packages/stream-bridge` | library | |
 | `packages/test-rig` | infrastructure | Test substrate consumed only by acceptance/yo-chat test contexts |
@@ -67,8 +68,8 @@ status here. Statuses:
 | `packages/vite-plugin` | library | |
 | `packages/workspace-lambda-microvm` | parked | Lambda placement experiment (consumed by yo-studio's AWS-placement branch); re-audit: when the experiment resumes, it either gains a real production consumer or is deleted |
 | `packages/workspace-runtime` | library | |
-| `packages/flowmode-runtime` | parked | Kernel contract review scaffold; re-audit after Hoot fresh-instance continuation proof |
-| `packages/flowmode-backend` | parked | Kernel backend for the shared program driver; experimental Hoot and reference evaluator consumers |
+| `packages/flowmode-runtime` | library | Shared kernel and artifact contracts consumed by Lua/Scheme runtimes and Vite |
+| `packages/flowmode-backend` | library | Adapts Lua/Scheme Execution kernels to the shared program driver and journal authority |
 
 | `packages/flowmode-compiler` | library | Workflow compilation consumed by Vite |
 | `packages/flowmode-compiler-scheme` | library | Workflow compilation consumed by Vite |

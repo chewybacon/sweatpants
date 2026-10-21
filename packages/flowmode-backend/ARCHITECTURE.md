@@ -46,9 +46,9 @@ The artifact loader must verify content hashes. Checkpoint provenance and accept
 journal position belong to the authority; snapshot identity checks are not auth.
 No driver, backend, or Wasm module is installed merely by importing this package.
 
-The Hoot implementation remains experimental, in
-`experiments/workflow-kernel/hoot-composition`. Its backend adapter uses this package;
-the Wasm build remains separate. Kernel boundaries currently expose operations and
+The Lua and Scheme Execution implementations live in
+`packages/flowmode-runtime-lua` and `packages/flowmode-runtime-scheme/src/execution`.
+Their program adapters use this package; Wasm builds remain owned by the runtimes. Kernel boundaries currently expose operations and
 terminal results, not emissions. Native generator emission support is unchanged.
 
 ## Pinned program bundles

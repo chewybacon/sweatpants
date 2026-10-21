@@ -15,15 +15,15 @@ supported capabilities, explicit limits, conformance evidence and the update pro
 ## Execution inspector
 
 The **Execution** navigation opens `/execution`. A Scheme or Lua caller invokes the same compiled TypeScript
-developer confirmation generator through the experimental Hoot backend, the shared
-program driver, and the real journal authority. No model or external email API is
-used by this developer-authored fixture. Chat retains the existing engine.
+developer confirmation generator through the selected runtime, the shared program
+driver, and the real journal authority. A real model authors the caller; the demo
+outbox records receipts without sending email.
 
 ```sh
 # From the workspace root, build package dependencies first if needed.
 pnpm --filter 'yo-workflow^...' build
 pnpm --filter '@sweatpants/flowmode-backend...' build
-# Uses the scheme-runtime pinned Docker toolchain image (build it via scheme:build if absent).
+# Uses the Scheme runtime pinned Docker toolchain image (build it via scheme:build if absent).
 pnpm --filter yo-workflow execution:build
 pnpm --filter yo-workflow execution:test
 pnpm --filter yo-workflow execution:dev
@@ -83,9 +83,9 @@ recovery replays recorded results into a fresh instance. There is no new parking
 scheduler primitive. Tool activity and existing Ask plugins render nested effects;
 Scheme source and a program map are available alongside the execution timeline.
 
-`@sweatpants/scheme-runtime` owns the port, bridge and limits; `tool.ts` binds
+`@sweatpants/flowmode-runtime-scheme` owns the port, bridge and limits; `tool.ts` binds
 capabilities; `node.ts` and `worker.ts` load the same generated WASM. The Worker adapter
-uses static WASM modules, so it needs no runtime code generation. `packages/scheme-runtime/scripts`
+uses static WASM modules, so it needs no runtime code generation. `packages/flowmode-runtime-scheme/scripts`
 contains the compiler input and fuel instrumentation. Generated assets and source
 hashes are checked by `pnpm scheme:check`. Rebuild with Docker using:
 
@@ -95,7 +95,7 @@ pnpm --dir apps/yo-workflow scheme:build
 
 Fuel bounds WASM control flow, including expansion, and JSON boundaries have size/depth
 limits. This is **not a memory or wall-clock sandbox**: native allocation has no separate
-quota. Dependency notices are in `packages/scheme-runtime/licenses`. Engine tests cover tail
+quota. Dependency notices are in `packages/flowmode-runtime-scheme/licenses`. Engine tests cover tail
 calls, macros, validation, fuel exhaustion and fresh-instance recovery. Cloudflare
 acceptance tests replace workerd while a child is waiting for a human reply.
 

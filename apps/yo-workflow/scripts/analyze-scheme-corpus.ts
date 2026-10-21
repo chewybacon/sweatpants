@@ -1,7 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { run } from "effection";
-import { createNodeSchemeDriver } from "../../../packages/scheme-runtime/src/node.ts";
-import { schemeDiagnostic, limits } from "../../../packages/scheme-runtime/src/evaluation.ts";
+import { createNodeSchemeDriver } from "../../../packages/flowmode-runtime-scheme/src/node.ts";
+import {
+  schemeDiagnostic,
+  limits,
+} from "../../../packages/flowmode-runtime-scheme/src/evaluation.ts";
 
 // Compile captured submissions only. Never run their effects or replay human replies.
 const corpus = JSON.parse(

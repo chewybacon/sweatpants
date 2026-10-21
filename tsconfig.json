@@ -96,7 +96,7 @@
       "path": "./packages/model-decision"
     },
     {
-      "path": "./packages/scheme-runtime"
+      "path": "./packages/flowmode-runtime-scheme"
     },
     {
       "path": "./packages/flowmode-runtime"
@@ -112,6 +112,9 @@
     },
     {
       "path": "./packages/flowmode-compiler-lua"
+    },
+    {
+      "path": "./packages/flowmode-runtime-lua"
     }
   ],
   "files": []

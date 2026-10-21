@@ -1,5 +1,5 @@
 import { schemeWorkflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
-import { reviewExports, reviewImports } from "../contracts.mts";
+import { reviewExports, reviewImports } from "../../../../apps/yo-workflow/execution/contracts.mts";
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

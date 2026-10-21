@@ -19,8 +19,8 @@ import {
   schemeDiagnostic,
   SchemeEvaluationError,
   limits,
-} from "@sweatpants/scheme-runtime";
-import manifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
+} from "@sweatpants/flowmode-runtime-scheme";
+import manifest from "@sweatpants/flowmode-runtime-scheme/manifest" with { type: "json" };
 import { createSchemeReference } from "./reference.ts";
 import { createRecoveryHistory } from "./recovery.ts";
 import { schemeSourceHint } from "./diagnostics.ts";

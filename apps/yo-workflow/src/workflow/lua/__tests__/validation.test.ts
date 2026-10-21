@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import { run } from "effection";
 import type { DurableProgramContext } from "@sweatpants/durable-execution";
 import { createLuaTool } from "../tool.ts";
-import { LuaEvaluationPort } from "../evaluation.ts";
-import { invokeWasm } from "../../../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm-node.mts";
+import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
+import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
 
 it("validates syntax without dispatching effects and exposes repair diagnostics", async () => {
   const tool = createLuaTool([]);

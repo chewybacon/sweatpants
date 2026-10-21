@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { createExecutionService } from "../service.mjs";
 import { executionServiceFactory } from "../service-core.mjs";
 import { schemeStack } from "../scheme.mjs";
-import { createHootAuthoring } from "../../../../experiments/workflow-kernel/hoot-composition/authoring.mjs";
-import { loadMachine } from "../../../../experiments/workflow-kernel/hoot-composition/machine.mjs";
-import { createHootProgram } from "../../../../experiments/workflow-kernel/hoot-composition/driver.mjs";
+import { createHootAuthoring } from "@sweatpants/flowmode-runtime-scheme/execution/authoring";
+import { loadMachine } from "@sweatpants/flowmode-runtime-scheme/execution/machine";
+import { createHootProgram } from "@sweatpants/flowmode-runtime-scheme/execution/driver";
 import { reviewDraft } from "../../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.artifact.mjs";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority";
 

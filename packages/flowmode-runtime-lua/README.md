@@ -1,19 +1,44 @@
-# flowmode-runtime-lua
+# Flowmode Lua runtime
 
-Documentation-only scaffold. See the [ownership and promotion plan](../../docs/workspace/FLOWMODE.md).
+`@sweatpants/flowmode-runtime-lua` owns ordinary Lua evaluation through the pinned
+Piccolo VM, portable VM state, workflow kernels, and durable-tool compute replay.
+It is consumed by both yo-workflow Playground and Execution.
 
-Intended responsibility: ordinary Lua evaluation, bounded JSON exchanges, portable
-VM state, and Node/worker Wasm adapters with reproducible build inputs.
+- The root export declares `LuaEvaluationPort` and its typed commands.
+- `/wasm` supplies `createWasmLuaInvoker(loadModule)` for Workers and other Wasm
+  hosts. Each command uses a fresh bounded instance; only code is cached.
+- `/node` loads the packaged Wasm and exports `invokeWasm`.
+- `/kernel` implements the shared `WorkflowKernel` contract. `/program` assembles
+  it through `flowmode-backend` and the existing `createWorkflowProgramDriver`.
+- `/authoring` validates and links ordinary Lua callers. TypeScript compilation
+  remains in `flowmode-compiler-lua`.
+- `/replay` runs recorded compute slices for a durable tool. The consumer supplies
+  capability validation/dispatch and computation approval. App prompts and UI
+  events are not runtime policy.
 
-Current implementation: [teal-lua-checkpoint](../../experiments/workflow-kernel/teal-lua-checkpoint/README.md).
-Despite that experimental directory name, the supported language is ordinary Lua.
-The Playground's LuaEvaluationPort currently lives in the app; promotion must
-decide its ownership and typed command boundary alongside the runtime adapters.
+Playground records compressed portable VM state through durable-tool replay. It
+does not persist a Lua continuation as an authority checkpoint. Execution uses
+kernel capture/restore through the shared backend; journal provenance remains
+owned by the authority.
 
-Readiness evidence: pinned Piccolo patch/build, value and capture limits, shared
-cell preservation, cancellation and yielding cleanup, fresh-instance restore,
-and migration of Playground and Execution consumers. Distinguish Playground
-replay recovery from Execution's authority-backed continuation checkpoints.
+The VM supports sequential Lua control flow, closures, shared upvalues, bounded
+JSON exchanges, cancellation and cleanup that may suspend. Its standard library
+is deliberately limited to `assert`, `type`, `pcall`, and `error`, plus workflow
+intrinsics. Lexical environment and unwind inspection are unavailable; consumers
+may display raw VM frames and checkpoint state. The scoped-handoffs scheduler and
+durable timers are not supported by this runtime.
 
-The separate scoped-handoffs scheduler is not part of the ordinary runtime yet.
-Its existence does not establish spawn/race or durable timer support here.
+## Build and verification
+
+`pnpm wasm:build` downloads Piccolo at a pinned revision, verifies its archive
+hash, applies the tracked checkpoint patch, and builds with Rust 1.88.0 in Docker.
+Cargo's lockfile and Wasm configuration are part of the verified inputs. The
+64 MiB memory ceiling is imposed by the linker. Commands and outputs are limited
+to 4 MiB. Generated Wasm and its source manifest live in `generated/`; caches live
+in the repository's ignored `.artifacts/flowmode-runtime-lua/`.
+
+`pnpm wasm:check` verifies packaged bytes and build inputs without Docker.
+`pnpm wasm:verify` rebuilds and compares bytes. `pnpm build`, `pnpm check`, and
+`pnpm test` are package gates. Tests cover fresh-instance restore, shared cells,
+fuel slicing, tail-call exchange, rejection and cancellation. App durability and
+Execution acceptance suites retain the real journal integration coverage.

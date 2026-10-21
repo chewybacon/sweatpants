@@ -16,19 +16,19 @@ export default defineConfig({
     resolve: {
       alias: {
         "#scheme-reflect-wasm": new URL(
-          "../../packages/scheme-runtime/generated/reflect.wasm",
+          "../../packages/flowmode-runtime-scheme/generated/reflect.wasm",
           import.meta.url,
         ).pathname,
         "#scheme-wtf8-wasm": new URL(
-          "../../packages/scheme-runtime/generated/wtf8.wasm",
+          "../../packages/flowmode-runtime-scheme/generated/wtf8.wasm",
           import.meta.url,
         ).pathname,
         "#execution-lua-wasm": new URL(
-          "../../.artifacts/teal-lua-checkpoint/kernel.wasm",
+          "../../packages/flowmode-runtime-lua/generated/kernel.wasm",
           import.meta.url,
         ).pathname,
         "#execution-kernel-wasm": new URL(
-          "../../.artifacts/hoot-composition/kernel.wasm",
+          "../../packages/flowmode-runtime-scheme/generated/execution/kernel.wasm",
           import.meta.url,
         ).pathname,
       },

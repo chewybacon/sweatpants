@@ -49,8 +49,8 @@ add a parallel driver solely to run another language.
   checks, authorization, and command ordering for both.
 - `flowmode-backend` adapts `WorkflowKernel` to that computation contract.
   It translates evaluator requests; the attachment owns the shared execution loop.
-  Experimental Hoot and reference evaluators consume it; production yo-workflow's
-  existing Scheme runtime has not been replaced by these experiments.
+  The Lua and Scheme Execution kernels consume it. Scheme Playground retains
+  its distinct session evaluator in `flowmode-runtime-scheme`.
 - `durable-execution/src/program-recovery-policy.ts` supplies replay defaults and
   scoped checkpoint acceleration. Authority-plan validation surrounds middleware.
 - Backend snapshots contain computation state. The shared driver adds protocol

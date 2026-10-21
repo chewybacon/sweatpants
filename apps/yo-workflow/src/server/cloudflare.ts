@@ -1,7 +1,7 @@
 import { workflowLanguage } from "../workflow/language.ts";
 import { executionFetch } from "../../execution/worker.mjs";
 export { ExecutionLab } from "../../execution/worker.mjs";
-import schemeManifest from "@sweatpants/scheme-runtime/manifest" with { type: "json" };
+import schemeManifest from "@sweatpants/flowmode-runtime-scheme/manifest" with { type: "json" };
 import { DurableObject } from "cloudflare:workers";
 import { handle as astroHandle } from "@astrojs/cloudflare/handler";
 import { createChatFetchHandler } from "@sweatpants/agent-host/server";

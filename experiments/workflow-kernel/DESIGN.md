@@ -113,7 +113,7 @@ not the meaning of opaque kernel state.
 
 ## Next recovery increment
 
-The [Hoot composition probe](hoot-composition/README.md) now implements the
+The [Hoot composition probe](../../packages/flowmode-runtime-scheme/docs/execution.md) now implements the
 contract for a narrow nested Scheme/compiled-generator fixture, including stored
 authority recovery. Extend its lowering and scope semantics before treating it
 as an app backend. Consider

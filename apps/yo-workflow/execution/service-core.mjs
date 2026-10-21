@@ -1,6 +1,6 @@
 import { createWorkflowBindingResolver } from "../../../packages/flowmode-backend/dist/index.js";
 import { requireCompiledWorkflow } from "../../../packages/flowmode-runtime/dist/index.js";
-import { callerContract } from "../../../experiments/workflow-kernel/tsdown-authoring/contracts.mts";
+import { callerContract } from "./contracts.mts";
 import {
   createJournal,
   createMemoryExecutionStore,
