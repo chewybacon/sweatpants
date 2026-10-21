@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "../../scheme-compiler/emit.mjs";
+import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/dist/emit-scheme.js";
 import { createHootProgram } from "../driver.mjs";
 import {
   createStoredScenarioDriver,

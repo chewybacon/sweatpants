@@ -1,0 +1,33 @@
+{
+  "name": "@sweatpants/flowmode-compiler-scheme",
+  "version": "0.1.0",
+  "description": "Scheme target for portable workflow compilation",
+  "license": "MIT",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sweatpants/flowmode-compiler": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

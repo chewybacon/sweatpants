@@ -1,4 +1,6 @@
-# Workflow Scheme emission
+# Workflow Scheme emission conformance
+
+The implementation now lives in [flowmode-compiler](../../../packages/flowmode-compiler/README.md). This directory retains reference-evaluator integration evidence.
 
 `emitWorkflowScheme(source, options)` accepts developer TypeScript generator
 source and returns `{ scheme, debug: { sites, locations } }`. Babel parses the

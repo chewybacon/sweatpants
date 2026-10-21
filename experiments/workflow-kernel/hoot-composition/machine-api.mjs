@@ -1,5 +1,8 @@
 import { inspectSnapshot } from "./inspect.mjs";
-import { encodeValue, decodeValue } from "../scheme-data/values.mjs";
+import {
+  encodeValue,
+  decodeValue,
+} from "../../../packages/flowmode-compiler/dist/scheme-data/values.js";
 export function machineApi(procedures) {
   function call(index, ...args) {
     procedures.fuel.value = 100_000_000n;

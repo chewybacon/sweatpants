@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { run } from "effection";
-import { workflowCompiler } from "../../tsdown-authoring/plugin.mjs";
+import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
 import { loadMachine } from "../../hoot-composition/machine.mjs";
-import { encodeValue } from "../../scheme-data/values.mjs";
-import { luaWorkflowCompiler } from "../compiler.mjs";
+import { encodeValue } from "../../../../packages/flowmode-compiler/dist/scheme-data/values.js";
+import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
 import { createLuaAuthoring } from "../../teal-lua-checkpoint/authoring.mts";
 import { createLuaKernel, createLuaProgramBundle } from "../../teal-lua-checkpoint/kernel.mts";
 import { invokeWasm } from "../../teal-lua-checkpoint/wasm-node.mts";
@@ -18,7 +18,7 @@ import {
 import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/dist/index.js";
 
 const source = await readFile(
-  new URL("../../tsdown-authoring/review-draft.workflow.ts", import.meta.url),
+  new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
   "utf8",
 );
 

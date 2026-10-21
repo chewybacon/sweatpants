@@ -1,6 +1,7 @@
+import type { types as Babel } from "@babel/core";
 /** Check only the current function: nested callbacks have their own lifecycle. */
-export function validateCleanupPolicy(fn, types) {
-  function walk(node, inFinally = false) {
+export function validateCleanupPolicy(fn: Babel.Function, types: typeof Babel): void {
+  function walk(node: Babel.Node | null | undefined, inFinally = false): void {
     if (!node || typeof node !== "object") {
       return;
     }
@@ -20,12 +21,12 @@ export function validateCleanupPolicy(fn, types) {
       throw error;
     }
     for (const key of types.VISITOR_KEYS[node.type] ?? []) {
-      const child = node[key];
+      const child: unknown = (node as unknown as Record<string, unknown>)[key];
       const cleanup = inFinally || (types.isTryStatement(node) && key === "finalizer");
       if (Array.isArray(child)) {
         child.forEach((value) => walk(value, cleanup));
       } else {
-        walk(child, cleanup);
+        walk(child as Babel.Node | undefined, cleanup);
       }
     }
   }

@@ -1,5 +1,5 @@
 // Scheme exact rationals preserve the IEEE-754 value without decimal reader drift.
-export function encodeNumber(value) {
+export function encodeNumber(value: number): string {
   if (!Number.isFinite(value)) {
     throw Error("Nonfinite number");
   }
@@ -25,7 +25,7 @@ export function encodeNumber(value) {
   return shift >= 0 ? String(numerator << BigInt(shift)) : `${numerator}/${1n << BigInt(-shift)}`;
 }
 
-export function decodeRational(text) {
+export function decodeRational(text: string): number {
   let [n, d] = text.split("/").map(BigInt);
   if (d === 0n) {
     throw Error("Invalid rational");

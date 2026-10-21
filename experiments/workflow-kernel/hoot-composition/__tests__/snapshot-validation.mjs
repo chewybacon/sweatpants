@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { loadMachine } from "../machine.mjs";
-import { parse } from "../../scheme-data/read.mjs";
+import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
 
 // Serialize trusted test mutations, retaining dotted bindings from the Scheme reader.
 function datum(value) {

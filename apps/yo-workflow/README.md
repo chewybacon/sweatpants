@@ -185,7 +185,7 @@ apps use real model providers. Run tests sequentially to bound worker processes.
 ### Same compiled tool in both runtimes
 
 `execution:compile` emits both Scheme and Lua artifacts from
-`experiments/workflow-kernel/tsdown-authoring/review-draft.workflow.ts`. Its ordinary
+`apps/yo-workflow/execution/review-draft.workflow.ts`. Its ordinary
 SDK DurableTool export remains separate. The model authors only the caller;
 `send_announcement` stays a host effect. Approve/decline/cancel all pass through
 the compiled tool's yielding `ensure` cleanup. Release cleanup before a successful
@@ -200,3 +200,18 @@ Evidence: `execution/__tests__/service.mjs` covers both runtimes and both park p
 `tsdown-authoring/__tests__/runtime.mjs` verifies common source, host composition and
 compiler-free artifact imports; `lua-compiler/__tests__/runtime.mjs` covers return,
 throw, cancellation, yielding cleanup and shared captures in Lua and Hoot.
+
+### Automatic workflow compilation
+
+Execution imports its ordinary `reviewDraft` SDK tool. `workflowPlugin()` in the
+Astro Vite configuration recognizes `"use workflow"` and attaches Scheme and Lua
+artifacts automatically. `pnpm dev` and `pnpm build` need no separate tool
+compilation step. Evaluator Wasm build prerequisites are unchanged.
+
+Edits and supported local type dependencies invalidate compilation. Unsupported
+source blocks the module with a Vite diagnostic. Existing persisted Execution
+runs are pinned to their program digest: after changing compiled code, start a
+new run. Unchanged builds still support Restore in fresh instance.
+
+`execution:compile` remains the standalone artifact build used by the Node
+conformance fixtures; it is not the application startup path.

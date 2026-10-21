@@ -1,17 +1,26 @@
+import { schemeWorkflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
 import { reviewExports, reviewImports } from "../contracts.mts";
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { compileWorkflowModule } from "../plugin.mjs";
+import { compileWorkflowModule } from "../../../../packages/flowmode-compiler/dist/compiler.js";
 const compile = (source, id) =>
   run(() =>
-    compileWorkflowModule(source, id, {
-      entry: "review_draft",
-      exports: reviewExports,
-      bindings: reviewImports,
-    }),
+    compileWorkflowModule(
+      source,
+      id,
+      {
+        entry: "review_draft",
+        exports: reviewExports,
+        bindings: reviewImports,
+      },
+      schemeWorkflowCompiler,
+    ),
   );
-const source = await readFile(new URL("../review-draft.workflow.ts", import.meta.url), "utf8");
+const source = await readFile(
+  new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
+  "utf8",
+);
 const code = await compile(source, "review-draft.workflow.ts");
 const module = await import(`data:text/javascript,${encodeURIComponent(code)}`);
 assert.equal(module.reviewDraft.source.text, source);

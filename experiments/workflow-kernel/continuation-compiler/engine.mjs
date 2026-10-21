@@ -1,6 +1,6 @@
 // Experimental Scheme subset. JSON is the checkpoint format; no host closures are saved.
 import { createHash } from "node:crypto";
-import { parse } from "../scheme-data/read.mjs";
+import { parse } from "../../../packages/flowmode-compiler/dist/scheme-data/read.js";
 const sym = (x) => ({ sym: x });
 const name = (x) => {
   if (!x?.sym) {

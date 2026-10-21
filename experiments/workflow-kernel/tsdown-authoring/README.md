@@ -1,6 +1,6 @@
 # SDK workflow artifact build
 
-`review-draft.workflow.ts` authors an ordinary `createDurableTool(...).execute`
+`apps/yo-workflow/execution/review-draft.workflow.ts` authors an ordinary `createDurableTool(...).execute`
 generator containing `"use workflow"`.
 
 The tsdown plugin emits separate surfaces:
@@ -26,3 +26,8 @@ this compiler subset and are rejected.
 Run the build with `pnpm --filter yo-workflow execution:compile`. The app imports
 the artifact, so no compiler, SDK builder or model provider executes on artifact
 import. Ordinary tool imports retain the SDK's standard behavior.
+
+The implementation is promoted to `packages/flowmode-compiler*` and the standalone
+artifact adapter lives in `packages/vite-plugin`. These fixtures prove the explicit
+artifact build API. The app itself imports the ordinary tool and uses automatic Vite
+compilation; it no longer depends on running this build before startup.

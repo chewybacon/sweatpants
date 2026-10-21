@@ -18,6 +18,16 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "./compiled-tool": {
+      "development": {
+        "import": "./src/compiled-tool.ts",
+        "types": "./src/compiled-tool.ts"
+      },
+      "import": {
+        "types": "./dist/compiled-tool.d.ts",
+        "default": "./dist/compiled-tool.js"
+      }
     }
   },
   "scripts": {

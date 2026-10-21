@@ -1,9 +1,9 @@
-import { encodeValue } from "../scheme-data/values.mjs";
+import { encodeValue } from "../../../packages/flowmode-compiler/dist/scheme-data/values.js";
 import type {
   WorkflowImplementation,
   WorkflowLinker,
 } from "../../../packages/flowmode-runtime/src/index.ts";
-import { parse } from "../scheme-data/read.mjs";
+import { parse } from "../../../packages/flowmode-compiler/dist/scheme-data/read.js";
 import {
   assertWorkflowLink,
   createWorkflowLinker,

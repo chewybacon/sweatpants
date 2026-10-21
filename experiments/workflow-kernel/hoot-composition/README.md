@@ -95,7 +95,7 @@ node experiments/workflow-kernel/hoot-composition/__tests__/confirm-action.mjs
 node experiments/workflow-kernel/hoot-composition/__tests__/installed-effect.mjs
 node experiments/workflow-kernel/hoot-composition/__tests__/values.mjs
 node experiments/workflow-kernel/hoot-composition/__tests__/snapshot-validation.mjs
-node experiments/workflow-kernel/scheme-data/__tests__/values.mjs
+pnpm -C packages/flowmode-compiler test
 node experiments/workflow-kernel/hoot-composition/__tests__/composition.mjs
 node experiments/workflow-kernel/hoot-composition/__tests__/authority.mjs
 node experiments/workflow-kernel/hoot-composition/__tests__/backend-composition.mjs

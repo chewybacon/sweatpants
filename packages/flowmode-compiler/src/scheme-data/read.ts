@@ -1,11 +1,17 @@
-import { decodeRational } from "./numbers.mjs";
+import { decodeRational } from "./numbers.js";
 
 // Reader for the trusted experimental Scheme datum subset; no execution.
-export function parse(source) {
+export type SchemeDatum = string | number | boolean | { sym: string } | SchemeDatum[];
+
+export function symbolName(value: SchemeDatum | undefined): string | undefined {
+  return typeof value === "object" && !Array.isArray(value) ? value.sym : undefined;
+}
+
+export function parse(source: string): SchemeDatum[] {
   const tokens = source.match(/;[^\n]*|"(?:\\.|[^"\\])*"|[()]|[^\s()]+/g) ?? [];
   const ts = tokens.filter((t) => !t.startsWith(";"));
   let i = 0;
-  function read() {
+  function read(): SchemeDatum {
     const t = ts[i++];
     if (t === undefined) {
       throw Error("Unexpected end of source");
@@ -35,7 +41,7 @@ export function parse(source) {
         if (escaped.startsWith("u") && escaped.length === 5) {
           return String.fromCharCode(parseInt(escaped.slice(1), 16));
         }
-        const escapes = {
+        const escapes: Record<string, string> = {
           a: "\x07",
           b: "\b",
           t: "\t",

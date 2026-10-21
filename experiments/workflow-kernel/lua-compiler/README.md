@@ -1,12 +1,13 @@
-# TypeScript → Lua workflow compiler spike
+# TypeScript → Lua workflow compiler conformance
 
 The existing `review-draft.workflow.ts` now compiles to either Scheme or Lua.
 `luaWorkflowCompiler` implements the existing `WorkflowCompiler` contract and
 returns the existing `CompiledWorkflow` envelope. The normal DurableTool export
-is unchanged. This spike does not switch yo-workflow's production composition or
-its current handwritten Lua demo definition.
+is unchanged. The compiler implementation now lives in `packages/flowmode-compiler-lua`;
+Vite automatically compiles the Execution page tool into both language artifacts.
+This directory retains evaluator integration tests and research.
 
-The shared `createTypeScriptWorkflowCompiler` in `tsdown-authoring/plugin.mjs`
+The shared `createTypeScriptWorkflowCompiler` in `packages/flowmode-compiler/src/compiler.ts`
 owns static SDK builder extraction, declared export checks, TypeScript checking,
 exchange admission, and artifact metadata. Its target supplies a definition
 format and an emitter. Both targets now call `emitTypeScriptWorkflowScheme`: the

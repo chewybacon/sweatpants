@@ -1,15 +1,11 @@
 # flowmode-compiler-lua
 
-Documentation-only scaffold. See the [ownership and promotion plan](../../docs/workspace/FLOWMODE.md).
+`luaWorkflowCompiler` implements the shared `WorkflowCompiler` contract for
+developer TypeScript tools. It translates the shared workflow Scheme intermediate
+representation into `piccolo-lua-module-1` artifacts. It does not execute Lua or
+implement checkpoint storage.
 
-Intended responsibility: translate the admitted shared Scheme intermediate
-representation into ordinary Lua and assemble the Lua compiled artifact.
-
-Current implementation: [lua-compiler](../../experiments/workflow-kernel/lua-compiler/README.md).
-Reuse shared TypeScript admission and artifact metadata; do not add an independent
-TypeScript frontend or another coroutine runtime.
-
-Readiness evidence: admitted value semantics, lexical capture sharing, compiled
-calls, suspension and ensure cleanup, and fresh-instance recovery with the Lua
-runtime. Unsupported forms must fail compilation. Ordinary Lua language support
-does not imply equivalent TypeScript compiler support.
+Used by the Sweatpants Vite workflow integration and standalone artifact builds.
+See [shared compiler documentation](../flowmode-compiler/README.md) for supported
+syntax, development behavior and validation. Lua evaluator and scheduler promotion
+remain separate.

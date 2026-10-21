@@ -103,6 +103,15 @@
     },
     {
       "path": "./packages/flowmode-backend"
+    },
+    {
+      "path": "./packages/flowmode-compiler"
+    },
+    {
+      "path": "./packages/flowmode-compiler-scheme"
+    },
+    {
+      "path": "./packages/flowmode-compiler-lua"
     }
   ],
   "files": []

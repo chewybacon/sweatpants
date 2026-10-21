@@ -69,3 +69,7 @@ status here. Statuses:
 | `packages/workspace-runtime` | library | |
 | `packages/flowmode-runtime` | parked | Kernel contract review scaffold; re-audit after Hoot fresh-instance continuation proof |
 | `packages/flowmode-backend` | parked | Kernel backend for the shared program driver; experimental Hoot and reference evaluator consumers |
+
+| `packages/flowmode-compiler` | library | Workflow compilation consumed by Vite |
+| `packages/flowmode-compiler-scheme` | library | Workflow compilation consumed by Vite |
+| `packages/flowmode-compiler-lua` | library | Workflow compilation consumed by Vite |

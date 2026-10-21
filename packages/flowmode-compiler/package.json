@@ -1,0 +1,52 @@
+{
+  "name": "@sweatpants/flowmode-compiler",
+  "version": "0.1.0",
+  "description": "Shared workflow TypeScript admission and portable artifact compilation",
+  "license": "MIT",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "default": "./dist/compiler.js"
+    },
+    "./emit-scheme": {
+      "types": "./dist/emit-scheme.d.ts",
+      "default": "./dist/emit-scheme.js"
+    },
+    "./scheme-data/read": {
+      "types": "./dist/scheme-data/read.d.ts",
+      "default": "./dist/scheme-data/read.js"
+    },
+    "./scheme-data/values": {
+      "types": "./dist/scheme-data/values.d.ts",
+      "default": "./dist/scheme-data/values.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@babel/core": "^7.24.0",
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "effection": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/babel__core": "^7.20.5",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,10 +1,6 @@
 import { createWorkflowBindingResolver } from "../../../packages/flowmode-backend/dist/index.js";
 import { requireCompiledWorkflow } from "../../../packages/flowmode-runtime/dist/index.js";
-import {
-  reviewContract,
-  callerContract,
-  reviewImports,
-} from "../../../experiments/workflow-kernel/tsdown-authoring/contracts.mts";
+import { callerContract } from "../../../experiments/workflow-kernel/tsdown-authoring/contracts.mts";
 import {
   createJournal,
   createMemoryExecutionStore,
@@ -79,7 +75,12 @@ export function executionServiceFactory(stacks) {
   function* prepareBindings(stack) {
     const reviewDraft = yield* stack.definition();
     const bindings = [
-      { kind: "compiled", contract: reviewContract, module: reviewDraft, export: "reviewDraft" },
+      {
+        kind: "compiled",
+        contract: reviewDraft.exports[0].contract,
+        module: reviewDraft,
+        export: "reviewDraft",
+      },
       {
         kind: "host",
         contract: {
@@ -91,7 +92,7 @@ export function executionServiceFactory(stacks) {
         },
         capability: { name: sendDefinition.name, version: sendDefinition.version },
       },
-      ...reviewImports.map((d) => ({ ...d, capability: { name: "elicit", version: "1" } })),
+      ...reviewDraft.imports.map((d) => ({ ...d, capability: { name: "elicit", version: "1" } })),
     ];
     return { reviewDraft, bindings };
   }
@@ -187,7 +188,11 @@ export function executionServiceFactory(stacks) {
         return;
       }
       const { program, store, busy, outbox, ...state } = session;
-      await persistence.save(session.id, { ...state, outbox: [...outbox] });
+      await persistence.save(session.id, {
+        ...state,
+        programDigest: program.artifact.digest,
+        outbox: [...outbox],
+      });
     }
     async function loadSession(id) {
       if (sessions.has(id)) {
@@ -197,9 +202,15 @@ export function executionServiceFactory(stacks) {
       if (!saved) {
         return undefined;
       }
+      const program = await run(() => buildProgram(saved.authored, saved.language));
+      if (saved.programDigest !== program.artifact.digest) {
+        throw Error(
+          "workflow_source_changed: This run uses a different compiled workflow. Start a new run.",
+        );
+      }
       const session = {
         ...saved,
-        program: await run(() => buildProgram(saved.authored, saved.language)),
+        program,
         store: storeFactory(),
         outbox: new Map(saved.outbox),
         busy: false,

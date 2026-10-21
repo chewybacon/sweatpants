@@ -10,6 +10,8 @@
  * Inspired by TanStack Start's approach to type-safe, low-ceremony APIs.
  */
 import type { Plugin } from "vite";
+import { workflowPlugin } from "./workflow.ts";
+export { workflowPlugin };
 import { toolDiscoveryPlugin } from "./tool-discovery.ts";
 import { clientContractPlugin } from "./client-contract-compiler.ts";
 import type { ToolDiscoveryOptions } from "./types.ts";
@@ -77,9 +79,11 @@ export function frameworkPlugin(options: FrameworkOptions = {}): Plugin[] {
   if (options.tools !== false) {
     plugins.push(toolDiscoveryPlugin(options.tools));
   }
-  plugins.push(clientContractPlugin());
+  plugins.push(clientContractPlugin(), workflowPlugin());
 
   return plugins;
 }
 
 export default frameworkPlugin;
+
+export { workflowArtifactPlugin } from "./workflow-artifacts.js";
