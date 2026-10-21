@@ -74,8 +74,11 @@ export const rootTool = createPinnedDurableProgram(manifest, function* (input, c
         input: call.input,
         thoughtSignature: call.thoughtSignature,
       }));
-    if (calls.length === 0) {
+    // Publish narration before a tool invocation can park or fail.
+    if (text.length > 0 || calls.length === 0) {
       yield* context.emit("assistant_text", { text });
+    }
+    if (calls.length === 0) {
       return text;
     }
     for (const call of calls) {
