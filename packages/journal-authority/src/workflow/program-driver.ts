@@ -90,6 +90,8 @@ export function createWorkflowEffectHandlers(
 export interface WorkflowProgramDriverOptions {
   /** Owns attachments independently of the caller operation (worker/remote evaluators). */
   readonly detachedScope?: boolean;
+  /** Installs execution services for both the program and its record attempts. */
+  readonly setup?: () => Operation<void>;
   /**
    * Host-configured installed-effect implementations keyed by manifest
    * effect name. Handlers dispatch through {@link InstalledEffectPort},
@@ -136,6 +138,9 @@ export function createWorkflowProgramDriver(
     }
     const attachmentId = stableProgramAttachmentId(request);
     const open = function* () {
+      if (options.setup) {
+        yield* options.setup();
+      }
       const computation = yield* backend.open(request, checkpoint);
       const owned = yield* openProgramAttachment(request, computation, actionIndex);
       return { owned, computation };

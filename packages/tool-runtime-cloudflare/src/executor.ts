@@ -21,32 +21,16 @@ export type ToolExecutorClass = new (
 
 export interface ToolExecutorOptions {
   tools: readonly DurableTool[];
-  /** Installs execution services inside each program's owned scope, not HTTP ingress. */
+  /** Installs execution services inside each attachment's owned scope, not HTTP ingress. */
   setup?: () => Operation<void>;
-}
-
-function createExecutorRegistry({ tools, setup }: ToolExecutorOptions) {
-  return createDurableToolRegistry(
-    tools.map((tool) =>
-      setup
-        ? {
-            ...tool,
-            *program(input, context) {
-              yield* setup();
-              return yield* tool.program(input, context);
-            },
-          }
-        : tool,
-    ),
-  );
 }
 
 /** Loaded evaluator code. Every attachment gets its own request-scoped RPC target. */
 export function createToolExecutor(options: ToolExecutorOptions): ToolExecutorClass {
-  const registry = createExecutorRegistry(options);
+  const registry = createDurableToolRegistry(options.tools);
   return class ToolExecutor extends WorkerEntrypoint<unknown> {
     createExecutor() {
-      return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
+      return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup), options.setup);
     }
   };
 }
@@ -58,10 +42,10 @@ export type ToolExecutorObjectClass = new (
 
 /** Disposable replay compute in a DO; durable truth stays in the host journal. */
 export function createToolExecutorObject(options: ToolExecutorOptions): ToolExecutorObjectClass {
-  const registry = createExecutorRegistry(options);
+  const registry = createDurableToolRegistry(options.tools);
   return class ToolExecutorObject extends DurableObject<unknown> {
     createExecutor() {
-      return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup));
+      return new ExecutorTarget(registry, (cleanup) => this.ctx.waitUntil(cleanup), options.setup);
     }
   };
 }
@@ -70,9 +54,10 @@ class ExecutorTarget extends RpcTarget implements ToolExecutorRpc {
   constructor(
     registry: ReturnType<typeof createDurableToolRegistry>,
     private readonly waitUntil: (cleanup: Promise<unknown>) => void,
+    setup?: () => Operation<void>,
   ) {
     super();
-    this.driver = createWorkflowProgramDriver(registry, { detachedScope: true });
+    this.driver = createWorkflowProgramDriver(registry, { detachedScope: true, setup });
   }
   private readonly driver: ReturnType<typeof createWorkflowProgramDriver>;
   private attachment?: ProgramAttachment;
