@@ -87,6 +87,7 @@ export function* presentProgramDriverChatActivation(
       terminalEvent,
     );
   } else if (outcome.state === "parked") {
+    const parkedEvents: StreamEvent[] = [];
     // Bounded frontier (REQ-028): surface every participant-addressable slot
     // a fork group parked on, including the single-park case.
     const slotPullIds = outcome.slots.map((slot) => slot.pullId);
@@ -95,7 +96,7 @@ export function* presentProgramDriverChatActivation(
       .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
     if (pendings.length > 0) {
       for (const pending of pendings) {
-        events.push({
+        parkedEvents.push({
           type: EventType.TOOL_CALL_END,
           toolCallId: pendingToolCallId(projection, pending),
         });
@@ -103,18 +104,22 @@ export function* presentProgramDriverChatActivation(
           agUiRun: context.agUiRun,
           toolInventory: context.toolInventory,
         });
-        events.push(...publicActivityElicitSnapshots(projection, pending, interrupt));
-        events.push(interrupt);
+        parkedEvents.push(...publicActivityElicitSnapshots(projection, pending, interrupt));
+        parkedEvents.push(interrupt);
       }
     } else {
-      events.push({
+      parkedEvents.push({
         type: EventType.RUN_ERROR,
         code: "PROGRAM_PARKED",
         message: "Program parked without a public input request",
       });
     }
+    events.push(...parkedEvents);
     if (context.publishCheckpoint) {
-      const published = yield* context.publishCheckpoint({ events });
+      // Live delivery deduplicates streamed text, but durable history needs it.
+      const published = yield* context.publishCheckpoint({
+        events: [...projected, ...parkedEvents],
+      });
       const terminalIndex = Math.max(0, events.length - 1);
       events.splice(terminalIndex, 0, ...(published.window ? [published.window] : []), {
         type: CONVERSATION_AUTHORITY_FRAME_TYPE,
