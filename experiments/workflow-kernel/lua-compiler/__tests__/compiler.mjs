@@ -3,7 +3,11 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { run } from "effection";
 import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
-import { transpileWorkflowScheme } from "../../../../packages/flowmode-compiler-lua/dist/scheme-to-lua.js";
+import {
+  prepareWorkflow,
+  emitPreparedWorkflow,
+} from "../../../../packages/flowmode-compiler/dist/index.js";
+import { luaWorkflowTarget } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
 import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
 import { reviewExports, reviewImports } from "../../tsdown-authoring/contracts.mts";
 
@@ -34,7 +38,15 @@ test("one SDK workflow produces separate Scheme and Lua artifacts with the same 
   assert.deepEqual(lua.module.source, scheme.module.source);
   assert.equal(
     lua.module.implementation.payload,
-    transpileWorkflowScheme(scheme.module.implementation.payload, "review_draft"),
+    emitPreparedWorkflow(
+      prepareWorkflow({
+        source: { id: "review-draft.workflow.ts", language: "typescript", text: source },
+        entry: "review_draft",
+        exports: reviewExports,
+        bindings: reviewImports,
+      }),
+      luaWorkflowTarget,
+    ).implementation.payload,
   );
   assert.deepEqual(lua.module.debug, scheme.module.debug);
   assert.deepEqual(JSON.parse(JSON.stringify(lua.module)), lua.module);
@@ -62,7 +74,7 @@ test("unsupported syntax and cleanup captures fail admission rather than changin
   for (const [text, message] of [
     [
       source.replace('"use workflow";', '"use workflow"; while (true) {}'),
-      /Unsupported workflow Scheme form:.*while/,
+      /Unsupported Lua workflow operation: while/,
     ],
     [
       source.replace('"use workflow";', '"use workflow"; console.log(input);'),

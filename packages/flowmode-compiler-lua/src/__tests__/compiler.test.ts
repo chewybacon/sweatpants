@@ -1,7 +1,7 @@
 import { test, expect } from "vitest";
 import { run } from "effection";
 import { readFile } from "node:fs/promises";
-import { analyzeWorkflowTools, emitTypeScriptWorkflowScheme } from "@sweatpants/flowmode-compiler";
+import { analyzeWorkflowTools, emitSchemeIR } from "@sweatpants/flowmode-compiler";
 import { luaWorkflowCompiler } from "../index.js";
 const id = new URL(
   "../../../../apps/yo-workflow/execution/review-draft.workflow.ts",
@@ -34,5 +34,5 @@ test("the public Lua target retains cleanup and rejects unsupported workflow con
   );
   expect(rejected.ok).toBe(false);
   expect(rejected.diagnostics[0].severity).toBe("error");
-  expect(typeof emitTypeScriptWorkflowScheme).toBe("function");
+  expect(typeof emitSchemeIR).toBe("function");
 }, 30_000);

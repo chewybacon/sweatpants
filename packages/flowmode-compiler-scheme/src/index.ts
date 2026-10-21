@@ -1,8 +1,10 @@
 import {
   createTypeScriptWorkflowCompiler,
-  emitTypeScriptWorkflowScheme,
+  emitSchemeIR,
+  type TypeScriptWorkflowTarget,
 } from "@sweatpants/flowmode-compiler";
-export const schemeWorkflowCompiler = createTypeScriptWorkflowCompiler({
+export const schemeWorkflowTarget: TypeScriptWorkflowTarget = {
   definitionFormat: "workflow-scheme-definitions-v1",
-  emit: emitTypeScriptWorkflowScheme,
-});
+  emit: emitSchemeIR,
+};
+export const schemeWorkflowCompiler = createTypeScriptWorkflowCompiler(schemeWorkflowTarget);

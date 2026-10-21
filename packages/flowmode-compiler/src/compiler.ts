@@ -1,8 +1,9 @@
+import { retainReachableFunctions } from "./reachable.js";
 import type * as Babel from "@babel/core";
-import { resolve } from "node:path";
-import ts from "typescript";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "./emit-scheme.js";
+import { lowerWorkflow } from "./lower.js";
+import { createSourceProgram } from "./source-program.js";
+import type { SchemeProgram } from "./scheme-ir.js";
 
 import {
   createWorkflowCompiler,
@@ -10,11 +11,10 @@ import {
   type CompiledWorkflow,
   type Diagnostic,
   type SourcePosition,
-  type WorkflowSource,
   type WorkflowCompiler,
 } from "@sweatpants/flowmode-runtime";
 import type { Operation } from "effection";
-import type { TypeScriptWorkflowTarget, WorkflowEntry, WorkflowEmission } from "./types.js";
+import type { TypeScriptWorkflowTarget, WorkflowEntry } from "./types.js";
 const babel = createRequire(import.meta.url)("@babel/core") as typeof Babel;
 
 function compileErrorPosition(error: unknown, sourceId: string): SourcePosition {
@@ -47,19 +47,22 @@ function compileErrorPosition(error: unknown, sourceId: string): SourcePosition 
   return { sourceId, line: 1, column: 1 };
 }
 /** Shared build transform: no module evaluation or bundler state. */
-function compileDefinitions(
-  source: string,
-  id: string,
-  declaredExports: CompileRequest["exports"],
-  bindings: CompileRequest["bindings"],
-  target: TypeScriptWorkflowTarget,
-): Record<string, CompiledWorkflow> {
-  const ast = babel.parseSync(source, {
-    filename: id,
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: ["typescript"] },
-  });
+export interface PreparedWorkflow {
+  request: CompileRequest;
+  program: SchemeProgram;
+  definitions: WorkflowEntry[];
+  diagnostics: Diagnostic[];
+  dependencies: string[];
+  resolutions: { importer: string; specifier: string; resolved: string }[];
+}
+export function prepareWorkflow(request: CompileRequest): PreparedWorkflow {
+  const {
+    source: { id },
+    exports: declaredExports,
+    bindings,
+  } = request;
+  const sources = createSourceProgram(request.source);
+  const ast = sources.ast;
   const t = babel.types;
   let builderName: string | undefined;
   let schemaName: string | undefined;
@@ -195,16 +198,11 @@ function compileDefinitions(
     staticValue(node.arguments[0]);
     validateBuilder(node.callee.object);
   }
-  // Strip SDK declarations without evaluating the module; targets own their calling convention.
-  const edits = removed.map((node) => ({
-    start: node.start!,
-    end: node.end!,
-    text: source.slice(node.start!, node.end!).replace(/[^\r\n]/g, " "),
-  }));
+  ast.program.body = ast.program.body.filter((node) => !removed.includes(node));
   for (const definition of definitions) {
     const fn =
       definition.inline ??
-      ast!.program.body.find(
+      ast.program.body.find(
         (node): node is Babel.types.FunctionDeclaration =>
           t.isFunctionDeclaration(node) && node.id?.name === definition.entry,
       );
@@ -218,47 +216,34 @@ function compileDefinitions(
     ) {
       throw Error("Workflow execute requires (input, ctx)");
     }
-  }
-  for (const definition of definitions) {
-    if (!definition.inline) {
-      continue;
+    // Only exported entry functions use the private ctx/input backend convention.
+    fn.params = [fn.params[1], fn.params[0]];
+    if (definition.inline) {
+      const declaration = t.functionDeclaration(
+        t.identifier(definition.entry),
+        fn.params,
+        fn.body,
+        fn.generator,
+        fn.async,
+      );
+      declaration.loc = fn.loc;
+      ast.program.body.push(declaration);
     }
-    const fn = definition.inline;
-    const edit = edits.find((e) => e.start <= fn.start! && e.end >= fn.end!)!;
-    const prefix = source.slice(fn.start!, fn.params[0].start!);
-    const parameterStart = prefix.indexOf("(");
-    const replacement =
-      `function* ${definition.entry}` + source.slice(fn.start! + parameterStart, fn.end!);
-    edit.text =
-      edit.text.slice(0, fn.start! - edit.start) +
-      replacement +
-      edit.text.slice(fn.end! - edit.start);
   }
-  let input = source;
-  for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
-    input = input.slice(0, edit.start) + edit.text + input.slice(edit.end);
-  }
-  const emitted = target.emit(input, definitions);
-  // Naming an inline generator changes only its first line's columns. Project
-  // emitted locations back onto the original author source before publishing.
-  for (const definition of definitions) {
-    const fn = definition.inline;
-    if (!fn) {
-      continue;
-    }
-    const parameterStart = source.slice(fn.start!, fn.params[0].start!).indexOf("(");
-    const delta = `function* ${definition.entry}`.length - parameterStart;
-    for (const site of Object.values(emitted.debug.sites)) {
-      if (site.function === definition.entry && site.line === fn.loc!.start.line) {
-        site.column -= delta;
-      }
-    }
-    emitted.debug.locations[definition.entry] = {
-      line: fn.loc!.start.line,
-      column: fn.loc!.start.column,
-    };
-  }
-  for (const site of Object.values(emitted.debug.sites)) {
+  const program = lowerWorkflow(ast, {
+    sourceId: id,
+    types: sources.types,
+    definitions,
+    entryPoint: null,
+    entryInput: true,
+    allowEnsure: true,
+    allowFinally: true,
+  });
+  retainReachableFunctions(
+    program,
+    definitions.map((d) => d.entry),
+  );
+  for (const site of Object.values(program.debug.sites)) {
     if (site.operation === "scoped") {
       throw Error(`Undeclared workflow exchange: ${JSON.stringify(["effect", null, null])}`);
     }
@@ -267,79 +252,46 @@ function compileDefinitions(
         ? JSON.stringify(["elicit", site.key])
         : JSON.stringify(["effect", site.name, site.version]);
     if (!bindings.some((binding) => binding.kind === "host" && binding.contract.id === bindingId)) {
-      throw Error(`Undeclared workflow exchange: ${bindingId}`);
+      throw Object.assign(Error(`Undeclared workflow exchange: ${bindingId}`), {
+        position: { sourceId: site.sourceId ?? id, line: site.line, column: site.column + 1 },
+      });
     }
   }
-  const functions = new Set(
-    ast!.program.body.filter((node) => t.isFunctionDeclaration(node)).map((node) => node.id!.name),
-  );
-  return Object.fromEntries(
-    definitions.map(({ name, entry }) => {
-      if (!functions.has(entry) && !definitions.some((d) => d.entry === entry && d.inline)) {
-        throw Error(`${id}: unknown workflow entry ${entry}`);
-      }
-      if (!declaredExports.some((e) => e.name === name && e.entry === entry)) {
-        throw Error(`${id}: missing export contract for ${name}`);
-      }
-      return [
-        name,
-        {
-          entry,
-          implementation: { format: target.definitionFormat, payload: emitted.payload },
-          source: { id, language: "typescript", text: source },
-          exports: declaredExports,
-          imports: bindings,
-          debug: emitted.debug,
-        },
-      ];
-    }),
-  );
+  for (const { name, entry } of definitions) {
+    if (!declaredExports.some((e) => e.name === name && e.entry === entry)) {
+      throw Error(`${id}: missing export contract for ${name}`);
+    }
+  }
+  return {
+    request,
+    program,
+    definitions,
+    diagnostics: sources.diagnostics(),
+    dependencies: sources.dependencies,
+    resolutions: sources.resolutions,
+  };
 }
 
-/** Type-check the supplied source without evaluating its module or emitting JavaScript. */
-function typeDiagnostics(source: WorkflowSource): Diagnostic[] {
-  const filename = resolve(source.id);
-  const options = {
-    strict: true,
-    noEmit: true,
-    skipLibCheck: true,
-    allowImportingTsExtensions: true,
-    module: ts.ModuleKind.NodeNext,
-    target: ts.ScriptTarget.ES2023,
-    // Check framework public declarations, not its entire implementation graph.
-    // Local author imports remain source files and are checked normally.
-    customConditions: [],
+export function emitPreparedWorkflow(
+  prepared: PreparedWorkflow,
+  target: TypeScriptWorkflowTarget,
+): CompiledWorkflow {
+  const { request, program, definitions } = prepared;
+  const emitted = target.emit(program, definitions);
+  if (
+    !definitions.some((d) => d.entry === request.entry) ||
+    request.exports.some((e) => !definitions.some((d) => d.name === e.name && d.entry === e.entry))
+  ) {
+    throw Error("Unknown declared workflow export");
+  }
+  return {
+    entry: request.entry,
+    implementation: { format: target.definitionFormat, payload: emitted.payload },
+    source: request.source,
+    exports: request.exports,
+    imports: request.bindings,
+    debug: emitted.debug,
   };
-  const host = ts.createCompilerHost(options);
-  const readSource = host.getSourceFile.bind(host);
-  const fileExists = host.fileExists.bind(host);
-  host.fileExists = (path) => resolve(path) === filename || fileExists(path);
-  host.getSourceFile = (path, languageVersion, onError, shouldCreateNewSourceFile) =>
-    resolve(path) === filename
-      ? ts.createSourceFile(filename, source.text, languageVersion, true)
-      : readSource(path, languageVersion, onError, shouldCreateNewSourceFile);
-  const program = ts.createProgram([filename], options, host);
-  return ts.getPreEmitDiagnostics(program).map((diagnostic) => {
-    const result: {
-      severity: "error" | "warning";
-      code: string;
-      message: string;
-      position?: SourcePosition;
-    } = {
-      severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" : "warning",
-      code: `TS${diagnostic.code}`,
-      message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-    };
-    if (diagnostic.file && diagnostic.start !== undefined) {
-      const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-      result.position = {
-        sourceId: diagnostic.file.fileName === filename ? source.id : diagnostic.file.fileName,
-        line: position.line + 1,
-        column: position.character + 1,
-      };
-    }
-    return result;
-  });
 }
 
 /**
@@ -357,15 +309,9 @@ export function createTypeScriptWorkflowCompiler(
           if (source.language !== "typescript") {
             throw Error("Workflow compiler requires TypeScript source");
           }
-          const definitions = compileDefinitions(source.text, source.id, exports, bindings, target);
-          const module = Object.values(definitions).find((d) => d.entry === entry);
-          if (!module) {
-            throw Error(`Unknown workflow entry: ${entry}`);
-          }
-          if (exports.some((e) => !definitions[e.name] || definitions[e.name].entry !== e.entry)) {
-            throw Error("Unknown declared workflow export");
-          }
-          const diagnostics = typeDiagnostics(source);
+          const prepared = prepareWorkflow({ source, entry, exports, bindings });
+          const module = emitPreparedWorkflow(prepared, target);
+          const diagnostics = prepared.diagnostics;
           if (diagnostics.some((d) => d.severity === "error")) {
             return { ok: false, diagnostics };
           }
@@ -386,46 +332,6 @@ export function createTypeScriptWorkflowCompiler(
       },
     },
   });
-}
-
-export function emitTypeScriptWorkflowScheme(
-  source: string,
-  definitions: WorkflowEntry[],
-): WorkflowEmission {
-  const ast = babel.parseSync(source, {
-    configFile: false,
-    babelrc: false,
-    parserOpts: { plugins: ["typescript"] },
-  });
-  // Scheme privately takes ctx before input. The shared extractor preserves source order.
-  const edits = definitions.map(({ entry }) => {
-    const fn = ast!.program.body.find(
-      (node): node is Babel.types.FunctionDeclaration =>
-        babel.types.isFunctionDeclaration(node) && node.id?.name === entry,
-    );
-    if (!fn) {
-      throw Error(`Unknown workflow entry: ${entry}`);
-    }
-    return {
-      start: fn.params[0].start!,
-      end: fn.params[1].end!,
-      text:
-        source.slice(fn.params[1].start!, fn.params[1].end!) +
-        ", " +
-        source.slice(fn.params[0].start!, fn.params[0].end!),
-    };
-  });
-  let input = source;
-  for (const edit of edits.toSorted((a, b) => b.start - a.start)) {
-    input = input.slice(0, edit.start) + edit.text + input.slice(edit.end);
-  }
-  const emitted = emitWorkflowScheme(input, {
-    entryPoint: null,
-    entryInput: true,
-    allowEnsure: true,
-    allowFinally: true,
-  });
-  return { payload: emitted.scheme, debug: emitted.debug };
 }
 
 /** Bundler representation is separate from the portable compiler output.

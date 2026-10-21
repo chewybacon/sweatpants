@@ -1,8 +1,10 @@
-import { createTypeScriptWorkflowCompiler } from "@sweatpants/flowmode-compiler";
+import {
+  createTypeScriptWorkflowCompiler,
+  type TypeScriptWorkflowTarget,
+} from "@sweatpants/flowmode-compiler";
 import { emitWorkflowLua } from "./emit.js";
-
-/** Same SDK extraction, type checking and exchange admission as the Scheme target. */
-export const luaWorkflowCompiler = createTypeScriptWorkflowCompiler({
+export const luaWorkflowTarget: TypeScriptWorkflowTarget = {
   definitionFormat: "piccolo-lua-module-1",
   emit: emitWorkflowLua,
-});
+};
+export const luaWorkflowCompiler = createTypeScriptWorkflowCompiler(luaWorkflowTarget);

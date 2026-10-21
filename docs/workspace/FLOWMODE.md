@@ -19,7 +19,7 @@ scoped scheduler.
 - [flowmode-backend](../../packages/flowmode-backend/README.md): shared journal
   attachment integration for language kernels.
 - [flowmode-compiler](../../packages/flowmode-compiler/README.md): shared developer
-  source admission, Scheme intermediate representation, and artifact tooling.
+  source admission, typed Scheme IR, helper-module bundling, and artifact tooling.
 - [flowmode-compiler-lua](../../packages/flowmode-compiler-lua/README.md): Lua target
   lowering from the shared intermediate representation.
 - [flowmode-compiler-scheme](../../packages/flowmode-compiler-scheme/README.md):
