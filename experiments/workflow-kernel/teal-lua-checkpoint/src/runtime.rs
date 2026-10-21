@@ -20,6 +20,8 @@ const CANCEL: &str = "__workflow_cancelled__";
 #[serde(deny_unknown_fields)]
 pub struct Command {
     source: String,
+    #[serde(default = "default_fuel")]
+    fuel: u32,
     action: Action,
     #[serde(default)]
     input: Json,
@@ -37,6 +39,7 @@ pub enum Action {
     Start,
     Restore,
     Resume,
+    Continue,
     Reject,
     Cancel,
 }
@@ -50,24 +53,29 @@ pub struct State {
     reason: Option<String>,
     cleanup_depth: u32,
     calls: Vec<String>,
+    fuel_used: u64,
 }
+fn default_fuel() -> u32 { 100_000 }
+
 fn error<'gc>(ctx: piccolo::Context<'gc>, text: String) -> piccolo::Error<'gc> {
     Value::String(ctx.intern(text.as_bytes())).into()
 }
 
 pub fn execute(mut command: Command) -> Result<State, String> {
+    if command.fuel == 0 || command.fuel > 1_000_000 { return Err("invalid fuel slice".into()); }
+    let mut fuel_used = command.state.as_ref().map_or(0, |s| s.fuel_used);
     if command.source.len() > 64000 {
         return Err("Lua source exceeds 64KB".into());
     }
     let source = format!("{PRELUDE}\n{}", command.source);
     let program = format!(
         "{:x}",
-        Sha256::digest(format!("piccolo-runtime-3;{source}"))
+        Sha256::digest(format!("piccolo-runtime-4;{source}"))
     );
     if command.action == Action::Validate {
         let mut lua = Lua::empty();
         lua.enter(|ctx| Closure::load_with_env(ctx, Some("workflow.lua"), source.as_bytes(), Table::new(&ctx)).map(|_| ()).map_err(|e| e.to_string()))?;
-        return Ok(State { program, vm: None, boundary: json!({"kind":"completed","value":null}), cancelling:false, reason:None, cleanup_depth:0, calls:Vec::new() });
+        return Ok(State { program, vm: None, boundary: json!({"kind":"completed","value":null}), cancelling:false, reason:None, cleanup_depth:0, calls:Vec::new(), fuel_used });
     }
     if command.action == Action::Start && command.state.is_some() {
         return Err("start must not contain state".into());
@@ -88,8 +96,15 @@ pub fn execute(mut command: Command) -> Result<State, String> {
             }
             return Ok(command.state.take().unwrap());
         }
-        if saved.boundary["kind"] != "suspended" {
+        if saved.boundary["kind"] != "suspended" && saved.boundary["kind"] != "compute_paused" {
             return Err("invalid suspended state".into());
+        }
+    }
+    if let Some(saved) = &command.state {
+        let compute = saved.boundary["kind"] == "compute_paused";
+        if (command.action == Action::Continue && !compute)
+            || (matches!(command.action, Action::Resume | Action::Reject) && compute) {
+            return Err("action does not match Lua boundary".into());
         }
     }
     let mut cancelling = command.state.as_ref().is_some_and(|s| s.cancelling);
@@ -195,9 +210,12 @@ pub fn execute(mut command: Command) -> Result<State, String> {
                 .resume_err(&ctx, from_json(ctx, &command.reply)?.into())
                 .map_err(|e| e.to_string())?;
         } else if command.action == Action::Cancel && !skip_cancel {
-            thread
-                .resume_err(&ctx, Value::String(ctx.intern(CANCEL.as_bytes())).into())
-                .map_err(|e| e.to_string())?;
+            let error = Value::String(ctx.intern(CANCEL.as_bytes())).into();
+            if thread.mode() == ThreadMode::Normal {
+                checkpoint::interrupt(ctx, thread, error)?;
+            } else {
+                thread.resume_err(&ctx, error).map_err(|e| e.to_string())?;
+            }
         }
         let executor = Executor::run(&ctx, thread).map_err(|e| e.to_string())?;
         Ok((
@@ -216,24 +234,33 @@ pub fn execute(mut command: Command) -> Result<State, String> {
         saved.reason = reason;
         return Ok(saved);
     }
-    for _ in 0..1000 {
+    let mut remaining = i64::from(command.fuel);
+    // Finish at a serializable VM boundary; the exposed native callbacks are bounded.
+    for _ in 0..2000 {
         let done = lua.enter(|ctx| {
             let exec = ctx.fetch(&executor);
-            exec.step(ctx, &mut Fuel::with(1000))
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>(exec.mode() == ExecutorMode::Result)
+            let amount = if remaining > 0 { remaining.min(1000) as i32 } else { 1 };
+            let mut fuel = Fuel::with(amount);
+            exec.step(ctx, &mut fuel).map_err(|e| e.to_string())?;
+            let consumed = i64::from(amount) - i64::from(fuel.remaining());
+            fuel_used += consumed.max(0) as u64;
+            remaining -= consumed.max(1);
+            Ok::<_, String>(exec.mode() == ExecutorMode::Result
+                || (remaining <= 0 && checkpoint::can_capture(ctx.fetch(&thread))))
         })?;
-        if lua.total_memory() > MEMORY {
-            return Err("Lua memory budget exceeded".into());
-        }
-        if done {
-            break;
-        }
+        if lua.total_memory() > MEMORY { return Err("Lua memory budget exceeded".into()); }
+        if done { break; }
     }
     lua.enter(|ctx| {
         let exec = ctx.fetch(&executor);
-        if exec.mode() != ExecutorMode::Result { return Err("Lua fuel budget exceeded".into()); }
         let thread = ctx.fetch(&thread);
+        if exec.mode() != ExecutorMode::Result {
+            let native_values = natives.iter().map(|n| ctx.fetch(n)).collect::<Vec<_>>();
+            let protos = checkpoint::prototypes(ctx.fetch(&root).prototype());
+            let snapshot = checkpoint::capture(ctx, thread, &program, &protos, &native_values)?;
+            return Ok(State { program, vm: Some(snapshot), boundary: json!({"kind":"compute_paused"}),
+                cancelling, reason, cleanup_depth: cleanup.get(), calls: Vec::new(), fuel_used });
+        }
         let result = thread.take_result::<Value>(ctx).map_err(|e|e.to_string())?;
         if thread.mode() == ThreadMode::Suspended {
             result.map_err(|e|e.to_string())?;
@@ -249,7 +276,7 @@ pub fn execute(mut command: Command) -> Result<State, String> {
                 }
                 None
             }).collect();
-            Ok(State { program, vm:Some(snapshot), boundary:json!({"kind":"suspended","request":request}), cancelling,reason,cleanup_depth:cleanup.get(), calls })
+            Ok(State { program, vm:Some(snapshot), boundary:json!({"kind":"suspended","request":request}), cancelling,reason,cleanup_depth:cleanup.get(), calls, fuel_used })
         } else {
             let boundary = match result {
                 Ok(_) if cancelling => json!({"kind":"cancelled","reason":reason}),
@@ -261,7 +288,7 @@ pub fn execute(mut command: Command) -> Result<State, String> {
                 Err(piccolo::Error::Lua(e)) => json!({"kind":"failed","error":to_json(e.0).unwrap_or_else(|_|json!("non-JSON Lua error"))}),
                 Err(e) => json!({"kind":"failed","error":e.to_string()}),
             };
-            Ok(State { program, vm:None, boundary, cancelling,reason,cleanup_depth:cleanup.get(), calls:Vec::new() })
+            Ok(State { program, vm:None, boundary, cancelling,reason,cleanup_depth:cleanup.get(), calls:Vec::new(), fuel_used })
         }
     })
 }

@@ -9,6 +9,7 @@ import { rememberThreadSummary, summarizeThread } from "../threads/thread-summar
 import { useChat } from "@sweatpants/react-chat";
 import { Badge, Button, Card, Stack, TextArea } from "../design-system/primitives.tsx";
 import { hasVisiblePart, Part } from "./tool-view.tsx";
+import { fuelPlugin } from "./fuel-plugin.tsx";
 import { askPlugin } from "./ask-plugin.tsx";
 import { rememberThread } from "../threads/thread-index.ts";
 import { PromptExamples } from "./prompt-examples.tsx";
@@ -49,7 +50,7 @@ export function App({ initialThreadId }: AppProps) {
     api: "/api/chat",
     fetcher: (input, init) => fetchWithAuthoringPolicy(input, init, selectedLanguage.current),
     threadId,
-    plugins: [askPlugin, choicesPlugin, documentDisplayPlugin],
+    plugins: [fuelPlugin, askPlugin, choicesPlugin, documentDisplayPlugin],
     pipeline: "markdown",
   });
   const busy = status === "submitted" || status === "streaming";

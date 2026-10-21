@@ -118,9 +118,9 @@ diff --git a/src/thread/checkpoint.rs b/src/thread/checkpoint.rs
 new file mode 100644
 --- /dev/null
 +++ b/src/thread/checkpoint.rs
-@@ -0,0 +1,714 @@
+@@ -0,0 +1,739 @@
 +//! Experimental trusted-state checkpoint codec. Not an untrusted snapshot loader.
-+//! Only a single thread parked at a direct callback yield is supported.
++//! Task roots may be parked at a host request or a safe computation boundary.
 +use super::thread::{Frame, LuaReturn, OpenUpValue};
 +use crate::{callback::SequenceCheckpoint, BoxSequence};
 +use crate::{
@@ -134,7 +134,7 @@ new file mode 100644
 +use std::collections::{HashMap, HashSet};
 +
 +type Result<T> = std::result::Result<T, String>;
-+const LIMIT: usize = 100_000;
++const LIMIT: usize = 250_000;
 +
 +#[derive(Clone, Debug, Serialize, Deserialize)]
 +pub enum SavedValue {
@@ -170,6 +170,7 @@ new file mode 100644
 +        pc: usize,
 +        stack_size: usize,
 +        returns: Option<u8>,
++        active: bool,
 +    },
 +}
 +#[derive(Debug, Serialize, Deserialize)]
@@ -182,6 +183,7 @@ new file mode 100644
 +}
 +#[derive(Debug, Serialize, Deserialize)]
 +pub struct SavedThread {
++    pub running: bool,
 +    pub stack: Vec<SavedValue>,
 +    pub frames: Vec<SavedFrame>,
 +    pub open_cells: Vec<usize>,
@@ -281,6 +283,26 @@ new file mode 100644
 +    }
 +}
 +
++/// Fuel can expire before a native callback; advance to a serializable boundary first.
++pub fn can_capture(thread: Thread<'_>) -> bool {
++    if !matches!(thread.mode(), ThreadMode::Suspended | ThreadMode::Normal) { return false; }
++    let inner = thread.into_inner();
++    let state = inner.borrow();
++    state.frames.iter().all(|frame| match frame {
++        Frame::Yielded => true,
++        Frame::Lua { expected_return: None | Some(LuaReturn::Normal(_)), .. } => true,
++        Frame::Sequence { sequence, pending_error: None, .. } => sequence.checkpoint().is_some(),
++        _ => false,
++    })
++}
++
++/// Inject cancellation at a computation boundary without returning a synthetic guest value.
++pub fn interrupt<'gc>(ctx: Context<'gc>, thread: Thread<'gc>, error: crate::Error<'gc>) -> Result<()> {
++    if thread.mode() != ThreadMode::Normal { return Err("expected running computation".into()); }
++    thread.into_inner().borrow_mut(&ctx).frames.push(Frame::Error(error));
++    Ok(())
++}
++
 +pub fn capture<'gc>(
 +    ctx: Context<'gc>,
 +    thread: Thread<'gc>,
@@ -321,14 +343,12 @@ new file mode 100644
 +    let mut saved_threads = Vec::new();
 +    let mut stack_work = 0usize;
 +    for thread in threads {
-+        if thread.mode() != ThreadMode::Suspended {
-+            return Err("thread must be suspended after taking its request".into());
++        if !can_capture(*thread) {
++            return Err("thread is not at a checkpointable boundary".into());
 +        }
 +        let inner = thread.into_inner();
 +        let state = inner.borrow();
-+        if !matches!(state.frames.last(), Some(Frame::Yielded)) {
-+            return Err("expected yielded sentinel".into());
-+        }
++        let running = thread.mode() == ThreadMode::Normal;
 +        stack_work = stack_work
 +            .checked_add(state.frames.len())
 +            .and_then(|n| n.checked_add(state.stack.len()))
@@ -338,7 +358,8 @@ new file mode 100644
 +            return Err("aggregate stack budget exceeded".into());
 +        }
 +        let mut frames = Vec::new();
-+        for frame in &state.frames[..state.frames.len() - 1] {
++        let end = state.frames.len() - usize::from(!running);
++        for frame in &state.frames[..end] {
 +            if let Frame::Sequence {
 +                bottom,
 +                sequence,
@@ -365,8 +386,10 @@ new file mode 100644
 +            else {
 +                return Err("native sequence/callback frames are not checkpointable".into());
 +            };
-+            let Some(LuaReturn::Normal(count)) = expected_return else {
-+                return Err("unsupported frame return state".into());
++            let returns = match expected_return {
++                None => None,
++                Some(LuaReturn::Normal(count)) => count.to_constant(),
++                _ => return Err("unsupported frame return state".into()),
 +            };
 +            let SavedValue::Closure(id) =
 +                enc.value(Value::Function(Function::Closure(*closure)))?
@@ -380,7 +403,8 @@ new file mode 100644
 +                variable: *is_variable,
 +                pc: *pc,
 +                stack_size: *stack_size,
-+                returns: count.to_constant(),
++                returns,
++                active: expected_return.is_none(),
 +            });
 +        }
 +        let stack = state
@@ -394,6 +418,7 @@ new file mode 100644
 +            .map(|v| enc.cell(*v))
 +            .collect::<Result<Vec<_>>>()?;
 +        saved_threads.push(SavedThread {
++            running,
 +            stack,
 +            frames,
 +            open_cells,
@@ -452,7 +477,7 @@ new file mode 100644
 +        }
 +    }
 +    let saved = Snapshot {
-+        format: "piccolo-trusted-spike-3".into(),
++        format: "piccolo-trusted-spike-4".into(),
 +        program: program.into(),
 +        threads: saved_threads,
 +        nodes,
@@ -512,7 +537,7 @@ new file mode 100644
 +    protos: &[Gc<'gc, FunctionPrototype<'gc>>],
 +    natives: &[Callback<'gc>],
 +) -> Result<Vec<Thread<'gc>>> {
-+    if saved.format != "piccolo-trusted-spike-3" || saved.program != program {
++    if saved.format != "piccolo-trusted-spike-4" || saved.program != program {
 +        return Err("snapshot/program mismatch".into());
 +    }
 +    if saved.nodes.len() > LIMIT
@@ -603,6 +628,7 @@ new file mode 100644
 +                    pc,
 +                    stack_size,
 +                    returns,
++                    active,
 +                } => {
 +                    let Some(Value::Function(Function::Closure(c))) = nodes.get(*closure) else {
 +                        return Err("frame closure missing".into());
@@ -618,7 +644,7 @@ new file mode 100644
 +                        is_variable: *variable,
 +                        pc: *pc,
 +                        stack_size: *stack_size,
-+                        expected_return: Some(LuaReturn::Normal(count)),
++                        expected_return: if *active { None } else { Some(LuaReturn::Normal(count)) },
 +                    });
 +                }
 +            }
@@ -631,7 +657,7 @@ new file mode 100644
 +            }
 +            open.push(cell);
 +        }
-+        frames.push(Frame::Yielded);
++        if !saved_thread.running { frames.push(Frame::Yielded); }
 +        {
 +            let inner = thread.into_inner();
 +            let mut state = inner.borrow_mut(&ctx);
@@ -783,7 +809,6 @@ new file mode 100644
 +                    let proto = protos[*prototype];
 +                    if bottom > base
 +                        || *base > thread.stack.len()
-+                        || *pc == 0
 +                        || *pc >= proto.opcodes.len()
 +                        || *stack_size != proto.stack_size as usize
 +                        || returns == &Some(255)

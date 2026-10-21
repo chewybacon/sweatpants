@@ -85,8 +85,26 @@ binds the combined source/prelude to the runtime version. Capture returns an
 opaque kernel snapshot: no pointers, Wasm memory, Rust stack or JS handles.
 
 The runtime loop returns from `Lua::enter` between fuel slices so incremental GC
-can run. Limits include 64 KB source, 4 MB command/output, 1,000 slices of 1,000
-fuel and a 32 MB arena check between slices. Wasm linear memory has a hard 64 MB
+can run. A command gets 100,000 fuel by default (developer-configurable up to
+1,000,000). Exhaustion returns `compute_paused` with a checkpoint; `continue`
+resumes instructions without supplying a guest return value. Snapshot format 4
+preserves active frames as well as frames awaiting a capability reply. The runtime
+steps to a supported frame boundary before capture; unknown native sequences
+remain unsupported. Fuel is approximate VM work, not elapsed time.
+
+The yo-workflow adapter journals each slice result as bounded gzip/base64 data
+within the authority’s existing 1 MiB inline limit. Its developer-owned policy
+uses a cumulative 1,000,000-fuel allowance per workflow invocation, including all
+capability resumes. At the allowance boundary it elicits “This workflow needs
+more computation to finish” with Continue/Cancel. Continue grants another bounded
+allowance; Cancel injects cancellation and allows at most 100,000 additional fuel
+for cleanup. A 20,000,000-fuel platform ceiling cannot be raised by approval or
+model-authored input. Developers may lower limits or choose automatic continuation
+or cancellation using `createLuaTool`'s fuel policy. The headless kernel adapter
+automatically continues slices up to the same ceiling.
+
+Limits also include 64 KB source, 4 MB command/output and a 32 MB arena check
+between steps. Wasm linear memory has a hard 64 MB
 maximum, including compiler/checkpoint allocations; allocation failures trap the
 instance. Wasm executes synchronously with the runtime's fuel budget (not a JS
 wall-clock timer). The native CLI additionally has a 10-second parent deadline.
