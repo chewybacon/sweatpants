@@ -10,11 +10,12 @@ This directory retains evaluator integration tests and research.
 The shared `createTypeScriptWorkflowCompiler` in `packages/flowmode-compiler/src/compiler.ts`
 owns static SDK builder extraction, declared export checks, TypeScript checking,
 exchange admission, and artifact metadata. Its target supplies a definition
-format and an emitter. Both targets now call `emitTypeScriptWorkflowScheme`: the
-existing Scheme output is the shared intermediate. Hoot consumes it directly;
-`scheme-to-lua.mjs` reads its forms and translates the supported subset to Lua.
-The independent TypeScript-to-Lua lowering has been deleted. The intermediate
-retains Scheme's `(ctx, input)` convention; the Lua artifact exposes `(input)`.
+format and a typed Scheme IR backend. Both targets consume the same verified Scheme
+forms: Scheme serializes them and Lua lowers them to its guest operations. Local
+TypeScript helper imports are resolved with the source checker and bundled as named
+functions. Only exported entry functions use the private `(ctx, input)` convention;
+helper argument order is preserved. The Lua artifact exposes `(input)` and carries
+an internal active cleanup scope through helper calls.
 No public kernel/Flow/driver types or snapshot formats changed.
 
 The target lowers `yield* ctx.elicit(...)` to `workflow.effect(...)` and a

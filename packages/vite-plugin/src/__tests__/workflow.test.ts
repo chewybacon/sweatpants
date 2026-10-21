@@ -143,6 +143,46 @@ describe("directive workflow integration", () => {
     });
   }, 30_000);
 
+  test("transitive runtime helper edits invalidate both artifacts and recover after failure", async () => {
+    const { root, source, file } = await fixture();
+    const helper = resolve(root, "helper.ts"),
+      caption = resolve(root, "caption.ts");
+    await writeFile(
+      helper,
+      'import { caption } from "./caption.ts"; export function format(value: string) { return caption(value); }',
+    );
+    await writeFile(caption, 'export function caption(value: string) { return "first:" + value; }');
+    await writeFile(
+      file,
+      'import { format } from "./helper.ts";\n' +
+        source.replace("message: input.title", "message: format(input.title)"),
+    );
+    const vite = await server(root);
+    expect((await vite.transformRequest("/tool.ts"))?.code).toContain("first:");
+    await edit(
+      vite,
+      caption,
+      'export function caption(value: string) { return "second:" + value; }',
+    );
+    const updated = (await vite.transformRequest("/tool.ts"))?.code;
+    expect(updated).toContain("second:");
+    expect(updated).not.toContain("first:");
+    await edit(
+      vite,
+      caption,
+      "export function caption(value: string) { console.log(value); return value; }",
+    );
+    await expect(vite.transformRequest("/tool.ts")).rejects.toMatchObject({
+      loc: expect.objectContaining({ file: caption }),
+    });
+    await edit(
+      vite,
+      caption,
+      'export function caption(value: string) { return "recovered:" + value; }',
+    );
+    expect((await vite.transformRequest("/tool.ts"))?.code).toContain("recovered:");
+  }, 30_000);
+
   test("tools without the directive are unchanged", async () => {
     const { root, source, file } = await fixture();
     await writeFile(file, source.replace('"use workflow";', ""));

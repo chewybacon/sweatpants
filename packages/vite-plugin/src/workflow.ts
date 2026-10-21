@@ -1,7 +1,11 @@
-import { analyzeWorkflowTools, workflowSourceDependencies } from "@sweatpants/flowmode-compiler";
-import { schemeWorkflowCompiler } from "@sweatpants/flowmode-compiler-scheme";
-import { luaWorkflowCompiler } from "@sweatpants/flowmode-compiler-lua";
-import { run } from "effection";
+import {
+  analyzeWorkflowTools,
+  workflowSourceDependencies,
+  prepareWorkflow,
+  emitPreparedWorkflow,
+} from "@sweatpants/flowmode-compiler";
+import { schemeWorkflowTarget } from "@sweatpants/flowmode-compiler-scheme";
+import { luaWorkflowTarget } from "@sweatpants/flowmode-compiler-lua";
 import MagicString from "magic-string";
 import type { Plugin } from "vite";
 import { fileURLToPath } from "node:url";
@@ -9,8 +13,8 @@ const WORKFLOW_RUNTIME = "virtual:sweatpants-workflow-runtime";
 
 /** Compile directive-bearing SDK tools in Vite's normal module graph.
  * No disk artifact cache: invalidation and failed transforms cannot serve old data.
- * Imported runtime helpers/values are deliberately unsupported by the compiler;
- * TypeScript imports are watched by the compiler dependency list.
+ * Local helper functions are bundled into the shared typed IR; source/type
+ * dependencies are watched before preparation, including failed builds.
  */
 export function workflowPlugin(): Plugin {
   return {
@@ -52,32 +56,34 @@ export function workflowPlugin(): Plugin {
         const registrations: string[] = [];
         for (const definition of definitions) {
           const artifacts: Record<string, unknown> = {};
-          for (const [language, compiler] of [
-            ["scheme", schemeWorkflowCompiler],
-            ["lua", luaWorkflowCompiler],
-          ] as const) {
-            const result = await run(() =>
-              compiler.compile({
-                source: { id, language: "typescript", text: source },
-                entry: definition.entry,
-                exports: definition.exports,
-                bindings: definition.bindings,
-              }),
-            );
-            if (!result.ok) {
-              const diagnostic = result.diagnostics.find((d) => d.severity === "error")!;
-              this.error({
-                message: result.diagnostics.map((d) => `${d.code}: ${d.message}`).join("\n"),
-                loc: diagnostic.position
-                  ? {
-                      file: diagnostic.position.sourceId,
-                      line: diagnostic.position.line,
-                      column: diagnostic.position.column - 1,
-                    }
-                  : undefined,
-              });
+          const prepared = prepareWorkflow({
+            source: { id, language: "typescript", text: source },
+            entry: definition.entry,
+            exports: definition.exports,
+            bindings: definition.bindings,
+          });
+          for (const resolution of prepared.resolutions) {
+            const vite = await this.resolve(resolution.specifier, resolution.importer, {
+              skipSelf: true,
+            });
+            if (!vite || vite.external || vite.id !== resolution.resolved) {
+              throw Error(
+                `Workflow module resolution differs between TypeScript and Vite: ${resolution.specifier} from ${resolution.importer}`,
+              );
             }
-            artifacts[language] = result.module;
+          }
+          const diagnostic = prepared.diagnostics.find((d) => d.severity === "error");
+          if (diagnostic) {
+            throw Object.assign(
+              Error(prepared.diagnostics.map((d) => `${d.code}: ${d.message}`).join("\n")),
+              { position: diagnostic.position },
+            );
+          }
+          for (const [language, target] of [
+            ["scheme", schemeWorkflowTarget],
+            ["lua", luaWorkflowTarget],
+          ] as const) {
+            artifacts[language] = emitPreparedWorkflow(prepared, target);
           }
           registrations.push(
             `${register}(${definition.exportName}, ${JSON.stringify(artifacts)});`,
