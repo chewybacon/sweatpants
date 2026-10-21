@@ -201,12 +201,26 @@ including workerd recovery; app types, runtime/compiler conformance and Vite
 checks passed. Earlier concurrent heavy runs hit unchanged Scheme test deadlines;
 isolated runs passed without weakening assertions or extending timeouts.
 
-`pnpm land` passed stages 1–10 (including clean build, exports, app types and
-formatting), then stopped at stage 11 when the default PostgreSQL harness tried
-to bind occupied port 55432. Stages 12–23 did not run. Summary:
-`.artifacts/landing/2026-10-21T17-38-36-890Z-deterministic/summary.json`.
-A separate disposable PostgreSQL instance passed 17/17 tests with one worker;
-that narrow result does not replace the failed landing run. The existing local
-PostgreSQL service was not stopped or reset. The owned validation database and
-app server were stopped. Cold Astro startup hit its unchanged 30-second watchdog
-once, then started on retry. Broad `land:live` was not run.
+Fresh PR validation repeated real-provider computer-use checks after committing:
+
+- Execution Scheme `614e1cf4-27e3-4c1a-8d25-d9910335ab88` and Lua
+  `7b5983b7-49bc-476f-8e16-ec2bf6798d00` each completed the approval, two verified
+  restores, cleanup and release flow with one receipt; completion survived reload.
+- Playground Scheme `f62b4255-2d36-4987-9d28-b23819a6a3fa` and Lua
+  `599df8ea-fba2-494e-b14a-de636336d5c3` advanced 1023 → 1204 after feedback,
+  preserved both pending guesses across reload, and returned to Ready after
+  cancellation and another reload. A browser transport disconnect during Lua's
+  wait recovered on reconnect; the expected next guess was present.
+
+Fresh evidence: `.artifacts/runtime-promotion/pr-{scheme,lua}-execution.json`
+and `pr-{scheme,lua}-playground.json`; the Execution flows were also recorded.
+
+All 23 `pnpm land` stages passed in 38m35s, including 99/99 yo-workflow tests.
+Summary: `.artifacts/landing/2026-10-21T20-24-51-251Z-deterministic/summary.json`.
+The run used disposable PostgreSQL and Redis instances. Earlier attempts stopped
+at the occupied default PostgreSQL port and then at Redis coverage (19 skipped
+versus a baseline of 17 while Redis was unavailable). Providing isolated services
+resolved both issues without changing expectations, skip baselines or timeouts;
+all 20 Redis tests ran and passed. The existing PostgreSQL service was untouched.
+Owned app and test services were stopped after validation. Broad `land:live` was
+not run; the live evidence above is targeted real-provider computer use.
