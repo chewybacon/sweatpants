@@ -5,6 +5,7 @@ import type { DurableProgramContext } from "@sweatpants/durable-execution";
 import { rootTool } from "../program-driver/program-driver-chat-program.ts";
 
 it.each([null, 2])("counts only outer rounds with limit %s", async (maxIterations) => {
+  const events: unknown[] = [];
   let samples = 0;
   let internalTurns = 0;
   const calls = maxIterations === null ? 12 : 1;
@@ -30,6 +31,7 @@ it.each([null, 2])("counts only outer rounds with limit %s", async (maxIteration
         !Array.isArray(descriptor) &&
         descriptor.kind === "invoke"
       ) {
+        events.push({ event: "invoke" });
         // Many child interactions are resolved within one delegated invocation.
         for (let turn = 0; turn < 20; turn++) {
           internalTurns++;
@@ -44,6 +46,7 @@ it.each([null, 2])("counts only outer rounds with limit %s", async (maxIteration
             content:
               samples <= calls
                 ? [
+                    { type: "text", text: `Starting workflow ${samples}` },
                     {
                       type: "tool-call",
                       toolCall: {
@@ -65,7 +68,9 @@ it.each([null, 2])("counts only outer rounds with limit %s", async (maxIteration
         output: { type: "message" },
       });
     },
-    *emit() {},
+    *emit(event, payload) {
+      events.push({ event, payload });
+    },
     *effect() {
       throw new Error("Unexpected effect");
     },
@@ -94,4 +99,26 @@ it.each([null, 2])("counts only outer rounds with limit %s", async (maxIteration
   expect(result).toBe("done");
   expect(samples).toBe(calls + 1);
   expect(internalTurns).toBe(calls * 20);
+  // Narration must be published before invoking a workflow that can park.
+  // Each round's narration and the final answer appear exactly once.
+  expect(events).toEqual([
+    ...Array.from({ length: calls }, (_, index) => [
+      { event: "assistant_text", payload: { text: `Starting workflow ${index + 1}` } },
+      {
+        event: "tool_started",
+        payload: { callId: `call-${index + 1}`, tool: "workflow", input: {} },
+      },
+      { event: "invoke" },
+      {
+        event: "tool_completed",
+        payload: {
+          callId: `call-${index + 1}`,
+          tool: "workflow",
+          result: "child completed",
+          failed: false,
+        },
+      },
+    ]).flat(),
+    { event: "assistant_text", payload: { text: "done" } },
+  ]);
 });
