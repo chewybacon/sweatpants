@@ -22,8 +22,8 @@ import {
 import { ask } from "../../tools/ask.ts";
 import { createSchemeTool } from "../tool.ts";
 const scheme = createSchemeTool([ask]);
-import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
-import { createNodeSchemeDriver } from "@sweatpants/scheme-runtime/node";
+import { SchemeEvaluationPort } from "@sweatpants/flowmode-runtime-scheme";
+import { createNodeSchemeDriver } from "@sweatpants/flowmode-runtime-scheme/node";
 
 for (const { child, action, fault } of [
   ...[false, true].flatMap((child) =>

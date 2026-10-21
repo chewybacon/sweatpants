@@ -1,6 +1,6 @@
 #![cfg(any(test, target_arch = "wasm32"))]
 
-#[path = "../../../teal-lua-checkpoint/src/json.rs"]
+#[path = "../../../../../packages/flowmode-runtime-lua/vm/src/json.rs"]
 mod boundary_json;
 mod scheduler;
 

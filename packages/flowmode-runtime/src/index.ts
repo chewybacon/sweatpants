@@ -133,3 +133,5 @@ export { assertWorkflowLink, requireCompiledWorkflow } from "./link.ts";
 export { createWorkflowGuidance } from "./guidance.ts";
 export * from "./composition.ts";
 export { registerCompiledWorkflows, getCompiledWorkflow } from "./compiled-tool.ts";
+
+export { decodeExchange } from "./exchange-codec.ts";

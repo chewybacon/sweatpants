@@ -31,11 +31,11 @@ Run from the repository root:
 
 ```sh
 node experiments/workflow-kernel/scheme-compiler/__tests__/emit.mjs
-node experiments/workflow-kernel/hoot-composition/__tests__/no-bytecode.mjs
+node packages/flowmode-runtime-scheme/src/execution/__tests__/no-bytecode.mjs
 ```
 
-The second command requires the generated Hoot experiment artifacts; see the
-[composition build instructions](../hoot-composition/README.md#run).
+The second command uses the packaged Scheme Execution assets; see the
+[runtime build instructions](../../../packages/flowmode-runtime-scheme/README.md#build-and-verification).
 
 ## Installed typed-effect bindings
 

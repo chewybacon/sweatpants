@@ -1,6 +1,7 @@
-import { decodeExchange } from "../exchange-codec.mts";
+import { record, type LuaState, type LuaInvoker } from "./state.ts";
+import { decodeExchange } from "@sweatpants/flowmode-runtime";
 import type { Operation } from "effection";
-import { assertJson, type Json } from "../../../packages/foundation/dist/index.js";
+import { assertJson, type Json } from "@sweatpants/foundation";
 import {
   assertKernelCompatibility,
   createKernelExecution,
@@ -12,37 +13,14 @@ import {
   type WorkflowKernel,
   type WorkflowProgram,
   type WorkflowRuntime,
-} from "../../../packages/flowmode-runtime/dist/index.js";
-import { createKernelProgramBundle } from "../../../packages/flowmode-backend/dist/index.js";
-import type { DurableProgramManifest } from "../../../packages/durable-execution/src/index.ts";
+} from "@sweatpants/flowmode-runtime";
 
 export const luaIdentity: KernelIdentity = Object.freeze({
-  kind: "piccolo-lua-spike",
+  kind: "flowmode-runtime-lua",
   version: "2",
   programFormat: "piccolo-lua-source-2",
   snapshotFormat: "piccolo-continuation-4",
 });
-export type LuaState = Record<string, Json>;
-export type LuaInvoker = (command: Json) => Operation<LuaState>;
-export function record(value: unknown): LuaState {
-  const json = assertJson(value);
-  if (!json || typeof json !== "object" || Array.isArray(json)) {
-    throw Error("Invalid Lua state");
-  }
-  return json;
-}
-
-export function createLuaProgramBundle(
-  source: string,
-  contract: Omit<DurableProgramManifest, "digest">,
-) {
-  return createKernelProgramBundle(
-    { format: luaIdentity.programFormat, payload: source },
-    luaIdentity,
-    contract,
-  );
-}
-
 export function createLuaRuntime(invoke: LuaInvoker): WorkflowRuntime {
   return createWorkflowRuntime({
     driver: {

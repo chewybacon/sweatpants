@@ -21,8 +21,8 @@ import {
 import { ask } from "../../tools/ask.ts";
 import { createLuaTool } from "../tool.ts";
 const lua = createLuaTool([ask]);
-import { LuaEvaluationPort } from "../evaluation.ts";
-import { invokeWasm } from "../../../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm-node.mts";
+import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
+import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
 
 for (const action of ["accept", "decline", "cancel"] as const) {
   test(`real journal restores Lua in fresh WASM: ${action}`, async () => {

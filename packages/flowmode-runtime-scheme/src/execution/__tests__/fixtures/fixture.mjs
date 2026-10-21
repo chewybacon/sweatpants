@@ -1,4 +1,4 @@
-import { emitWorkflowScheme } from "../../../packages/flowmode-compiler/dist/emit-scheme.js";
+import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
 
 // The real existing frontend emits the developer callee's Scheme and effect sites.
 export const developerSource = `

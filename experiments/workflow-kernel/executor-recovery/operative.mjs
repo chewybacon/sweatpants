@@ -13,7 +13,7 @@ import {
   Executor,
   createOperative,
 } from "../../../packages/tool-runtime-local/src/styles/__tests__/fixtures/executor-transport.ts";
-import { createHootDriver } from "../hoot-composition/fixture-driver.mjs";
+import { createHootDriver } from "../../../packages/flowmode-runtime-scheme/src/execution/__tests__/fixtures/fixture-driver.mjs";
 
 function boundary(step) {
   if (step.type === "completed") {

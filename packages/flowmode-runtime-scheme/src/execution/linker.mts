@@ -1,16 +1,10 @@
-import { encodeValue } from "../../../packages/flowmode-compiler/dist/scheme-data/values.js";
-import type {
-  WorkflowImplementation,
-  WorkflowLinker,
-} from "../../../packages/flowmode-runtime/src/index.ts";
-import { parse } from "../../../packages/flowmode-compiler/dist/scheme-data/read.js";
-import {
-  assertWorkflowLink,
-  createWorkflowLinker,
-} from "../../../packages/flowmode-runtime/dist/index.js";
+import { encodeValue } from "@sweatpants/flowmode-compiler/scheme-data/values";
+import type { WorkflowImplementation, WorkflowLinker } from "@sweatpants/flowmode-runtime";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
+import { assertWorkflowLink, createWorkflowLinker } from "@sweatpants/flowmode-runtime";
 
 export const HOOT_DEFINITION_FORMAT = "workflow-scheme-definitions-v1";
-export const HOOT_PROGRAM_FORMAT = "workflow-scheme-spike-1";
+export const HOOT_PROGRAM_FORMAT = "workflow-scheme-1";
 
 function name(value: string): string {
   // Public registrations and compiled entries occupy ordinary Scheme symbol positions.

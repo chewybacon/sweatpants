@@ -7,17 +7,17 @@ import {
   createDurableToolRegistry,
   ProgramDriverRegistryContext,
   ProgramRouteResolver,
-} from "../../../../packages/durable-execution/dist/index.js";
+} from "@sweatpants/durable-execution";
 import {
   createWorkflowProgramDriver,
   createCapabilityKeyring,
-} from "../../../../packages/journal-authority/dist/index.js";
+} from "@sweatpants/journal-authority";
 import {
   createStoredScenarioDriver,
   driveTestProgramTree,
-} from "../../../../packages/journal-authority/dist/testing.js";
-import { createMemoryExecutionStore } from "../../../../packages/journal-authority/dist/memory.js";
-const { run } = createRequire(new URL("../../../../package.json", import.meta.url))("effection");
+} from "@sweatpants/journal-authority/testing";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+const { run } = createRequire(new URL("../../../../../package.json", import.meta.url))("effection");
 
 const childManifest = {
   programId: "generator-child",

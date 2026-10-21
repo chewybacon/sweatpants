@@ -1,5 +1,5 @@
 import { luaWorkflowCompiler } from "../../../packages/flowmode-compiler-lua/dist/index.js";
-import { reviewExports, reviewImports } from "./contracts.mts";
+import { reviewExports, reviewImports } from "../../../apps/yo-workflow/execution/contracts.mts";
 import { fileURLToPath } from "node:url";
 import { workflowArtifactPlugin } from "../../../packages/vite-plugin/src/workflow-artifacts.ts";
 import { schemeWorkflowCompiler } from "../../../packages/flowmode-compiler-scheme/dist/index.js";

@@ -4,7 +4,7 @@ import type {
   InspectedValue,
   WorkflowBoundary,
   PendingCompletion,
-} from "../../../packages/flowmode-runtime/src/index.ts";
+} from "@sweatpants/flowmode-runtime";
 
 function list(value: unknown): unknown[] {
   if (!Array.isArray(value)) {

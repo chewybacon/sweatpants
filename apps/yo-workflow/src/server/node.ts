@@ -1,8 +1,8 @@
-import { LuaEvaluationPort } from "../workflow/lua/evaluation.ts";
-import { invokeWasm } from "../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm-node.mts";
+import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
+import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
 import { workflowLanguage, type WorkflowLanguage } from "../workflow/language.ts";
-import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
-import { createNodeSchemeDriver } from "@sweatpants/scheme-runtime/node";
+import { SchemeEvaluationPort } from "@sweatpants/flowmode-runtime-scheme";
+import { createNodeSchemeDriver } from "@sweatpants/flowmode-runtime-scheme/node";
 import { createServer } from "node:http";
 import { chatStorageFromEnv, inProcess } from "@sweatpants/agent-host/server";
 import { pi, createPiAiDecisionProvider } from "@sweatpants/model-provider-pi-ai";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { run, scoped } from "effection";
 import { canonicalDigest } from "../../../../packages/foundation/dist/index.js";
-import { manifest } from "../../hoot-composition/fixture-driver.mjs";
+import { manifest } from "../../../../packages/flowmode-runtime-scheme/src/execution/__tests__/fixtures/fixture-driver.mjs";
 import { localHootTransport } from "../operative.mjs";
 import {
   createExecutor,

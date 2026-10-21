@@ -156,8 +156,11 @@ export function lowerWorkflow(
       kind: node.generator ? "workflow" : "sync",
       parameters: node.params.map((p) => {
         current = p;
-        if (!t.isIdentifier(p) || params.has(p.name) || apiNames.has(p.name)) {
+        if (!t.isIdentifier(p) || params.has(p.name)) {
           fail("Unsupported parameter");
+        }
+        if (apiNames.has(p.name)) {
+          fail("Shadowed workflow API import");
         }
         params.add(p.name);
         return { id: id("value"), name: p.name, mutable: false, type: annotation(p) };

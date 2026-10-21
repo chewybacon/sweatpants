@@ -1,6 +1,6 @@
-import { createHootProgram } from "./driver.mjs";
+import { createHootProgram } from "../../driver.mjs";
 import { source } from "./fixture.mjs";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "../../../packages/durable-execution/dist/index.js";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 const fixtureContract = {
   programId: "hoot-composition",
   version: "1",

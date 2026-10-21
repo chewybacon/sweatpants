@@ -1,5 +1,5 @@
 {
-  "name": "@sweatpants/scheme-runtime",
+  "name": "@sweatpants/flowmode-runtime-scheme",
   "version": "0.1.0",
   "description": "Hoot Scheme evaluator and reproducible metered WASM build",
   "license": "MIT",
@@ -15,7 +15,8 @@
   "imports": {
     "#scheme-kernel-wasm": "./generated/kernel.wasm",
     "#scheme-reflect-wasm": "./generated/reflect.wasm",
-    "#scheme-wtf8-wasm": "./generated/wtf8.wasm"
+    "#scheme-wtf8-wasm": "./generated/wtf8.wasm",
+    "#execution-kernel-wasm": "./generated/execution/kernel.wasm"
   },
   "exports": {
     ".": {
@@ -55,24 +56,74 @@
     "./reflect.wasm": "./generated/reflect.wasm",
     "./wtf8.wasm": "./generated/wtf8.wasm",
     "./manifest": "./generated/manifest.json",
-    "./language": "./generated/language.json"
+    "./language": "./generated/language.json",
+    "./execution/authoring": {
+      "development": "./src/execution/authoring.mjs",
+      "types": "./dist/execution/authoring.d.mts",
+      "default": "./dist/execution/authoring.mjs"
+    },
+    "./execution/program": {
+      "development": "./src/execution/program.mjs",
+      "types": "./dist/execution/program.d.mts",
+      "default": "./dist/execution/program.mjs"
+    },
+    "./execution/driver": {
+      "development": "./src/execution/driver.mjs",
+      "types": "./dist/execution/driver.d.mts",
+      "default": "./dist/execution/driver.mjs"
+    },
+    "./execution/machine": {
+      "development": "./src/execution/machine.mjs",
+      "types": "./dist/execution/machine.d.mts",
+      "default": "./dist/execution/machine.mjs"
+    },
+    "./execution/machine-api": {
+      "development": "./src/execution/machine-api.mjs",
+      "types": "./dist/execution/machine-api.d.mts",
+      "default": "./dist/execution/machine-api.mjs"
+    },
+    "./execution/inspection": {
+      "development": "./src/execution/inspection.mts",
+      "types": "./dist/execution/inspection.d.mts",
+      "default": "./dist/execution/inspection.mjs"
+    },
+    "./execution/linker": {
+      "development": "./src/execution/linker.mts",
+      "types": "./dist/execution/linker.d.mts",
+      "default": "./dist/execution/linker.mjs"
+    },
+    "./execution/kernel.wasm": "./generated/execution/kernel.wasm",
+    "./execution/manifest.json": "./generated/execution/manifest.json",
+    "./execution/reflect-worker.mjs": "./generated/execution/reflect-worker.mjs",
+    "./execution/worker": {
+      "development": "./src/execution/worker.mjs",
+      "types": "./dist/execution/worker.d.mts",
+      "default": "./dist/execution/worker.mjs"
+    }
   },
   "scripts": {
-    "build": "pnpm wasm:check && tsup",
-    "check": "tsc -b",
+    "build": "pnpm wasm:check && tsup && tsc -p tsconfig.execution.json",
+    "check": "tsc -b && tsc -p tsconfig.execution.json",
     "wasm:build": "python3 scripts/build.py",
-    "wasm:check": "python3 scripts/manifest.py --check",
-    "test": "vitest run",
-    "wasm:verify": "python3 scripts/build.py --verify"
+    "wasm:check": "python3 scripts/manifest.py --check && python3 scripts/execution/manifest.py",
+    "test": "vitest run && node --import tsx --test --test-concurrency=1 src/execution/__tests__/*.mjs",
+    "wasm:verify": "python3 scripts/build.py --verify",
+    "execution:build": "python3 scripts/execution/build.py"
   },
   "dependencies": {
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/flowmode-backend": "workspace:*",
+    "@sweatpants/flowmode-compiler": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
     "effection": "catalog:"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

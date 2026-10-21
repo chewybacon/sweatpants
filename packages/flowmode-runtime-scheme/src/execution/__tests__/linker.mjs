@@ -1,4 +1,4 @@
-import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "../../../../packages/durable-execution/dist/index.js";
+import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
 const contract = (name) => ({
   id: name,
   name,

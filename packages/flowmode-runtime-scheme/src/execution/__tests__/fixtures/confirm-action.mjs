@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "../../../packages/flowmode-compiler/dist/emit-scheme.js";
-const { z } = createRequire(new URL("../../../packages/agent-sdk/package.json", import.meta.url))(
+import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
+const { z } = createRequire(new URL("../../../../../agent-sdk/package.json", import.meta.url))(
   "zod",
 );
 

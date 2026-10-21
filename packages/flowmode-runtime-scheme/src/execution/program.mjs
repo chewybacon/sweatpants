@@ -1,17 +1,17 @@
-import { decodeExchange } from "../exchange-codec.mts";
+import { decodeExchange } from "@sweatpants/flowmode-runtime";
 import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
 import {
   createKernelProgramBackend,
   createKernelProgramBundle,
   loadKernelProgram,
-} from "../../../packages/flowmode-backend/dist/index.js";
+} from "@sweatpants/flowmode-backend";
 import {
   assertKernelCompatibility,
   createKernelExecution,
   createWorkflowKernel,
-} from "../../../packages/flowmode-runtime/dist/index.js";
-import { CrankError } from "../../../packages/durable-execution/dist/index.js";
-import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
+} from "@sweatpants/flowmode-runtime";
+import { CrankError } from "@sweatpants/durable-execution";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { call } from "effection";
 function kernel(observe, source, digest, loadMachine, identity) {
   let machine = null,
@@ -120,6 +120,12 @@ function kernel(observe, source, digest, loadMachine, identity) {
     },
   });
 }
+/** @typedef {{ source: string, contract: Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">, bindOperation: import("@sweatpants/flowmode-backend").KernelProgramBackendOptions["bindOperation"], bindings?: readonly import("@sweatpants/flowmode-runtime").WorkflowBinding[] }} HootProgramOptions */
+/** @typedef {{ loadMachine: () => Promise<ReturnType<typeof import("./machine-api.mjs").machineApi>>, identity: import("@sweatpants/flowmode-runtime").KernelIdentity }} HootKernelDependencies */
+/** @typedef {(event: string, data?: Record<string, unknown>) => void} HootObserver */
+/** @param {HootProgramOptions} options
+ * @param {HootKernelDependencies} dependencies
+ */
 export function createPortableHootProgram(
   { source, contract, bindOperation, bindings = [] },
   { loadMachine, identity },
@@ -138,9 +144,11 @@ export function createPortableHootProgram(
   return {
     manifest,
     artifact,
+    /** @param {HootObserver} [observe] */
     createKernel(observe = () => {}) {
       return kernel(observe, source, digest, loadMachine, identity);
     },
+    /** @param {HootObserver} [observe] */
     createDriver(observe = () => {}) {
       const driver = createWorkflowProgramDriver(
         createKernelProgramBackend({

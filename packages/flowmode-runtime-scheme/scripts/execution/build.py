@@ -1,13 +1,12 @@
-"""Isolated Hoot experiment; reuse the runtime's pinned compiler and metering pass."""
+"""Build the checkpoint evaluator with the shared pinned Hoot toolchain."""
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 
-root = Path(__file__).resolve().parents[3]
-runtime = root / "packages/scheme-runtime"
+runtime = Path(__file__).resolve().parents[2]
 source = Path(__file__).resolve().parent
-output = root / ".artifacts/hoot-composition"
+output = runtime / "generated/execution"
 output.mkdir(parents=True, exist_ok=True)
 config = json.loads((runtime / "toolchain.json").read_text())
 identity = hashlib.sha256((runtime / "toolchain.json").read_bytes()
@@ -24,15 +23,10 @@ subprocess.run(["docker", "run", "--rm", "--network=none", "--platform", config[
                 "-v", str(output) + ":/output", image, "guile", "-c", script], check=True)
 print(output / "kernel.wasm")
 
-inputs = {
-    "evaluator": source / "evaluator.scm",
-    "build": source / "build.py",
-    "toolchain": runtime / "toolchain.json",
-    "meter": runtime / "scripts/meter.scm",
-}
-record = {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in inputs.items()}
-record["wasm"] = hashlib.sha256((output / "kernel.wasm").read_bytes()).hexdigest()
-(output / "manifest.json").write_text(json.dumps(record, indent=2) + "\n")
-
 bridge = (runtime / "generated/reflect-worker.mjs").read_text().replace("#scheme-kernel-wasm", "#execution-kernel-wasm")
 (output / "reflect-worker.mjs").write_text(bridge)
+
+(output / "reflect-worker.d.mts").write_text('export const Scheme: { load_main(path: string): Promise<import("../../src/execution/machine-api.mjs").HootProcedures> };\n')
+
+from manifest import manifest
+(output / "manifest.json").write_text(json.dumps(manifest(), indent=2) + "\n")

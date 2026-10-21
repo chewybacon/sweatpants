@@ -1,0 +1,90 @@
+{
+  "name": "@sweatpants/flowmode-runtime-lua",
+  "version": "0.1.0",
+  "description": "Ordinary Lua evaluation, portable Piccolo VM state and workflow kernel",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "generated",
+    "scripts",
+    "vm/src",
+    "vm/Cargo.toml",
+    "vm/Cargo.lock",
+    "vm/prelude.lua",
+    "vm/piccolo-checkpoint.patch",
+    "vm/.cargo/config.toml"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/evaluation.ts",
+      "types": "./dist/evaluation.d.ts",
+      "default": "./dist/evaluation.js"
+    },
+    "./kernel": {
+      "development": "./src/kernel.mts",
+      "types": "./dist/kernel.d.mts",
+      "default": "./dist/kernel.mjs"
+    },
+    "./wasm": {
+      "development": "./src/wasm.mts",
+      "types": "./dist/wasm.d.mts",
+      "default": "./dist/wasm.mjs"
+    },
+    "./node": {
+      "development": "./src/wasm-node.mts",
+      "types": "./dist/wasm-node.d.mts",
+      "default": "./dist/wasm-node.mjs"
+    },
+    "./authoring": {
+      "development": "./src/authoring.mts",
+      "types": "./dist/authoring.d.mts",
+      "default": "./dist/authoring.mjs"
+    },
+    "./program": {
+      "development": "./src/program.mjs",
+      "types": "./dist/program.d.mts",
+      "default": "./dist/program.mjs"
+    },
+    "./checkpoint": {
+      "development": "./src/checkpoint.ts",
+      "types": "./dist/checkpoint.d.ts",
+      "default": "./dist/checkpoint.js"
+    },
+    "./fuel": {
+      "development": "./src/fuel.ts",
+      "types": "./dist/fuel.d.ts",
+      "default": "./dist/fuel.js"
+    },
+    "./kernel.wasm": "./generated/kernel.wasm",
+    "./replay": {
+      "development": "./src/replay.ts",
+      "types": "./dist/replay.d.ts",
+      "default": "./dist/replay.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm wasm:check && tsc -b",
+    "check": "tsc -b",
+    "test": "node --import tsx --test src/__tests__/*.mts",
+    "wasm:build": "python3 scripts/build.py",
+    "wasm:check": "python3 scripts/manifest.py",
+    "wasm:verify": "python3 scripts/build.py --verify"
+  },
+  "dependencies": {
+    "@sweatpants/durable-execution": "workspace:*",
+    "@sweatpants/flowmode-backend": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "@sweatpants/journal-authority": "workspace:*",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,4 +1,4 @@
-"""Assemble the pinned VM with the local experimental checkpoint patch."""
+"""Assemble the pinned VM with the portable checkpoint patch."""
 from pathlib import Path
 import hashlib
 import io
@@ -9,7 +9,7 @@ import urllib.request
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 REV = "ce709eb1dae5c543cbc78e7e12bb80249d88c55f"
-OUT = REPO / ".artifacts/teal-lua-checkpoint/piccolo"
+OUT = REPO / ".artifacts/flowmode-runtime-lua/piccolo"
 if OUT.exists():
     raise SystemExit(f"Already prepared: {OUT}; retain it or remove it explicitly before rebuilding")
 url = f"https://codeload.github.com/kyren/piccolo/tar.gz/{REV}"
@@ -23,4 +23,4 @@ OUT.parent.mkdir(parents=True, exist_ok=True)
 with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
     archive.extractall(OUT.parent, filter="data")
 (OUT.parent / f"piccolo-{REV}").rename(OUT)
-subprocess.run(["patch", "-p1", "--batch", "-i", str(HERE / "piccolo-checkpoint.patch")], cwd=OUT, check=True)
+subprocess.run(["patch", "-p1", "--batch", "-i", str(HERE.parent / "vm/piccolo-checkpoint.patch")], cwd=OUT, check=True)

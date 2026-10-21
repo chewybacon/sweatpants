@@ -1,33 +1,26 @@
 import { reviewDraft } from "./review-draft.workflow.ts";
 import { getCompiledWorkflow } from "@sweatpants/flowmode-runtime/compiled-tool";
 import luaWasm from "#execution-lua-wasm";
-import { createWasmLuaInvoker } from "../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm.mts";
+import { createWasmLuaInvoker } from "@sweatpants/flowmode-runtime-lua/wasm";
 import { createLuaStack } from "./lua.mjs";
 import { schemeStack } from "./scheme.mjs";
-import { createHootAuthoring } from "../../../experiments/workflow-kernel/hoot-composition/authoring.mjs";
+import { createHootAuthoring } from "@sweatpants/flowmode-runtime-scheme/execution/authoring";
 import { DurableObject } from "cloudflare:workers";
-import { Scheme } from "../../../.artifacts/hoot-composition/reflect-worker.mjs";
-import manifest from "../../../.artifacts/hoot-composition/manifest.json" with { type: "json" };
-import { machineApi } from "../../../experiments/workflow-kernel/hoot-composition/machine-api.mjs";
-import { createPortableHootProgram } from "../../../experiments/workflow-kernel/hoot-composition/program.mjs";
+import {
+  loadWorkerMachine,
+  createWorkerHootProgram,
+} from "@sweatpants/flowmode-runtime-scheme/execution/worker";
 import { executionServiceFactory } from "./service-core.mjs";
 import { createD1Storage } from "@sweatpants/storage-d1";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { createWorkflowModels } from "../src/server/cloudflare/model-catalog.ts";
 import { authorCaller } from "../src/execution/author.ts";
 
-const loadMachine = async () => machineApi(await Scheme.load_main("kernel.wasm"));
-const identity = {
-  kind: "hoot-composition-spike",
-  version: manifest.wasm,
-  programFormat: "workflow-scheme-spike-1",
-  snapshotFormat: "workflow-state-v3",
-};
 const { createExecutionService, validateCaller, languages, authoring } = executionServiceFactory([
   schemeStack(
     createHootAuthoring({
-      loadMachine,
-      createProgram: (options) => createPortableHootProgram(options, { loadMachine, identity }),
+      loadMachine: loadWorkerMachine,
+      createProgram: createWorkerHootProgram,
     }),
     getCompiledWorkflow(reviewDraft, "scheme"),
   ),

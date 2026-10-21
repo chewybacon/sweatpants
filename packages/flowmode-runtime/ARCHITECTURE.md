@@ -1,8 +1,8 @@
 # @sweatpants/flowmode-runtime
 
 Portable program/snapshot identities, evaluator lifecycle, compatibility checks,
-and a detached inspection contract. The current integrated implementation is the
-experimental Hoot evaluator in `experiments/workflow-kernel/hoot-composition`.
+and a detached inspection contract. The integrated Execution evaluators live in
+`packages/flowmode-runtime-lua` and `packages/flowmode-runtime-scheme`.
 Building this package produces TypeScript declarations and ESM, not Wasm.
 
 ## Execution and ownership

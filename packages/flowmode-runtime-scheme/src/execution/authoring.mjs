@@ -1,10 +1,12 @@
-import { createWorkflowCompiler } from "../../../packages/flowmode-runtime/dist/index.js";
+import { createWorkflowCompiler } from "@sweatpants/flowmode-runtime";
 import { call } from "effection";
 import { hootLinker, HOOT_PROGRAM_FORMAT } from "./linker.mts";
 
-/** Current Hoot composition root. The app consumes validation, linking and preparation seams. */
+/** Validate and link model-authored Scheme using the selected runtime loader.
+ * @param {{loadMachine: import("./program.mjs").HootKernelDependencies["loadMachine"], createProgram: (options: import("./program.mjs").HootProgramOptions) => ReturnType<typeof import("./program.mjs").createPortableHootProgram>}} options
+ */
 export function createHootAuthoring({ loadMachine, createProgram }) {
-  /** @type {import('../../../packages/flowmode-runtime/src/index.ts').WorkflowCompiler} */
+  /** @type {import('@sweatpants/flowmode-runtime').WorkflowCompiler} */
   const compiler = createWorkflowCompiler({
     driver: {
       sourceLanguage: "scheme",
@@ -48,6 +50,7 @@ export function createHootAuthoring({ loadMachine, createProgram }) {
   return {
     linker: hootLinker,
     compiler,
+    /** @param {Omit<import("./program.mjs").HootProgramOptions, "source"> & { implementation: import("@sweatpants/flowmode-runtime").WorkflowImplementation }} options */
     createProgram({ implementation, ...options }) {
       if (
         implementation.format !== HOOT_PROGRAM_FORMAT ||

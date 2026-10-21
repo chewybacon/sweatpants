@@ -12,7 +12,7 @@ registerHooks({
     return resolved;
   },
 });
-const { source } = await import("../fixture.mjs");
+const { source } = await import("./fixtures/fixture.mjs");
 const { loadMachine } = await import("../machine.mjs");
 let machine = await loadMachine();
 assert.deepEqual(machine.start(source).value, ["elicit", "reserve"]);

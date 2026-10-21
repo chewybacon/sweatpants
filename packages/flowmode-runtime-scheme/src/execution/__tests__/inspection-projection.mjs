@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { projectHootInspection } from "../inspection.mts";
-import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
-import { executionInspectionSchema } from "../../../../apps/yo-workflow/src/execution/inspection.ts";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
+import { executionInspectionSchema } from "../../../../../apps/yo-workflow/src/execution/inspection.ts";
 
 // Adapter-level representation checks; the sibling inspection.mjs exercises real Wasm.
 const state = parse(`(workflow-state-v3 "source"

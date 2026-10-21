@@ -1,13 +1,11 @@
-import type {
-  WorkflowCompiler,
-  WorkflowLinker,
-} from "../../../packages/flowmode-runtime/src/authoring.ts";
+import type { WorkflowCompiler, WorkflowLinker } from "@sweatpants/flowmode-runtime";
 import {
   assertWorkflowLink,
   createWorkflowCompiler,
   createWorkflowLinker,
-} from "../../../packages/flowmode-runtime/dist/index.js";
-import { luaIdentity, type LuaInvoker } from "./kernel.mts";
+} from "@sweatpants/flowmode-runtime";
+import { luaIdentity } from "./kernel.mts";
+import type { LuaInvoker } from "./state.ts";
 
 export function createLuaAuthoring(invoke: LuaInvoker) {
   const definitionFormat = "piccolo-lua-module-1";

@@ -1,6 +1,6 @@
 import { schemeExamples } from "./examples.ts";
-import language from "@sweatpants/scheme-runtime/language" with { type: "json" };
-import { limits, schemeChecks } from "@sweatpants/scheme-runtime";
+import language from "@sweatpants/flowmode-runtime-scheme/language" with { type: "json" };
+import { limits, schemeChecks } from "@sweatpants/flowmode-runtime-scheme";
 
 /** Syntax comes from the built evaluator; capability contracts come from its host. */
 export function createSchemeReference(contracts: readonly unknown[]): string {

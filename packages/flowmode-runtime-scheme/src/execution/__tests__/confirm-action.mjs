@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { source, emitted, resumeApproval, confirmationResult } from "../confirm-action.mjs";
+import { source, emitted, resumeApproval, confirmationResult } from "./fixtures/confirm-action.mjs";
 import { loadMachine } from "../machine.mjs";
-import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 assert.ok(!emitted.scheme.includes("(workflow #f"));
 assert.ok(emitted.debug.sites["confirm_action/response"]);

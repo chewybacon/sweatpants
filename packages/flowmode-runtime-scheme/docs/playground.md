@@ -10,10 +10,10 @@ platform loaders, and generated WASM assets.
 From the workspace root:
 
 ```sh
-pnpm --filter @sweatpants/scheme-runtime wasm:build
-pnpm --filter @sweatpants/scheme-runtime wasm:check
-pnpm --filter @sweatpants/scheme-runtime wasm:verify
-pnpm --filter @sweatpants/scheme-runtime build
+pnpm --filter @sweatpants/flowmode-runtime-scheme wasm:build
+pnpm --filter @sweatpants/flowmode-runtime-scheme wasm:check
+pnpm --filter @sweatpants/flowmode-runtime-scheme wasm:verify
+pnpm --filter @sweatpants/flowmode-runtime-scheme build
 ```
 
 `wasm:build` requires Docker, Python 3, and Node with Wasm GC support. It builds
@@ -32,17 +32,7 @@ to the manifest without replacing assets; use it when changing the toolchain.
 Compiler upgrades require changing the explicit pins, rebuilding, and running
 the evaluator and app durability/Worker acceptance suites.
 
-## Node compatibility follow-up
-
-- [ ] Investigate and retest Node 22 compatibility for the experimental
-      [explicit-state composition evaluator](../../experiments/workflow-kernel/hoot-composition/README.md).
-      Its expanded Wasm binary crashes Node 22.21.1 on arm64 in V8 Liftoff's
-      `PrepareTailCall` with an `is_int9(x)` assertion. Disabling Liftoff is a
-      diagnostic workaround. This finding concerns the experimental binary; it
-      does not establish a failure in this package's production evaluator.
-      Before claiming Node 22 support for the experiment, run its fresh-instance
-      composition, authority, scopes, and finally suites with Liftoff enabled on
-      a current Node 22 release.
+Node support follows the repository requirement: Node 24.22 or later.
 
 ## Boundaries
 
@@ -61,7 +51,7 @@ bundled Hoot assets independently of the package's TypeScript wrapper license.
 
 ## Authoring reference and checks
 
-`@sweatpants/scheme-runtime/language` exports build-generated JSON: the explicit
+`@sweatpants/flowmode-runtime-scheme/language` exports build-generated JSON: the explicit
 Scheme imports, injected procedure signatures, macro patterns, and input binding.
 `scripts/language.scm` reads the evaluator source as Scheme data during the pinned
 build; it does not execute the evaluator or parse authored programs. The artifact

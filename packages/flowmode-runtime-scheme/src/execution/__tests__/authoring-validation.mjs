@@ -37,7 +37,7 @@ assert.match(
 assert.equal(machine.validate(caller), "", "validation remains usable after reader failure");
 console.log("Authoring validation passed");
 
-const { validateCaller } = await import("../../../../apps/yo-workflow/execution/service.mjs");
+const { validateCaller } = await import("../../../../../apps/yo-workflow/execution/service.mjs");
 assert.equal(await validateCaller(caller), "");
 assert.match(
   await validateCaller(

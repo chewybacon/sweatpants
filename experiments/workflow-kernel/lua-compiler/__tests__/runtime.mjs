@@ -1,34 +1,35 @@
+import { createLuaProgramBundle } from "../../../../packages/flowmode-runtime-lua/src/program.mjs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { run } from "effection";
 import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
-import { loadMachine } from "../../hoot-composition/machine.mjs";
+import { loadMachine } from "../../../../packages/flowmode-runtime-scheme/src/execution/machine.mjs";
 import { encodeValue } from "../../../../packages/flowmode-compiler/dist/scheme-data/values.js";
 import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
-import { createLuaAuthoring } from "../../teal-lua-checkpoint/authoring.mts";
-import { createLuaKernel, createLuaProgramBundle } from "../../teal-lua-checkpoint/kernel.mts";
-import { invokeWasm } from "../../teal-lua-checkpoint/wasm-node.mts";
+import { createLuaAuthoring } from "../../../../packages/flowmode-runtime-lua/src/authoring.mts";
+import { createLuaKernel } from "../../../../packages/flowmode-runtime-lua/src/kernel.mts";
+import { invokeWasm } from "../../../../packages/flowmode-runtime-lua/src/wasm-node.mts";
 import {
   reviewExports,
   reviewImports,
   reviewContract,
   callerContract,
-} from "../../tsdown-authoring/contracts.mts";
+} from "../../../../apps/yo-workflow/execution/contracts.mts";
 import { requireCompiledWorkflow } from "../../../../packages/flowmode-runtime/dist/index.js";
 
-const source = await readFile(
+const sourceId = fileURLToPath(
   new URL("../../../../apps/yo-workflow/execution/review-draft.workflow.ts", import.meta.url),
-  "utf8",
 );
+const source = await readFile(sourceId, "utf8");
 
 // Mechanical preparation only. Tests below drive and assert every execution boundary.
-async function prepare(text = source, sourceId = "review-draft.workflow.ts") {
+async function prepare(text = source, id = sourceId) {
   return run(function* () {
     const module = requireCompiledWorkflow(
       yield* luaWorkflowCompiler.compile({
-        source: { id: sourceId, language: "typescript", text },
+        source: { id, language: "typescript", text },
         entry: "review_draft",
         exports: reviewExports,
         bindings: reviewImports,
@@ -283,7 +284,7 @@ test("the Scheme target preserves a captured cleanup closure in fresh Hoot insta
   const module = await run(function* () {
     return requireCompiledWorkflow(
       yield* workflowCompiler.compile({
-        source: { id: "review-draft.workflow.ts", language: "typescript", text },
+        source: { id: sourceId, language: "typescript", text },
         entry: "review_draft",
         exports: reviewExports,
         bindings: reviewImports,
@@ -400,7 +401,7 @@ for (const completion of ["value", "throw", "cancel"]) {
     const module = await run(function* () {
       return requireCompiledWorkflow(
         yield* workflowCompiler.compile({
-          source: { id: "review-draft.workflow.ts", language: "typescript", text: closureSource },
+          source: { id: sourceId, language: "typescript", text: closureSource },
           entry: "review_draft",
           exports: reviewExports,
           bindings: reviewImports,

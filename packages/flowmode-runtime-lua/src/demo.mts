@@ -1,15 +1,16 @@
 import { invoke } from "./native.mts";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { run, call } from "effection";
-import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "../../../packages/durable-execution/src/index.ts";
-import { loadKernelProgram } from "../../../packages/flowmode-backend/src/program.ts";
-import { createLuaProgramBundle, createLuaRuntime } from "./kernel.mts";
+import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
+import { loadKernelProgram } from "@sweatpants/flowmode-backend/program";
+import { createLuaRuntime } from "./kernel.mts";
+import { createLuaProgramBundle } from "./program.mjs";
 
 const mode = process.argv[2] ?? "approve";
 if (!["approve", "decline", "throw", "cancel", "cancel-cleanup"].includes(mode)) {
   throw Error("Use approve, decline, throw, cancel, or cancel-cleanup");
 }
-const source = await readFile(new URL("./examples/approval.lua", import.meta.url), "utf8");
+const source = await readFile(new URL("../examples/approval.lua", import.meta.url), "utf8");
 const bundle = createLuaProgramBundle(source, {
   programId: "lua-approval-demo",
   version: "1",
@@ -23,7 +24,7 @@ const bundle = createLuaProgramBundle(source, {
 });
 const runtime = createLuaRuntime(invoke);
 const directory = new URL(
-  `../../../.artifacts/teal-lua-checkpoint/${mode}-${Date.now()}/`,
+  `../../../.artifacts/flowmode-runtime-lua/${mode}-${Date.now()}/`,
   import.meta.url,
 );
 await mkdir(directory, { recursive: true });

@@ -1,8 +1,7 @@
+/** @typedef {{ call(...args: unknown[]): unknown[] }[]} HootProcedureList */
+/** @typedef {HootProcedureList & { fuel: WebAssembly.Global }} HootProcedures */
 import { inspectSnapshot } from "./inspect.mjs";
-import {
-  encodeValue,
-  decodeValue,
-} from "../../../packages/flowmode-compiler/dist/scheme-data/values.js";
+import { encodeValue, decodeValue } from "@sweatpants/flowmode-compiler/scheme-data/values";
 export function machineApi(procedures) {
   function call(index, ...args) {
     procedures.fuel.value = 100_000_000n;

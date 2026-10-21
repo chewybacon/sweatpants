@@ -2,8 +2,8 @@ import type {
   BindingContract,
   BindingDeclaration,
   WorkflowExport,
-} from "../../../packages/flowmode-runtime/src/index.ts";
-import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "../../../packages/durable-execution/dist/index.js";
+} from "@sweatpants/flowmode-runtime";
+import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
 
 // Explicit contracts for this permissive MVP. These are host declarations, not inferred types.
 export const reviewContract: BindingContract = {

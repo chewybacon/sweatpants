@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { loadMachine } from "../machine.mjs";
-import { source } from "../fixture.mjs";
+import { source } from "./fixtures/fixture.mjs";
 import { projectHootInspection } from "../inspection.mts";
-import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
-import { executionInspectionSchema } from "../../../../apps/yo-workflow/src/execution/inspection.ts";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
+import { executionInspectionSchema } from "../../../../../apps/yo-workflow/src/execution/inspection.ts";
 
 function boundary(step, id = "original-handle") {
   switch (step.kind) {

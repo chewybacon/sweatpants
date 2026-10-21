@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { createHootDriver, manifest } from "../fixture-driver.mjs";
+import { createHootDriver, manifest } from "./fixtures/fixture-driver.mjs";
 import {
   createStoredScenarioDriver,
   driveTestProgramTree,
-} from "../../../../packages/journal-authority/dist/testing.js";
-import { createMemoryExecutionStore } from "../../../../packages/journal-authority/dist/memory.js";
-import { createCapabilityKeyring } from "../../../../packages/journal-authority/dist/index.js";
-import { ProgramDriverRegistryContext } from "../../../../packages/durable-execution/dist/index.js";
-const { run } = createRequire(new URL("../../../../package.json", import.meta.url))("effection");
+} from "@sweatpants/journal-authority/testing";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
+import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import { ProgramDriverRegistryContext } from "@sweatpants/durable-execution";
+const { run } = createRequire(new URL("../../../../../package.json", import.meta.url))("effection");
 for (const cancel of [false, true]) {
   await run(function* () {
     const store = createMemoryExecutionStore();

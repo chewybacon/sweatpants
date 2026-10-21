@@ -1,8 +1,8 @@
 import luaWasm from "#execution-lua-wasm";
-import { createWasmLuaInvoker } from "../../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm.mts";
-import { LuaEvaluationPort } from "../../workflow/lua/evaluation.ts";
-import { SchemeEvaluationPort } from "@sweatpants/scheme-runtime";
-import { createWorkerSchemeDriver } from "@sweatpants/scheme-runtime/worker";
+import { createWasmLuaInvoker } from "@sweatpants/flowmode-runtime-lua/wasm";
+import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
+import { SchemeEvaluationPort } from "@sweatpants/flowmode-runtime-scheme";
+import { createWorkerSchemeDriver } from "@sweatpants/flowmode-runtime-scheme/worker";
 import { createToolExecutorObject } from "@sweatpants/tool-runtime-cloudflare/executor";
 import { programs } from "../../workflow/agent.ts";
 

@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { call, type Operation } from "effection";
-import type { Json } from "../../../packages/foundation/dist/index.js";
-import { record, type LuaState } from "./kernel.mts";
+import type { Json } from "@sweatpants/foundation";
+import { record, type LuaState } from "./state.ts";
 const executable = fileURLToPath(
-  new URL("./target/debug/teal-lua-checkpoint-spike", import.meta.url),
+  new URL("../vm/target/debug/flowmode-runtime-lua", import.meta.url),
 );
 const MAX_BYTES = 4 * 1024 * 1024;
 /** One scoped native command. Cancellation kills compute and waits for process exit. */

@@ -24,7 +24,7 @@ in this browser. The authoritative execution language is the journaled tool call
 Lua runs ordinary Lua syntax in Piccolo/Wasm with a deliberately limited library:
 `assert`, `type`, `pcall`, `error`, JSON helpers and the registered capabilities.
 There is no `math`, `string`, `table`, IO, import, or coroutine library. Scheme's
-supported forms and procedures are generated in `@sweatpants/scheme-runtime/language`.
+supported forms and procedures are generated in `@sweatpants/flowmode-runtime-scheme/language`.
 Neither demo is a general-purpose security sandbox.
 
 Playground recovery uses the existing durable-tool replay protocol for both
@@ -86,7 +86,7 @@ DurableTool export remains distinct from those compiled artifacts.
 | Same compiled TypeScript tool and host-tool interop | Supported | Supported | `tsdown-authoring/tsdown.config.mjs`, `tsdown-authoring/__tests__/runtime.mjs`; app `execution/{scheme,lua,service-core}.mjs` |
 | Approval, decline, cancellation, suspended ensure cleanup | Supported | Supported | App `execution/__tests__/service.mjs`; `lua-compiler/__tests__/runtime.mjs` also covers throw and cleanup failure |
 | Fresh-instance checkpoint restore at approval and cleanup | Supported | Supported | Artifact runtime tests; real workerd browser runs below |
-| Source, call stack, raw checkpoint, boundary timeline | Supported | Supported | `src/execution/ExecutionInspector.tsx`; Hoot inspection tests and Lua `kernel.mts` inspection |
+| Source, call stack, raw checkpoint, boundary timeline | Supported | Supported | `src/execution/ExecutionInspector.tsx`; Hoot inspection tests and `flowmode-runtime-lua` kernel inspection |
 | Lexical environments and scope/unwind projection | Supported | Not implemented | `ExecutionInspection.availability`; Lua explicitly reports unavailable |
 | Scoped scheduler and durable timers | Not integrated | Not integrated | Separate `scoped-handoffs` experiment; timer driver not implemented |
 
@@ -157,3 +157,56 @@ inline execute generators and production builds. Persisted Execution runs pin th
 program digest and explicitly reject loading changed code (`workflow_source_changed`).
 This adds no hot migration of continuations and promotes no experimental evaluator,
 structured scheduler or timer capability.
+
+## Runtime package ownership
+
+`flowmode-runtime-lua` owns the Piccolo VM, evaluation port, portable state codec,
+kernel and replay loop. The app retains capability schemas, sampling/decision
+policy, authoring prompts and UI events. `flowmode-runtime-scheme` owns both the
+existing Playground session evaluator and the separate Execution checkpoint
+kernel. This package move does not replace either Scheme language implementation.
+Both runtime packages own reproducible Wasm build inputs and generated assets;
+app loaders no longer depend on experiment build output directories.
+
+The shared backend still uses `createWorkflowProgramDriver`. Playground recovery
+remains durable-tool replay; Execution remains the continuation-checkpoint consumer.
+No scheduler, timer, or additional Lua inspection capabilities are introduced.
+
+## Runtime promotion validation, 2026-10-21
+
+Real-provider T3 collaborative-browser checks used local Cloudflare/workerd,
+OpenCode `claude-haiku-5-5`, medium reasoning, with the promoted package assets.
+
+- Execution Scheme `66ce907f-e19a-4cf1-b9ec-f7378caae41d` and Lua
+  `5e217be9-b52a-41e2-8bef-6b98dc19428b` used the unchanged natural-language
+  announcement prompt. Each passed approval → restore → approve → cleanup →
+  restore → release, retained completion after reload, and recorded one kernel
+  start, two verified restores and exactly one announcement receipt. Outboxes
+  stayed empty while cleanup was pending. Lua reports cleanup inspection as
+  unavailable and exposes raw VM state.
+- Playground used the built-in Bulls and Cows natural-language example in both
+  languages. Scheme thread `02c352c6-cd73-4c66-a9ae-eeb6f0ed1798` and Lua thread
+  `92daa8e1-a4e7-4edd-bff7-d01cc1adb50a` preserved pending questions on reload,
+  advanced 1023 → 1204 after one bull and two cows, and settled cancellation back
+  to Ready across another reload. Scheme's first authored program tried to read
+  `schema` from a string input; the recorded `E_EXPECTED_OBJECT` diagnostic let
+  the model repair it. The repaired program passed the flow. Lua required four
+  normal computation approvals, two before each guess; fuel policy was unchanged.
+
+Evidence: `.artifacts/runtime-promotion/{scheme,lua}-execution.json`,
+`{scheme,lua}-playground.json`, and `summary.md`. Both Wasm builds and package
+checks passed; rebuilt Scheme Playground assets matched the tested bytes and
+Lua rebuild verification passed. App tests passed 99/99 with one worker,
+including workerd recovery; app types, runtime/compiler conformance and Vite
+checks passed. Earlier concurrent heavy runs hit unchanged Scheme test deadlines;
+isolated runs passed without weakening assertions or extending timeouts.
+
+`pnpm land` passed stages 1–10 (including clean build, exports, app types and
+formatting), then stopped at stage 11 when the default PostgreSQL harness tried
+to bind occupied port 55432. Stages 12–23 did not run. Summary:
+`.artifacts/landing/2026-10-21T17-38-36-890Z-deterministic/summary.json`.
+A separate disposable PostgreSQL instance passed 17/17 tests with one worker;
+that narrow result does not replace the failed landing run. The existing local
+PostgreSQL service was not stopped or reset. The owned validation database and
+app server were stopped. Cold Astro startup hit its unchanged 30-second watchdog
+once, then started on retry. Broad `land:live` was not run.

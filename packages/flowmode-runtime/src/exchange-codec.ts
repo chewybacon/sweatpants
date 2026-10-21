@@ -1,7 +1,7 @@
-import { assertJson, type Json } from "../../packages/foundation/dist/index.js";
-import type { ExchangeRequest } from "../../packages/flowmode-runtime/src/index.ts";
+import { assertJson, type Json } from "@sweatpants/foundation";
+import type { ExchangeRequest } from "./index.ts";
 
-/** The two experimental compilers share these intrinsic encodings, not the kernel API. */
+/** The language compilers share these intrinsic encodings, not the kernel API. */
 export function decodeExchange(site: string, encoded: Json): ExchangeRequest {
   if (
     encoded &&

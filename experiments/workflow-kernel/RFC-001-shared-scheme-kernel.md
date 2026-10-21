@@ -137,7 +137,7 @@ migration, raw memory snapshots, and a broad language redesign are out of scope.
 
 ## Iteration 1 evidence
 
-The [Hoot composition probe](hoot-composition/README.md) now exercises the first
+The [Hoot composition probe](../../packages/flowmode-runtime-scheme/docs/execution.md) now exercises the first
 nested caller/callee recovery sequence with the existing stored authority.
 Developer Scheme comes from the existing TS frontend; the caller is hand-authored
 Scheme. Execution and explicit state live in the Scheme evaluator compiled by
@@ -182,7 +182,7 @@ Node 22 compatibility remains open: the expanded binary crashes Node 22.21.1
 arm64's baseline Wasm compiler with an `is_int9(x)` assertion in
 `PrepareTailCall`; `--no-liftoff` is only a diagnostic workaround. Retesting and
 investigation are tracked in the
-[Scheme runtime package TODO](../../packages/scheme-runtime/README.md#node-compatibility-follow-up).
+[Scheme runtime package TODO](../../packages/flowmode-runtime-scheme/docs/playground.md#node-compatibility-follow-up).
 The binary MUST NOT be promoted into the application on this evidence alone.
 Native cancellation parity, concurrent children, runtime-trap unwinding, and
 whole-program tail-call behavior remain outside the proven subset.

@@ -1,28 +1,28 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/dist/emit-scheme.js";
+import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
 import { createHootProgram } from "../driver.mjs";
 import {
   createStoredScenarioDriver,
   driveTestProgramTree,
   createSchemaFixture,
-} from "../../../../packages/journal-authority/dist/testing.js";
-import { createMemoryExecutionStore } from "../../../../packages/journal-authority/dist/memory.js";
+} from "@sweatpants/journal-authority/testing";
+import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import {
   createCapabilityKeyring,
   createDurableSchemaRegistry,
-} from "../../../../packages/journal-authority/dist/index.js";
+} from "@sweatpants/journal-authority";
 import {
   ProgramDriverRegistryContext,
   ANY_JSON_SCHEMA_DESCRIPTOR,
-} from "../../../../packages/durable-execution/dist/index.js";
-import { defineDurableEffect } from "../../../../packages/durable-effects/dist/authoring.js";
-import { createDurableEffectRegistration } from "../../../../packages/durable-effects/dist/index.js";
+} from "@sweatpants/durable-execution";
+import { defineDurableEffect } from "../../../../durable-effects/dist/authoring.js";
+import { createDurableEffectRegistration } from "../../../../durable-effects/dist/index.js";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
-} from "../../../../packages/durable-effects/dist/runtime.js";
-const { run } = createRequire(new URL("../../../../package.json", import.meta.url))("effection");
+} from "../../../../durable-effects/dist/runtime.js";
+const { run } = createRequire(new URL("../../../../../package.json", import.meta.url))("effection");
 const message = { text: "Hello", recipients: ["test"], metadata: null };
 const receiptValue = { id: "message-17", details: [null, {}, [], false, 1.25] };
 const input = createSchemaFixture(

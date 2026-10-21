@@ -1,5 +1,5 @@
 import { call } from "effection";
-import { record, type LuaInvoker } from "./kernel.mts";
+import { record, type LuaInvoker } from "./state.ts";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 type Exports = {

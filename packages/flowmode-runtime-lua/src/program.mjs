@@ -1,11 +1,15 @@
+// @ts-check
 import { createLuaKernel, luaIdentity } from "./kernel.mts";
 import {
   createKernelProgramBackend,
   createKernelProgramBundle,
   loadKernelProgram,
-} from "../../../packages/flowmode-backend/dist/index.js";
-import { createWorkflowProgramDriver } from "../../../packages/journal-authority/dist/index.js";
+} from "@sweatpants/flowmode-backend";
+import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 
+/** @param {{ implementation: import("@sweatpants/flowmode-runtime").WorkflowImplementation, contract: Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">, bindOperation: import("@sweatpants/flowmode-backend").KernelProgramBackendOptions["bindOperation"], bindings?: readonly import("@sweatpants/flowmode-runtime").WorkflowBinding[] }} options
+ * @param {import("./state.ts").LuaInvoker} invoke
+ */
 export function createLuaProgram(
   { implementation, contract, bindOperation, bindings = [] },
   invoke,
@@ -19,7 +23,9 @@ export function createLuaProgram(
   const bundle = createKernelProgramBundle(implementation, luaIdentity, contract, bindings);
   return {
     ...bundle,
+    /** @param {Parameters<typeof createLuaKernel>[1]} [observe] */
     createKernel: (observe) => createLuaKernel(invoke, observe),
+    /** @param {Parameters<typeof createLuaKernel>[1]} [observe] */
     createDriver(observe) {
       return createWorkflowProgramDriver(
         createKernelProgramBackend({
@@ -39,4 +45,15 @@ export function createLuaProgram(
       );
     },
   };
+}
+
+/** @param {string} source
+ * @param {Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">} contract
+ */
+export function createLuaProgramBundle(source, contract) {
+  return createKernelProgramBundle(
+    { format: luaIdentity.programFormat, payload: source },
+    luaIdentity,
+    contract,
+  );
 }

@@ -20,8 +20,8 @@ import {
 } from "@sweatpants/journal-authority/testing";
 import { computationApproval } from "../../tools/computation-approval.ts";
 import { createLuaTool } from "../tool.ts";
-import { LuaEvaluationPort } from "../evaluation.ts";
-import { invokeWasm } from "../../../../../../experiments/workflow-kernel/teal-lua-checkpoint/wasm-node.mts";
+import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
+import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
 
 it.each(["accept", "cancel"] as const)(
   "durably restores a computation approval and handles %s",

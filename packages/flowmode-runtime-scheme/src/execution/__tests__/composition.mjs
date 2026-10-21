@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { source, emitted } from "../fixture.mjs";
+import { source, emitted } from "./fixtures/fixture.mjs";
 import { loadMachine } from "../machine.mjs";
-import { parse } from "../../../../packages/flowmode-compiler/dist/scheme-data/read.js";
+import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 let machine = await loadMachine();
 assert.deepEqual(machine.start(source), {

@@ -7,12 +7,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ["kernel.wasm", "reflect.wasm", "wtf8.wasm", "reflect.cjs",
              "reflect-worker.mjs", "reflect-worker.d.mts", "metering.json", "language.json"]
-SOURCES = ["toolchain.json", "package.json"] + [
+SOURCES = ["toolchain.json"] + [
     str(path.relative_to(ROOT))
-    for directory in ["scripts", "src", "licenses"]
-    for path in sorted((ROOT / directory).rglob("*"))
-    if path.is_file() and "__tests__" not in path.parts and "__pycache__" not in path.parts
+    for directory in ["scripts", "licenses"]
+    for path in sorted((ROOT / directory).glob("*"))
+    if path.is_file()
 ]
+
 
 
 def manifest(output):
@@ -26,5 +27,5 @@ def manifest(output):
 if __name__ == "__main__":
     output = ROOT / "generated"
     if json.loads((output / "manifest.json").read_text()) != manifest(output):
-        raise SystemExit("Scheme inputs or artifacts changed; run pnpm --filter @sweatpants/scheme-runtime wasm:build")
+        raise SystemExit("Scheme inputs or artifacts changed; run pnpm --filter @sweatpants/flowmode-runtime-scheme wasm:build")
     print("Scheme source and generated artifact hashes verified")

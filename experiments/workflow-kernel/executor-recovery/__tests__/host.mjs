@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { run, scoped } from "effection";
-import { createHootDriver, manifest } from "../../hoot-composition/fixture-driver.mjs";
+import {
+  createHootDriver,
+  manifest,
+} from "../../../../packages/flowmode-runtime-scheme/src/execution/__tests__/fixtures/fixture-driver.mjs";
 import {
   createStoredScenarioDriver,
   driveTestProgramTree,

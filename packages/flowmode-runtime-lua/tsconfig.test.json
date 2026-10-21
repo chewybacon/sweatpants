@@ -1,0 +1,5 @@
+{
+  "extends": ["./tsconfig.json", "@sweatpants/ts-config/tsconfig.tests.json"],
+  "include": ["src/**/*.ts", "src/**/*.mts", "src/**/*.mjs"],
+  "exclude": ["src/demo.mts", "src/native.mts"]
+}

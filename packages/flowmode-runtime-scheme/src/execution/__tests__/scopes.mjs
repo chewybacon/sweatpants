@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { emitWorkflowScheme } from "../../../../packages/flowmode-compiler/dist/emit-scheme.js";
-import { compile, start, run as runReference } from "../../compiled-finally/engine.mjs";
+import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
+import {
+  compile,
+  start,
+  run as runReference,
+} from "../../../../../experiments/workflow-kernel/compiled-finally/engine.mjs";
 import { loadMachine } from "../machine.mjs";
-const { run, ensure, scoped } = createRequire(new URL("../../../../package.json", import.meta.url))(
-  "effection",
-);
+const { run, ensure, scoped } = createRequire(
+  new URL("../../../../../package.json", import.meta.url),
+)("effection");
 
 const rootLoop = `
 import { ensure } from "effection";
