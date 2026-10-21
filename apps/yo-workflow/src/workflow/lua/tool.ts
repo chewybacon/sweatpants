@@ -2,7 +2,7 @@ import { createDurableTool } from "@sweatpants/agent-sdk";
 import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { decisionRequestSchema } from "@sweatpants/model-decision";
-import type { Operation } from "effection";
+import { call, type Operation } from "effection";
 import { z } from "zod";
 import type { BoundTool } from "../bound-tool.ts";
 import { decisionBinding, decisionContract } from "../decisions.ts";
@@ -13,9 +13,16 @@ import {
   samplingContract,
   samplingIdentity,
 } from "../sampling.ts";
+import { resolveLuaFuelPolicy, type LuaFuelPolicy } from "./fuel.ts";
+import { encodeLuaCheckpoint, decodeLuaCheckpoint } from "./checkpoint.ts";
+import { computationApproval } from "../tools/computation-approval.ts";
 import { LuaEvaluationPort } from "./evaluation.ts";
 
-export function createLuaTool(bindings: readonly BoundTool[]): BoundTool {
+export function createLuaTool(
+  bindings: readonly BoundTool[],
+  options: Partial<LuaFuelPolicy> = {},
+) {
+  const fuelPolicy = resolveLuaFuelPolicy(options);
   const registry = new Map(bindings.map((tool) => [tool.name, tool]));
   const contracts = [
     ...bindings.map((tool) => ({
@@ -47,7 +54,9 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
       version: "0.0.1",
       digest: sha256(
         canonicalJson({
-          engine: "piccolo-chat-1",
+          engine: "piccolo-chat-2",
+          fuelPolicy,
+          computationApproval: computationApproval.manifest.digest,
           prelude,
           samplingIdentity,
           decisionBinding,
@@ -89,10 +98,36 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
           checks: { checked: ["syntax"], unchecked: ["runtime", "capability requests"] },
         };
       }
-      let state = yield* LuaEvaluationPort.api.operations.execute({
+      let slice = 0;
+      let allowance = Math.min(fuelPolicy.allowanceFuel, fuelPolicy.maxFuel);
+      let cancelled = false;
+      let cancellationFuel = 0;
+      function* evaluate(command: Json): Operation<Record<string, Json>> {
+        const encoded = yield* context.record(
+          { key: `lua.compute/${slice++}`, retrySafety: { mode: "repeatable" } },
+          function* () {
+            try {
+              const result = yield* LuaEvaluationPort.api.operations.execute(command);
+              return yield* call(() => encodeLuaCheckpoint(result));
+            } catch (error) {
+              // Persist the actual evaluator diagnostic so the model can repair the program.
+              const failed = {
+                boundary: {
+                  kind: "failed",
+                  error: { code: "lua_execution_error", message: String(error) },
+                },
+              };
+              return yield* call(() => encodeLuaCheckpoint(failed));
+            }
+          },
+        );
+        return yield* call(() => decodeLuaCheckpoint(encoded));
+      }
+      let state = yield* evaluate({
         action: "start",
         source,
         input: input ?? null,
+        fuel: Math.min(fuelPolicy.sliceFuel, allowance),
       });
       let count = 0;
       const invocationId = yield* context.record(
@@ -112,6 +147,9 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
               .optional(),
           })
           .parse(state.boundary);
+        if (boundary.kind === "cancelled") {
+          return { status: "cancelled", completedEffects: count };
+        }
         if (boundary.kind === "completed") {
           return assertJson(boundary.value);
         }
@@ -121,6 +159,82 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
             diagnostic: { message: JSON.stringify(boundary.error) },
             completedEffects: count,
           };
+        }
+        const used = typeof state.fuel_used === "number" ? state.fuel_used : 0;
+        if (cancelled && used - cancellationFuel >= 100_000) {
+          return {
+            status: "cancelled",
+            diagnostic: {
+              code: "cleanup_budget_exceeded",
+              message: "Cancellation cleanup exceeded its computation allowance",
+            },
+            completedEffects: count,
+          };
+        }
+        if (!cancelled && used >= fuelPolicy.maxFuel) {
+          return {
+            status: "failed",
+            diagnostic: {
+              code: "execution_budget_exceeded",
+              message: "Workflow reached the maximum computation allowance",
+            },
+            completedEffects: count,
+          };
+        }
+        if (!cancelled && used >= allowance) {
+          let answer = fuelPolicy.onExhausted === "continue";
+          if (fuelPolicy.onExhausted === "ask") {
+            const callId = `${invocationId}/fuel-${allowance}`;
+            yield* context.emit("tool_started", {
+              callId,
+              tool: "computation_approval",
+              input: {},
+            });
+            const result = yield* context.pull({
+              kind: "invoke",
+              child: {
+                id: computationApproval.manifest.programId,
+                version: computationApproval.manifest.version,
+                digest: computationApproval.manifest.digest,
+                input: {},
+              },
+            });
+            yield* context.emit("tool_completed", {
+              callId,
+              tool: "computation_approval",
+              result,
+              failed: false,
+            });
+            answer = z.object({ action: z.string() }).parse(result).action === "accept";
+          }
+          if (!answer) {
+            cancelled = true;
+            cancellationFuel = used;
+            state = yield* evaluate({
+              action: "cancel",
+              source,
+              state,
+              reason: "Computation declined",
+              fuel: fuelPolicy.sliceFuel,
+            });
+            continue;
+          }
+          allowance = Math.min(allowance + fuelPolicy.allowanceFuel, fuelPolicy.maxFuel);
+        }
+        if (boundary.kind === "compute_paused") {
+          state = yield* evaluate({
+            action: "continue",
+            source,
+            state,
+            fuel: Math.max(
+              1,
+              Math.min(
+                fuelPolicy.sliceFuel,
+                cancelled ? 100_000 - (used - cancellationFuel) : allowance - used,
+              ),
+            ),
+          });
+          continue;
         }
         if (boundary.kind !== "suspended" || !boundary.request) {
           throw new Error("Unexpected Lua boundary");
@@ -181,8 +295,15 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
         }
         count++;
         yield* context.emit("tool_completed", { callId, tool: name, result: value, failed: false });
-        state = yield* LuaEvaluationPort.api.operations.execute({
+        state = yield* evaluate({
           action: "resume",
+          fuel: Math.max(
+            1,
+            Math.min(
+              fuelPolicy.sliceFuel,
+              cancelled ? 100_000 - (used - cancellationFuel) : allowance - used,
+            ),
+          ),
           source,
           state,
           reply: value,

@@ -6,6 +6,7 @@ export function toolLabel(name: string): string {
       {
         scheme: "Scheme workflow",
         lua: "Lua workflow",
+        computation_approval: "More computation",
         ask: "Ask you",
         sample: "Model sample",
         random: "Random draw",

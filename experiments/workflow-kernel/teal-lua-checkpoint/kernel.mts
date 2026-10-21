@@ -20,7 +20,7 @@ export const luaIdentity: KernelIdentity = Object.freeze({
   kind: "piccolo-lua-spike",
   version: "2",
   programFormat: "piccolo-lua-source-2",
-  snapshotFormat: "piccolo-continuation-3",
+  snapshotFormat: "piccolo-continuation-4",
 });
 export type LuaState = Record<string, Json>;
 export type LuaInvoker = (command: Json) => Operation<LuaState>;
@@ -118,7 +118,29 @@ export function createLuaKernel(
     try {
       const preserve =
         action === "cancel" && (state?.cancelling === true || Number(state?.cleanup_depth) > 0);
-      const result = yield* invoke({ source: assertJson(program.code), action, ...fields });
+      let result = yield* invoke({ source: assertJson(program.code), action, ...fields });
+      // This headless adapter automatically continues slices up to a bounded allowance.
+      while (record(result.boundary).kind === "compute_paused") {
+        if (Number(result.fuel_used) >= 20_000_000) {
+          result = {
+            ...result,
+            vm: null,
+            boundary: {
+              kind: "failed",
+              error: {
+                code: "execution_budget_exceeded",
+                message: "Workflow reached the maximum computation allowance",
+              },
+            },
+          };
+          break;
+        }
+        result = yield* invoke({
+          source: assertJson(program.code),
+          action: "continue",
+          state: result,
+        });
+      }
       const next = decodeBoundary(result.boundary, preserve);
       state = result;
       current = next;

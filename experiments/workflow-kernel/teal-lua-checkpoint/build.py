@@ -9,6 +9,12 @@ REPO = HERE.parents[2]
 OUT = REPO / ".artifacts/teal-lua-checkpoint"
 if not (OUT / "piccolo").exists():
     subprocess.run([sys.executable, str(HERE / "prepare.py")], check=True)
+# Never compile a stale cached VM after the tracked checkpoint codec changes.
+patched = subprocess.run([
+    "patch", "--reverse", "--dry-run", "--batch", "-p1", "-i", str(HERE / "piccolo-checkpoint.patch"),
+], cwd=OUT / "piccolo", capture_output=True)
+if patched.returncode:
+    raise SystemExit(f"Cached Piccolo does not match checkpoint patch. Remove generated {OUT / 'piccolo'} and rebuild.")
 subprocess.run([
     "docker", "run", "--rm", "-v", f"{REPO}:/work",
     "-w", "/work/experiments/workflow-kernel/teal-lua-checkpoint",
