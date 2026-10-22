@@ -6,7 +6,7 @@ import ts from "typescript";
 /**
  * Consumer-or-parked workspace hygiene gate (spec REQ-019/REQ-020).
  *
- * Scans every workspace member (`packages/*`, `apps/*`), counts source-level
+ * Scans every workspace member (`acceptance`, `packages/*`, `apps/*`), counts source-level
  * consumers (non-test source files in other members importing the member's
  * package name), and fails when a zero-consumer member lacks an annotation in
  * the `docs/workspace/INDEX.md` member ledger. Ledger statuses: library, product,
@@ -80,6 +80,14 @@ function listSourceFiles(rootDir: string, dir: string): string[] {
 
 function discoverMembers(root: string): PackageInfo[] {
   const members: PackageInfo[] = [];
+  const acceptanceDir = join(root, "acceptance");
+  const acceptanceManifest = join(acceptanceDir, "package.json");
+  if (existsSync(acceptanceManifest)) {
+    const manifest = JSON.parse(readFileSync(acceptanceManifest, "utf8")) as { name?: string };
+    if (manifest.name) {
+      members.push({ dir: acceptanceDir, member: "acceptance", name: manifest.name });
+    }
+  }
   for (const group of ["packages", "apps"]) {
     const groupDir = join(root, group);
     if (!existsSync(groupDir)) {

@@ -49,6 +49,32 @@ afterAll(() => {
 });
 
 describe("workspace hygiene gate", () => {
+  it("discovers top-level acceptance infrastructure without counting its support as production consumers", () => {
+    const root = makeWorkspace();
+    mkdirSync(join(root, "acceptance", "support"), { recursive: true });
+    writeFileSync(
+      join(root, "acceptance", "package.json"),
+      JSON.stringify({ name: "@fixture/acceptance" }),
+    );
+    writeFileSync(join(root, "acceptance", "support", "runtime.ts"), 'import "@fixture/orphan";\n');
+    ledgerWith(
+      root,
+      "| `packages/orphan` | parked | fixture |\n" +
+        "| `acceptance` | infrastructure | public authoring tests |",
+    );
+
+    const report = scanWorkspace(root, join(root, ".pi", "specs", "INDEX.md"));
+    expect(report.members.find((member) => member.member === "acceptance")).toMatchObject({
+      packageName: "@fixture/acceptance",
+      consumerCount: 0,
+      ledgerStatus: "infrastructure",
+    });
+    expect(
+      report.members.find((member) => member.member === "packages/orphan")?.consumerCount,
+    ).toBe(0);
+    expect(report.violations).toEqual([]);
+  });
+
   it("fails loudly when the workspace ledger is missing", () => {
     const root = makeWorkspace();
     const ledgerPath = join(root, "docs", "workspace", "INDEX.md");

@@ -1,0 +1,14 @@
+{
+  "extends": "@sweatpants/ts-config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "__tests__/**/*.tsx",
+    "fixtures/**/*.ts",
+    "fixtures/**/*.tsx",
+    "support/**/*.ts",
+    "support/**/*.tsx",
+    "vitest.config.ts"
+  ]
+}

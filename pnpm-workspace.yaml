@@ -1,4 +1,5 @@
 packages:
+  - acceptance
   - packages/*
   - apps/*
 
