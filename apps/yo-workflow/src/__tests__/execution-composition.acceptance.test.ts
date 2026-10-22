@@ -128,6 +128,10 @@ for (const language of ["scheme", "lua"]) {
       ],
       executionMiddleware: [
         {
+          *inspect(args, next) {
+            events.push("inspect");
+            return yield* next(...args);
+          },
           *resume(args, next) {
             const boundary = yield* next(...args);
             events.push(`resume:${boundary.kind}`);
@@ -151,6 +155,13 @@ for (const language of ["scheme", "lua"]) {
         let view = yield* execution.command({ action: "start", language });
         expect(view.pending?.key).toBe("approval");
         expect(events).toContain("start");
+        expect(events).toContain("inspect");
+        expect(view.inspection?.execution.availability.environments).toBe(
+          language === "scheme" ? "available" : "unavailable",
+        );
+        expect(view.trace.find((event) => event.kind === "kernel.start")?.durationMs).toEqual(
+          expect.any(Number),
+        );
         expect(events).toContain("capture");
         expect(events).toContain("dispose");
         events.length = 0;

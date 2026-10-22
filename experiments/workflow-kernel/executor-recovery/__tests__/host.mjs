@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "../../lifecycle.mts";
 import assert from "node:assert/strict";
 import { run, scoped } from "effection";
 import {
@@ -38,7 +39,7 @@ function activateFreshHost(store, { replayOnly = false } = {}) {
     const authority = yield* createStoredScenarioDriver(store, options);
     const events = [],
       starts = [];
-    const driver = createHootDriver((event) => events.push(event));
+    const driver = createHootDriver(lifecycleEvents(events));
     if (replayOnly) {
       yield* ProgramRecovery.around({
         *checkpoint() {

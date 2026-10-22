@@ -184,3 +184,52 @@ it("captures on the same shared handle without an executor lookup or forwarding 
   });
   expect(events).toEqual(["capture", "resume", "dispose"]);
 });
+
+it("inspection is detached from evaluator state and does not capture or advance it", async () => {
+  const inspection = {
+    execution: {
+      availability: {
+        calls: "available",
+        environments: "unavailable",
+        unwind: "unavailable",
+      } as const,
+      boundary: { kind: "completed", value: { answer: 42 } } as const,
+      calls: [{ id: "0", name: "workflow" }],
+      environments: [],
+      unwind: [],
+      truncated: false,
+    },
+    mode: "completed",
+    site: null,
+    steps: 1,
+    snapshotBytes: 10,
+    cancellationRequested: false,
+    currentEnvironment: null,
+    calls: ["workflow"],
+    frames: [],
+    environments: [],
+    cleanups: [],
+  };
+  const { execution } = createKernelExecution({
+    initial: { kind: "completed", value: null },
+    driver: {
+      *inspect() {
+        return inspection;
+      },
+      *turn() {
+        throw Error("inspection must not advance");
+      },
+      *capture() {
+        throw Error("inspection must not require a checkpoint");
+      },
+      *dispose() {},
+    },
+  });
+  const first = await run(() => execution.inspect!());
+  expect(first).toEqual(inspection);
+  expect(first).not.toBe(inspection);
+  inspection.execution.calls[0]!.name = "changed evaluator state";
+  expect(first.execution.calls[0]!.name).toBe("workflow");
+  const second = await run(() => execution.inspect!());
+  expect(second.execution.calls[0]!.name).toBe("changed evaluator state");
+});

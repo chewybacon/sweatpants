@@ -22,6 +22,8 @@ import {
 import { CrankError } from "@sweatpants/durable-execution";
 import { call } from "effection";
 
+type RuntimeMiddleware = Pick<WorkflowRuntimeOptions, "kernelMiddleware" | "executionMiddleware">;
+
 export interface HootProgramOptions {
   source: string;
   contract: Omit<DurableProgramManifest, "digest">;
@@ -33,10 +35,8 @@ export interface HootKernelDependencies {
   loadMachine: () => Promise<HootMachine>;
   identity: KernelIdentity;
 }
-export type HootObserver = (event: string, data?: Record<string, unknown>) => void;
 
 function kernel(
-  observe: HootObserver,
   source: string,
   digest: string,
   loadMachine: HootKernelDependencies["loadMachine"],
@@ -51,6 +51,7 @@ function kernel(
     return machine;
   }
   let suspension = 0;
+  let current: WorkflowBoundary;
   function boundary(step: HootBoundary): WorkflowBoundary {
     if (step.kind === "effect") {
       return {
@@ -69,8 +70,7 @@ function kernel(
     }
     throw Error("Unknown Hoot boundary");
   }
-  function transition(event: string, action: () => HootBoundary): WorkflowBoundary {
-    const started = performance.now();
+  function transition(action: () => HootBoundary): WorkflowBoundary {
     let result;
     try {
       result = boundary(action());
@@ -80,36 +80,32 @@ function kernel(
         error instanceof Error ? error.message : String(error),
       );
     }
-    observe(event, {
-      boundary: result,
-      inspection: check().inspect(result),
-      durationMs: performance.now() - started,
-    });
+    current = result;
     return result;
   }
   const driver: WorkflowExecutionDriver = {
+    *inspect() {
+      return check().inspect(current);
+    },
     *turn(command) {
       if (command.kind === "cancel") {
         check();
-        return transition("cancel", () => check().cancel());
+        return transition(() => check().cancel());
       }
       const reply = command.reply;
       check();
-      observe("reply", { reply });
-      return transition("resume", () =>
+      return transition(() =>
         reply.kind === "throw" ? check().reject(reply.value) : check().resume(reply.value),
       );
     },
     *capture() {
       check();
       const state = check().capture();
-      observe("capture", { bytes: new TextEncoder().encode(state).length });
       return { kernel: identity, programDigest: digest, state };
     },
     *dispose() {
       if (machine) {
         machine = null;
-        observe("dispose");
       }
     },
   };
@@ -129,7 +125,7 @@ function kernel(
         validate(program);
         machine = yield* call(loadMachine);
         return createKernelExecution({
-          initial: transition("start", () => check().start(source, input)),
+          initial: transition(() => check().start(source, input)),
           driver: driver,
         });
       },
@@ -139,10 +135,9 @@ function kernel(
           throw Error("Invalid snapshot");
         }
         const state = snapshot.state;
-        observe("checkpoint-selected", { snapshot });
         machine = yield* call(loadMachine);
         return createKernelExecution({
-          initial: transition("restore", () => check().restore(source, state)),
+          initial: transition(() => check().restore(source, state)),
           driver: driver,
         });
       },
@@ -166,24 +161,32 @@ export function createPortableHootProgram(
     contract,
     bindings,
   );
-  function runtime(observe: HootObserver = () => {}) {
+  function runtime(options: RuntimeMiddleware = {}) {
     return createWorkflowRuntime({
       ...runtimeOptions,
+      kernelMiddleware: [
+        ...(runtimeOptions.kernelMiddleware ?? []),
+        ...(options.kernelMiddleware ?? []),
+      ],
+      executionMiddleware: [
+        ...(runtimeOptions.executionMiddleware ?? []),
+        ...(options.executionMiddleware ?? []),
+      ],
       driver: {
         kernelIdentity: identity,
         *createKernel() {
-          return kernel(observe, source, bundle.artifact.digest, loadMachine, identity);
+          return kernel(source, bundle.artifact.digest, loadMachine, identity);
         },
       },
     });
   }
   return {
     ...bundle,
-    createKernel: (observe?: HootObserver) => runtime(observe).createKernel(),
-    createDriver(observe?: HootObserver) {
+    createKernel: (options?: RuntimeMiddleware) => runtime(options).createKernel(),
+    createDriver(options?: RuntimeMiddleware) {
       return createKernelProgram({
         bundle,
-        runtime: runtime(observe),
+        runtime: runtime(options),
         bindOperation,
       }).createDriver();
     },

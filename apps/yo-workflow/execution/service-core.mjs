@@ -1,3 +1,4 @@
+import { executionDiagnostics } from "./diagnostics.mts";
 import { createWorkflowBindingResolver } from "@sweatpants/flowmode-backend";
 import { requireCompiledWorkflow } from "@sweatpants/flowmode-runtime";
 import { callerContract } from "./contracts.mts";
@@ -343,7 +344,9 @@ export function executionServiceFactory(stacks) {
               input: confirmationInput,
               route: { driverKind: session.language },
             };
-            const driver = program.createDriver((kind, data) => observe(session, kind, data));
+            const driver = program.createDriver(
+              executionDiagnostics((kind, data) => observe(session, kind, data)),
+            );
             yield* ProgramDriverRegistryContext.with(
               new Map([[session.language, driver]]),
               function* () {
@@ -373,8 +376,8 @@ export function executionServiceFactory(stacks) {
                       throw Error("No accepted checkpoint is available");
                     }
                     trace(session, "host.restore-requested");
-                    const kernel = yield* program.createKernel((kind, data) =>
-                      observe(session, kind, data),
+                    const kernel = yield* program.createKernel(
+                      executionDiagnostics((kind, data) => observe(session, kind, data)),
                     );
                     try {
                       const before = session.inspection.steps;

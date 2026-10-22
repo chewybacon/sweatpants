@@ -1,3 +1,4 @@
+import type { WorkflowInspection } from "./inspection.ts";
 import type { Operation } from "effection";
 import type {
   CheckpointExecution,
@@ -50,13 +51,16 @@ export interface KernelSnapshot {
  * implementation. Operations on one execution must be serialized by the host.
  * resume stops at the next effect/terminal boundary; it does not execute effects.
  */
-export type WorkflowExecution = CheckpointExecution<
+export interface WorkflowExecution extends CheckpointExecution<
   ExchangeRequest,
   ExchangeReply,
   Json,
   Json,
   KernelSnapshot
->;
+> {
+  /** Optional, detached diagnostics; never a recovery capability. */
+  inspect?(): Operation<WorkflowInspection>;
+}
 
 export type WorkflowExecutionState = ExecutionState<WorkflowExecution, WorkflowBoundary>;
 
@@ -117,6 +121,7 @@ export {
 export { createWorkflowFlow, WorkflowFailure } from "./flow.ts";
 
 export type {
+  WorkflowInspection,
   ExecutionInspection,
   InspectedBoundary,
   InspectedCall,

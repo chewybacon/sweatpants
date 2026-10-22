@@ -1,4 +1,4 @@
-import type { WorkflowKernel, WorkflowExecutionState } from "./index.ts";
+import type { WorkflowKernel, WorkflowExecutionState, WorkflowExecution } from "./index.ts";
 import {
   composeOperation,
   type OperationMiddleware,
@@ -95,7 +95,7 @@ export interface WorkflowKernelOptions extends OperationOptions<
   Pick<WorkflowKernel, "start" | "restore" | "close">
 > {
   readonly executionMiddleware?: readonly OperationMiddleware<
-    WorkflowExecutionState["execution"]
+    Required<WorkflowExecutionState["execution"]>
   >[];
 }
 
@@ -105,30 +105,15 @@ export function createWorkflowKernel({
   executionMiddleware = [],
 }: WorkflowKernelOptions): WorkflowKernel {
   function decorate(state: WorkflowExecutionState): WorkflowExecutionState {
-    const execution = state.execution;
     return {
       boundary: state.boundary,
-      // Decorate the existing live handle; do not create a second lifecycle guard.
-      execution: {
-        resume: composeOperation(
-          (id, reply) => execution.resume(id, reply),
-          executionMiddleware.map((m) => m.resume),
-        ),
-        cancel: composeOperation(
-          (reason) => execution.cancel(reason),
-          executionMiddleware.map((m) => m.cancel),
-        ),
-        dispose: composeOperation(
-          () => execution.dispose(),
-          executionMiddleware.map((m) => m.dispose),
-        ),
-        capture: composeOperation(
-          () => execution.capture(),
-          executionMiddleware.map((m) => m.capture),
-        ),
-      },
+      execution: composeWorkflowExecution({
+        driver: state.execution,
+        middleware: executionMiddleware,
+      }),
     };
   }
+
   return {
     identity: driver.identity,
     start: composeOperation(
@@ -146,6 +131,40 @@ export function createWorkflowKernel({
     close: composeOperation(
       () => driver.close(),
       middleware.map((m) => m.close),
+    ),
+  };
+}
+
+/** Decorate an existing live handle without introducing another lifecycle guard. */
+export function composeWorkflowExecution({
+  driver: execution,
+  middleware = [],
+}: OperationOptions<WorkflowExecution, Required<WorkflowExecution>>): WorkflowExecution {
+  return {
+    // CONDITIONAL-SPREAD: Preserve optional inspection without inventing support.
+    ...(execution.inspect
+      ? {
+          inspect: composeOperation(
+            () => execution.inspect!(),
+            middleware.map((m) => m.inspect),
+          ),
+        }
+      : {}),
+    resume: composeOperation(
+      (id, reply) => execution.resume(id, reply),
+      middleware.map((m) => m.resume),
+    ),
+    cancel: composeOperation(
+      (reason) => execution.cancel(reason),
+      middleware.map((m) => m.cancel),
+    ),
+    dispose: composeOperation(
+      () => execution.dispose(),
+      middleware.map((m) => m.dispose),
+    ),
+    capture: composeOperation(
+      () => execution.capture(),
+      middleware.map((m) => m.capture),
     ),
   };
 }

@@ -17,7 +17,7 @@ export interface LuaProgramOptions {
   bindings?: readonly WorkflowBinding[];
   runtimeOptions?: Omit<WorkflowRuntimeOptions, "driver">;
 }
-type LuaObserver = Parameters<typeof createLuaKernel>[1];
+type RuntimeMiddleware = Pick<WorkflowRuntimeOptions, "kernelMiddleware" | "executionMiddleware">;
 
 export function createLuaProgram(
   {
@@ -36,24 +36,32 @@ export function createLuaProgram(
     throw Error("Incompatible Lua implementation");
   }
   const bundle = createKernelProgramBundle(implementation, luaIdentity, contract, bindings);
-  function runtime(observe?: LuaObserver) {
+  function runtime(options: RuntimeMiddleware = {}) {
     return createWorkflowRuntime({
       ...runtimeOptions,
+      kernelMiddleware: [
+        ...(runtimeOptions.kernelMiddleware ?? []),
+        ...(options.kernelMiddleware ?? []),
+      ],
+      executionMiddleware: [
+        ...(runtimeOptions.executionMiddleware ?? []),
+        ...(options.executionMiddleware ?? []),
+      ],
       driver: {
         kernelIdentity: luaIdentity,
         *createKernel() {
-          return createLuaKernel(invoke, observe);
+          return createLuaKernel(invoke);
         },
       },
     });
   }
   return {
     ...bundle,
-    createKernel: (observe?: LuaObserver) => runtime(observe).createKernel(),
-    createDriver(observe?: LuaObserver) {
+    createKernel: (options?: RuntimeMiddleware) => runtime(options).createKernel(),
+    createDriver(options?: RuntimeMiddleware) {
       return createKernelProgram({
         bundle,
-        runtime: runtime(observe),
+        runtime: runtime(options),
         bindOperation,
       }).createDriver();
     },

@@ -13,6 +13,7 @@ import {
   type WorkflowKernel,
   type WorkflowProgram,
   type WorkflowRuntime,
+  type WorkflowInspection,
 } from "@sweatpants/flowmode-runtime";
 
 export const luaIdentity: KernelIdentity = Object.freeze({
@@ -33,10 +34,7 @@ export function createLuaRuntime(invoke: LuaInvoker): WorkflowRuntime {
 }
 
 /** Portable Lua kernel. Snapshots must come from trusted kernel persistence. */
-export function createLuaKernel(
-  invoke: LuaInvoker,
-  observe: (event: string, data?: Record<string, unknown>) => void = () => {},
-): WorkflowKernel {
+export function createLuaKernel(invoke: LuaInvoker): WorkflowKernel {
   let closed = false,
     used = false,
     busy = false,
@@ -122,7 +120,6 @@ export function createLuaKernel(
       const next = decodeBoundary(result.boundary, preserve);
       state = result;
       current = next;
-      observe(action, { boundary: next, inspection: inspectLua(result, next) });
       finished = true;
       return next;
     } finally {
@@ -145,6 +142,10 @@ export function createLuaKernel(
     used = true;
   }
   const driver = {
+    *inspect() {
+      idle();
+      return inspectLua(state, current);
+    },
     *turn(command: Parameters<Parameters<typeof createKernelExecution>[0]["driver"]["turn"]>[0]) {
       if (command.kind === "cancel") {
         return yield* transition("cancel", {
@@ -193,7 +194,7 @@ export function createLuaKernel(
   });
 }
 
-function inspectLua(state: LuaState, boundary: WorkflowBoundary) {
+function inspectLua(state: LuaState, boundary: WorkflowBoundary): WorkflowInspection {
   const vm = state.vm as { frames?: Record<string, Json>[] } | null;
   const frames = (vm?.frames ?? []).map((frame, index) => ({
     index,

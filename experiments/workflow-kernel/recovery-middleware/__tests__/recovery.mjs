@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "../../lifecycle.mts";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import {
@@ -106,7 +107,7 @@ function* recoverAndClose(input = request) {
 }
 
 await run(function* () {
-  const driver = createHootDriver((event) => events.push(event));
+  const driver = createHootDriver(lifecycleEvents(events));
   yield* ProgramDriverRegistryContext.set(new Map([["hoot-composition", driver]]));
 
   // Default uses complete history despite an available checkpoint.
@@ -220,7 +221,7 @@ events.length = 0;
 await assert.rejects(
   run(function* () {
     yield* ProgramDriverRegistryContext.set(
-      new Map([["hoot-composition", createHootDriver((event) => events.push(event))]]),
+      new Map([["hoot-composition", createHootDriver(lifecycleEvents(events))]]),
     );
     yield* installProgramCheckpointAcceleration(acceleration);
     yield* recoverProgram({ ...request, checkpoint: { ...checkpoint, state: null } });
