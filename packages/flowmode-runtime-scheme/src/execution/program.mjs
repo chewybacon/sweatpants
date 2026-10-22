@@ -1,17 +1,13 @@
 import { decodeExchange } from "@sweatpants/flowmode-runtime";
 import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
-import {
-  createKernelProgramBackend,
-  createKernelProgramBundle,
-  loadKernelProgram,
-} from "@sweatpants/flowmode-backend";
+import { createKernelProgram, createKernelProgramBundle } from "@sweatpants/flowmode-backend";
 import {
   assertKernelCompatibility,
   createKernelExecution,
   createWorkflowKernel,
+  createWorkflowRuntime,
 } from "@sweatpants/flowmode-runtime";
 import { CrankError } from "@sweatpants/durable-execution";
-import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
 import { call } from "effection";
 function kernel(observe, source, digest, loadMachine, identity) {
   let machine = null,
@@ -120,14 +116,14 @@ function kernel(observe, source, digest, loadMachine, identity) {
     },
   });
 }
-/** @typedef {{ source: string, contract: Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">, bindOperation: import("@sweatpants/flowmode-backend").KernelProgramBackendOptions["bindOperation"], bindings?: readonly import("@sweatpants/flowmode-runtime").WorkflowBinding[] }} HootProgramOptions */
+/** @typedef {{ source: string, contract: Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">, bindOperation: import("@sweatpants/flowmode-backend").KernelProgramBackendOptions["bindOperation"], bindings?: readonly import("@sweatpants/flowmode-runtime").WorkflowBinding[], runtimeOptions?: Omit<import("@sweatpants/flowmode-runtime").WorkflowRuntimeOptions, "driver"> }} HootProgramOptions */
 /** @typedef {{ loadMachine: () => Promise<ReturnType<typeof import("./machine-api.mjs").machineApi>>, identity: import("@sweatpants/flowmode-runtime").KernelIdentity }} HootKernelDependencies */
 /** @typedef {(event: string, data?: Record<string, unknown>) => void} HootObserver */
 /** @param {HootProgramOptions} options
  * @param {HootKernelDependencies} dependencies
  */
 export function createPortableHootProgram(
-  { source, contract, bindOperation, bindings = [] },
+  { source, contract, bindOperation, bindings = [], runtimeOptions = {} },
   { loadMachine, identity },
 ) {
   if (identity.programFormat !== HOOT_PROGRAM_FORMAT) {
@@ -139,40 +135,29 @@ export function createPortableHootProgram(
     contract,
     bindings,
   );
-  const { manifest, artifact } = bundle;
-  const digest = artifact.digest;
+  /** @param {HootObserver} [observe] */
+  function runtime(observe = () => {}) {
+    return createWorkflowRuntime({
+      ...runtimeOptions,
+      driver: {
+        kernelIdentity: identity,
+        *createKernel() {
+          return kernel(observe, source, bundle.artifact.digest, loadMachine, identity);
+        },
+      },
+    });
+  }
   return {
-    manifest,
-    artifact,
+    ...bundle,
     /** @param {HootObserver} [observe] */
-    createKernel(observe = () => {}) {
-      return kernel(observe, source, digest, loadMachine, identity);
-    },
+    createKernel: (observe) => runtime(observe).createKernel(),
     /** @param {HootObserver} [observe] */
-    createDriver(observe = () => {}) {
-      const driver = createWorkflowProgramDriver(
-        createKernelProgramBackend({
-          *manifest(program) {
-            if (program.digest !== digest) {
-              throw Error("Manifest unavailable");
-            }
-            loadKernelProgram(bundle, program.digest);
-            return structuredClone(manifest);
-          },
-          kernelIdentity: identity,
-          *createKernel() {
-            return kernel(observe, source, digest, loadMachine, identity);
-          },
-          *loadProgram(requested) {
-            if (requested !== digest) {
-              throw Error("Program unavailable");
-            }
-            return loadKernelProgram(bundle, requested);
-          },
-          bindOperation,
-        }),
-      );
-      return driver;
+    createDriver(observe) {
+      return createKernelProgram({
+        bundle,
+        runtime: runtime(observe),
+        bindOperation,
+      }).createDriver();
     },
   };
 }

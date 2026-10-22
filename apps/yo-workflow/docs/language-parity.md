@@ -96,6 +96,15 @@ replace the compiled artifact with a handwritten equivalent. Browser validation
 must restore at both suspension points, observe an empty outbox during cleanup,
 and verify one host receipt after release.
 
+`src/__tests__/execution-composition.acceptance.test.ts` drives the public
+Execution service through Test Rig's in-process and HTTP bindings. Both languages
+retain approval and cleanup across service replacement with the journal and
+serialized app state preserved, settle cancellation, and produce one host receipt
+only after cleanup release. The same suite verifies operation middleware observes
+fresh and restored executions. Its fixture compiles the real SDK developer tool
+through the public compiler packages; it supplies deterministic caller source,
+not a model-authoring or browser-validation claim.
+
 ### Execution browser evidence, 2026-10-20
 
 Local Cloudflare/workerd with the `ExecutionLab` Durable Object and D1, real OpenCode

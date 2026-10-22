@@ -1147,6 +1147,15 @@ importers:
       '@sweatpants/cloudflare-tasks':
         specifier: workspace:*
         version: link:../../packages/cloudflare-tasks
+      '@sweatpants/flowmode-compiler':
+        specifier: workspace:*
+        version: link:../../packages/flowmode-compiler
+      '@sweatpants/flowmode-compiler-lua':
+        specifier: workspace:*
+        version: link:../../packages/flowmode-compiler-lua
+      '@sweatpants/flowmode-compiler-scheme':
+        specifier: workspace:*
+        version: link:../../packages/flowmode-compiler-scheme
       '@sweatpants/test-rig':
         specifier: workspace:*
         version: link:../../packages/test-rig
@@ -1900,9 +1909,6 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
       effection:
         specifier: 4.2.0
         version: 4.2.0
@@ -1940,13 +1946,13 @@ importers:
       '@sweatpants/foundation':
         specifier: workspace:*
         version: link:../foundation
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
       effection:
         specifier: 4.2.0
         version: 4.2.0
     devDependencies:
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../journal-authority
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config

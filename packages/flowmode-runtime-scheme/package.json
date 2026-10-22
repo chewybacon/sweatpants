@@ -116,10 +116,10 @@
     "@sweatpants/flowmode-compiler": "workspace:*",
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
-    "@sweatpants/journal-authority": "workspace:*",
     "effection": "catalog:"
   },
   "devDependencies": {
+    "@sweatpants/journal-authority": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",

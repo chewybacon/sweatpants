@@ -41,7 +41,7 @@ test("durable-tool replay reconstructs accepted compute without calling the eval
     *approveComputation() {
       throw Error("Unexpected approval");
     },
-    *executeCapability() {
+    *exchange() {
       throw Error("Unexpected capability");
     },
   };
@@ -72,7 +72,7 @@ test("evaluator failure becomes a recorded diagnostic and remains observable on 
     *approveComputation() {
       throw Error("Unexpected approval");
     },
-    *executeCapability() {
+    *exchange() {
       throw Error("Unexpected capability");
     },
   };
@@ -96,4 +96,52 @@ test("evaluator failure becomes a recorded diagnostic and remains observable on 
     return yield* runLuaReplay({ ...options, context: recorded(values) });
   });
   assert.deepEqual(replay, result);
+});
+
+test("capability replies resume the guest with stable invocation identity and effect order", async () => {
+  const requests: unknown[] = [];
+  const result = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
+    return yield* runLuaReplay({
+      source: `local first = workflow.effect("first", {name="first", input=7})
+        return workflow.effect("second", {name="second", input=first})`,
+      context: recorded(new Map()),
+      fuelPolicy: luaFuelPolicy,
+      *approveComputation() {
+        throw Error("Unexpected approval");
+      },
+      *exchange({ capability: request, completedEffects: count, invocationId }) {
+        requests.push({ request, count, invocationId });
+        return { kind: "resume", value: count === 0 ? "accepted" : "done" };
+      },
+    });
+  });
+  assert.equal(result, "done");
+  assert.deepEqual(requests, [
+    { request: { name: "first", input: 7 }, count: 0, invocationId: "invocation-1" },
+    { request: { name: "second", input: "accepted" }, count: 1, invocationId: "invocation-1" },
+  ]);
+});
+
+test("a capability stop returns the adapter result without advancing to another effect", async () => {
+  const requests: string[] = [];
+  const stopped = { status: "failed", diagnostic: { message: "Request rejected" } };
+  const result = await run(function* () {
+    yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
+    return yield* runLuaReplay({
+      source: `workflow.effect("first", {name="first", input=false})
+        return workflow.effect("sentinel", {name="sentinel", input=true})`,
+      context: recorded(new Map()),
+      fuelPolicy: luaFuelPolicy,
+      *approveComputation() {
+        throw Error("Unexpected approval");
+      },
+      *exchange({ capability: request }) {
+        requests.push(request.name);
+        return { kind: "stop", result: stopped };
+      },
+    });
+  });
+  assert.deepEqual(result, stopped);
+  assert.deepEqual(requests, ["first"]);
 });

@@ -1,5 +1,9 @@
-import type { WorkflowKernel } from "./index.ts";
-import { composeOperation, type OperationOptions } from "@sweatpants/foundation";
+import type { WorkflowKernel, WorkflowExecutionState } from "./index.ts";
+import {
+  composeOperation,
+  type OperationMiddleware,
+  type OperationOptions,
+} from "@sweatpants/foundation";
 import type {
   WorkflowCompiler,
   WorkflowLinker,
@@ -16,10 +20,13 @@ export type WorkflowAuthoringOptions = OperationOptions<
   WorkflowAuthoring,
   Pick<WorkflowAuthoring, "describe">
 >;
-export type WorkflowRuntimeOptions = OperationOptions<
+export interface WorkflowRuntimeOptions extends OperationOptions<
   WorkflowRuntime,
   Pick<WorkflowRuntime, "createKernel">
->;
+> {
+  readonly kernelMiddleware?: WorkflowKernelOptions["middleware"];
+  readonly executionMiddleware?: WorkflowKernelOptions["executionMiddleware"];
+}
 
 export function createWorkflowCompiler({
   driver,
@@ -65,33 +72,75 @@ export function createWorkflowAuthoring({
 export function createWorkflowRuntime({
   driver,
   middleware = [],
+  kernelMiddleware = [],
+  executionMiddleware = [],
 }: WorkflowRuntimeOptions): WorkflowRuntime {
   return {
     kernelIdentity: driver.kernelIdentity,
     createKernel: composeOperation(
-      () => driver.createKernel(),
+      function* () {
+        return createWorkflowKernel({
+          driver: yield* driver.createKernel(),
+          middleware: kernelMiddleware,
+          executionMiddleware,
+        });
+      },
       middleware.map((m) => m.createKernel),
     ),
   };
 }
 
-export type WorkflowKernelOptions = OperationOptions<
+export interface WorkflowKernelOptions extends OperationOptions<
   WorkflowKernel,
   Pick<WorkflowKernel, "start" | "restore" | "close">
->;
+> {
+  readonly executionMiddleware?: readonly OperationMiddleware<
+    WorkflowExecutionState["execution"]
+  >[];
+}
 
 export function createWorkflowKernel({
   driver,
   middleware = [],
+  executionMiddleware = [],
 }: WorkflowKernelOptions): WorkflowKernel {
+  function decorate(state: WorkflowExecutionState): WorkflowExecutionState {
+    const execution = state.execution;
+    return {
+      boundary: state.boundary,
+      // Decorate the existing live handle; do not create a second lifecycle guard.
+      execution: {
+        resume: composeOperation(
+          (id, reply) => execution.resume(id, reply),
+          executionMiddleware.map((m) => m.resume),
+        ),
+        cancel: composeOperation(
+          (reason) => execution.cancel(reason),
+          executionMiddleware.map((m) => m.cancel),
+        ),
+        dispose: composeOperation(
+          () => execution.dispose(),
+          executionMiddleware.map((m) => m.dispose),
+        ),
+        capture: composeOperation(
+          () => execution.capture(),
+          executionMiddleware.map((m) => m.capture),
+        ),
+      },
+    };
+  }
   return {
     identity: driver.identity,
     start: composeOperation(
-      (program, input) => driver.start(program, input),
+      function* (program, input) {
+        return decorate(yield* driver.start(program, input));
+      },
       middleware.map((m) => m.start),
     ),
     restore: composeOperation(
-      (program, snapshot) => driver.restore(program, snapshot),
+      function* (program, snapshot) {
+        return decorate(yield* driver.restore(program, snapshot));
+      },
       middleware.map((m) => m.restore),
     ),
     close: composeOperation(

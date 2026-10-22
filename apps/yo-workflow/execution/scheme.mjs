@@ -1,4 +1,6 @@
-import { createWorkflowGuidance } from "../../../packages/flowmode-runtime/dist/index.js";
+import { createWorkflowGuidance } from "@sweatpants/flowmode-runtime";
+/** @param {ReturnType<typeof import("@sweatpants/flowmode-runtime-scheme/execution/authoring").createHootAuthoring>} authoring
+ * @param {import("@sweatpants/flowmode-runtime").CompiledWorkflow} reviewDraft */
 export function schemeStack(authoring, reviewDraft) {
   return {
     ...authoring,

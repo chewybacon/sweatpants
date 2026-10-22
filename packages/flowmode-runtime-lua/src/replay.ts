@@ -1,22 +1,29 @@
 import { call, type Operation } from "effection";
-import { assertJson, type Json } from "@sweatpants/foundation";
+import { assertJson, type Json, type Exchange } from "@sweatpants/foundation";
 import type { DurableProgramContext } from "@sweatpants/durable-execution";
 import { z } from "zod";
 import { LuaEvaluationPort, type LuaCommand } from "./evaluation.ts";
 import { encodeLuaCheckpoint, decodeLuaCheckpoint } from "./checkpoint.ts";
 import { resolveLuaFuelPolicy, type LuaFuelPolicy } from "./fuel.ts";
 
+export interface ReplayCapabilityRequest {
+  readonly capability: { readonly name: string; readonly input: Json };
+  readonly completedEffects: number;
+  readonly invocationId: string;
+}
+
+/** Stop returns the adapter result; it does not assert guest completion or cleanup. */
+export type ReplayCapabilityReply =
+  | { readonly kind: "resume"; readonly value: Json }
+  | { readonly kind: "stop"; readonly result: Json };
+
 export interface LuaReplayOptions {
   source: string;
   input?: Json;
   fuelPolicy: LuaFuelPolicy;
   context: Pick<DurableProgramContext, "record">;
-  approveComputation(callId: string): Operation<boolean>;
-  executeCapability(
-    request: { name: string; input: Json },
-    count: number,
-    invocationId: string,
-  ): Operation<{ ok: true; value: Json } | { ok: false; result: Json }>;
+  approveComputation: Exchange<string, boolean>;
+  exchange: Exchange<ReplayCapabilityRequest, ReplayCapabilityReply>;
 }
 
 /** Journaled compute slices support durable-tool replay, not authority continuation checkpoints.
@@ -143,8 +150,12 @@ export function* runLuaReplay(options: LuaReplayOptions): Operation<Json> {
     if (boundary.kind !== "suspended" || !boundary.request) {
       throw new Error("Unexpected Lua boundary");
     }
-    const effect = yield* options.executeCapability(boundary.request.request, count, invocationId);
-    if (!effect.ok) {
+    const effect = yield* options.exchange({
+      capability: boundary.request.request,
+      completedEffects: count,
+      invocationId,
+    });
+    if (effect.kind === "stop") {
       return effect.result;
     }
     const value = effect.value;

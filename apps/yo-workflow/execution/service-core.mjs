@@ -1,26 +1,26 @@
-import { createWorkflowBindingResolver } from "../../../packages/flowmode-backend/dist/index.js";
-import { requireCompiledWorkflow } from "../../../packages/flowmode-runtime/dist/index.js";
+import { createWorkflowBindingResolver } from "@sweatpants/flowmode-backend";
+import { requireCompiledWorkflow } from "@sweatpants/flowmode-runtime";
 import { callerContract } from "./contracts.mts";
 import {
   createJournal,
   createMemoryExecutionStore,
   createCapabilityKeyring,
   driveProgramDriverActivation,
-} from "../../../packages/journal-authority/dist/index.js";
+} from "@sweatpants/journal-authority";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR as schema,
   ProgramDriverRegistryContext,
-} from "../../../packages/durable-execution/dist/index.js";
+} from "@sweatpants/durable-execution";
 import {
   defineDurableEffect,
   createDurableEffectRegistration,
-} from "../../../packages/durable-effects/dist/authoring.js";
+} from "@sweatpants/durable-effects/authoring";
 import {
   DurableEffectRegistryContext,
   createDurableEffectRegistry,
   DurableEffects,
   ProgramPlacementContext,
-} from "../../../packages/durable-effects/dist/index.js";
+} from "@sweatpants/durable-effects";
 const sendDefinition = defineDurableEffect({
   name: "send_announcement",
   version: "1",
@@ -47,7 +47,7 @@ export function executionServiceFactory(stacks) {
     try {
       return await run(function* () {
         const program = yield* buildProgram(source, language);
-        const kernel = program.createKernel();
+        const kernel = yield* program.createKernel();
         try {
           // Preflight runs through the same kernel seam without dispatching effects.
           const { boundary } = yield* kernel.start(program.artifact, confirmationInput);
@@ -175,6 +175,15 @@ export function executionServiceFactory(stacks) {
 
   // Local playground composition over production journal/driver APIs. No test transport
   // or model simulator: the developer fixture is run directly and the UI supplies replies.
+  /** @param {{
+   * author?: (prompt: string, language: string) => Promise<string>,
+   * persistence?: {
+   *   load(id: string): Promise<Record<string, unknown> | undefined>,
+   *   save(id: string, value: Record<string, unknown>): Promise<void>
+   * },
+   * storeFactory?: typeof createMemoryExecutionStore,
+   * secret?: string
+   * }} [options] */
   function createExecutionService({
     author,
     persistence,
@@ -364,7 +373,7 @@ export function executionServiceFactory(stacks) {
                       throw Error("No accepted checkpoint is available");
                     }
                     trace(session, "host.restore-requested");
-                    const kernel = program.createKernel((kind, data) =>
+                    const kernel = yield* program.createKernel((kind, data) =>
                       observe(session, kind, data),
                     );
                     try {
