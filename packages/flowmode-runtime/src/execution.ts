@@ -1,5 +1,8 @@
+import type { WorkflowInspection } from "./inspection.ts";
+import type { Operation } from "effection";
 import {
   createCheckpointExecution,
+  composeOperation,
   assertJson,
   definePort,
   type ExecutionDriver,
@@ -21,11 +24,13 @@ import type {
 export interface WorkflowExecutionDriver
   extends
     ExecutionDriver<ExchangeRequest, ExchangeReply, Json, Json>,
-    Checkpointing<KernelSnapshot> {}
+    Checkpointing<KernelSnapshot> {
+  inspect?(): Operation<WorkflowInspection>;
+}
 
 export interface WorkflowExecutionOptions extends OperationOptions<
   WorkflowExecutionDriver,
-  WorkflowExecution
+  Required<WorkflowExecution>
 > {
   readonly initial: WorkflowBoundary;
 }
@@ -36,7 +41,7 @@ export function createKernelExecution({
   driver,
   middleware,
 }: WorkflowExecutionOptions): WorkflowExecutionState {
-  return createCheckpointExecution({
+  const state = createCheckpointExecution({
     initial,
     middleware,
     validateReply: (request, reply) => driver.validateReply?.(request, reply),
@@ -51,6 +56,24 @@ export function createKernelExecution({
       },
     },
   });
+  return {
+    ...state,
+    execution: {
+      ...state.execution,
+      // CONDITIONAL-SPREAD: Absence distinguishes unsupported inspection from failure.
+      ...(driver.inspect
+        ? {
+            inspect: composeOperation(
+              function* () {
+                const inspection = yield* driver.inspect!();
+                return structuredClone(inspection);
+              },
+              (middleware ?? []).map((m) => m.inspect),
+            ),
+          }
+        : {}),
+    },
+  };
 }
 
 /** Both fresh and recovered startups return the same snapshot-capable live handle. */

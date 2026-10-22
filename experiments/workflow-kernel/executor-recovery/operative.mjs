@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "../lifecycle.mts";
 // Isolated composition experiment. The caller supplies a trusted recovery plan;
 // this is not a network authorization or journal-admission implementation.
 import { resource, createQueue, spawn, withResolvers } from "effection";
@@ -28,7 +29,7 @@ function boundary(step) {
 export function connectHoot() {
   return resource(function* (provide) {
     const events = [];
-    const driver = createHootDriver((event) => events.push(event));
+    const driver = createHootDriver(lifecycleEvents(events));
     yield* ProgramDriverRegistryContext.set(new Map([["hoot-composition", driver]]));
     yield* installProgramCheckpointAcceleration({
       driverKind: "hoot-composition",

@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "./fixtures/lifecycle.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
@@ -171,7 +172,7 @@ for (const mode of ["success", "invalid-input", "host-denied"]) {
     const events = [];
     function* advance() {
       return yield* ProgramDriverRegistryContext.with(
-        new Map([["hoot-composition", program.createDriver((e) => events.push(e))]]),
+        new Map([["hoot-composition", program.createDriver(lifecycleEvents(events))]]),
         function* () {
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* driveTestProgramTree(

@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "./fixtures/lifecycle.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHootDriver, manifest } from "./fixtures/fixture-driver.mjs";
@@ -37,7 +38,7 @@ for (const cancel of [false, true]) {
     let cancelled = false,
       finished = false;
     for (let i = 0; i < 5; i++) {
-      const driver = createHootDriver((event) => events.push(event));
+      const driver = createHootDriver(lifecycleEvents(events));
       const result = yield* ProgramDriverRegistryContext.with(
         new Map([["hoot-composition", driver]]),
         function* () {

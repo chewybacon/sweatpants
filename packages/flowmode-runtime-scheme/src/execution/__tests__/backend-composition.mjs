@@ -1,3 +1,4 @@
+import { lifecycleEvents } from "./fixtures/lifecycle.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHootProgram } from "../driver.mts";
@@ -86,7 +87,7 @@ await run(function* () {
   function* advance() {
     return yield* ProgramDriverRegistryContext.with(
       new Map([
-        ["hoot-composition", parent.createDriver((event) => events.push(event))],
+        ["hoot-composition", parent.createDriver(lifecycleEvents(events))],
         ["generator", createWorkflowProgramDriver(createDurableToolRegistry([child]))],
       ]),
       function* () {

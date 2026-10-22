@@ -90,6 +90,14 @@ DurableTool export remains distinct from those compiled artifacts.
 | Lexical environments and scope/unwind projection | Supported | Not implemented | `ExecutionInspection.availability`; Lua explicitly reports unavailable |
 | Scoped scheduler and durable timers | Not integrated | Not integrated | Separate `scoped-handoffs` experiment; timer driver not implemented |
 
+Execution lifecycle traces use kernel/execution middleware for both languages
+(`execution/diagnostics.mts`). The shared runtime composes middleware around the
+existing live handle; adapters no longer emit observer callbacks. Optional
+`execution.inspect()` supplies detached evaluator diagnostics on demand. Scheme
+projects its machine snapshot; Lua projects portable state and continues to mark
+lexical environments and unwind inspection unavailable. Middleware failures
+propagate; diagnostics never authorize checkpoint restoration.
+
 For changes here, run `pnpm -C apps/yo-workflow execution:test` as well as app checks.
 Retain the same developer source and public tool contracts across languages; do not
 replace the compiled artifact with a handwritten equivalent. Browser validation

@@ -62,3 +62,27 @@ export type InspectedUnwind =
       readonly completion: PendingCompletion;
     }
   | { readonly kind: "finally"; readonly completion: PendingCompletion };
+
+/** Evaluator-specific debug detail alongside the portable execution projection. */
+export interface WorkflowInspection {
+  readonly execution: ExecutionInspection;
+  readonly mode: string;
+  readonly site: string | null;
+  readonly steps: number | null;
+  readonly snapshotBytes: number;
+  readonly cancellationRequested: boolean;
+  readonly currentEnvironment: number | null;
+  readonly calls: readonly (string | undefined)[];
+  readonly frames: readonly { index: number; kind: string | undefined; detail: string }[];
+  readonly environments: readonly {
+    id: number;
+    parent: number | null;
+    bindings: readonly { name: string; value: string }[];
+  }[];
+  readonly cleanups: readonly {
+    kind: string;
+    scope: string | null;
+    remaining: readonly string[];
+    completion: string | null;
+  }[];
+}
