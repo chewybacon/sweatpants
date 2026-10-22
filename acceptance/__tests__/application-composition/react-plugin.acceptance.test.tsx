@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { call, spawn } from "effection";
 import { createChatApp } from "@sweatpants/agent-host/server";
@@ -5,8 +6,10 @@ import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { withTestScenario, type TestApplicationFactoryContext } from "@sweatpants/test-rig";
 import { bookTrip } from "../../fixtures/book-trip.ts";
-import { tripPlugin } from "../../fixtures/trip-chat.tsx";
+import { confirmedTrip } from "../../fixtures/confirmed-trip.ts";
+import { tripPlugin, confirmedTripPlugin } from "../../fixtures/trip-chat.tsx";
 import { useUI } from "../../support/ui.tsx";
+import { createControlledScheduler } from "../../support/controlled-scheduler.ts";
 import { testToolRuntime } from "../../support/test-tool-runtime.ts";
 
 function createApplication(context: TestApplicationFactoryContext) {
@@ -14,7 +17,7 @@ function createApplication(context: TestApplicationFactoryContext) {
     name: "react-plugin-example",
     secret: "react-plugin-example-secret-at-least-32-bytes",
     storage: { kind: "memory" },
-    tools: [bookTrip],
+    tools: [bookTrip, confirmedTrip],
     basePath: "/assistant/chat",
     model: {
       model: context.model.model,
@@ -378,6 +381,152 @@ describe("application composition with authored React plugins over HTTP", () => 
       expect(resumed.client.getSnapshot().error).toBeNull();
       expect(resumed.client.getSnapshot().authority?.state).toBe("idle");
       expect(rig.model.requests()).toHaveLength(4);
+    });
+  });
+
+  it("authors two local renders for one elicitation and validates the final response", async () => {
+    await withTestScenario(rigOptions, function* (rig) {
+      // Arrange: author a plugin with two UI steps and a Markdown pipeline.
+      const aguiStart = rig.agui.mark();
+      using ui = yield* useUI(rig, { plugins: [confirmedTripPlugin], pipeline: "markdown" });
+
+      // Act: ask the model to invoke the tool with a single typed elicitation.
+      const send = yield* ui.waitForEnabledButton("Book trip");
+      send.click();
+      const request = yield* rig.model.request();
+      expect(JSON.stringify(request.body.tools)).toContain("confirm_trip");
+      yield* request.respond.toolCalls([
+        { id: "confirmation", name: "confirm_trip", arguments: { route: "NYC-LAX" } },
+      ]);
+
+      // Assert: the first render receives the tool's context and message.
+      const flight = yield* ui.waitForEnabledButton("FL-1");
+      expect(ui.getByRole("region", { name: "Choose a flight for NYC-LAX" })).toBeTruthy();
+      expect(ui.getByRole("button", { name: "FL-2" })).toBeTruthy();
+      const flightRender = flight.closest("[data-render-id]");
+      const flightId = flightRender?.getAttribute("data-render-id");
+      const elicitId = flightRender?.getAttribute("data-elicit-id");
+      expect(flightId).toBeTruthy();
+      expect(elicitId).toBeTruthy();
+
+      // Act: complete the first local step without answering the server elicitation.
+      flight.click();
+      const confirm = yield* ui.waitForEnabledButton("Confirm");
+      const confirmationRender = confirm.closest("[data-render-id]");
+      const confirmationId = confirmationRender?.getAttribute("data-render-id");
+
+      // Assert: the first render completes in place while the same elicitation stays pending.
+      expect(flightRender?.getAttribute("data-render-id")).toBe(flightId);
+      expect(flightRender?.getAttribute("data-render-state")).toBe("completed");
+      expect(confirmationId).toBeTruthy();
+      expect(confirmationId).not.toBe(flightId);
+      expect(confirmationRender?.getAttribute("data-elicit-id")).toBe(elicitId);
+      expect(ui.getByRole("region", { name: "Confirm FL-1" })).toBeTruthy();
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"pending"');
+      expect(rig.model.requests()).toHaveLength(1);
+      expect(() => JSON.stringify(ui.client.getServerSnapshot())).not.toThrow();
+      expect(JSON.stringify(ui.client.getServerSnapshot())).not.toContain('"type":"render"');
+
+      // Act: submit the plugin's final response through the second render.
+      confirm.click();
+      const final = yield* rig.model.request();
+
+      // Assert: response-schema transformation runs before the tool result reaches the model.
+      const input = final.body.input;
+      if (!Array.isArray(input)) {
+        throw new Error("Expected provider wire input messages");
+      }
+      const result = input.find(
+        (message: Record<string, unknown>) =>
+          message["type"] === "function_call_output" && message["call_id"] === "confirmation",
+      );
+      expect(result).toMatchObject({ call_id: "confirmation", output: expect.any(String) });
+      expect(JSON.parse(String(result?.["output"]))).toEqual({
+        confirmed: true,
+        marker: "CONFIRMED_TRIP",
+        normalized: true,
+        route: "NYC-LAX",
+        selected: "FL-1",
+      });
+      expect(confirmationRender?.getAttribute("data-render-id")).toBe(confirmationId);
+      expect(confirmationRender?.getAttribute("data-render-state")).toBe("completed");
+      expect(ui.getByRole<HTMLButtonElement>("button", { name: "Book trip" }).disabled).toBe(true);
+      expect(["submitted", "streaming"]).toContain(ui.client.getSnapshot().status);
+      const finalRun = rig.agui.mark();
+
+      // Act: finish the outer response using Markdown.
+      yield* final.respond.text("**Confirmed booking**");
+      const answer = yield* ui.waitForText("Confirmed booking");
+      yield* ui.waitForEnabledButton("Book trip");
+
+      // Assert: the public hook renders Markdown and settles all local steps.
+      expect(answer.tagName).toBe("STRONG");
+      expect(ui.client.getSnapshot().error).toBeNull();
+      expect(ui.client.getSnapshot().status).toBe("ready");
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).not.toContain('"state":"pending"');
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"completed"');
+      yield* rig.agui.event("RUN_FINISHED", { after: finalRun });
+      rig.agui.assertConformant({ after: aguiStart });
+      const snapshots = rig.agui
+        .events(aguiStart)
+        .filter((event) => event.type === EventType.MESSAGES_SNAPSHOT);
+      expect(
+        snapshots.every((event) => event.messages.every((message) => message.role !== "system")),
+      ).toBe(true);
+      expect(rig.model.requests()).toHaveLength(2);
+    });
+  });
+
+  it("buffers protocol deltas until the authored scheduler releases one client pull", async () => {
+    await withTestScenario(rigOptions, function* (rig) {
+      // Arrange: install a controllable scheduler through public client configuration.
+      const scheduler = createControlledScheduler();
+      using ui = yield* useUI(rig, {
+        plugins: [],
+        scheduler: scheduler.driver,
+        pipeline: "markdown",
+      });
+
+      // Act: start a stream and release three provider deltas without a client tick.
+      const send = yield* ui.waitForEnabledButton("Book trip");
+      send.click();
+      const request = yield* rig.model.request();
+      const stream = yield* request.respond.textStream(["BUFFERED_", "TOKEN_", "BATCH"]);
+      for (const delta of ["BUFFERED_", "TOKEN_", "BATCH"]) {
+        const after = rig.agui.mark();
+        yield* stream.releaseNext();
+        const event = yield* rig.agui.event("TEXT_MESSAGE_CONTENT", { after });
+        expect(event).toMatchObject({ delta });
+      }
+
+      // Assert: the protocol delivered every delta, but the client has not projected them.
+      yield* scheduler.reached(1);
+      expect(scheduler.pullCount).toBe(1);
+      expect(scheduler.releasedTickCount).toBe(0);
+      expect(ui.queryByText("BUFFERED_TOKEN_BATCH")).toBeNull();
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).not.toContain(
+        "BUFFERED_TOKEN_BATCH",
+      );
+
+      // Act: permit exactly one client pull.
+      yield* scheduler.release();
+
+      // Assert: one tick projects all three deltas together.
+      yield* ui.waitForText("BUFFERED_TOKEN_BATCH");
+      expect(scheduler.releasedTickCount).toBe(1);
+
+      // Act: finish the stream and release the terminal client tick.
+      const terminal = rig.agui.mark();
+      yield* stream.finish();
+      yield* rig.agui.event("RUN_FINISHED", { after: terminal });
+      yield* scheduler.reached(2);
+      yield* scheduler.release();
+
+      // Assert: the hook reaches ready with the complete text still visible.
+      yield* ui.waitForEnabledButton("Book trip");
+      expect(ui.client.getSnapshot().status).toBe("ready");
+      expect(ui.getByText("BUFFERED_TOKEN_BATCH")).toBeTruthy();
+      expect(rig.model.requests()).toHaveLength(1);
     });
   });
 

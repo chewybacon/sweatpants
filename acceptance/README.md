@@ -1,4 +1,4 @@
-# Public React application acceptance
+# Public framework acceptance
 
 Start iterating from
 [`react-plugin.acceptance.test.tsx`](./__tests__/application-composition/react-plugin.acceptance.test.tsx).
@@ -36,22 +36,28 @@ execution: local({
 ```text
 acceptance/
   __tests__/
-    application-composition/react-plugin.acceptance.test.tsx  # 8 authoring cases
+    application-composition/                               # public client/tool/plugin authoring
+    recovery/                                              # replay, replacement, disconnects
+    host-crash/                                             # real SIGKILL + SQLite recovery
     tool-runtimes/
       in-process/execution.acceptance.test.tsx                # actual host-thread execution
       local-worker/exchange.acceptance.test.tsx               # off-thread execution and exchanges
       local-worker/fixtures/tool-worker.{ts,mjs}
+      agentcore/                                             # deterministic remote driver contract
+      cloudflare/                                            # real local workerd + Durable Objects
   fixtures/
     book-trip.ts           # one definition used by either runtime and the plugin
-    trip-chat.tsx          # authored plugin and useChat component
+    trip-chat.tsx          # authored plugins and useChat component
+    confirmed-trip.ts     # two local steps, one transformed elicitation response
     execution-location.ts  # runtime placement probe
   support/
     test-tool-runtime.ts   # in-process execution adapter
     ui.tsx                # public client + example UI with scoped cleanup
     dom.tsx               # mounting, DOM readiness and cleanup
+    controlled-scheduler.ts # deterministic client pull release
 ```
 
-The eight authoring cases cover booking with flight/seat choices and nested
+The React suite’s ten authoring cases cover booking with flight/seat choices and nested
 sampling, streaming and follow-up history, stop and resend, provider-error
 recovery, authored decline/cancel responses, pending-choice interruption, and
 fresh-client recovery. The booking case also sends a successor after tool
@@ -59,20 +65,23 @@ completion and checks render identity and message states. Runtime suites add foc
 placement evidence without repeating the whole authoring matrix. The worker
 cases prove execution off the main thread, typed elicitation/sample/result
 exchange, cancellation of a parked invocation, and fresh-client recovery.
-They retain the worker guarantees of the migrated React lifecycle cases; they
-are not a complete worker-failure matrix.
+They also cover worker loss, durable attachment lifecycle, cancellation
+drainage, and indeterminate external effects. AgentCore has deterministic
+adapter conformance; Cloudflare uses real local workerd for Dynamic Workers
+and Durable Object session/replay contracts.
 
 ## Run
 
-From the repository root:
-
 ```sh
-pnpm -C acceptance test:authoring  # fast authoring loop
-pnpm -C acceptance test:runtimes   # focused placement contracts
-pnpm test:acceptance              # all 12 cases; also used by landing
+pnpm test:acceptance  # all authoring, recovery, runtime and host-crash cases
 pnpm check:acceptance
-pnpm -C acceptance test:watch __tests__/application-composition
 ```
+
+There are no separate public lane commands. During implementation a specific
+file can be passed directly to Vitest. The complete package remains the single
+acceptance command and is included in landing's package test stage.
+
+See [COVERAGE.md](./COVERAGE.md) for guarantees, exclusions and the deletion ledger.
 
 ## Test authoring
 
@@ -83,7 +92,7 @@ using ui = yield * useUI(rig, { plugins: [tripPlugin] });
 ```
 
 `useUI` creates the public client and mounts `TripChat`. It defaults to thread
-`trip` and API `/assistant`; both can be overridden. `using` unmounts the UI,
+`trip` and API `/assistant/chat`; both can be overridden. `using` unmounts the UI,
 and the Effection scope awaits client cleanup. The client is available as
 `ui.client` for direct observation.
 
@@ -94,8 +103,13 @@ The Test Rig conversation/turn facade is not used. DOM support waits on
 mutations without sleeps or polling loops; it does not send messages, click
 controls or assert behavior.
 
-Tests and workers resolve built package exports from `dist`; rebuild changed
-framework dependencies before running. These are deterministic HTTP/jsdom
+Cloudflare Worker fixtures have a separate typecheck to keep their runtime
+globals separate from React/Node fixtures. Both typechecks run through
+`pnpm check:acceptance`.
+
+Strict typechecks resolve `development` source exports, so they do not require
+a prior Test Rig build. Executable tests and workers resolve built exports from
+`dist`; rebuild changed framework dependencies before running. These are deterministic HTTP/jsdom
 acceptance checks, not browser-presentation or live-provider certification.
 
 ## First lifecycle migration
@@ -106,8 +120,24 @@ and a successful successor. Two further cases cover parked-choice interruption
 and recovery in a new client. The worker lane retains those lifecycle guarantees
 with real off-thread execution.
 
-These replace six binding-expanded lifecycle cases formerly in
-`packages/react-chat/acceptance/hook-state.acceptance.test.ts`. That file retains
-controlled scheduler batching and two protocol/plugin projection cases, including
-two local renders within one elicitation and response-schema transformation.
-StrictMode and rendering-pipeline coverage remain package-owned.
+The lifecycle cases replace six binding-expanded cases formerly in
+`packages/react-chat/acceptance/hook-state.acceptance.test.ts`. The second pass
+moves that file's remaining three cases here: controlled scheduler batching,
+and multi-step plugin projection with both in-process and worker execution.
+The projection cases verify two local renders within one elicitation, stable
+render identity, one final transformed response, Markdown rendering, and
+protocol conformance. The old hook harness, application and worker fixtures
+have been removed. StrictMode and rendering-pipeline tests remain package-owned.
+
+The in-process bridge uses each tool's authored elicitation input projection,
+matching the worker adapter. Response schemas with transforms therefore keep
+their declared wire shape and validate/transform the accepted result at runtime.
+
+## Host crash boundary
+
+[`__tests__/host-crash/`](./__tests__/host-crash/README.md) is the explicit home
+for application-process crash tests and their child-host fixtures. They
+kill a real host with `SIGKILL` and recover over retained SQLite storage.
+Graceful host replacement and tool-worker loss have separate ownership.
+The implemented crash test runs through `pnpm test:acceptance` with every other
+case. It observes actual effect executions across both process generations.

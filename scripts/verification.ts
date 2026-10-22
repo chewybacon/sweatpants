@@ -1,8 +1,5 @@
 export const acceptanceLanes = [
   { name: "memory", workers: 4 },
-  // This file starts real workers under a five-second contract. Keep cold
-  // startup out of competition with the other acceptance files.
-  { name: "tool-loop", workers: 1 },
   { name: "sqlite", workers: 1 },
   { name: "process", workers: 1 },
 ] as const;

@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { call } from "effection";
 import { expect, it } from "vitest";
 import { resolve } from "node:path";
@@ -6,8 +7,10 @@ import { local } from "@sweatpants/tool-runtime-local";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
 import { withTestScenario, type TestApplicationFactoryContext } from "@sweatpants/test-rig";
+import { exitWorker } from "../../../fixtures/echo-tool.ts";
 import { bookTrip } from "../../../fixtures/book-trip.ts";
-import { tripPlugin } from "../../../fixtures/trip-chat.tsx";
+import { confirmedTrip } from "../../../fixtures/confirmed-trip.ts";
+import { tripPlugin, confirmedTripPlugin } from "../../../fixtures/trip-chat.tsx";
 import { executionLocation } from "../../../fixtures/execution-location.ts";
 import { useUI } from "../../../support/ui.tsx";
 
@@ -16,7 +19,7 @@ function createApplication(context: TestApplicationFactoryContext) {
     name: "worker-placement",
     secret: "worker-placement-test-secret-at-least-32-bytes",
     storage: { kind: "memory" },
-    tools: [executionLocation, bookTrip],
+    tools: [executionLocation, bookTrip, confirmedTrip, exitWorker],
     execution: local({
       worker: resolve("__tests__/tool-runtimes/local-worker/fixtures/tool-worker.mjs"),
     }),
@@ -214,5 +217,133 @@ it("restores a worker elicitation in a fresh client and completes a successor", 
     expect(resumed.client.getSnapshot().error).toBeNull();
     expect(resumed.client.getSnapshot().authority?.state).toBe("idle");
     expect(rig.model.requests()).toHaveLength(4);
+  });
+});
+
+it("exchanges one transformed response after two local renders with the worker", async () => {
+  await withTestScenario({ binding: "http", createApplication }, function* (rig) {
+    // Arrange: author a plugin with two UI steps and a Markdown pipeline.
+    const aguiStart = rig.agui.mark();
+    using ui = yield* useUI(rig, { plugins: [confirmedTripPlugin], pipeline: "markdown" });
+
+    // Act: ask the model to invoke the tool with a single typed elicitation.
+    const send = yield* ui.waitForEnabledButton("Book trip");
+    send.click();
+    const request = yield* rig.model.request();
+    expect(JSON.stringify(request.body.tools)).toContain("confirm_trip");
+    yield* request.respond.toolCalls([
+      { id: "confirmation", name: "confirm_trip", arguments: { route: "NYC-LAX" } },
+    ]);
+
+    // Assert: the first render receives the tool's context and message.
+    const flight = yield* ui.waitForEnabledButton("FL-1");
+    expect(ui.getByRole("region", { name: "Choose a flight for NYC-LAX" })).toBeTruthy();
+    expect(ui.getByRole("button", { name: "FL-2" })).toBeTruthy();
+    const flightRender = flight.closest("[data-render-id]");
+    const flightId = flightRender?.getAttribute("data-render-id");
+    const elicitId = flightRender?.getAttribute("data-elicit-id");
+    expect(flightId).toBeTruthy();
+    expect(elicitId).toBeTruthy();
+
+    // Act: complete the first local step without answering the server elicitation.
+    flight.click();
+    const confirm = yield* ui.waitForEnabledButton("Confirm");
+    const confirmationRender = confirm.closest("[data-render-id]");
+    const confirmationId = confirmationRender?.getAttribute("data-render-id");
+
+    // Assert: the first render completes in place while the same elicitation stays pending.
+    expect(flightRender?.getAttribute("data-render-id")).toBe(flightId);
+    expect(flightRender?.getAttribute("data-render-state")).toBe("completed");
+    expect(confirmationId).toBeTruthy();
+    expect(confirmationId).not.toBe(flightId);
+    expect(confirmationRender?.getAttribute("data-elicit-id")).toBe(elicitId);
+    expect(ui.getByRole("region", { name: "Confirm FL-1" })).toBeTruthy();
+    expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"pending"');
+    expect(rig.model.requests()).toHaveLength(1);
+    expect(() => JSON.stringify(ui.client.getServerSnapshot())).not.toThrow();
+    expect(JSON.stringify(ui.client.getServerSnapshot())).not.toContain('"type":"render"');
+
+    // Act: submit the plugin's final response through the second render.
+    confirm.click();
+    const final = yield* rig.model.request();
+
+    // Assert: response-schema transformation runs before the tool result reaches the model.
+    const input = final.body.input;
+    if (!Array.isArray(input)) {
+      throw new Error("Expected provider wire input messages");
+    }
+    const result = input.find(
+      (message: Record<string, unknown>) =>
+        message["type"] === "function_call_output" && message["call_id"] === "confirmation",
+    );
+    expect(result).toMatchObject({ call_id: "confirmation", output: expect.any(String) });
+    expect(JSON.parse(String(result?.["output"]))).toEqual({
+      confirmed: true,
+      marker: "CONFIRMED_TRIP",
+      normalized: true,
+      route: "NYC-LAX",
+      selected: "FL-1",
+    });
+    expect(confirmationRender?.getAttribute("data-render-id")).toBe(confirmationId);
+    expect(confirmationRender?.getAttribute("data-render-state")).toBe("completed");
+    expect(ui.getByRole<HTMLButtonElement>("button", { name: "Book trip" }).disabled).toBe(true);
+    expect(["submitted", "streaming"]).toContain(ui.client.getSnapshot().status);
+    const finalRun = rig.agui.mark();
+
+    // Act: finish the outer response using Markdown.
+    yield* final.respond.text("**Confirmed booking**");
+    const answer = yield* ui.waitForText("Confirmed booking");
+    yield* ui.waitForEnabledButton("Book trip");
+
+    // Assert: the public hook renders Markdown and settles all local steps.
+    expect(answer.tagName).toBe("STRONG");
+    expect(ui.client.getSnapshot().error).toBeNull();
+    expect(ui.client.getSnapshot().status).toBe("ready");
+    expect(JSON.stringify(ui.client.getSnapshot().messages)).not.toContain('"state":"pending"');
+    expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"completed"');
+    yield* rig.agui.event("RUN_FINISHED", { after: finalRun });
+    rig.agui.assertConformant({ after: aguiStart });
+    const snapshots = rig.agui
+      .events(aguiStart)
+      .filter((event) => event.type === EventType.MESSAGES_SNAPSHOT);
+    expect(
+      snapshots.every((event) => event.messages.every((message) => message.role !== "system")),
+    ).toBe(true);
+    expect(rig.model.requests()).toHaveLength(2);
+  });
+});
+
+it("reports abrupt worker loss and leaves the host able to execute another tool", async () => {
+  await withTestScenario({ binding: "http", createApplication }, function* (rig) {
+    // Arrange: the failure tool exists only in the real worker entry.
+    using ui = yield* useUI(rig, { plugins: [] });
+    const send = yield* ui.waitForEnabledButton("Book trip");
+    send.click();
+    const request = yield* rig.model.request();
+
+    // Act: exit the tool worker without a result or graceful shutdown.
+    yield* request.respond.toolCalls([{ id: "lost-worker", name: "exit_worker", arguments: {} }]);
+    const failure = yield* rig.model.request();
+
+    // Assert: the ordinary invocation has one error result, not a hung call.
+    expect(JSON.stringify(failure.body.input)).toContain("lost-worker");
+    expect(JSON.stringify(failure.body.input)).toMatch(/error|fail|exit/i);
+    yield* failure.respond.text("Worker failed safely");
+    yield* ui.waitForText("Worker failed safely");
+    const again = yield* ui.waitForEnabledButton("Book trip");
+
+    // Act: the same host starts another worker-backed invocation.
+    again.click();
+    const next = yield* rig.model.request();
+    yield* next.respond.toolCalls([
+      { id: "new-worker", name: "execution_location", arguments: {} },
+    ]);
+    const result = yield* rig.model.request();
+    expect(JSON.stringify(result.body.input)).toContain("onMainThread");
+    expect(JSON.stringify(result.body.input)).toContain("false");
+    yield* result.respond.text("New worker completed");
+    yield* ui.waitForText("New worker completed");
+    yield* ui.waitForEnabledButton("Book trip");
+    expect(ui.client.getSnapshot().error).toBeNull();
   });
 });

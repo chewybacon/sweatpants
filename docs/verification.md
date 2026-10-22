@@ -62,25 +62,24 @@ first unsuccessful check and does not update collection baselines.
 
 ```bash
 pnpm -C packages/platform-acceptance test:memory
-pnpm -C packages/platform-acceptance test:tool-loop
 pnpm -C packages/platform-acceptance test:sqlite
 pnpm -C packages/platform-acceptance test:process
 ```
 
 The memory lane excludes two SQLite-only process suites. The SQLite lane reruns
 backend-sensitive scenarios with file-backed storage. The process lane runs those
-two SQLite-only suites once. The tool-loop file has a separate serial memory lane
-to preserve its existing five-second cold-worker budget. `test` composes all four;
+two SQLite-only suites once. Tool-loop contracts now live in the unified
+`pnpm test:acceptance` package. The remaining platform `test` composes three lanes;
 landing tracks a separate
 collection baseline for each. Memory gets four workers under landing, while
-tool-loop, SQLite, and process probes get one. All assertions and test deadlines are retained.
+SQLite and process probes get one. All assertions and test deadlines are retained.
 
 For a single backend-sensitive scenario during editing, invoke Vitest directly
 instead of forwarding a file argument to a script that chains suites:
 
 ```bash
-pnpm -C packages/platform-acceptance exec vitest run src/__tests__/reconnect.acceptance.test.ts --maxWorkers=1
-PLATFORM_ACCEPTANCE_STORAGE=sqlite pnpm -C packages/platform-acceptance exec vitest run src/__tests__/reconnect.acceptance.test.ts --maxWorkers=1
+pnpm -C packages/platform-acceptance exec vitest run src/__tests__/windowed-runtime.acceptance.test.ts --maxWorkers=1
+PLATFORM_ACCEPTANCE_STORAGE=sqlite pnpm -C packages/platform-acceptance exec vitest run src/__tests__/windowed-runtime.acceptance.test.ts --maxWorkers=1
 ```
 
 ## Final verification

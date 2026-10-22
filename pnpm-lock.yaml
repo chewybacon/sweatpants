@@ -233,6 +233,12 @@ importers:
 
   acceptance:
     devDependencies:
+      '@ag-ui/core':
+        specifier: 1.0.1
+        version: 1.0.1(zod@4.1.13)
+      '@cloudflare/workers-types':
+        specifier: 5.20261005.1
+        version: 5.20261005.1
       '@sweatpants/agent-host':
         specifier: workspace:*
         version: link:../packages/agent-host
@@ -242,6 +248,18 @@ importers:
       '@sweatpants/durable-chat-runtime':
         specifier: workspace:*
         version: link:../packages/durable-chat-runtime
+      '@sweatpants/durable-effects':
+        specifier: workspace:*
+        version: link:../packages/durable-effects
+      '@sweatpants/durable-execution':
+        specifier: workspace:*
+        version: link:../packages/durable-execution
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../packages/foundation
+      '@sweatpants/journal-authority':
+        specifier: workspace:*
+        version: link:../packages/journal-authority
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../packages/model-provider-pi-ai
@@ -251,9 +269,21 @@ importers:
       '@sweatpants/test-rig':
         specifier: workspace:*
         version: link:../packages/test-rig
+      '@sweatpants/tool-runtime':
+        specifier: workspace:*
+        version: link:../packages/tool-runtime
+      '@sweatpants/tool-runtime-agentcore':
+        specifier: workspace:*
+        version: link:../packages/tool-runtime-agentcore
+      '@sweatpants/tool-runtime-cloudflare':
+        specifier: workspace:*
+        version: link:../packages/tool-runtime-cloudflare
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../packages/tool-runtime-local
+      '@sweatpants/tool-session':
+        specifier: workspace:*
+        version: link:../packages/tool-session
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../packages/ts-config
@@ -272,9 +302,15 @@ importers:
       effection:
         specifier: 4.2.0
         version: 4.2.0
+      esbuild:
+        specifier: 0.27.2
+        version: 0.27.2
       jsdom:
         specifier: 'catalog:'
         version: 27.4.0
+      miniflare:
+        specifier: 5.20261001.0-alpha
+        version: 5.20261001.0-alpha(@types/node@22.19.5)
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -2407,36 +2443,12 @@ importers:
         specifier: 4.2.0
         version: 4.2.0
     devDependencies:
-      '@ag-ui/core':
-        specifier: 1.0.1
-        version: 1.0.1(zod@4.1.13)
       '@effectionx/raf':
         specifier: 'catalog:'
         version: 0.1.1
-      '@sweatpants/agent-host':
-        specifier: workspace:*
-        version: link:../agent-host
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:../agent-sdk
-      '@sweatpants/chat-core':
-        specifier: workspace:*
-        version: link:../chat-core
-      '@sweatpants/durable-chat-runtime':
-        specifier: workspace:*
-        version: link:../durable-chat-runtime
-      '@sweatpants/journal-authority':
-        specifier: workspace:*
-        version: link:../journal-authority
-      '@sweatpants/test-rig':
-        specifier: workspace:*
-        version: link:../test-rig
-      '@sweatpants/tool-runtime':
-        specifier: workspace:*
-        version: link:../tool-runtime
-      '@sweatpants/tool-runtime-local':
-        specifier: workspace:*
-        version: link:../tool-runtime-local
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -2458,9 +2470,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
 
   packages/storage-d1:
     dependencies:
@@ -2811,24 +2820,12 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
-      esbuild:
-        specifier: 0.27.2
-        version: 0.27.2
-      miniflare:
-        specifier: 5.20261001.0-alpha
-        version: 5.20261001.0-alpha(@types/node@22.19.5)
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
 
   packages/tool-runtime-local:
     dependencies:
@@ -4127,9 +4124,6 @@ packages:
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
-
-  '@emnapi/runtime@1.8.1':
-    resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==}
 
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
@@ -14846,11 +14840,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@emnapi/runtime@1.8.1':
-    dependencies:
-      tslib: 2.8.1
-    optional: true
-
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
       tslib: 2.8.1
@@ -15628,7 +15617,7 @@ snapshots:
 
   '@img/sharp-wasm32@0.34.5':
     dependencies:
-      '@emnapi/runtime': 1.8.1
+      '@emnapi/runtime': 1.11.3
     optional: true
 
   '@img/sharp-wasm32@0.35.4':

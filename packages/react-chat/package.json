@@ -40,16 +40,8 @@
     "effection": "catalog:"
   },
   "devDependencies": {
-    "@ag-ui/core": "1.0.1",
     "@effectionx/raf": "catalog:",
-    "@sweatpants/agent-host": "workspace:*",
     "@sweatpants/agent-sdk": "workspace:*",
-    "@sweatpants/chat-core": "workspace:*",
-    "@sweatpants/durable-chat-runtime": "workspace:*",
-    "@sweatpants/journal-authority": "workspace:*",
-    "@sweatpants/test-rig": "workspace:*",
-    "@sweatpants/tool-runtime": "workspace:*",
-    "@sweatpants/tool-runtime-local": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
@@ -57,8 +49,7 @@
     "react": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "effection": ">=4.2.0 <5.0.0",

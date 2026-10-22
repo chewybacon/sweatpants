@@ -1,14 +1,17 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "customConditions": ["development"]
   },
   "include": [
+    "__tests__/**/*.ts",
     "__tests__/**/*.tsx",
     "fixtures/**/*.ts",
     "fixtures/**/*.tsx",
     "support/**/*.ts",
     "support/**/*.tsx",
     "vitest.config.ts"
-  ]
+  ],
+  "exclude": ["__tests__/tool-runtimes/cloudflare/fixtures/**"]
 }

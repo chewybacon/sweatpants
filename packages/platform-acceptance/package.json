@@ -8,11 +8,10 @@
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",
-    "test": "pnpm test:memory && pnpm test:tool-loop && pnpm test:sqlite && pnpm test:process",
-    "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/__tests__/reconnect.acceptance.test.ts src/__tests__/process/cancellation.acceptance.test.ts src/__tests__/host-replacement.acceptance.test.ts src/__tests__/stale-elicit.acceptance.test.ts src/__tests__/pending-elicit-reconnect.acceptance.test.ts src/__tests__/message-order.acceptance.test.ts src/__tests__/durable-tool.acceptance.test.ts src/__tests__/windowed-runtime.acceptance.test.ts src/__tests__/history.acceptance.test.ts src/__tests__/conversation-admission.acceptance.test.ts",
-    "test:memory": "PLATFORM_ACCEPTANCE_STORAGE=memory vitest run --maxWorkers=4 --exclude src/__tests__/process/storage-spine.test.ts --exclude src/__tests__/process/storage-spine-defects.acceptance.test.ts --exclude src/__tests__/tool-loop.acceptance.test.ts",
-    "test:process": "vitest run --maxWorkers=1 src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts",
-    "test:tool-loop": "PLATFORM_ACCEPTANCE_STORAGE=memory vitest run --maxWorkers=1 src/__tests__/tool-loop.acceptance.test.ts"
+    "test": "pnpm test:memory && pnpm test:sqlite && pnpm test:process",
+    "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/__tests__/message-order.acceptance.test.ts src/__tests__/windowed-runtime.acceptance.test.ts src/__tests__/history.acceptance.test.ts src/__tests__/conversation-admission.acceptance.test.ts",
+    "test:memory": "PLATFORM_ACCEPTANCE_STORAGE=memory vitest run --maxWorkers=4 --exclude src/__tests__/process/storage-spine.test.ts --exclude src/__tests__/process/storage-spine-defects.acceptance.test.ts",
+    "test:process": "vitest run --maxWorkers=1 src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts"
   },
   "dependencies": {
     "@ag-ui/core": "1.0.1",

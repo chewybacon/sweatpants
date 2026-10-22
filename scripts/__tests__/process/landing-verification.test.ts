@@ -36,7 +36,6 @@ function fixture(dropMemoryCoverage: boolean) {
 const args = process.argv.slice(2);
 console.log('POOL=' + process.env.VITEST_MAX_THREADS);
 if (args.includes('test:memory')) console.log('Tests ${dropMemoryCoverage ? 1 : 102} passed (${dropMemoryCoverage ? 1 : 102})');
-if (args.includes('test:tool-loop')) console.log('Tests 13 passed (13)');
 if (args.includes('test:sqlite')) console.log('Tests 35 passed (35)');
 if (args.includes('test:process')) console.log('Tests 9 passed (9)');
 `,
@@ -66,14 +65,10 @@ it("uses four memory workers, restores one for SQLite/process, and keeps lanes s
   const sqlite = summary.stages.find(
     (s: { name: string }) => s.name === "test:platform-acceptance:sqlite",
   );
-  const toolLoop = summary.stages.find(
-    (s: { name: string }) => s.name === "test:platform-acceptance:tool-loop",
-  );
   const processStage = summary.stages.find(
     (s: { name: string }) => s.name === "test:platform-acceptance:process",
   );
   expect(readFileSync(join(root, memory.log), "utf8")).toContain("POOL=4");
-  expect(readFileSync(join(root, toolLoop.log), "utf8")).toContain("POOL=1");
   expect(readFileSync(join(root, sqlite.log), "utf8")).toContain("POOL=1");
   expect(readFileSync(join(root, processStage.log), "utf8")).toContain("POOL=1");
 });

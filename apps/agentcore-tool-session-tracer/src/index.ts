@@ -1,5 +1,4 @@
 import { BedrockAgentCoreApp, type RequestContext } from "bedrock-agentcore/runtime";
-import { z } from "zod";
 import { parseRuntimeRequest, type RuntimeResponse } from "./protocol.ts";
 import { registry } from "./runtime-session-registry.ts";
 import { initializeTelemetry, setSpanAttributes, withSpan } from "./telemetry.ts";
@@ -29,7 +28,6 @@ export function createApp(): BedrockAgentCoreApp {
   return new BedrockAgentCoreApp({
     pingHandler: () => (registry.isBusy() ? "HealthyBusy" : "Healthy"),
     invocationHandler: {
-      requestSchema: z.unknown(),
       process: async function* (payload: unknown, context: RequestContext) {
         const baseFields = {
           agentCoreRequestId: context.requestId,

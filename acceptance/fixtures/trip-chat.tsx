@@ -6,13 +6,14 @@ import {
   type ReactRenderableProps,
 } from "@sweatpants/react-chat";
 import { bookTrip } from "./book-trip.ts";
+import { confirmedTrip } from "./confirmed-trip.ts";
 
 type Choice =
   | { action: "accept"; content: { value: string } }
   | { action: "decline" }
   | { action: "cancel" };
 
-function ChoiceCard({
+export function ChoiceCard({
   choices,
   message,
   onRespond,
@@ -66,16 +67,44 @@ export const tripPlugin = makePlugin(bookTrip)
   })
   .build();
 
+// One server elicitation can contain several local UI steps. Only the final
+// plugin result crosses back to the tool and its response schema.
+export const confirmedTripPlugin = makePlugin(confirmedTrip)
+  .onElicit({
+    chooseFlight: function* (input, ctx) {
+      const flight = yield* ctx.render(ChoiceCard, {
+        choices: input.context.flights,
+        message: input.message,
+      });
+      if (flight.action !== "accept") {
+        return flight;
+      }
+      const confirmation = yield* ctx.render(ChoiceCard, {
+        choices: ["Confirm"],
+        message: `Confirm ${flight.content.value}`,
+      });
+      return confirmation.action === "accept"
+        ? { action: "accept", content: { flightId: flight.content.value, confirmed: true } }
+        : confirmation;
+    },
+  })
+  .build();
+
 function Parts({ parts }: { parts: readonly ReactChatUIPart[] }) {
   return (
     <>
       {parts.map((part) => {
         if (part.type === "text") {
-          return <span key={part.id}>{part.text}</span>;
+          return <span key={part.id} dangerouslySetInnerHTML={{ __html: part.rendered }} />;
         }
         if (part.type === "render") {
           return (
-            <div key={part.id} data-render-id={part.id} data-render-state={part.state}>
+            <div
+              key={part.id}
+              data-render-id={part.id}
+              data-render-state={part.state}
+              data-elicit-id={part.parentElicitId}
+            >
               {part.node}
             </div>
           );

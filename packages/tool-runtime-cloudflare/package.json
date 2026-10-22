@@ -42,8 +42,7 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b"
   },
   "dependencies": {
     "@cloudflare/workers-types": "5.20261005.1",
@@ -56,11 +55,7 @@
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
-    "esbuild": "0.27.2",
-    "miniflare": "5.20261001.0-alpha",
     "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "typescript": "catalog:"
   }
 }
