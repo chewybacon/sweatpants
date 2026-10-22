@@ -1,9 +1,15 @@
+import type { HootProcedures } from "./machine-api.mts";
 import fs from "node:fs";
-import { machineApi } from "./machine-api.mjs";
+import { machineApi } from "./machine-api.mts";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-const { Scheme } = createRequire(import.meta.url)("../../generated/reflect.cjs");
+
+const { Scheme } = createRequire(import.meta.url)("../../generated/reflect.cjs") as {
+  Scheme: {
+    load_main(path: string, options: { reflect_wasm_dir: string }): Promise<HootProcedures>;
+  };
+};
 const wasm = fileURLToPath(new URL("../../generated/execution/kernel.wasm", import.meta.url));
 const reflection = fileURLToPath(new URL("../../generated/", import.meta.url));
 export function verifyBuild() {

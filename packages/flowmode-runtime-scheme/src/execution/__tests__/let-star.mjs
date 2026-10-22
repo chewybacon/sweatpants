@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 
 // Sequential initializers see earlier bindings; shadowing does not rewrite
 // the environment captured by an earlier closure. Resume crosses an initializer.

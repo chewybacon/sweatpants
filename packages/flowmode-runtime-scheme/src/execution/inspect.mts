@@ -1,28 +1,57 @@
+import type { WorkflowBoundary } from "@sweatpants/flowmode-runtime";
 import { projectHootInspection } from "./inspection.mts";
-import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
+import {
+  parse,
+  symbolName,
+  type SchemeDatum,
+} from "@sweatpants/flowmode-compiler/scheme-data/read";
+
+type SymbolDatum = { sym: string };
+type Frame = [SymbolDatum, ...SchemeDatum[]];
+type HootInspectionState = [
+  SymbolDatum,
+  string,
+  [number, number | false, [SymbolDatum, ...SchemeDatum[]][]][],
+  number,
+  Frame[],
+  SymbolDatum,
+  SchemeDatum,
+  number,
+  false | [string, SchemeDatum],
+  SymbolDatum,
+  number,
+  boolean,
+];
+export interface CleanupInspection {
+  kind: string;
+  scope: string | null;
+  remaining: string[];
+  completion: string | null;
+}
 
 // Debug projection of evaluator-owned state. Never used to authorize recovery.
-function display(value) {
+function display(value: SchemeDatum | undefined): string {
   if (Array.isArray(value)) {
-    if (value[0]?.sym === "closure") {
-      return `λ ${value[4]?.sym} → environment ${value[3]}`;
+    if (symbolName(value[0]) === "closure") {
+      return `λ ${symbolName(value[4])} → environment ${value[3]}`;
     }
-    if (value[0]?.sym === "tool") {
-      return `registered tool ${value[1]?.sym}`;
+    if (symbolName(value[0]) === "tool") {
+      return `registered tool ${symbolName(value[1])}`;
     }
-    if (value[0]?.sym === "primitive") {
-      return `built-in ${value[1]?.sym}`;
+    if (symbolName(value[0]) === "primitive") {
+      return `built-in ${symbolName(value[1])}`;
     }
     return `(${value.map(display).join(" ")})`;
   }
   if (value && typeof value === "object" && "sym" in value) {
     return value.sym;
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "undefined";
 }
-export function inspectSnapshot(snapshot, boundary) {
-  const state = parse(snapshot)[0];
-  if (state?.[0]?.sym !== "workflow-state-v3") {
+export function inspectSnapshot(snapshot: string, boundary: WorkflowBoundary) {
+  // This projection consumes the evaluator-owned snapshot layout, not untrusted recovery input.
+  const state = parse(snapshot)[0] as HootInspectionState | undefined;
+  if (!state || symbolName(state[0]) !== "workflow-state-v3") {
     throw Error("Unknown inspection format");
   }
   const frames = state[4].map((frame, index) => ({
@@ -40,24 +69,24 @@ export function inspectSnapshot(snapshot, boundary) {
     currentEnvironment: state[7],
     calls: state[4]
       .filter((f) => f[0].sym === "call")
-      .map((f) => f[1].sym)
-      .toReversed(),
+      .map((f) => symbolName(f[1]))
+      .reverse(),
     frames,
     environments: state[2].map(([id, parent, bindings]) => ({
       id,
       parent: parent === false ? null : parent,
       bindings: bindings.map(([name, ...rest]) => ({
         name: name.sym,
-        value: display(rest[0]?.sym === "." ? rest[1] : rest),
+        value: display(symbolName(rest[0]) === "." ? rest[1] : rest),
       })),
     })),
-    cleanups: state[4].flatMap((frame) => {
+    cleanups: state[4].flatMap<CleanupInspection>((frame) => {
       if (frame[0].sym === "scope") {
         return [
           {
             kind: "registered",
             scope: display(frame[1]),
-            remaining: frame[2].map(display),
+            remaining: (frame[2] as SchemeDatum[]).map(display),
             completion: null,
           },
         ];
@@ -67,7 +96,7 @@ export function inspectSnapshot(snapshot, boundary) {
           {
             kind: "running",
             scope: null,
-            remaining: frame[1].map(display),
+            remaining: (frame[1] as SchemeDatum[]).map(display),
             completion: `${display(frame[2])}: ${display(frame[3])}`,
           },
         ];

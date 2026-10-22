@@ -1,3 +1,15 @@
+import type { DurableProgramManifest } from "@sweatpants/durable-execution";
+import type { KernelProgramBackendOptions } from "@sweatpants/flowmode-backend";
+import type {
+  WorkflowBinding,
+  WorkflowRuntimeOptions,
+  KernelIdentity,
+  WorkflowBoundary,
+  WorkflowProgram,
+  KernelSnapshot,
+  WorkflowExecutionDriver,
+} from "@sweatpants/flowmode-runtime";
+import type { HootMachine, HootBoundary } from "./machine-api.mts";
 import { decodeExchange } from "@sweatpants/flowmode-runtime";
 import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
 import { createKernelProgram, createKernelProgramBundle } from "@sweatpants/flowmode-backend";
@@ -9,16 +21,37 @@ import {
 } from "@sweatpants/flowmode-runtime";
 import { CrankError } from "@sweatpants/durable-execution";
 import { call } from "effection";
-function kernel(observe, source, digest, loadMachine, identity) {
-  let machine = null,
-    closed = false;
+
+export interface HootProgramOptions {
+  source: string;
+  contract: Omit<DurableProgramManifest, "digest">;
+  bindOperation: KernelProgramBackendOptions["bindOperation"];
+  bindings?: readonly WorkflowBinding[];
+  runtimeOptions?: Omit<WorkflowRuntimeOptions, "driver">;
+}
+export interface HootKernelDependencies {
+  loadMachine: () => Promise<HootMachine>;
+  identity: KernelIdentity;
+}
+export type HootObserver = (event: string, data?: Record<string, unknown>) => void;
+
+function kernel(
+  observe: HootObserver,
+  source: string,
+  digest: string,
+  loadMachine: HootKernelDependencies["loadMachine"],
+  identity: KernelIdentity,
+) {
+  let machine: HootMachine | null = null;
+  let closed = false;
   function check() {
     if (!machine || closed) {
       throw Error("Hoot instance disposed");
     }
+    return machine;
   }
   let suspension = 0;
-  function boundary(step) {
+  function boundary(step: HootBoundary): WorkflowBoundary {
     if (step.kind === "effect") {
       return {
         kind: "suspended",
@@ -36,37 +69,40 @@ function kernel(observe, source, digest, loadMachine, identity) {
     }
     throw Error("Unknown Hoot boundary");
   }
-  function transition(event, action) {
+  function transition(event: string, action: () => HootBoundary): WorkflowBoundary {
     const started = performance.now();
     let result;
     try {
       result = boundary(action());
     } catch (error) {
-      throw new CrankError("workflow_failed", error.message);
+      throw new CrankError(
+        "workflow_failed",
+        error instanceof Error ? error.message : String(error),
+      );
     }
     observe(event, {
       boundary: result,
-      inspection: machine.inspect(result),
+      inspection: check().inspect(result),
       durationMs: performance.now() - started,
     });
     return result;
   }
-  const driver = {
+  const driver: WorkflowExecutionDriver = {
     *turn(command) {
       if (command.kind === "cancel") {
         check();
-        return transition("cancel", () => machine.cancel());
+        return transition("cancel", () => check().cancel());
       }
       const reply = command.reply;
       check();
       observe("reply", { reply });
       return transition("resume", () =>
-        reply.kind === "throw" ? machine.reject(reply.value) : machine.resume(reply.value),
+        reply.kind === "throw" ? check().reject(reply.value) : check().resume(reply.value),
       );
     },
     *capture() {
       check();
-      const state = machine.capture();
+      const state = check().capture();
       observe("capture", { bytes: new TextEncoder().encode(state).length });
       return { kernel: identity, programDigest: digest, state };
     },
@@ -77,7 +113,7 @@ function kernel(observe, source, digest, loadMachine, identity) {
       }
     },
   };
-  function validate(program, snapshot) {
+  function validate(program: WorkflowProgram, snapshot?: KernelSnapshot) {
     if (closed || machine) {
       throw Error("Kernel already used");
     }
@@ -93,7 +129,7 @@ function kernel(observe, source, digest, loadMachine, identity) {
         validate(program);
         machine = yield* call(loadMachine);
         return createKernelExecution({
-          initial: transition("start", () => machine.start(source, input)),
+          initial: transition("start", () => check().start(source, input)),
           driver: driver,
         });
       },
@@ -102,10 +138,11 @@ function kernel(observe, source, digest, loadMachine, identity) {
         if (typeof snapshot.state !== "string") {
           throw Error("Invalid snapshot");
         }
+        const state = snapshot.state;
         observe("checkpoint-selected", { snapshot });
         machine = yield* call(loadMachine);
         return createKernelExecution({
-          initial: transition("restore", () => machine.restore(source, snapshot.state)),
+          initial: transition("restore", () => check().restore(source, state)),
           driver: driver,
         });
       },
@@ -116,15 +153,9 @@ function kernel(observe, source, digest, loadMachine, identity) {
     },
   });
 }
-/** @typedef {{ source: string, contract: Omit<import("@sweatpants/durable-execution").DurableProgramManifest, "digest">, bindOperation: import("@sweatpants/flowmode-backend").KernelProgramBackendOptions["bindOperation"], bindings?: readonly import("@sweatpants/flowmode-runtime").WorkflowBinding[], runtimeOptions?: Omit<import("@sweatpants/flowmode-runtime").WorkflowRuntimeOptions, "driver"> }} HootProgramOptions */
-/** @typedef {{ loadMachine: () => Promise<ReturnType<typeof import("./machine-api.mjs").machineApi>>, identity: import("@sweatpants/flowmode-runtime").KernelIdentity }} HootKernelDependencies */
-/** @typedef {(event: string, data?: Record<string, unknown>) => void} HootObserver */
-/** @param {HootProgramOptions} options
- * @param {HootKernelDependencies} dependencies
- */
 export function createPortableHootProgram(
-  { source, contract, bindOperation, bindings = [], runtimeOptions = {} },
-  { loadMachine, identity },
+  { source, contract, bindOperation, bindings = [], runtimeOptions = {} }: HootProgramOptions,
+  { loadMachine, identity }: HootKernelDependencies,
 ) {
   if (identity.programFormat !== HOOT_PROGRAM_FORMAT) {
     throw Error("Incompatible Hoot program format");
@@ -135,8 +166,7 @@ export function createPortableHootProgram(
     contract,
     bindings,
   );
-  /** @param {HootObserver} [observe] */
-  function runtime(observe = () => {}) {
+  function runtime(observe: HootObserver = () => {}) {
     return createWorkflowRuntime({
       ...runtimeOptions,
       driver: {
@@ -149,10 +179,8 @@ export function createPortableHootProgram(
   }
   return {
     ...bundle,
-    /** @param {HootObserver} [observe] */
-    createKernel: (observe) => runtime(observe).createKernel(),
-    /** @param {HootObserver} [observe] */
-    createDriver(observe) {
+    createKernel: (observe?: HootObserver) => runtime(observe).createKernel(),
+    createDriver(observe?: HootObserver) {
       return createKernelProgram({
         bundle,
         runtime: runtime(observe),

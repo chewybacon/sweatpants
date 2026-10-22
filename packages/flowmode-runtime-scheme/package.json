@@ -58,27 +58,27 @@
     "./manifest": "./generated/manifest.json",
     "./language": "./generated/language.json",
     "./execution/authoring": {
-      "development": "./src/execution/authoring.mjs",
+      "development": "./src/execution/authoring.mts",
       "types": "./dist/execution/authoring.d.mts",
       "default": "./dist/execution/authoring.mjs"
     },
     "./execution/program": {
-      "development": "./src/execution/program.mjs",
+      "development": "./src/execution/program.mts",
       "types": "./dist/execution/program.d.mts",
       "default": "./dist/execution/program.mjs"
     },
     "./execution/driver": {
-      "development": "./src/execution/driver.mjs",
+      "development": "./src/execution/driver.mts",
       "types": "./dist/execution/driver.d.mts",
       "default": "./dist/execution/driver.mjs"
     },
     "./execution/machine": {
-      "development": "./src/execution/machine.mjs",
+      "development": "./src/execution/machine.mts",
       "types": "./dist/execution/machine.d.mts",
       "default": "./dist/execution/machine.mjs"
     },
     "./execution/machine-api": {
-      "development": "./src/execution/machine-api.mjs",
+      "development": "./src/execution/machine-api.mts",
       "types": "./dist/execution/machine-api.d.mts",
       "default": "./dist/execution/machine-api.mjs"
     },
@@ -96,7 +96,7 @@
     "./execution/manifest.json": "./generated/execution/manifest.json",
     "./execution/reflect-worker.mjs": "./generated/execution/reflect-worker.mjs",
     "./execution/worker": {
-      "development": "./src/execution/worker.mjs",
+      "development": "./src/execution/worker.mts",
       "types": "./dist/execution/worker.d.mts",
       "default": "./dist/execution/worker.mjs"
     }

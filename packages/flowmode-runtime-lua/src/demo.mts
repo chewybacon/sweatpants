@@ -4,7 +4,7 @@ import { run, call } from "effection";
 import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
 import { loadKernelProgram } from "@sweatpants/flowmode-backend/program";
 import { createLuaRuntime } from "./kernel.mts";
-import { createLuaProgramBundle } from "./program.mjs";
+import { createLuaProgramBundle } from "./program.mts";
 
 const mode = process.argv[2] ?? "approve";
 if (!["approve", "decline", "throw", "cancel", "cancel-cleanup"].includes(mode)) {
