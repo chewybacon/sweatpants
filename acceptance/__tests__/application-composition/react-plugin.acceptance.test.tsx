@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spawn } from "effection";
+import { call, spawn } from "effection";
 import { createChatApp } from "@sweatpants/agent-host/server";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
 import { setupInMemoryDurableStreams } from "@sweatpants/durable-chat-runtime/response-streams";
@@ -15,7 +15,7 @@ function createApplication(context: TestApplicationFactoryContext) {
     secret: "react-plugin-example-secret-at-least-32-bytes",
     storage: { kind: "memory" },
     tools: [bookTrip],
-    basePath: "/assistant",
+    basePath: "/assistant/chat",
     model: {
       model: context.model.model,
       driver: createPiAiModelProvider().driver,
@@ -56,10 +56,21 @@ describe("application composition with authored React plugins over HTTP", () => 
 
       // Act: choose a flight in the rendered plugin.
       const flight = yield* ui.waitForEnabledButton("FL-2");
+      const flightRender = flight.closest("[data-render-id]");
+      const flightRenderId = flightRender?.getAttribute("data-render-id");
+      expect(flightRenderId).toBeTruthy();
       flight.click();
 
       // Act: choose a seat in the next rendered interaction.
       const seat = yield* ui.waitForEnabledButton("2B");
+
+      // Assert: completing one render keeps its identity while the next choice is pending.
+      expect(flightRender?.getAttribute("data-render-id")).toBe(flightRenderId);
+      expect(flightRender?.getAttribute("data-render-state")).toBe("completed");
+      expect(flight.disabled).toBe(true);
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"pending"');
+
+      // Act: complete the seat choice.
       seat.click();
 
       // Assert: the tool requests a travel tip for the chosen destination.
@@ -87,6 +98,10 @@ describe("application composition with authored React plugins over HTTP", () => 
         ]),
       );
 
+      // Assert: the tool is complete, but sending stays disabled until the model finishes.
+      expect(ui.getByRole<HTMLButtonElement>("button", { name: "Book trip" }).disabled).toBe(true);
+      expect(["submitted", "streaming"]).toContain(ui.client.getSnapshot().status);
+
       // Act: let the model finish the booking response.
       yield* toolResultRequest.respond.text("Your trip is booked");
 
@@ -99,6 +114,21 @@ describe("application composition with authored React plugins over HTTP", () => 
       expect(ui.client.getSnapshot().error).toBeNull();
       expect(JSON.stringify(ui.client.getServerSnapshot())).not.toContain('"type":"render"');
       expect(rig.model.requests()).toHaveLength(3);
+      expect(ui.client.getSnapshot().authority?.state).toBe("idle");
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).not.toContain('"state":"pending"');
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain('"state":"completed"');
+
+      // Act: submit a successor after the elicited tool turn has completed.
+      const sendAgain = yield* ui.waitForEnabledButton("Book trip");
+      sendAgain.click();
+      const successor = yield* rig.model.request();
+      expect(JSON.stringify(successor.body.input)).toContain("Book Oslo");
+      yield* successor.respond.text("Next booking started");
+
+      // Assert: the same client accepts and completes the successor.
+      yield* ui.waitForText("Next booking started");
+      yield* ui.waitForEnabledButton("Book trip");
+      expect(ui.client.getSnapshot().authority?.state).toBe("idle");
     });
   });
 
@@ -242,6 +272,112 @@ describe("application composition with authored React plugins over HTTP", () => 
       );
       expect(ui.client.getSnapshot().error).toBeNull();
       expect(ui.queryByRole("alert")).toBeNull();
+    });
+  });
+
+  it("cancels a parked choice before submitting an interrupting successor", async () => {
+    await withTestScenario(rigOptions, function* (rig) {
+      // Arrange: author an interrupt queue policy on the public client.
+      using ui = yield* useUI(rig, { plugins: [tripPlugin], queue: "interrupt" });
+
+      // Act: park the tool at its first rendered choice.
+      const send = yield* ui.waitForEnabledButton("Book trip");
+      send.click();
+      const request = yield* rig.model.request();
+      yield* request.respond.toolCalls([
+        { id: "parked-booking", name: "book_trip", arguments: { destination: "Oslo" } },
+      ]);
+      const flight = yield* ui.waitForEnabledButton("FL-1");
+      const cancellationStart = rig.agui.mark();
+
+      // Act: submit a replacement through the hook while the choice is pending.
+      ui.getByRole("button", { name: "Replace booking" }).click();
+
+      // Assert: authoritative cancellation precedes submission of the replacement.
+      const cancelled = yield* rig.agui.event("RUN_ERROR", { after: cancellationStart });
+      expect(cancelled).toMatchObject({ code: "PROGRAM_CANCELLED" });
+      expect(JSON.stringify(rig.agui.events(cancellationStart))).not.toContain("Replace booking");
+      const replacement = yield* rig.model.request();
+      expect(JSON.stringify(replacement.body.input)).toContain("Replace booking");
+
+      // Act: complete the replacement.
+      yield* replacement.respond.text("Replacement booking started");
+
+      // Assert: no old choice remains actionable and no nested sample was started.
+      yield* ui.waitForText("Replacement booking started");
+      yield* ui.waitForEnabledButton("Book trip");
+      expect(flight.isConnected && !flight.disabled).toBe(false);
+      expect(rig.model.requests()).toHaveLength(2);
+      expect(ui.client.getSnapshot().authority?.state).toBe("idle");
+    });
+  });
+
+  it("restores a pending choice in a fresh client and completes a successor", async () => {
+    await withTestScenario(rigOptions, function* (rig) {
+      // Arrange: use an explicit conversation identity across separate clients.
+      const options = { plugins: [tripPlugin], threadId: "restored-booking" };
+      const aguiStart = rig.agui.mark();
+      using first = yield* useUI(rig, options);
+
+      // Act: park the tool at the flight choice.
+      const send = yield* first.waitForEnabledButton("Book trip");
+      send.click();
+      const request = yield* rig.model.request();
+      yield* request.respond.toolCalls([
+        { id: "restored-call", name: "book_trip", arguments: { destination: "Oslo" } },
+      ]);
+      const oldFlight = yield* first.waitForEnabledButton("FL-1");
+      const renderId = oldFlight.closest("[data-render-id]")?.getAttribute("data-render-id");
+      expect(renderId).toBeTruthy();
+
+      // Act: unmount the view, close its client, and reconnect a new client.
+      first[Symbol.dispose]();
+      yield* call(() => first.client.close());
+      using resumed = yield* useUI(rig, options);
+      yield* call(() => resumed.client.reconnect());
+      const flight = yield* resumed.waitForEnabledButton("FL-2");
+
+      // Assert: the pending render retains its identity; the old DOM is detached.
+      expect(resumed.client).not.toBe(first.client);
+      expect(oldFlight.isConnected).toBe(false);
+      expect(flight.closest("[data-render-id]")?.getAttribute("data-render-id")).toBe(renderId);
+
+      // Act: finish the restored choice and the next interaction.
+      flight.click();
+      const seat = yield* resumed.waitForEnabledButton("2B");
+      seat.click();
+      const nested = yield* rig.model.request();
+      yield* nested.respond.text("Restored travel tip");
+      const final = yield* rig.model.request();
+
+      // Assert: the restored responses reach the tool and the final model request.
+      expect(JSON.stringify(final.body.input)).toContain("FL-2");
+      expect(JSON.stringify(final.body.input)).toContain("Restored travel tip");
+      expect(resumed.getByRole<HTMLButtonElement>("button", { name: "Book trip" }).disabled).toBe(
+        true,
+      );
+
+      // Act: complete the restored turn and send a successor.
+      const finalRun = rig.agui.mark();
+      yield* final.respond.text("Restored booking complete");
+      yield* resumed.waitForText("Restored booking complete");
+      const sendAgain = yield* resumed.waitForEnabledButton("Book trip");
+      expect(JSON.stringify(resumed.client.getSnapshot().messages)).not.toContain(
+        '"state":"pending"',
+      );
+      yield* rig.agui.event("RUN_FINISHED", { after: finalRun });
+      rig.agui.assertConformant({ after: aguiStart });
+      sendAgain.click();
+      const next = yield* rig.model.request();
+      expect(JSON.stringify(next.body.input)).toContain("Book Oslo");
+      yield* next.respond.text("Post-restore booking started");
+
+      // Assert: the fresh client remains usable after recovery.
+      yield* resumed.waitForText("Post-restore booking started");
+      yield* resumed.waitForEnabledButton("Book trip");
+      expect(resumed.client.getSnapshot().error).toBeNull();
+      expect(resumed.client.getSnapshot().authority?.state).toBe("idle");
+      expect(rig.model.requests()).toHaveLength(4);
     });
   });
 

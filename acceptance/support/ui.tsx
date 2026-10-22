@@ -3,6 +3,7 @@ import {
   createChatClient,
   type ReactChatClient,
   type ReactClientPlugin,
+  type ChatQueueOption,
 } from "@sweatpants/react-chat";
 import type { ScenarioContext } from "@sweatpants/test-rig";
 import { TripChat } from "../fixtures/trip-chat.tsx";
@@ -12,6 +13,7 @@ interface TestUIOptions {
   plugins: readonly ReactClientPlugin[];
   threadId?: string;
   api?: string;
+  queue?: ChatQueueOption;
 }
 
 type TestUI = ReturnType<typeof renderUI> & { readonly client: ReactChatClient };
@@ -25,7 +27,8 @@ export function useUI(
     const client = createChatClient({
       threadId: options.threadId ?? "trip",
       plugins: options.plugins,
-      transport: { http: { api: options.api ?? "/assistant", fetch: rig.transport.fetch } },
+      queue: options.queue,
+      transport: { http: { api: options.api ?? "/assistant/chat", fetch: rig.transport.fetch } },
     });
     try {
       using view = renderUI(<TripChat client={client} />);

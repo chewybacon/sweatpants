@@ -14,7 +14,7 @@ function createApplication(context: TestApplicationFactoryContext) {
     storage: { kind: "memory" },
     tools: [executionLocation],
     execution: testToolRuntime(),
-    basePath: "/assistant",
+    basePath: "/assistant/chat",
     model: {
       model: context.model.model,
       driver: createPiAiModelProvider().driver,

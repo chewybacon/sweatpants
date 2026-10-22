@@ -74,7 +74,11 @@ function Parts({ parts }: { parts: readonly ReactChatUIPart[] }) {
           return <span key={part.id}>{part.text}</span>;
         }
         if (part.type === "render") {
-          return <div key={part.id}>{part.node}</div>;
+          return (
+            <div key={part.id} data-render-id={part.id} data-render-state={part.state}>
+              {part.node}
+            </div>
+          );
         }
         if (part.type === "message") {
           return <Parts key={part.id} parts={part.message.parts} />;
@@ -97,6 +101,7 @@ export function TripChat({ client }: { client: ReactChatClient }) {
         Book trip
       </button>
       <button onClick={() => void chat.stop()}>Stop</button>
+      <button onClick={() => void chat.sendMessage("Replace booking")}>Replace booking</button>
       <output aria-label="Chat status">{chat.status}</output>
       {chat.error && <p role="alert">{chat.error.message}</p>}
       {chat.messages.map((message) => (

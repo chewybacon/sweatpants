@@ -36,7 +36,7 @@ execution: local({
 ```text
 acceptance/
   __tests__/
-    application-composition/react-plugin.acceptance.test.tsx  # 6 authoring cases
+    application-composition/react-plugin.acceptance.test.tsx  # 8 authoring cases
     tool-runtimes/
       in-process/execution.acceptance.test.tsx                # actual host-thread execution
       local-worker/exchange.acceptance.test.tsx               # off-thread execution and exchanges
@@ -51,12 +51,16 @@ acceptance/
     dom.tsx               # mounting, DOM readiness and cleanup
 ```
 
-The six authoring cases cover booking with flight/seat choices and nested
+The eight authoring cases cover booking with flight/seat choices and nested
 sampling, streaming and follow-up history, stop and resend, provider-error
-recovery, and authored decline/cancel responses. Runtime suites add focused
-placement evidence without repeating the whole authoring matrix. The initial
-worker case proves execution off the main thread and typed elicitation, nested
-sampling and result exchanges; it is not a complete worker-failure matrix.
+recovery, authored decline/cancel responses, pending-choice interruption, and
+fresh-client recovery. The booking case also sends a successor after tool
+completion and checks render identity and message states. Runtime suites add focused
+placement evidence without repeating the whole authoring matrix. The worker
+cases prove execution off the main thread, typed elicitation/sample/result
+exchange, cancellation of a parked invocation, and fresh-client recovery.
+They retain the worker guarantees of the migrated React lifecycle cases; they
+are not a complete worker-failure matrix.
 
 ## Run
 
@@ -65,7 +69,7 @@ From the repository root:
 ```sh
 pnpm -C acceptance test:authoring  # fast authoring loop
 pnpm -C acceptance test:runtimes   # focused placement contracts
-pnpm test:acceptance              # all 8 cases; also used by landing
+pnpm test:acceptance              # all 12 cases; also used by landing
 pnpm check:acceptance
 pnpm -C acceptance test:watch __tests__/application-composition
 ```
@@ -93,3 +97,17 @@ controls or assert behavior.
 Tests and workers resolve built package exports from `dist`; rebuild changed
 framework dependencies before running. These are deterministic HTTP/jsdom
 acceptance checks, not browser-presentation or live-provider certification.
+
+## First lifecycle migration
+
+The booking case now also checks completed render identity, pending/completed
+message states, disabled send while awaiting the final answer, idle authority,
+and a successful successor. Two further cases cover parked-choice interruption
+and recovery in a new client. The worker lane retains those lifecycle guarantees
+with real off-thread execution.
+
+These replace six binding-expanded lifecycle cases formerly in
+`packages/react-chat/acceptance/hook-state.acceptance.test.ts`. That file retains
+controlled scheduler batching and two protocol/plugin projection cases, including
+two local renders within one elicitation and response-schema transformation.
+StrictMode and rendering-pipeline coverage remain package-owned.

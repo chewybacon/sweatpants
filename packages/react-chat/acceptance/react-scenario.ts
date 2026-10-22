@@ -89,22 +89,6 @@ function getClient(scenario: ScenarioContext, options: UseChatOptions): ReactCha
   return created;
 }
 
-export function* discardReactChatClient(
-  scenario: ScenarioContext,
-  threadId: string,
-): Operation<void> {
-  const clients = clientsByScenario.get(scenario as object);
-  if (!clients) {
-    return;
-  }
-  const client = clients.get(threadId);
-  if (!client) {
-    return;
-  }
-  clients.delete(threadId);
-  yield* call(() => client.close());
-}
-
 function projectedMessage(message: ReactChatUIMessage): ReactMessageHandle {
   const textParts = message.parts.filter(
     (part): part is Extract<ReactChatUIMessage["parts"][number], { type: "text" }> =>
