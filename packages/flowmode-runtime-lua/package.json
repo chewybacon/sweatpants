@@ -43,7 +43,7 @@
       "default": "./dist/authoring.mjs"
     },
     "./program": {
-      "development": "./src/program.mjs",
+      "development": "./src/program.mts",
       "types": "./dist/program.d.mts",
       "default": "./dist/program.mjs"
     },

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
-import { createHootProgram } from "../driver.mjs";
+import { createHootProgram } from "../driver.mts";
 import {
   createStoredScenarioDriver,
   driveTestProgramTree,

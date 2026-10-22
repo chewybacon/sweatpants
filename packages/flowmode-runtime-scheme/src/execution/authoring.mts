@@ -1,13 +1,21 @@
+import type {
+  HootKernelDependencies,
+  HootProgramOptions,
+  createPortableHootProgram,
+} from "./program.mts";
+import type { WorkflowCompiler, WorkflowImplementation } from "@sweatpants/flowmode-runtime";
 import { createWorkflowCompiler } from "@sweatpants/flowmode-runtime";
 import { call } from "effection";
 import { hootLinker, HOOT_PROGRAM_FORMAT } from "./linker.mts";
 
-/** Validate and link model-authored Scheme using the selected runtime loader.
- * @param {{loadMachine: import("./program.mjs").HootKernelDependencies["loadMachine"], createProgram: (options: import("./program.mjs").HootProgramOptions) => ReturnType<typeof import("./program.mjs").createPortableHootProgram>}} options
- */
-export function createHootAuthoring({ loadMachine, createProgram }) {
-  /** @type {import('@sweatpants/flowmode-runtime').WorkflowCompiler} */
-  const compiler = createWorkflowCompiler({
+export interface HootAuthoringOptions {
+  loadMachine: HootKernelDependencies["loadMachine"];
+  createProgram: (options: HootProgramOptions) => ReturnType<typeof createPortableHootProgram>;
+}
+
+/** Validate and link model-authored Scheme using the selected runtime loader. */
+export function createHootAuthoring({ loadMachine, createProgram }: HootAuthoringOptions) {
+  const compiler: WorkflowCompiler = createWorkflowCompiler({
     driver: {
       sourceLanguage: "scheme",
       definitionFormat: hootLinker.definitionFormat,
@@ -50,8 +58,10 @@ export function createHootAuthoring({ loadMachine, createProgram }) {
   return {
     linker: hootLinker,
     compiler,
-    /** @param {Omit<import("./program.mjs").HootProgramOptions, "source"> & { implementation: import("@sweatpants/flowmode-runtime").WorkflowImplementation }} options */
-    createProgram({ implementation, ...options }) {
+    createProgram({
+      implementation,
+      ...options
+    }: Omit<HootProgramOptions, "source"> & { implementation: WorkflowImplementation }) {
       if (
         implementation.format !== HOOT_PROGRAM_FORMAT ||
         typeof implementation.payload !== "string"

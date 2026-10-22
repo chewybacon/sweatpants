@@ -1,11 +1,11 @@
-import { createLuaProgramBundle } from "../../../../packages/flowmode-runtime-lua/src/program.mjs";
+import { createLuaProgramBundle } from "../../../../packages/flowmode-runtime-lua/src/program.mts";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { run } from "effection";
 import { schemeWorkflowCompiler as workflowCompiler } from "../../../../packages/flowmode-compiler-scheme/dist/index.js";
-import { loadMachine } from "../../../../packages/flowmode-runtime-scheme/src/execution/machine.mjs";
+import { loadMachine } from "../../../../packages/flowmode-runtime-scheme/src/execution/machine.mts";
 import { encodeValue } from "../../../../packages/flowmode-compiler/dist/scheme-data/values.js";
 import { luaWorkflowCompiler } from "../../../../packages/flowmode-compiler-lua/dist/index.js";
 import { createLuaAuthoring } from "../../../../packages/flowmode-runtime-lua/src/authoring.mts";

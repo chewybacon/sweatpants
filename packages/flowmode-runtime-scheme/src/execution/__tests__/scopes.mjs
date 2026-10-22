@@ -6,7 +6,7 @@ import {
   start,
   run as runReference,
 } from "../../../../../experiments/workflow-kernel/compiled-finally/engine.mjs";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 const { run, ensure, scoped } = createRequire(
   new URL("../../../../../package.json", import.meta.url),
 )("effection");

@@ -22,7 +22,7 @@ const caller = (text) => ({
 import { run } from "effection";
 import assert from "node:assert/strict";
 import { hootLinker, HOOT_DEFINITION_FORMAT } from "../linker.mts";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 
 const link = (input) => run(() => hootLinker.link(input));
 

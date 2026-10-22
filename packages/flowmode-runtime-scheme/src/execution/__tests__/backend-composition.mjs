@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { createHootProgram } from "../driver.mjs";
+import { createHootProgram } from "../driver.mts";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR as schema,
   createPinnedDurableProgram,

@@ -1,9 +1,7 @@
+import type { KernelIdentity } from "@sweatpants/flowmode-runtime";
 import { HOOT_PROGRAM_FORMAT } from "./linker.mts";
 
-/** @param {string} wasmDigest
- * @returns {import("@sweatpants/flowmode-runtime").KernelIdentity}
- */
-export function createHootKernelIdentity(wasmDigest) {
+export function createHootKernelIdentity(wasmDigest: string): KernelIdentity {
   return {
     kind: "flowmode-runtime-scheme",
     version: wasmDigest,

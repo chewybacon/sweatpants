@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { loadMachine } from "../machine.mjs";
-import { machineApi } from "../machine-api.mjs";
+import { loadMachine } from "../machine.mts";
+import { machineApi } from "../machine-api.mts";
 
 // Production bundling renames Hoot's MutableString class.
 // oxlint-disable-next-line typescript-eslint/no-extraneous-class -- A renamed class instance models the bundled Hoot value being tested.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { source, emitted } from "./fixtures/fixture.mjs";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 let machine = await loadMachine();

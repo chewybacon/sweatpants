@@ -4,11 +4,9 @@
     "rootDir": "src",
     "outDir": "dist",
     "emitDeclarationOnly": false,
-    "allowJs": true,
-    "checkJs": false,
     "rewriteRelativeImportExtensions": true,
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/execution/**/*.mts", "src/execution/**/*.mjs"],
+  "include": ["src/execution/**/*.mts"],
   "exclude": ["src/**/__tests__/**"]
 }

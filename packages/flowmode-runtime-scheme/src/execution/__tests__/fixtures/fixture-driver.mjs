@@ -1,4 +1,4 @@
-import { createHootProgram } from "../../driver.mjs";
+import { createHootProgram } from "../../driver.mts";
 import { source } from "./fixture.mjs";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 const fixtureContract = {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 import { emitWorkflowScheme } from "@sweatpants/flowmode-compiler/emit-scheme";
 const values = [
   null,

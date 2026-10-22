@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";
 
 // Serialize trusted test mutations, retaining dotted bindings from the Scheme reader.

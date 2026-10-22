@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { loadMachine } from "../machine.mjs";
+import { loadMachine } from "../machine.mts";
 import { source } from "./fixtures/fixture.mjs";
 import { projectHootInspection } from "../inspection.mts";
 import { parse } from "@sweatpants/flowmode-compiler/scheme-data/read";

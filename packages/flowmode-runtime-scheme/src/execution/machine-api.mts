@@ -1,43 +1,68 @@
-/** @typedef {{ call(...args: unknown[]): unknown[] }[]} HootProcedureList */
-/** @typedef {HootProcedureList & { fuel: WebAssembly.Global }} HootProcedures */
-import { inspectSnapshot } from "./inspect.mjs";
+import type { Json } from "@sweatpants/foundation";
+import type { WorkflowBoundary } from "@sweatpants/flowmode-runtime";
+import { inspectSnapshot } from "./inspect.mts";
 import { encodeValue, decodeValue } from "@sweatpants/flowmode-compiler/scheme-data/values";
-export function machineApi(procedures) {
-  function call(index, ...args) {
+
+export type HootProcedureList = { call(...args: unknown[]): unknown[] }[];
+export type HootProcedures = HootProcedureList & { fuel: WebAssembly.Global };
+export type HootMachine = ReturnType<typeof machineApi>;
+export interface HootBoundary {
+  kind: string;
+  site: string;
+  value: Json;
+}
+
+function reflectedValue(value: unknown): unknown {
+  if (value && typeof value === "object" && "reflector" in value) {
+    const reflector = value.reflector;
+    if (
+      reflector &&
+      typeof reflector === "object" &&
+      "string_value" in reflector &&
+      typeof reflector.string_value === "function"
+    ) {
+      return reflector.string_value(value);
+    }
+  }
+  return value;
+}
+function stringValue(value: unknown): string {
+  if (typeof value !== "string") {
+    throw Error("Expected Hoot string result");
+  }
+  return value;
+}
+
+export function machineApi(procedures: HootProcedures) {
+  function call(index: number, ...args: unknown[]) {
     procedures.fuel.value = 100_000_000n;
     try {
-      return procedures[index]
-        .call(...args)
-        .map((value) =>
-          value && typeof value === "object" && typeof value.reflector?.string_value === "function"
-            ? value.reflector.string_value(value)
-            : value,
-        );
+      return procedures[index]!.call(...args).map(reflectedValue);
     } catch (cause) {
       procedures.fuel.value = 100_000_000n;
-      const value = procedures[6].call()[0];
-      const diagnostic =
-        value && typeof value === "object" && typeof value.reflector?.string_value === "function"
-          ? value.reflector.string_value(value)
-          : value;
+      const diagnostic = reflectedValue(procedures[6]!.call()[0]);
       throw new Error(
         typeof diagnostic === "string" && diagnostic ? diagnostic : "Workflow evaluator failed",
         { cause },
       );
     }
   }
-  function boundary(values) {
+  function boundary(values: unknown[]): HootBoundary {
     const [kind, site, data] = values;
-    return { kind, site, value: decodeValue(data) };
+    return {
+      kind: stringValue(kind),
+      site: stringValue(site),
+      value: decodeValue(stringValue(data)),
+    };
   }
   return {
-    validate: (source) => call(7, source)[0],
-    start: (source, input = null) => boundary(call(0, source, encodeValue(input))),
-    resume: (value) => boundary(call(1, encodeValue(value))),
-    reject: (error) => boundary(call(5, encodeValue(error))),
+    validate: (source: string) => stringValue(call(7, source)[0]),
+    start: (source: string, input: Json = null) => boundary(call(0, source, encodeValue(input))),
+    resume: (value: Json) => boundary(call(1, encodeValue(value))),
+    reject: (error: Json) => boundary(call(5, encodeValue(error))),
     cancel: () => boundary(call(2)),
-    capture: () => call(3)[0],
-    inspect: (boundary) => inspectSnapshot(call(3)[0], boundary),
-    restore: (source, snapshot) => boundary(call(4, source, snapshot)),
+    capture: () => stringValue(call(3)[0]),
+    inspect: (boundary: WorkflowBoundary) => inspectSnapshot(stringValue(call(3)[0]), boundary),
+    restore: (source: string, snapshot: string) => boundary(call(4, source, snapshot)),
   };
 }
