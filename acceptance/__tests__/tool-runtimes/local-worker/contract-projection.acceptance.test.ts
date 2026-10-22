@@ -1,0 +1,120 @@
+import { createToolInventoryEntry } from "@sweatpants/tool-runtime";
+/**
+ * F4: portable tool artifact projection.
+ *
+ * Worker-backed registration consumes a metadata-only contract projection so
+ * the host process never needs the implementation closure. Inline execution
+ * rejects projections explicitly. Both derive from one authored definition.
+ */
+import { run } from "effection";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { describe, expect, it } from "vitest";
+import { isExecutableToolContract, projectToolContract } from "@sweatpants/agent-sdk";
+import {
+  createLocalToolInvocationRuntime,
+  ToolInvocationHostPort,
+} from "@sweatpants/tool-runtime-local";
+import { createInvocationToolRuntimeDriver } from "@sweatpants/tool-session/execution";
+
+const workerFixturePath = resolve("__tests__/tool-runtimes/local-worker/fixtures/tool-worker.mjs");
+
+const workerConfig = {
+  workerUrl: pathToFileURL(workerFixturePath),
+  isDev: false,
+} as const;
+
+// The single authored definition. The worker fixture executes `echo`; the
+// host below registers only the projection of this definition.
+import { echoTool } from "../../../fixtures/echo-tool.ts";
+
+describe("portable tool contract projection (F4)", () => {
+  it("projects a non-executable contract preserving identity, schemas, and capabilities", () => {
+    const projection = projectToolContract(echoTool);
+
+    expect(projection.name).toBe("echo");
+    expect(projection.description).toBe("Echo a message");
+    expect(projection.execution).toBe("ordinary");
+    expect(projection.parameters).toBe(echoTool.parameters);
+    expect(projection.artifacts).toBe(echoTool.artifacts);
+    expect(projection.capabilities).toEqual(echoTool.capabilities);
+
+    // The projection is data, not a callable factory.
+    expect(typeof projection).toBe("object");
+    expect(isExecutableToolContract(projection)).toBe(false);
+    expect(isExecutableToolContract(echoTool)).toBe(true);
+  });
+
+  it("executes through a worker-backed runtime registered with only the projection", async () => {
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({
+        worker: workerConfig,
+      });
+      const projection = projectToolContract(echoTool);
+      const driver = yield* createInvocationToolRuntimeDriver({
+        id: "local",
+        tools: [projection],
+        samplingProvider: {
+          *sample() {
+            return { text: "unused" };
+          },
+        },
+      });
+
+      const execution = yield* driver.execute({
+        entry: createToolInventoryEntry(projection),
+        call: {
+          id: "call-projected",
+          name: "echo",
+          input: { message: "hello projection" },
+          thoughtSignature: null,
+        },
+        signal: new AbortController().signal,
+      });
+
+      expect(execution.kind).toBe("completed");
+      if (execution.kind === "completed") {
+        expect(execution.result).toEqual({ echoed: "hello projection" });
+      }
+    });
+  });
+
+  it("rejects inline execution of a metadata-only projection with a clear error", async () => {
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
+      const projection = projectToolContract(echoTool);
+
+      let error: Error | undefined;
+      try {
+        yield* host.start({
+          invocationId: "test-inline-reject",
+          tool: projection,
+          input: { message: "x" },
+        });
+      } catch (caught) {
+        error = caught as Error;
+      }
+      expect(error?.message).toContain("metadata-only contract projection");
+      expect(error?.message).toContain("worker configuration");
+    });
+  });
+
+  it("inline execution still works with the full definition", async () => {
+    await run(function* () {
+      yield* createLocalToolInvocationRuntime({});
+      const host = yield* ToolInvocationHostPort.use();
+      yield* host.start({
+        invocationId: "test-inline-echo",
+        tool: echoTool,
+        input: { message: "inline" },
+      });
+      const turn = yield* host.turn({
+        invocationId: "test-inline-echo",
+        commandId: "turn-0",
+        cursor: 0,
+      });
+      expect(turn).toMatchObject({ type: "completed", result: { echoed: "inline" } });
+    });
+  });
+});

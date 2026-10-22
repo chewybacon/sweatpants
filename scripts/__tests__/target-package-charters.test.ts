@@ -335,6 +335,8 @@ describe("target package charters", () => {
 
   it("keeps chat state behavior outside-in and AG-UI conformance simulator-backed", () => {
     const removedInternalSuites = [
+      "packages/react-chat/acceptance/hook-state.acceptance.test.ts",
+      "packages/react-chat/acceptance/react-scenario.ts",
       "packages/chat-core/src/smoke.test.ts",
       "packages/chat-core/src/session/__tests__/ag-ui-stream.test.ts",
       "packages/chat-core/src/session/__tests__/history-sync.test.ts",
@@ -369,10 +371,13 @@ describe("target package charters", () => {
     );
     expect(
       readFileSync(
-        resolve(root, "packages/react-chat/acceptance/hook-state.acceptance.test.ts"),
+        resolve(
+          root,
+          "acceptance/__tests__/application-composition/react-plugin.acceptance.test.tsx",
+        ),
         "utf8",
       ),
-    ).toMatch(/s\.agui\.assertConformant/);
+    ).toMatch(/rig\.agui\.assertConformant/);
   });
 
   it("keeps authored service and repository ports Effection-native", () => {

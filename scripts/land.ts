@@ -2,6 +2,7 @@ import { createConnection } from "node:net";
 import { mkdir, open, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { acceptanceLanes, verificationEnvironment } from "./verification.ts";
 
 async function main(): Promise<void> {
   const root = resolve(process.cwd());
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     timeoutMs: number;
     env?: Record<string, string>;
     forbidSkips?: boolean;
+    workers?: number;
   }
 
   interface StageSummary {
@@ -79,6 +81,9 @@ async function main(): Promise<void> {
 
   function deterministicStages(appTests: Stage[]): Stage[] {
     return [
+      { name: "format:repository", command: "pnpm", args: ["format:check"], timeoutMs: 5 * 60_000 },
+      { name: "check:hygiene", command: "pnpm", args: ["check:hygiene"], timeoutMs: 2 * 60_000 },
+      { name: "check:evidence", command: "pnpm", args: ["check:evidence"], timeoutMs: 2 * 60_000 },
       { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
       // Package builds exclude tests from tsc so declarations stay clean, which
@@ -87,26 +92,21 @@ async function main(): Promise<void> {
       // Fixture tests for the custom rules themselves: `lint` proves the repo
       // obeys them, this proves they still detect what they claim to.
       { name: "test:tooling", command: "pnpm", args: ["test:tooling"], timeoutMs: 5 * 60_000 },
-      // Consumer-or-parked gate (no-sediment rule 5) and permanent source
-      // evidence: deleted identities must stay deleted on every landing (REQ-013).
-      // Campaign archive/reference checks run only through explicit closure.
-      { name: "check:hygiene", command: "pnpm", args: ["check:hygiene"], timeoutMs: 2 * 60_000 },
-      { name: "check:evidence", command: "pnpm", args: ["check:evidence"], timeoutMs: 2 * 60_000 },
       {
         name: "build:clean",
         command: "pnpm",
         args: ["verify:clean-build"],
         timeoutMs: 15 * 60_000,
       },
+      {
+        name: "build:workflow-fixtures",
+        command: "pnpm",
+        args: ["--filter", "yo-workflow", "execution:compile"],
+        timeoutMs: 5 * 60_000,
+      },
       // Apps resolve package exports from dist, so check them only after the
       // clean build has regenerated every dependency artifact.
       { name: "types:apps", command: "pnpm", args: ["check:apps"], timeoutMs: 10 * 60_000 },
-      {
-        name: "format:repository",
-        command: "pnpm",
-        args: ["format:check"],
-        timeoutMs: 5 * 60_000,
-      },
       {
         name: "verify:yo-chat-remote-collection",
         command: "pnpm",
@@ -120,6 +120,8 @@ async function main(): Promise<void> {
           "--filter",
           "./packages/**",
           "--filter",
+          "./acceptance",
+          "--filter",
           "!@sweatpants/platform-acceptance",
           `--workspace-concurrency=${packageTestConcurrency}`,
           "--aggregate-output",
@@ -128,15 +130,15 @@ async function main(): Promise<void> {
         ],
         timeoutMs: 15 * 60_000,
       },
-      // The normal and SQLite acceptance lanes take about ten minutes together.
-      // Give them their own bounded stage instead of consuming the time left
-      // after the rest of the dependency-ordered package suite.
-      {
-        name: "test:platform-acceptance",
+      // Memory scenarios can overlap. SQLite and fresh-process probes keep
+      // their own single-worker bounds and independent collection baselines.
+      ...acceptanceLanes.map((lane) => ({
+        name: `test:platform-acceptance:${lane.name}`,
         command: "pnpm",
-        args: ["--filter", "@sweatpants/platform-acceptance", "test"],
+        args: ["--filter", "@sweatpants/platform-acceptance", `test:${lane.name}`],
         timeoutMs: 15 * 60_000,
-      },
+        workers: lane.workers,
+      })),
       // Real Hoot recovery uses built workspace packages and the Hoot artifact used by yo-workflow.
       // Run sequentially, after the clean build, alongside the normal regression gates.
       {
@@ -293,14 +295,8 @@ async function main(): Promise<void> {
     const child = spawn(stage.command, stage.args, {
       cwd: root,
       env: {
-        ...process.env,
+        ...verificationEnvironment(stage.workers),
         ...stage.env,
-        // Package concurrency alone does not bound each Vitest worker pool.
-        VITEST_MAX_THREADS: "1",
-        VITEST_MIN_THREADS: "1",
-        VITEST_MAX_FORKS: "1",
-        VITEST_MIN_FORKS: "1",
-        CI: "",
       },
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
@@ -361,9 +357,14 @@ async function main(): Promise<void> {
     if (coverage) {
       observedCoverage[stage.name] = coverage;
     }
+    const baseline = coverageBaseline[stage.name];
     const coverageFailure =
-      exit.code === 0 && coverage && !updateCoverageBaseline
-        ? compareCoverage(stage.name, coverage, coverageBaseline[stage.name])
+      exit.code === 0 && !updateCoverageBaseline
+        ? coverage
+          ? compareCoverage(stage.name, coverage, baseline)
+          : baseline
+            ? `${stage.name}: no test summary was collected; expected at least ${baseline.total} tests`
+            : undefined
         : undefined;
     if (exit.code === 0 && !timedOut && !skipped && !coverageFailure) {
       return {
@@ -380,7 +381,14 @@ async function main(): Promise<void> {
       console.error(coverageFailure);
       console.error(`Full log: ${relativeArtifact(logPath)}`);
       console.error(`Update deliberately with: LAND_UPDATE_COVERAGE_BASELINE=1 pnpm land`);
-      process.exit(1);
+      return {
+        name: stage.name,
+        command: displayCommand(stage),
+        status: "failed",
+        durationMs: Date.now() - started,
+        log: relativeArtifact(logPath),
+        classification: "COVERAGE_REGRESSION",
+      };
     }
 
     const classification = timedOut

@@ -4,11 +4,6 @@
     "skipped": 17,
     "total": 1096
   },
-  "test:platform-acceptance": {
-    "passed": 151,
-    "skipped": 0,
-    "total": 151
-  },
   "test:tooling": {
     "passed": 27,
     "skipped": 0,
@@ -38,5 +33,20 @@
     "passed": 4,
     "skipped": 0,
     "total": 4
+  },
+  "test:platform-acceptance:memory": {
+    "passed": 43,
+    "skipped": 0,
+    "total": 43
+  },
+  "test:platform-acceptance:sqlite": {
+    "passed": 14,
+    "skipped": 0,
+    "total": 14
+  },
+  "test:platform-acceptance:process": {
+    "passed": 9,
+    "skipped": 0,
+    "total": 9
   }
 }

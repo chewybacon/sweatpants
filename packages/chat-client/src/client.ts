@@ -905,6 +905,7 @@ class ChatClientController<
     this.publishProjection({
       authority: null,
       status: "submitted",
+      error: null,
       connectionStatus: "connecting",
       runId,
     });

@@ -9,7 +9,24 @@ set -uo pipefail
 # exceptions; adding a package to the gate means keeping it strict and green.
 status=0
 checked=0
-for config in packages/*/tsconfig.test.json; do
+configs=(packages/*/tsconfig.test.json)
+configs+=(acceptance/tsconfig.json)
+if (( $# > 0 )); then
+  configs=()
+  for selection in "$@"; do
+    selection="${selection%/}"
+    if [[ "$selection" == "acceptance" ]]; then
+      configs+=("acceptance/tsconfig.json")
+      continue
+    fi
+    if [[ ! "$selection" =~ ^packages/[^/]+$ || ! -f "$selection/tsconfig.test.json" ]]; then
+      echo "Unknown test typecheck package: $selection" >&2
+      exit 2
+    fi
+    configs+=("$selection/tsconfig.test.json")
+  done
+fi
+for config in "${configs[@]}"; do
   package="$(dirname "$config")"
   checked=$((checked + 1))
   if ! ./node_modules/.bin/tsc -p "$config"; then

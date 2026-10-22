@@ -95,11 +95,21 @@ export function* presentProgramDriverChatActivation(
       .map((slotPullId) => pendingElicit(projection, slotPullId))
       .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
     if (pendings.length > 0) {
+      // A tool's argument stream closes at its first park. Later elicitations
+      // resume the same tool without opening another TOOL_CALL_START segment.
+      const openToolCalls = new Set<string>();
+      for (const event of projected) {
+        if (event.type === EventType.TOOL_CALL_START) {
+          openToolCalls.add(event.toolCallId);
+        } else if (event.type === EventType.TOOL_CALL_END) {
+          openToolCalls.delete(event.toolCallId);
+        }
+      }
       for (const pending of pendings) {
-        parkedEvents.push({
-          type: EventType.TOOL_CALL_END,
-          toolCallId: pendingToolCallId(projection, pending),
-        });
+        const toolCallId = pendingToolCallId(projection, pending);
+        if (openToolCalls.delete(toolCallId)) {
+          parkedEvents.push({ type: EventType.TOOL_CALL_END, toolCallId });
+        }
         const interrupt = projectInterrupt(projection, pending, {
           agUiRun: context.agUiRun,
           toolInventory: context.toolInventory,

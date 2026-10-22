@@ -26,7 +26,7 @@
     "execution:lua:build": "pnpm --filter @sweatpants/flowmode-runtime-lua wasm:build",
     "execution:build": "pnpm --filter @sweatpants/flowmode-runtime-scheme execution:build",
     "execution:test": "pnpm execution:compile && node execution/__tests__/service.mjs && node execution/__tests__/failure.mjs && node execution/__tests__/recompile.mjs",
-    "execution:compile": "pnpm --package=tsdown@0.23.1 --package=typescript@5.9.3 dlx tsdown --config ../../experiments/workflow-kernel/tsdown-authoring/tsdown.config.mjs",
+    "execution:compile": "tsdown --config ../../experiments/workflow-kernel/tsdown-authoring/tsdown.config.mjs",
     "execution:dev": "pnpm dev"
   },
   "dependencies": {
@@ -83,6 +83,7 @@
     "jsdom": "catalog:",
     "miniflare": "5.20261001.0-alpha",
     "oxc-transform-react": "0.145.0",
+    "tsdown": "0.23.1",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",

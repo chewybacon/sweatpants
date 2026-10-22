@@ -20,7 +20,7 @@
  * @packageDocumentation
  */
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { JsonObject } from "@sweatpants/foundation";
+import { requireJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type { ChatToolDefinition } from "@sweatpants/chat-contract";
 import {
   type Operation,
@@ -503,20 +503,13 @@ interface BridgeExecutionState<TElicits extends ElicitsMap> {
   elicitSeq: number;
   sampleSeq: number;
   elicits: TElicits;
+  elicitArtifacts: ToolDefinition["artifacts"]["elicits"];
   eventChannel: Channel<BridgeEvent, void>;
   // Note: samplingProvider removed - sampling now uses responseSignal pattern
   // The event handler (tool-session or runBridgeTool) is responsible for
   // calling the sampling provider and sending the response via the signal
 }
 
-// =============================================================================
-// HELPER: CONVERT ZOD TO JSON SCHEMA (INLINE)
-// =============================================================================
-
-/**
- * Convert Zod schema to JSON Schema for MCP elicitation.
- * Uses Zod's built-in toJSONSchema() method.
- */
 // =============================================================================
 // CONTEXT IMPLEMENTATION
 // =============================================================================
@@ -1006,7 +999,17 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           const { message } = options;
           const contextData = "context" in options ? options.context : undefined;
 
-          const baseSchema = toToolParameterJsonSchema(responseSchema);
+          const artifact = state.elicitArtifacts[key];
+          // The author already supplied the wire projection, including schemas
+          // with transforms that cannot be converted to JSON Schema at runtime.
+          const {
+            $id: _id,
+            $schema: _schema,
+            ...baseSchema
+          } = requireJsonObject(
+            artifact.response.inputProjection,
+            `tool ${state.toolName} elicitation ${key} response`,
+          );
 
           // Build the request
           const request: ElicitRequest<K, any> = {
@@ -1170,6 +1173,7 @@ export function createBridgeHost<
             elicitSeq: 0,
             sampleSeq: 0,
             elicits: tool.elicits as TElicits,
+            elicitArtifacts: tool.artifacts.elicits,
             eventChannel,
           };
 
