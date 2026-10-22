@@ -14,6 +14,9 @@ inspection and kernel assembly used by Execution. They preserve lexical frames,
 shared cells and suspended cleanup across capture and fresh-instance restore.
 `/execution/program` composes the shared `flowmode-backend` with the existing
 `createWorkflowProgramDriver`; it does not introduce another attachment protocol.
+Assembly uses the shared `createKernelProgram` factory. Program options accept
+`runtimeOptions` for runtime, kernel and execution middleware; `createKernel()`
+returns an Effection operation and uses that same composition on direct acquisition.
 `/execution/machine-api` is portable, while `/execution/machine` and
 `/execution/driver` are Node loaders. Worker consumers load the packaged static
 Wasm and reflection bridge through `/execution/kernel.wasm` and

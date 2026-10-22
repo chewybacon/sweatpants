@@ -126,7 +126,7 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
           });
           return z.object({ action: z.string() }).parse(result).action === "accept";
         },
-        *executeCapability({ name, input: data }, count, invocationId) {
+        *exchange({ capability: { name, input: data }, completedEffects: count, invocationId }) {
           const binding = registry.get(name);
           const schema =
             binding?.parameters ??
@@ -139,7 +139,7 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
                   : undefined);
           if (!schema) {
             return {
-              ok: false,
+              kind: "stop",
               result: {
                 status: "failed",
                 diagnostic: { message: `Unknown Lua capability: ${name}` },
@@ -150,7 +150,7 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
           const checked = validateAuthoredSchema<Json>(schema, data);
           if (checked.status !== "ok") {
             return {
-              ok: false,
+              kind: "stop",
               result: {
                 status: "failed",
                 diagnostic: { message: `Invalid ${name} request: ${JSON.stringify(checked)}` },
@@ -192,7 +192,7 @@ Capability contracts (JSON schemas describe Lua table shapes):\n${JSON.stringify
             result: value,
             failed: false,
           });
-          return { ok: true, value };
+          return { kind: "resume", value };
         },
       });
     });

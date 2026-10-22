@@ -161,6 +161,15 @@ on the driver; middleware keys describe only operations. The first middleware
 entry is outermost. These wrappers preserve the calling Effection scope and do
 not acquire resources until the wrapped operation runs.
 
+`createWorkflowRuntime` also accepts `kernelMiddleware` for `start`, `restore`
+and `close`, and `executionMiddleware` for `resume`, `cancel`, `capture` and
+`dispose`. The latter decorates executions returned by both fresh startup and
+restore. `createWorkflowKernel` accepts the same `executionMiddleware` directly.
+These are wrappers over the existing live handle, not independent execution
+state machines. Lifecycle validation remains in `createKernelExecution`.
+VM-specific inspection remains an explicit observation contract; operation
+middleware does not invent inspection state or make snapshots authoritative.
+
 The same foundation `OperationMiddleware<Operations>` type is used by execution,
 durable storage, chat APIs, and tool invocation hosts/executors. Existing scoped
 Ports keep scope inheritance and driver installation. `installOperationMiddleware`

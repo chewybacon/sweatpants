@@ -1,6 +1,8 @@
-import { createWorkflowGuidance } from "../../../packages/flowmode-runtime/dist/index.js";
+import { createWorkflowGuidance } from "@sweatpants/flowmode-runtime";
 import { createLuaAuthoring } from "@sweatpants/flowmode-runtime-lua/authoring";
 import { createLuaProgram } from "@sweatpants/flowmode-runtime-lua/program";
+/** @param {import("@sweatpants/flowmode-runtime-lua").LuaInvoker} invoke
+ * @param {import("@sweatpants/flowmode-runtime").CompiledWorkflow} reviewDraft */
 export function createLuaStack(invoke, reviewDraft) {
   const { luaCompiler, luaLinker } = createLuaAuthoring(invoke);
   return {
@@ -18,6 +20,7 @@ export function createLuaStack(invoke, reviewDraft) {
     },
     linker: luaLinker,
     compiler: luaCompiler,
+    /** @param {Parameters<typeof createLuaProgram>[0]} options */
     createProgram: (options) => createLuaProgram(options, invoke),
     caller:
       "local function main(input)\n  local result = review_draft(input)\n  return result\nend\nlocal result = main(input)\nreturn result",

@@ -77,7 +77,6 @@
     "@sweatpants/flowmode-backend": "workspace:*",
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
-    "@sweatpants/journal-authority": "workspace:*",
     "effection": "catalog:",
     "zod": "catalog:"
   },

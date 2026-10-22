@@ -16,6 +16,17 @@ It is consumed by both yo-workflow Playground and Execution.
   capability validation/dispatch and computation approval. App prompts and UI
   events are not runtime policy.
 
+Program assembly delegates to `flowmode-backend`'s `createKernelProgram`.
+`createLuaProgram` accepts `runtimeOptions` using the shared operation composition
+types. Its `createKernel()` returns an Effection operation, so runtime, kernel and
+execution middleware also apply to direct acquisition.
+
+Replay dispatch uses `Exchange<ReplayCapabilityRequest, ReplayCapabilityReply>`.
+Requests carry the capability, completed-effect count and invocation identity.
+A `resume` reply feeds a value to the guest; `stop` returns the adapter's result
+without claiming guest completion or cancellation cleanup. Computation approval
+is an `Exchange<string, boolean>` keyed by the existing approval call identity.
+
 Playground records compressed portable VM state through durable-tool replay. It
 does not persist a Lua continuation as an authority checkpoint. Execution uses
 kernel capture/restore through the shared backend; journal provenance remains
