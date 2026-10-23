@@ -56,8 +56,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/chat-core",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/chat-core --fix",
+    "format": "cd ../.. && oxfmt packages/chat-core",
+    "format:check": "cd ../.. && oxfmt packages/chat-core --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/agent-sdk": "workspace:*",

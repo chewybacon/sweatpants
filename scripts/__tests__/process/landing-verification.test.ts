@@ -16,7 +16,7 @@ afterEach(() => {
   }
 });
 
-function fixture(dropMemoryCoverage: boolean) {
+function fixture(dropAcceptanceCoverage: boolean) {
   const root = mkdtempSync(join(tmpdir(), "landing-verification-"));
   temporary.push(root);
   mkdirSync(join(root, "apps"));
@@ -25,7 +25,7 @@ function fixture(dropMemoryCoverage: boolean) {
   writeFileSync(
     join(root, "scripts/test-coverage-baseline.json"),
     JSON.stringify({
-      "test:platform-acceptance:memory": { passed: 102, total: 102, skipped: 0 },
+      "test:acceptance": { passed: 111, total: 111, skipped: 0 },
     }),
   );
   // Stub only subprocess execution: the actual landing planner, worker environment,
@@ -35,16 +35,15 @@ function fixture(dropMemoryCoverage: boolean) {
     `#!/usr/bin/env node
 const args = process.argv.slice(2);
 console.log('POOL=' + process.env.VITEST_MAX_THREADS);
-if (args.includes('test:memory')) console.log('Tests ${dropMemoryCoverage ? 1 : 102} passed (${dropMemoryCoverage ? 1 : 102})');
-if (args.includes('test:sqlite')) console.log('Tests 35 passed (35)');
-if (args.includes('test:process')) console.log('Tests 9 passed (9)');
+if (args.includes('@sweatpants/acceptance')) console.log('Tests ${dropAcceptanceCoverage ? 1 : 111} passed (${dropAcceptanceCoverage ? 1 : 111})');
+if (args.includes(process.env.FAIL_COMMAND)) process.exit(1);
 `,
     { mode: 0o755 },
   );
   return root;
 }
 
-it("uses four memory workers, restores one for SQLite/process, and keeps lanes separate", () => {
+it("runs only lint, format, types and acceptance with a bounded worker budget", () => {
   const root = fixture(false);
   const result = spawnSync(process.execPath, ["--import", tsx, land, "deterministic"], {
     cwd: root,
@@ -59,21 +58,17 @@ it("uses four memory workers, restores one for SQLite/process, and keeps lanes s
   const run = join(root, ".artifacts/landing", readdirSync(join(root, ".artifacts/landing"))[0]!);
   const summary = JSON.parse(readFileSync(join(run, "summary.json"), "utf8"));
   expect(summary.status).toBe("passed");
-  const memory = summary.stages.find(
-    (s: { name: string }) => s.name === "test:platform-acceptance:memory",
-  );
-  const sqlite = summary.stages.find(
-    (s: { name: string }) => s.name === "test:platform-acceptance:sqlite",
-  );
-  const processStage = summary.stages.find(
-    (s: { name: string }) => s.name === "test:platform-acceptance:process",
-  );
-  expect(readFileSync(join(root, memory.log), "utf8")).toContain("POOL=4");
-  expect(readFileSync(join(root, sqlite.log), "utf8")).toContain("POOL=1");
-  expect(readFileSync(join(root, processStage.log), "utf8")).toContain("POOL=1");
+  expect(summary.stages.map((stage: { command: string }) => stage.command)).toEqual([
+    "pnpm lint",
+    "pnpm format:check",
+    "pnpm check",
+    "pnpm --filter @sweatpants/acceptance test",
+  ]);
+  const acceptance = summary.stages.at(-1);
+  expect(readFileSync(join(root, acceptance.log), "utf8")).toContain("POOL=1");
 });
 
-it("persists a failed coverage stage and stops before starting the next lane", () => {
+it("rejects acceptance collection regressions and persists the failed stage", () => {
   const root = fixture(true);
   const result = spawnSync(process.execPath, ["--import", tsx, land, "deterministic"], {
     cwd: root,
@@ -89,9 +84,30 @@ it("persists a failed coverage stage and stops before starting the next lane", (
   const summary = JSON.parse(readFileSync(join(run, "summary.json"), "utf8"));
   expect(summary.status).toBe("failed");
   expect(summary.stages.at(-1)).toMatchObject({
-    name: "test:platform-acceptance:memory",
+    name: "test:acceptance",
     status: "failed",
     classification: "COVERAGE_REGRESSION",
   });
-  expect(result.stdout).not.toContain("test:platform-acceptance:sqlite");
+});
+
+it("stops before acceptance when type checking fails", () => {
+  const root = fixture(false);
+  const result = spawnSync(process.execPath, ["--import", tsx, land, "deterministic"], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${join(root, "bin")}:${process.env.PATH}`,
+      FAIL_COMMAND: "check",
+    },
+  });
+  expect(result.status).toBe(1);
+  const run = join(root, ".artifacts/landing", readdirSync(join(root, ".artifacts/landing"))[0]!);
+  const summary = JSON.parse(readFileSync(join(run, "summary.json"), "utf8"));
+  expect(summary.stages.map((stage: { name: string }) => stage.name)).toEqual([
+    "lint",
+    "format:repository",
+    "types",
+  ]);
+  expect(summary.stages.at(-1).status).toBe("failed");
 });

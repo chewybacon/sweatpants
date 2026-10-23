@@ -1,8 +1,7 @@
 import { readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-const root = resolve(process.cwd());
-const roots = ["packages", "apps"];
+const root = resolve(process.argv[2] ?? process.cwd());
 const generatedDirectories = new Set(["dist", ".tsup"]);
 const generatedFiles = new Set(["tsconfig.tsbuildinfo"]);
 
@@ -38,12 +37,8 @@ async function removeGenerated(path: string): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const removed = await Promise.all(
-    roots.map((directory) => removeGenerated(join(root, directory))),
-  );
-  console.log(
-    `Removed ${removed.reduce((total, count) => total + count, 0)} generated build artifact(s).`,
-  );
+  const removed = await removeGenerated(root);
+  console.log(`Removed ${removed} generated build artifact(s).`);
 }
 
 void main().catch((error: unknown) => {

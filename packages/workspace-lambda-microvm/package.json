@@ -22,8 +22,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/workspace-lambda-microvm",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/workspace-lambda-microvm --fix",
+    "format": "cd ../.. && oxfmt packages/workspace-lambda-microvm",
+    "format:check": "cd ../.. && oxfmt packages/workspace-lambda-microvm --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",

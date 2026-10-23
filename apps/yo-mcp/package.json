@@ -16,7 +16,12 @@
     "test": "vitest run src",
     "test:inspector": "playwright test",
     "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "lint": "cd ../.. && oxlint --type-aware apps/yo-mcp",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/yo-mcp --fix",
+    "format": "cd ../.. && oxfmt apps/yo-mcp",
+    "format:check": "cd ../.. && oxfmt apps/yo-mcp --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/agent-host": "workspace:*",

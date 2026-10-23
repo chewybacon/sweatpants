@@ -20,7 +20,8 @@ it("plans a focused test with fresh build prerequisites and owning strict checks
   );
   expect(output).toContain("Build selected projects and prerequisites");
   expect(output).toContain("@sweatpants/flowmode-runtime...");
-  expect(output).toContain("check:tests packages/flowmode-runtime");
+  expect(output).toContain("pnpm -C packages/flowmode-runtime check");
+  expect(output).not.toContain("check:tests");
   expect(output).toContain("vitest run src/__tests__/composition.test.ts");
   expect(output).toContain("Plan only; no checks executed");
   expect(output).not.toContain("Tests: @sweatpants/platform-acceptance");
@@ -71,4 +72,44 @@ it("fails on misspelled package selectors before executing a check", () => {
   );
   expect(result.status).not.toBe(0);
   expect(result.stderr).toContain("Unknown workspace project");
+});
+
+it("discovers acceptance as a workspace and retains its source-aware test command", () => {
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      cli,
+      "--plan",
+      "--test",
+      "acceptance/__tests__/application-composition/react-plugin.acceptance.test.tsx",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  expect(output).toContain("Selected: @sweatpants/acceptance");
+  expect(output).toContain(
+    "pnpm -C acceptance test __tests__/application-composition/react-plugin.acceptance.test.tsx",
+  );
+  expect(output).not.toContain("Complete gate");
+});
+
+it("preserves the repository test configuration for a focused tooling test", () => {
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      cli,
+      "--plan",
+      "--test",
+      "scripts/__tests__/process/workspace-hygiene-cli.test.ts",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  expect(output).toContain("Selected: @sweatpants/repository");
+  expect(output).toContain(
+    "pnpm -C scripts test scripts/__tests__/process/workspace-hygiene-cli.test.ts",
+  );
+  expect(output).not.toContain("exec vitest");
 });

@@ -59,9 +59,14 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest",
-    "test:acceptance": "vitest run acceptance"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:acceptance": "vitest run acceptance",
+    "lint": "cd ../.. && oxlint --type-aware packages/agent-sdk",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/agent-sdk --fix",
+    "format": "cd ../.. && oxfmt packages/agent-sdk",
+    "format:check": "cd ../.. && oxfmt packages/agent-sdk --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@standard-schema/spec": "catalog:",

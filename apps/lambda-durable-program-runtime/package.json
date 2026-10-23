@@ -7,7 +7,12 @@
   "scripts": {
     "build": "tsup",
     "check": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "cd ../.. && oxlint --type-aware apps/lambda-durable-program-runtime",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/lambda-durable-program-runtime --fix",
+    "format": "cd ../.. && oxfmt apps/lambda-durable-program-runtime",
+    "format:check": "cd ../.. && oxfmt apps/lambda-durable-program-runtime --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",

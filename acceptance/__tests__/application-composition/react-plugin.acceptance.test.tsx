@@ -31,7 +31,11 @@ function createApplication(context: TestApplicationFactoryContext) {
       },
     },
   });
-  return { handle: application.handler, close: () => application.close() };
+  return {
+    handle: application.handler,
+    close: () => application.close(),
+    inspect: () => application.inspect(),
+  };
 }
 
 // The rig hosts the real HTTP application and the external model simulator.
@@ -125,7 +129,33 @@ describe("application composition with authored React plugins over HTTP", () => 
       const sendAgain = yield* ui.waitForEnabledButton("Book trip");
       sendAgain.click();
       const successor = yield* rig.model.request();
-      expect(JSON.stringify(successor.body.input)).toContain("Book Oslo");
+      // The outer history retains one causal call/result pair and the original arguments.
+      expect(successor.body.input).toEqual([
+        expect.objectContaining({
+          role: "user",
+          content: [expect.objectContaining({ text: "Book Oslo" })],
+        }),
+        expect.objectContaining({
+          type: "function_call",
+          call_id: "booking",
+          name: "book_trip",
+          arguments: JSON.stringify({ destination: "Oslo" }),
+        }),
+        expect.objectContaining({ type: "function_call_output", call_id: "booking" }),
+        expect.objectContaining({
+          role: "assistant",
+          content: [expect.objectContaining({ text: "Your trip is booked" })],
+        }),
+        expect.objectContaining({
+          role: "user",
+          content: [expect.objectContaining({ text: "Book Oslo" })],
+        }),
+      ]);
+      const outerText = (successor.body.input as Array<{ role?: string }>).filter(
+        (item) => item.role === "user" || item.role === "assistant",
+      );
+      expect(JSON.stringify(outerText)).not.toContain("PRIVATE_TRAVEL_TIP");
+      expect(JSON.stringify(outerText)).not.toContain("Take the train");
       yield* successor.respond.text("Next booking started");
 
       // Assert: the same client accepts and completes the successor.
@@ -136,70 +166,125 @@ describe("application composition with authored React plugins over HTTP", () => 
   });
 
   it("projects streamed text through the hook and preserves it on the next turn", async () => {
-    await withTestScenario(rigOptions, function* (rig) {
-      // Arrange: compose the UI with the authored plugin.
-      using ui = yield* useUI(rig, { plugins: [tripPlugin] });
+    let application: ReturnType<typeof createApplication>;
+    await withTestScenario(
+      {
+        ...rigOptions,
+        createApplication(context) {
+          application = createApplication(context);
+          return application;
+        },
+      },
+      function* (rig) {
+        // Arrange: compose the UI with the authored plugin.
+        using ui = yield* useUI(rig, { threadId: "streaming", plugins: [tripPlugin] });
+        const firstMark = rig.agui.mark();
 
-      // Act: send the user request through the chat UI.
-      const bookTripButton = yield* ui.waitForEnabledButton("Book trip");
-      bookTripButton.click();
+        // Act: send the user request through the chat UI.
+        const bookTripButton = yield* ui.waitForEnabledButton("Book trip");
+        bookTripButton.click();
 
-      // Arrange: hold a two-part provider response for controlled release.
-      const modelRequest = yield* rig.model.request();
-      const stream = yield* modelRequest.respond.textStream(["Hello", " Oslo"]);
+        // Arrange: hold a two-part provider response for controlled release.
+        const modelRequest = yield* rig.model.request();
+        const stream = yield* modelRequest.respond.textStream(["Hello", " Oslo"]);
 
-      // Act: release the first delta.
-      yield* stream.releaseNext();
+        // Act: release the first delta.
+        yield* stream.releaseNext();
 
-      // Assert: the first delta is visible before the response finishes.
-      yield* ui.waitForText("Hello");
+        // Assert: the first delta is visible before the response finishes.
+        yield* ui.waitForText("Hello");
 
-      // Act: release the second delta.
-      yield* stream.releaseNext();
+        // Act: release the second delta.
+        yield* stream.releaseNext();
 
-      // Assert: the hook projects the combined streamed text.
-      yield* ui.waitForText("Hello Oslo");
+        // Assert: the hook projects the combined streamed text.
+        yield* ui.waitForText("Hello Oslo");
 
-      // Act: finish the provider response.
-      yield* stream.finish();
+        // Act: finish the provider response.
+        yield* stream.finish();
 
-      // Assert: the chat returns to ready.
-      yield* ui.waitForElement("chat status is ready", () =>
-        ui.queryByText("ready", { selector: "output" }),
-      );
+        // Assert: the chat returns to ready.
+        yield* ui.waitForElement("chat status is ready", () =>
+          ui.queryByText("ready", { selector: "output" }),
+        );
 
-      // Act: send another request through the same client.
-      const sendAgainButton = yield* ui.waitForEnabledButton("Book trip");
-      sendAgainButton.click();
+        // Assert: streamed identity and one durable text emission survive the next snapshot.
+        const firstAssistant = ui.client
+          .getSnapshot()
+          .messages.find(
+            (message) =>
+              message.role === "assistant" && JSON.stringify(message).includes("Hello Oslo"),
+          );
+        expect(firstAssistant?.id).toBeTruthy();
+        const firstEvents = rig.agui.events(firstMark);
+        expect(firstEvents[0]?.type).toBe(EventType.RUN_STARTED);
+        expect(firstEvents.map((event) => event.type)).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        expect(firstEvents.map((event) => event.type)).not.toContain(EventType.STATE_SNAPSHOT);
+        expect(
+          firstEvents
+            .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+            .map((event) => event.delta),
+        ).toEqual(["Hello", " Oslo"]);
+        const storage = yield* call(() => application.inspect());
+        const journal = yield* storage.programDriverJournalStore.withJournal(
+          "streaming",
+          (opened) => opened.readJournal("streaming"),
+        );
+        expect(JSON.stringify(journal)).not.toContain('"eventType":"model_token"');
+        expect(
+          journal.filter(
+            (record) =>
+              record.payload.type === "DurableEmission" &&
+              record.payload.descriptor.eventType === "assistant_text",
+          ),
+        ).toHaveLength(1);
 
-      // Assert: the next request carries all three wire messages in order.
-      // Content boundaries stay intact; provider-generated IDs are incidental.
-      const followUp = yield* rig.model.request();
-      expect(followUp.body.input).toEqual([
-        expect.objectContaining({
-          role: "user",
-          content: [expect.objectContaining({ type: "input_text", text: "Book Oslo" })],
-        }),
-        expect.objectContaining({
-          role: "assistant",
-          content: [expect.objectContaining({ type: "output_text", text: "Hello Oslo" })],
-        }),
-        expect.objectContaining({
-          role: "user",
-          content: [expect.objectContaining({ type: "input_text", text: "Book Oslo" })],
-        }),
-      ]);
+        // Act: send another request through the same client.
+        const secondMark = rig.agui.mark();
+        const sendAgainButton = yield* ui.waitForEnabledButton("Book trip");
+        sendAgainButton.click();
 
-      // Act: complete the follow-up response.
-      yield* followUp.respond.text("Second answer");
+        // Assert: the next request carries all three wire messages in order.
+        // Content boundaries stay intact; provider-generated IDs are incidental.
+        const followUp = yield* rig.model.request();
+        expect(followUp.body.input).toEqual([
+          expect.objectContaining({
+            role: "user",
+            content: [expect.objectContaining({ type: "input_text", text: "Book Oslo" })],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            content: [expect.objectContaining({ type: "output_text", text: "Hello Oslo" })],
+          }),
+          expect.objectContaining({
+            role: "user",
+            content: [expect.objectContaining({ type: "input_text", text: "Book Oslo" })],
+          }),
+        ]);
 
-      // Assert: both answers remain visible after the follow-up settles.
-      yield* ui.waitForText("Second answer");
-      yield* ui.waitForElement("chat status is ready", () =>
-        ui.queryByText("ready", { selector: "output" }),
-      );
-      expect(ui.getByText("Hello Oslo").textContent).toBe("Hello Oslo");
-    });
+        // Act: complete the follow-up response.
+        yield* followUp.respond.text("Second answer");
+
+        // Assert: both answers remain visible after the follow-up settles.
+        yield* ui.waitForText("Second answer");
+        yield* ui.waitForElement("chat status is ready", () =>
+          ui.queryByText("ready", { selector: "output" }),
+        );
+        expect(ui.getByText("Hello Oslo").textContent).toBe("Hello Oslo");
+        const retained = ui.client
+          .getSnapshot()
+          .messages.filter(
+            (message) =>
+              message.role === "assistant" && JSON.stringify(message).includes("Hello Oslo"),
+          );
+        expect(retained).toHaveLength(1);
+        expect(retained[0].id).toBe(firstAssistant?.id);
+        const secondTypes = rig.agui.events(secondMark).map((event) => event.type);
+        expect(secondTypes[0]).toBe(EventType.RUN_STARTED);
+        expect(secondTypes).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        expect(secondTypes).not.toContain(EventType.STATE_SNAPSHOT);
+      },
+    );
   });
 
   it("stops the real provider request through the public hook and can send again", async () => {

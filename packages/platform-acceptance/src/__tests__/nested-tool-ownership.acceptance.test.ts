@@ -1,3 +1,5 @@
+// binding-conformance: shared semantics run once over HTTP; in-process composition
+// and storage behavior have separate focused tests.
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { normalizeResponsesHistory, withTestScenario } from "@sweatpants/test-rig";
@@ -23,7 +25,7 @@ function allMessages(messages: readonly ChatUIMessage[]): ChatUIMessage[] {
   return messages.flatMap((message) => [message, ...nestedMessages(message.parts)]);
 }
 
-describe.each(["in-process", "http"] as const)("nested tool ownership over %s", (binding) => {
+describe.each(["http"] as const)("nested tool ownership over %s", (binding) => {
   it.each([false, true])(
     "preserves the child call across park/resume (reopen=%s)",
     async (reopen) => {

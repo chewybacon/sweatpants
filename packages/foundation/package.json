@@ -112,8 +112,13 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/foundation",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/foundation --fix",
+    "format": "cd ../.. && oxfmt packages/foundation",
+    "format:check": "cd ../.. && oxfmt packages/foundation --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",

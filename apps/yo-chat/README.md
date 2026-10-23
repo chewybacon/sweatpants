@@ -17,8 +17,8 @@ To run this application:
 
 ```bash
 pnpm install
-pnpm model:auth:login --provider openai-codex
-pnpm dev:yo-chat
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider openai-codex
+pnpm --filter yo-chat dev
 ```
 
 ## Development configurations
@@ -26,19 +26,19 @@ pnpm dev:yo-chat
 Use the launchers so workspace dependencies are rebuilt from current sources
 before Vite or the server imports them:
 
-| Command (repository root)     | Configuration                                                |
-| ----------------------------- | ------------------------------------------------------------ |
-| `pnpm dev:yo-chat`            | Node host, selected real model, configured storage and tools |
-| `pnpm dev:yo-chat:local`      | Node host, local tool workers                                |
-| `pnpm dev:yo-chat:cloudflare` | Conversation DO host, D1, DO tool executors                  |
-| `pnpm dev:yo-chat:d1`         | Node host with local Cloudflare storage                      |
-| `pnpm dev:yo-chat:agentcore`  | Node host with configured AgentCore runtime                  |
-| `pnpm dev:yo-mcp`             | MCP server                                                   |
-| `pnpm dev:yo-agent`           | Terminal agent                                               |
-| `pnpm dev:yo-studio`          | Studio                                                       |
+| Command (repository root)              | Configuration                                                |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `pnpm --filter yo-chat dev`            | Node host, selected real model, configured storage and tools |
+| `pnpm --filter yo-chat dev:local`      | Node host, local tool workers                                |
+| `pnpm --filter yo-chat dev:cloudflare` | Conversation DO host, D1, DO tool executors                  |
+| `pnpm --filter yo-chat dev:d1`         | Node host with local Cloudflare storage                      |
+| `pnpm --filter yo-chat dev:agentcore`  | Node host with configured AgentCore runtime                  |
+| `pnpm --filter yo-mcp dev`             | MCP server                                                   |
+| `pnpm --filter yo-agent dev`           | Terminal agent                                               |
+| `pnpm --filter yo-studio dev`          | Studio                                                       |
 
 Root `pnpm dev` starts yo-chat. App-local `pnpm dev` commands use the same preparation. Arguments pass through,
-for example `pnpm dev:yo-chat:cloudflare --port 8008`. Both `--mode cloudflare`
+for example `pnpm --filter yo-chat dev:cloudflare --port 8008`. Both `--mode cloudflare`
 and `--mode=cloudflare` initialize Cloudflare storage and credentials. The
 launcher stops if a dependency build, credential refresh, or storage preparation
 fails. It does not launch against an older successful build.
@@ -90,9 +90,9 @@ Durable Object per conversation by default. It combines:
 
 ```sh
 # Conversation DO (default)
-pnpm dev:yo-chat --mode cloudflare
+pnpm --filter yo-chat dev --mode cloudflare
 # Run conversation orchestration in the ingress Worker instead
-CHAT_HOST_PLACEMENT=worker pnpm dev:yo-chat --mode cloudflare
+CHAT_HOST_PLACEMENT=worker pnpm --filter yo-chat dev --mode cloudflare
 pnpm -C apps/yo-chat exec vite build --mode cloudflare
 pnpm -C apps/yo-chat exec vitest run acceptance/cloudflare-host.acceptance.test.ts
 ```
@@ -151,7 +151,7 @@ pnpm -C apps/yo-chat metadata:init:local
 # Terminal 1: run the metadata Worker and response DOs on localhost:8788.
 pnpm -C apps/yo-chat dev:metadata
 # Terminal 2: run chat with a local workerd D1 journal binding.
-pnpm dev:yo-chat --mode d1-local
+pnpm --filter yo-chat dev --mode d1-local
 ```
 
 The metadata Worker uses the same HTTP handler and normalization as the Node app.
@@ -224,7 +224,7 @@ first chat/history request lazily opens and initializes
 on shutdown. Set `SWEATPANTS_DB_PATH` to use another local file.
 
 ```bash
-SWEATPANTS_DB_PATH=/var/lib/yo-chat/authority.sqlite pnpm dev:yo-chat
+SWEATPANTS_DB_PATH=/var/lib/yo-chat/authority.sqlite pnpm --filter yo-chat dev
 ```
 
 Yo-chat owns that binding and hands it to the kernel (binding inversion): its
@@ -256,23 +256,23 @@ or one-off overrides.
 
 ```bash
 # GitHub Copilot device OAuth
-pnpm model:auth:login --provider github-copilot
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider github-copilot
 
 # ChatGPT browser OAuth or choose the headless device-code flow when prompted
-pnpm model:auth:login --provider openai-codex --model gpt-5.5
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider openai-codex --model gpt-5.5
 
 # OpenCode Zen API key (prompted once)
-pnpm model:auth:login --provider opencode --model gpt-5.5
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider opencode --model gpt-5.5
 
 # Change the selected provider/model without reauthenticating
-pnpm model:auth:use --provider github-copilot --model claude-sonnet-4.6
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:use --provider github-copilot --model claude-sonnet-4.6
 
 # Redacted status and OAuth refresh
-pnpm model:auth:status
-pnpm model:auth:refresh
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh
 ```
 
-`pnpm dev:yo-chat` uses the selected model automatically. An explicit
+`pnpm --filter yo-chat dev` uses the selected model automatically. An explicit
 `DEFAULT_CHAT_MODEL_PROVIDER` / `DEFAULT_CHAT_MODEL_ID` pair overrides it for
 that process.
 

@@ -33,5 +33,5 @@ Graceful host replacement belongs in `../recovery/`. Worker loss belongs in
 `../tool-runtimes/local-worker/`. This folder tests application process loss;
 disk loss and machine power failure are separate failure boundaries.
 
-The scenario runs under the single `pnpm test:acceptance` command. Process
+The scenario runs under the single `pnpm --filter @sweatpants/acceptance test` command. Process
 lifecycle and HTTP forwarding live in `../../support/host-process.ts`.

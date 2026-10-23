@@ -8,13 +8,13 @@ Production-candidate ops story for the cutover app (`apps/yo-chat`).
 |---|---|---|
 | `DEFAULT_CHAT_MODEL_PROVIDER` | Override | e.g. `github-copilot`, `openai-codex`, `opencode` |
 | `DEFAULT_CHAT_MODEL_ID` | Override | Model id for the chosen provider |
-| `.sweatpants/auth.json` | Real managed providers | Git-ignored credentials and selected model; use `pnpm model:auth:login` |
+| `.sweatpants/auth.json` | Real managed providers | Git-ignored credentials and selected model; use `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login` |
 | `MCP_TOOL_RUNTIME` | No | `local` (default) or `agentcore` |
 | `REDIS_URL` | No | When set, durable token buffers use Redis |
 | `AGENTCORE_RUNTIME_ARN` | AgentCore only | Remote tool runtime ARN |
 | `AWS_REGION` / `AGENTCORE_REGION` | AgentCore / Bedrock | AWS region |
 
-**Secrets:** never hardcode API keys or tokens in source or docs. Use `pnpm model:auth:*` or environment variables. Durable stores and model credentials are sensitive configuration and must not be committed.
+**Secrets:** never hardcode API keys or tokens in source or docs. Use `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:*` or environment variables. Durable stores and model credentials are sensitive configuration and must not be committed.
 
 ## Session / token buffer store
 
@@ -53,10 +53,10 @@ From monorepo root:
 pnpm install
 
 # Recommended local defaults (local tools, no AgentCore)
-pnpm dev:yo-chat:local
+pnpm --filter yo-chat dev:local
 
 # Or the selected managed provider (Copilot, Codex, or OpenCode Zen)
-pnpm dev:yo-chat
+pnpm --filter yo-chat dev
 ```
 
 For an OpenAI Responses-compatible proxy, set `DEFAULT_CHAT_MODEL_PROVIDER=openai`,

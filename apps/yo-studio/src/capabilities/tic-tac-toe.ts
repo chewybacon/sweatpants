@@ -1,4 +1,4 @@
-import { CrankError } from "@sweatpants/durable-execution";
+import { CrankError, type ProgramElicitResult } from "@sweatpants/durable-execution";
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { WorkspaceFilesApi } from "@sweatpants/workspace-runtime/api";
@@ -163,19 +163,20 @@ export const playTttTool = createDurableTool("play_ttt")
       } else {
         while (true) {
           const lastMove = moves.at(-1);
-          const response = yield* context.elicit("pickMove", {
-            message: `Your turn — you are ${userSymbol}. Pick an empty cell.`,
-            context: {
-              board,
-              moveHistory: moves,
-              /* CONDITIONAL-SPREAD: Omit absent lastMove from authored tool results; explicit undefined is not a portable JSON value. */
-              ...(lastMove
-                ? { lastMove: { position: lastMove.position, player: lastMove.player } }
-                : {}),
-              modelSymbol,
-              userSymbol,
-            },
-          });
+          const response: ProgramElicitResult<z.infer<typeof PickMoveResponseSchema>> =
+            yield* context.elicit("pickMove", {
+              message: `Your turn — you are ${userSymbol}. Pick an empty cell.`,
+              context: {
+                board,
+                moveHistory: moves,
+                /* CONDITIONAL-SPREAD: Omit absent lastMove from authored tool results; explicit undefined is not a portable JSON value. */
+                ...(lastMove
+                  ? { lastMove: { position: lastMove.position, player: lastMove.player } }
+                  : {}),
+                modelSymbol,
+                userSymbol,
+              },
+            });
           if (response.action !== "accept") {
             throw new CrankError("program_cancelled", "Tic-tac-toe game was cancelled");
           }

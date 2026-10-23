@@ -91,7 +91,7 @@ Live flows require a valid Copilot token; the tier prechecks and **fails fast**
 with a clear message rather than hanging. Refresh + sync:
 
 ```bash
-pnpm model:auth:refresh
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh
 ```
 
 Tokens are short-lived (~25 min); refresh before a live run.
@@ -100,5 +100,5 @@ Tokens are short-lived (~25 min); refresh before a live run.
 
 Outcome coverage for the worker-exercising flows now lives here (headless,
 fast). The Playwright suite is demoted to a thin **browser/rendering smoke**
-layer: `pnpm test:e2e` skips the outcome-duplicating live-model specs, which
-remain available via `pnpm test:e2e:full` (`E2E_FULL=1`).
+layer: `pnpm --filter yo-chat test:e2e` skips the outcome-duplicating live-model specs, which
+remain available via `pnpm --filter yo-chat test:e2e:full` (`E2E_FULL=1`).

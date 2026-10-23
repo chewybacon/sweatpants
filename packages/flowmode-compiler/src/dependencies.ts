@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "typescript-api";
 import { resolve } from "node:path";
 
 /** Local source/type imports admitted by the frontend participate in Vite invalidation.

@@ -24,7 +24,12 @@
   "scripts": {
     "build": "tsup",
     "check": "tsc -b",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "cd ../.. && oxlint --type-aware packages/model-provider",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/model-provider --fix",
+    "format": "cd ../.. && oxfmt packages/model-provider",
+    "format:check": "cd ../.. && oxfmt packages/model-provider --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/chat-contract": "workspace:*",

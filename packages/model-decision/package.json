@@ -23,8 +23,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/model-decision",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/model-decision --fix",
+    "format": "cd ../.. && oxfmt packages/model-decision",
+    "format:check": "cd ../.. && oxfmt packages/model-decision --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@standard-schema/spec": "catalog:",

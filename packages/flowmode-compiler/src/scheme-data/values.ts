@@ -1,3 +1,4 @@
+/// <reference lib="es2024.string" preserve="true" />
 import type { Json } from "@sweatpants/foundation";
 import { encodeNumber } from "./numbers.js";
 import { parse, symbolName, type SchemeDatum } from "./read.js";

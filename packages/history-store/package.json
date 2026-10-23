@@ -100,8 +100,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/history-store",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/history-store --fix",
+    "format": "cd ../.. && oxfmt packages/history-store",
+    "format:check": "cd ../.. && oxfmt packages/history-store --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-storage-kernel": "workspace:*",

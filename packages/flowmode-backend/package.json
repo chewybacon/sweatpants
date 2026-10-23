@@ -22,8 +22,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-backend",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-backend --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-backend",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-backend --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",

@@ -38,6 +38,9 @@ acceptance/
   __tests__/
     application-composition/                               # public client/tool/plugin authoring
     recovery/                                              # replay, replacement, disconnects
+    flowmode/                                              # compiler → linker → real Wasm → journal recovery
+    storage/                                               # memory / SQLite / Postgres / D1 HTTP recovery
+    protocols/                                             # streaming and MCP public HTTP contracts
     host-crash/                                             # real SIGKILL + SQLite recovery
     tool-runtimes/
       in-process/execution.acceptance.test.tsx                # actual host-thread execution
@@ -73,13 +76,26 @@ and Durable Object session/replay contracts.
 ## Run
 
 ```sh
-pnpm test:acceptance  # all authoring, recovery, runtime and host-crash cases
-pnpm check:acceptance
+pnpm --filter @sweatpants/acceptance test  # all authoring, recovery, runtime and host-crash cases
+pnpm --filter @sweatpants/acceptance check
 ```
 
-There are no separate public lane commands. During implementation a specific
-file can be passed directly to Vitest. The complete package remains the single
-acceptance command and is included in landing's package test stage.
+There are no separate public lane commands. During implementation, use
+`pnpm --filter @sweatpants/acceptance test <test-file>` to select a file while retaining the source
+conditions for child hosts and workers. The complete package remains the single
+acceptance command and is landing's acceptance gate.
+
+Storage scenarios own their backing state. Postgres requires local server binaries
+(`initdb`, `pg_ctl`); install PostgreSQL 17 or set `PG_BIN` to its `bin` directory.
+The rig discovers Debian's versioned installation automatically, creates a unique
+cluster and loopback port, and removes it after the scenario. Run as a non-root
+user, as required by `initdb`. It never connects to or resets a developer database.
+D1 uses real local Miniflare/workerd; no remote service credentials are needed.
+All cases stay in the same acceptance command and fail if prerequisites are absent.
+
+The Flowmode program rig uses the public compiler/linker/kernel, journal and
+shared driver APIs. Language-runtime scenarios have no model call to simulate;
+HTTP storage scenarios retain the protocol-controlled model and real client/server.
 
 See [COVERAGE.md](./COVERAGE.md) for guarantees, exclusions and the deletion ledger.
 
@@ -105,12 +121,12 @@ controls or assert behavior.
 
 Cloudflare Worker fixtures have a separate typecheck to keep their runtime
 globals separate from React/Node fixtures. Both typechecks run through
-`pnpm check:acceptance`.
+`pnpm --filter @sweatpants/acceptance check`.
 
-Strict typechecks resolve `development` source exports, so they do not require
-a prior Test Rig build. Executable tests and workers resolve built exports from
-`dist`; rebuild changed framework dependencies before running. These are deterministic HTTP/jsdom
-acceptance checks, not browser-presentation or live-provider certification.
+Typechecks and executable tests resolve `development` source exports. The test
+command passes that condition to Node so child hosts and tool workers use the
+same source; no prior workspace build is required. These are deterministic
+HTTP/jsdom acceptance checks, not browser-presentation or live-provider certification.
 
 ## First lifecycle migration
 
@@ -139,5 +155,12 @@ their declared wire shape and validate/transform the accepted result at runtime.
 for application-process crash tests and their child-host fixtures. They
 kill a real host with `SIGKILL` and recover over retained SQLite storage.
 Graceful host replacement and tool-worker loss have separate ownership.
-The implemented crash test runs through `pnpm test:acceptance` with every other
+The implemented crash test runs through `pnpm --filter @sweatpants/acceptance test` with every other
 case. It observes actual effect executions across both process generations.
+
+## App extraction boundary
+
+Shared framework contracts found in apps belong in the existing composition,
+protocol and runtime categories, using minimal authored fixtures. Product
+behavior and real app composition remain app-owned; this package imports no
+app source. See the per-app audit and replacement ledger in [COVERAGE.md](./COVERAGE.md).

@@ -1,6 +1,7 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
+    "incremental": true,
     "rootDir": "src",
     "outDir": "dist",
     "emitDeclarationOnly": false,

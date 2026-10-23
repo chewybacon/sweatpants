@@ -108,7 +108,12 @@
     "wasm:check": "python3 scripts/manifest.py --check && python3 scripts/execution/manifest.py",
     "test": "vitest run && node --import tsx --test --test-concurrency=1 src/execution/__tests__/*.mjs",
     "wasm:verify": "python3 scripts/build.py --verify",
-    "execution:build": "python3 scripts/execution/build.py"
+    "execution:build": "python3 scripts/execution/build.py",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-runtime-scheme",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-runtime-scheme --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-runtime-scheme",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-runtime-scheme --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",

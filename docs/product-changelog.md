@@ -45,7 +45,7 @@ reserved for presentation/browser-boundary coverage.
 
 Use `withTestScenario()` and snapshot/timeline assertions for ordering, nesting, elicitation state,
 replay, and tool-placement behavior. Use React/jsdom acceptance for adapter rendering. Run
-`pnpm test:e2e:optional` only for browser presentation smoke coverage.
+`pnpm --filter yo-chat test:e2e` only for browser presentation smoke coverage.
 
 ---
 

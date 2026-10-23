@@ -154,18 +154,26 @@ Ops: [`apps/yo-chat/docs/ops.md`](./apps/yo-chat/docs/ops.md)
 
 ## Development
 
+The root exposes seven task namespaces: `lint`, `format`, `build`, `check`, `test`,
+`dev`, and `land`. The first six run the same task in every workspace that provides
+it. Use native pnpm filters to select a workspace; `land` exists only at the root
+and explicitly controls the final verification workflow.
+
 ```bash
 pnpm install
-pnpm build
-pnpm validate:product-surface   # facade allowlist + product import policy
-pnpm validate:exports
-
-# Golden-path + differentiator acceptance
-pnpm -C packages/agent-host test:acceptance
-
-# Reference app
-pnpm dev:yo-chat:local
+pnpm build                           # all workspace builds
+pnpm build:check                     # export and product-surface validation
+pnpm check                           # production + test types, including apps
+pnpm --filter @sweatpants/acceptance test
+pnpm --filter yo-chat dev:local
+pnpm land                            # lint, format check, types, public acceptance
 ```
+
+`pnpm format` writes formatting; `pnpm format:check` checks it. `pnpm test` runs
+all workspace suites, including repository tooling, apps and public acceptance.
+`pnpm dev` starts all workspace dev tasks in parallel; use a filter for a single
+app. Subtasks keep the same namespace: `pnpm build:clean` fans out to workspace
+`build:clean` tasks. See [docs/verification.md](./docs/verification.md).
 
 ## Advanced / internal
 

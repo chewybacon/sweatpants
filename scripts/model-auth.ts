@@ -25,13 +25,13 @@ function usage(exitCode = 0): never {
   console.log(`Yo-chat model authentication
 
 Usage:
-  pnpm model:auth:status [--provider <provider>]
-  pnpm model:auth:login --provider <provider> [--model <model>]
-  pnpm model:auth:refresh [--provider <provider>]
-  pnpm model:auth:logout --provider <provider>
-  pnpm model:auth:use --provider <provider> [--model <model>]
-  pnpm model:auth:selection [--format env|json]
-  pnpm model:auth:providers
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth [--provider <provider>]
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider <provider> [--model <model>]
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh [--provider <provider>]
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:logout --provider <provider>
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:use --provider <provider> [--model <model>]
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:selection [--format env|json]
+  pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:providers
 
 Providers:
   github-copilot  GitHub device OAuth
@@ -105,7 +105,9 @@ function selectedProvider(args: Arguments): YoChatAuthProvider {
   if (provider) {
     return provider;
   }
-  console.error("No selected provider. Run `pnpm model:auth:login --provider <provider>` first.");
+  console.error(
+    "No selected provider. Run `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider <provider>` first.",
+  );
   process.exit(1);
 }
 
@@ -215,7 +217,7 @@ async function refresh(args: Arguments): Promise<void> {
   const result = await (await createModels()).getAuth(provider);
   if (!result) {
     console.error(
-      `${provider} is not configured. Run \`pnpm model:auth:login --provider ${provider}\`.`,
+      `${provider} is not configured. Run \`pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider ${provider}\`.`,
     );
     process.exit(1);
   }
@@ -245,7 +247,9 @@ function use(args: Arguments): void {
 function selection(args: Arguments): void {
   const selected = readStoredModelSelection();
   if (!selected) {
-    console.error("No selected provider. Run `pnpm model:auth:use --provider <provider>`.");
+    console.error(
+      "No selected provider. Run `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:use --provider <provider>`.",
+    );
     process.exit(1);
   }
   if (args.format === "json") {

@@ -7,7 +7,7 @@
  * 3. Golden-path suite imports only allowlisted facade paths
  * 4. Root README primary samples do not use experimental path patterns
  *
- * Run: pnpm validate:product-surface
+ * Run: pnpm build:check
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";

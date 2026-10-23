@@ -11,7 +11,13 @@
     "build": "tsup",
     "start": "node dist/cli.js",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware apps/yo-agent",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/yo-agent --fix",
+    "format": "cd ../.. && oxfmt apps/yo-agent",
+    "format:check": "cd ../.. && oxfmt apps/yo-agent --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts .",
+    "vendor:pull": "rm -rf packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git packages/gemini-cli && rm -rf packages/gemini-cli/.git"
   },
   "dependencies": {
     "@shikijs/cli": "^3.20.0",

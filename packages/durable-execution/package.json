@@ -122,8 +122,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/durable-execution",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/durable-execution --fix",
+    "format": "cd ../.. && oxfmt packages/durable-execution",
+    "format:check": "cd ../.. && oxfmt packages/durable-execution --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-effects": "workspace:*",

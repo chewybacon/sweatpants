@@ -85,7 +85,7 @@ tolerant); `play_ttt` uses structured agentic strategy.
 | Journal-backed standard A2A host: terminal immutability, idempotency, continuation reconciliation across host replacement | `packages/agent-host/src/server/__tests__/standard-a2a-host.test.ts` |
 | Content custody: put-verify-reference, loss preserves task truth | `packages/a2a/src/__tests__/content-store.test.ts` + host custody test |
 | Third-party client compatibility, pinned artifact, patch-reviewed | `interop/a2a-inspector/` + `.github/workflows/a2a-inspector-interop.yml` |
-| Cancellation with typed partial results | `apps/yo-chat/acceptance/durable-cancellation-abort-signal.acceptance.test.ts` + durable-tool-cancellation spec suites |
+| Cancellation with typed partial results | `acceptance/__tests__/tool-runtimes/in-process/cancellation-ordering.acceptance.test.ts` + durable-tool-cancellation spec suites |
 | Cloud stop/resume (AgentCore microVM) | `apps/agentcore-durable-program-runtime/live-evidence/release-20260715-2148-certification.json` |
 | Stream reconnect mid-turn | `packages/durable-chat-runtime/acceptance/demo-reconnect-mid-stream.acceptance.test.ts` · `apps/yo-chat/e2e/durable-chat.spec.ts` (reload mid-stream) |
 

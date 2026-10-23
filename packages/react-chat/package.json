@@ -27,10 +27,15 @@
   "scripts": {
     "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run --passWithNoTests",
     "test:acceptance": "vitest run acceptance",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/react-chat",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/react-chat --fix",
+    "format": "cd ../.. && oxfmt packages/react-chat",
+    "format:check": "cd ../.. && oxfmt packages/react-chat --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/chat-client": "workspace:*",

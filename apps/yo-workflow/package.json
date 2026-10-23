@@ -27,7 +27,12 @@
     "execution:build": "pnpm --filter @sweatpants/flowmode-runtime-scheme execution:build",
     "execution:test": "pnpm execution:compile && node execution/__tests__/service.mjs && node execution/__tests__/failure.mjs && node execution/__tests__/recompile.mjs",
     "execution:compile": "tsdown --config ../../experiments/workflow-kernel/tsdown-authoring/tsdown.config.mjs",
-    "execution:dev": "pnpm dev"
+    "execution:dev": "pnpm dev",
+    "lint": "cd ../.. && oxlint --type-aware apps/yo-workflow",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/yo-workflow --fix",
+    "format": "cd ../.. && oxfmt apps/yo-workflow",
+    "format:check": "cd ../.. && oxfmt apps/yo-workflow --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

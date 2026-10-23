@@ -39,7 +39,11 @@ if (!options.listModels) {
   ]);
 }
 const { provider, model, thinking } = options;
-command(["model:auth:refresh", "--provider", provider], process.env, "../..");
+command(
+  ["--filter", "@sweatpants/model-provider-pi-ai", "dev:auth:refresh", "--provider", provider],
+  process.env,
+  "../..",
+);
 const { FileCredentialStore } = await import("@sweatpants/model-provider-pi-ai");
 const credentials = new FileCredentialStore();
 const credential = await credentials.read(provider);

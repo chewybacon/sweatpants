@@ -22,7 +22,6 @@ export interface WorkspaceProject {
   directory: string;
   dependencies: string[];
   scripts: Record<string, string>;
-  testTypes: boolean;
 }
 
 export interface VerificationSelection {

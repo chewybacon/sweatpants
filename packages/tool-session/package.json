@@ -117,8 +117,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/tool-session",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/tool-session --fix",
+    "format": "cd ../.. && oxfmt packages/tool-session",
+    "format:check": "cd ../.. && oxfmt packages/tool-session --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@standard-schema/spec": "catalog:",

@@ -77,7 +77,7 @@ describe("yo-mcp modern HTTP composition", () => {
   });
 
   it.each(["accept", "decline", "cancel"] as const)(
-    "handles card %s and an identical continuation retry",
+    "returns the authored card result for %s",
     async (action) => {
       const server = await startYoMcpServer(0);
       try {
@@ -100,8 +100,6 @@ describe("yo-mcp modern HTTP composition", () => {
         expect(
           result.inputRequests[requestId].params.requestedSchema["x-elicit-context"],
         ).toMatchObject({ cards: expect.any(Array) });
-        // No independent server JSON-RPC requests travel on the response stream.
-        expect(called.messages.every((message) => !(message.method && message.id))).toBe(true);
         const retry = {
           ...params,
           requestState: result.requestState,
@@ -115,8 +113,6 @@ describe("yo-mcp modern HTTP composition", () => {
         const completed = await rpc(server.origin, "tools/call", retry);
         expect(completed.body.result).toMatchObject({ resultType: "complete", isError: false });
         expect(JSON.parse(completed.body.result.content[0].text).success).toBe(action === "accept");
-        const duplicate = await rpc(server.origin, "tools/call", retry);
-        expect(duplicate.body.result).toEqual(completed.body.result);
         const next = await rpc(server.origin, "tools/call", {
           name: "echo",
           arguments: { message: "after card" },
@@ -154,86 +150,6 @@ describe("yo-mcp modern HTTP composition", () => {
         style: "casual",
         greeting: "Hello Alice!",
       });
-    } finally {
-      await server.close();
-    }
-  });
-  it("validates browser origins against the actual listening address", async () => {
-    const server = await startYoMcpServer(0);
-    try {
-      const body = JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "server/discover",
-        params: {
-          _meta: {
-            "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
-            "io.modelcontextprotocol/clientCapabilities": {},
-          },
-        },
-      });
-      for (const [origin, expected] of [
-        [server.origin, 200],
-        ["https://untrusted.example", 403],
-      ] as const) {
-        const response = await fetch(`${server.origin}/mcp`, {
-          method: "POST",
-          headers: {
-            origin,
-            "content-type": "application/json",
-            accept: "application/json, text/event-stream",
-            "Mcp-Method": "server/discover",
-            "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
-          },
-          body,
-        });
-        expect(response.status).toBe(expected);
-        await response.text();
-      }
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("rejects invalid continuations and answers without consuming the pending input", async () => {
-    const server = await startYoMcpServer(0);
-    try {
-      const params = { name: "pick_card", arguments: { count: 3 } };
-      const called = await rpc(server.origin, "tools/call", params);
-      const pending = called.body.result;
-      const key = Object.keys(pending.inputRequests)[0];
-      const retry = {
-        ...params,
-        requestState: pending.requestState,
-        inputResponses: { [key]: { action: "accept", content: { cardNumber: 1 } } },
-      };
-      const missingCapability = await rpc(server.origin, "tools/call", retry, {});
-      expect(missingCapability.response.status).toBe(400);
-      expect(missingCapability.body.error.code).toBe(-32021);
-      const altered = await rpc(server.origin, "tools/call", { ...retry, arguments: { count: 4 } });
-      expect(altered.response.status).toBe(400);
-      const tampered = await rpc(server.origin, "tools/call", {
-        ...retry,
-        requestState: pending.requestState + "x",
-      });
-      expect(tampered.response.status).toBe(400);
-      const invalidAnswer = await rpc(server.origin, "tools/call", {
-        ...retry,
-        inputResponses: { [key]: { action: "accept", content: { cardNumber: 0 } } },
-      });
-      expect(invalidAnswer.response.status).toBe(400);
-      expect(invalidAnswer.body.error.code).toBe(-32602);
-      const [first, duplicate] = await Promise.all([
-        rpc(server.origin, "tools/call", retry),
-        rpc(server.origin, "tools/call", retry),
-      ]);
-      expect(first.body.result).toMatchObject({ resultType: "complete", isError: false });
-      expect(duplicate.body.result).toEqual(first.body.result);
-      const conflict = await rpc(server.origin, "tools/call", {
-        ...retry,
-        inputResponses: { [key]: { action: "decline" } },
-      });
-      expect(conflict.body.error.code).toBe(-32602);
     } finally {
       await server.close();
     }

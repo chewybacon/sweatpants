@@ -55,10 +55,15 @@
   "scripts": {
     "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
-    "check": "pnpm build:types",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run src",
     "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/tool-runtime-agentcore",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/tool-runtime-agentcore --fix",
+    "format": "cd ../.. && oxfmt packages/tool-runtime-agentcore",
+    "format:check": "cd ../.. && oxfmt packages/tool-runtime-agentcore --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.996.0",

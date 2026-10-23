@@ -10,14 +10,20 @@
   "type": "module",
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-compiler-scheme",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-compiler-scheme --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-compiler-scheme",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-compiler-scheme --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/flowmode-compiler": "workspace:*",

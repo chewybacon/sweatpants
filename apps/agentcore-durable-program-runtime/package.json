@@ -14,7 +14,12 @@
     "certify:live": "tsx scripts/certify-live.ts",
     "certify:workflow-host": "tsx scripts/certify-workflow-host.ts",
     "certify:development-readiness": "tsx scripts/certify-development-readiness.ts",
-    "certify:development-play-ttt": "tsx scripts/certify-development-play-ttt.ts"
+    "certify:development-play-ttt": "tsx scripts/certify-development-play-ttt.ts",
+    "lint": "cd ../.. && oxlint --type-aware apps/agentcore-durable-program-runtime",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/agentcore-durable-program-runtime --fix",
+    "format": "cd ../.. && oxfmt apps/agentcore-durable-program-runtime",
+    "format:check": "cd ../.. && oxfmt apps/agentcore-durable-program-runtime --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
@@ -37,6 +42,7 @@
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yo-chat": "workspace:*"
   }
 }

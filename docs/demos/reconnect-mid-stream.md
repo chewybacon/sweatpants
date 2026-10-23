@@ -6,7 +6,7 @@
 
 ## User path
 
-1. Start yo-chat: `pnpm dev:yo-chat:local`
+1. Start yo-chat: `pnpm --filter yo-chat dev:local`
 2. Open [Basic Chat](http://localhost:8000/chat/basic/)
 3. Send a longer prompt (e.g. “Write a short essay about durable streams”)
 4. While `streaming...` is visible, refresh the page

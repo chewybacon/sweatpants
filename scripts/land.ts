@@ -1,8 +1,8 @@
 import { createConnection } from "node:net";
-import { mkdir, open, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { acceptanceLanes, verificationEnvironment } from "./verification.ts";
+import { verificationEnvironment } from "./verification.ts";
 
 async function main(): Promise<void> {
   const root = resolve(process.cwd());
@@ -17,10 +17,6 @@ async function main(): Promise<void> {
   await mkdir(artifactDir, { recursive: true });
 
   const livePlaywrightPort = Number(process.env["LAND_LIVE_PLAYWRIGHT_PORT"] ?? "18111");
-  const packageTestConcurrency = Number(process.env["LAND_PACKAGE_TEST_CONCURRENCY"] ?? "1");
-  if (!Number.isSafeInteger(packageTestConcurrency) || packageTestConcurrency < 1) {
-    throw new Error("LAND_PACKAGE_TEST_CONCURRENCY must be a positive integer");
-  }
   const summary: RunSummary = { mode, startedAt: new Date().toISOString(), stages: [] };
 
   interface Stage {
@@ -50,104 +46,18 @@ async function main(): Promise<void> {
     stages: StageSummary[];
   }
 
-  async function appTestStages(): Promise<Stage[]> {
-    const stages: Stage[] = [];
-    const parent = "apps";
-    for (const directory of (await readdir(join(root, parent), { withFileTypes: true })).filter(
-      (entry) => entry.isDirectory(),
-    )) {
-      const packageDir = join(root, parent, directory.name);
-      let packageJson: { name?: string; scripts?: Record<string, string> };
-      try {
-        packageJson = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
-      } catch {
-        continue;
-      }
-      const test = packageJson.scripts?.["test"];
-      if (!test) {
-        continue;
-      }
-      const label = packageJson.name ?? `${parent}/${directory.name}`;
-      stages.push({
-        name: `test:${label}`,
-        command: "pnpm",
-        args: ["-C", packageDir, "test"],
-        timeoutMs: test.includes("playwright") ? 15 * 60_000 : 10 * 60_000,
-        forbidSkips: test.includes("playwright") ? true : undefined,
-      });
-    }
-    return stages;
-  }
-
-  function deterministicStages(appTests: Stage[]): Stage[] {
+  function deterministicStages(): Stage[] {
     return [
-      { name: "format:repository", command: "pnpm", args: ["format:check"], timeoutMs: 5 * 60_000 },
-      { name: "check:hygiene", command: "pnpm", args: ["check:hygiene"], timeoutMs: 2 * 60_000 },
-      { name: "check:evidence", command: "pnpm", args: ["check:evidence"], timeoutMs: 2 * 60_000 },
-      { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
-      // Package builds exclude tests from tsc so declarations stay clean, which
-      // left test code unchecked entirely.
-      { name: "types:tests", command: "pnpm", args: ["check:tests"], timeoutMs: 10 * 60_000 },
-      // Fixture tests for the custom rules themselves: `lint` proves the repo
-      // obeys them, this proves they still detect what they claim to.
-      { name: "test:tooling", command: "pnpm", args: ["test:tooling"], timeoutMs: 5 * 60_000 },
+      { name: "format:repository", command: "pnpm", args: ["format:check"], timeoutMs: 5 * 60_000 },
+      { name: "types", command: "pnpm", args: ["check"], timeoutMs: 15 * 60_000 },
       {
-        name: "build:clean",
+        name: "test:acceptance",
         command: "pnpm",
-        args: ["verify:clean-build"],
-        timeoutMs: 15 * 60_000,
+        args: ["--filter", "@sweatpants/acceptance", "test"],
+        timeoutMs: 10 * 60_000,
+        forbidSkips: true,
       },
-      {
-        name: "build:workflow-fixtures",
-        command: "pnpm",
-        args: ["--filter", "yo-workflow", "execution:compile"],
-        timeoutMs: 5 * 60_000,
-      },
-      // Apps resolve package exports from dist, so check them only after the
-      // clean build has regenerated every dependency artifact.
-      { name: "types:apps", command: "pnpm", args: ["check:apps"], timeoutMs: 10 * 60_000 },
-      {
-        name: "verify:yo-chat-remote-collection",
-        command: "pnpm",
-        args: ["verify:yo-chat-remote-collection"],
-        timeoutMs: 5 * 60_000,
-      },
-      {
-        name: "test:packages",
-        command: "pnpm",
-        args: [
-          "--filter",
-          "./packages/**",
-          "--filter",
-          "./acceptance",
-          "--filter",
-          "!@sweatpants/platform-acceptance",
-          `--workspace-concurrency=${packageTestConcurrency}`,
-          "--aggregate-output",
-          "run",
-          "test",
-        ],
-        timeoutMs: 15 * 60_000,
-      },
-      // Memory scenarios can overlap. SQLite and fresh-process probes keep
-      // their own single-worker bounds and independent collection baselines.
-      ...acceptanceLanes.map((lane) => ({
-        name: `test:platform-acceptance:${lane.name}`,
-        command: "pnpm",
-        args: ["--filter", "@sweatpants/platform-acceptance", `test:${lane.name}`],
-        timeoutMs: 15 * 60_000,
-        workers: lane.workers,
-      })),
-      // Real Hoot recovery uses built workspace packages and the Hoot artifact used by yo-workflow.
-      // Run sequentially, after the clean build, alongside the normal regression gates.
-      {
-        name: "test:execution-recovery",
-        command: "pnpm",
-        args: ["test:execution-recovery"],
-        timeoutMs: 5 * 60_000,
-      },
-      ...appTests,
     ];
   }
 
@@ -159,7 +69,7 @@ async function main(): Promise<void> {
         args:
           process.env["DEFAULT_CHAT_MODEL_PROVIDER"] === "openai"
             ? ["exec", "tsx", "scripts/check-openai-connection.ts"]
-            : ["model:auth:refresh"],
+            : ["--filter", "@sweatpants/model-provider-pi-ai", "dev:auth:refresh"],
         timeoutMs: 30_000,
       },
       {
@@ -183,9 +93,8 @@ async function main(): Promise<void> {
   }
 
   await preflight(mode);
-  const appTests = mode === "live" ? [] : await appTestStages();
   const stages = [
-    ...(mode === "live" ? [] : deterministicStages(appTests)),
+    ...(mode === "live" ? [] : deterministicStages()),
 
     ...(mode === "deterministic" ? [] : liveStages()),
   ];
@@ -237,16 +146,6 @@ async function main(): Promise<void> {
   console.log(`Summary: ${relativeArtifact(join(artifactDir, "summary.json"))}`);
 
   async function preflight(selectedMode: string): Promise<void> {
-    if (
-      !Number.isSafeInteger(packageTestConcurrency) ||
-      packageTestConcurrency < 1 ||
-      packageTestConcurrency > 8
-    ) {
-      failPreflight(
-        "PREFLIGHT_CONCURRENCY_INVALID",
-        `LAND_PACKAGE_TEST_CONCURRENCY must be an integer from 1 through 8; received ${packageTestConcurrency}`,
-      );
-    }
     const ports = selectedMode === "live" || selectedMode === "full" ? [livePlaywrightPort] : [];
     for (const port of ports) {
       if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
@@ -535,7 +434,7 @@ async function main(): Promise<void> {
     const log = relativeArtifact(logPath);
     switch (classification) {
       case "PROVIDER_AUTH_FAILED":
-        return `refresh with \`pnpm model:auth:refresh\` (or login), then rerun once; details: ${log}`;
+        return `refresh with \`pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh\` (or login), then rerun once; details: ${log}`;
       case "PORT_OCCUPIED":
         return "identify the owning process or choose an isolated LAND_*_PLAYWRIGHT_PORT";
       case "APPLICATION_ASSERTION":

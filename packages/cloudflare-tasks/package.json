@@ -26,8 +26,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "tsup && vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "tsup && vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/cloudflare-tasks",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/cloudflare-tasks --fix",
+    "format": "cd ../.. && oxfmt packages/cloudflare-tasks",
+    "format:check": "cd ../.. && oxfmt packages/cloudflare-tasks --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "tsx": "catalog:",

@@ -34,8 +34,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/chat-contract",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/chat-contract --fix",
+    "format": "cd ../.. && oxfmt packages/chat-contract",
+    "format:check": "cd ../.. && oxfmt packages/chat-contract --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/foundation": "workspace:*",

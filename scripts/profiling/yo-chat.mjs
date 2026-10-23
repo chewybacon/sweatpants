@@ -8,7 +8,7 @@ import { summarizeProfile } from "./summarize-profile.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const runs = Number(process.argv[2] ?? 3);
 if (!Number.isSafeInteger(runs) || runs < 1 || runs > 100) {
-  throw new Error("Usage: pnpm profile:yo-chat [runs: 1–100]");
+  throw new Error("Usage: pnpm --filter yo-chat dev:profile [runs: 1–100]");
 }
 const output = join(root, ".artifacts", "profiles", new Date().toISOString().replaceAll(":", "-"));
 await mkdir(output, { recursive: true });

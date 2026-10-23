@@ -25,17 +25,17 @@ truth for message ordering, elicitation state, replay, or durable tool behavior.
 Authenticate once, then run the full suite against the selected provider:
 
 ```bash
-pnpm model:auth:login --provider openai-codex
-pnpm test:yo-chat:e2e
+pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider openai-codex
+pnpm --filter yo-chat test:e2e:provider
 
 # One-off provider/model override without changing the saved selection
-pnpm test:yo-chat:e2e -- --provider opencode --model gpt-5.5
+pnpm --filter yo-chat test:e2e:provider -- --provider opencode --model gpt-5.5
 ```
 
 For interactive debugging:
 
 ```bash
-pnpm test:e2e:manual:ui
+pnpm --filter yo-chat test:e2e:manual:ui
 ```
 
 The manual suite restores the broad historical browser coverage, including:

@@ -66,11 +66,16 @@
   },
   "scripts": {
     "build": "pnpm wasm:check && tsc -b",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "node --import tsx --test src/__tests__/*.mts",
     "wasm:build": "python3 scripts/build.py",
     "wasm:check": "python3 scripts/manifest.py",
-    "wasm:verify": "python3 scripts/build.py --verify"
+    "wasm:verify": "python3 scripts/build.py --verify",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-runtime-lua",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-runtime-lua --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-runtime-lua",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-runtime-lua --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",

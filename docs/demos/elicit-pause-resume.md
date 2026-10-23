@@ -6,7 +6,7 @@
 
 ## User path
 
-1. Start yo-chat: `pnpm dev:yo-chat:local`
+1. Start yo-chat: `pnpm --filter yo-chat dev:local`
 2. Open [Flight Booking](http://localhost:8000/chat/flight/)
 3. Ask to book a flight (e.g. “Book a flight from Boston to NYC”)
 4. When the flight picker UI appears, refresh or close the tab **without** selecting

@@ -2,7 +2,7 @@
  * Selected-model auth precondition for live outside-in flows.
  *
  * This is intentionally a synchronous availability check; the global setup
- * refreshes OAuth through `pnpm model:auth:refresh` before these flows begin.
+ * refreshes OAuth through `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh` before these flows begin.
  */
 import { existsSync, readFileSync } from "node:fs";
 import {
@@ -103,7 +103,7 @@ export function requireModelAuth(): ModelAuthStatus {
   const status = getModelAuthStatus();
   if (!status.ok) {
     throw new Error(
-      `[outside-in] ${status.provider} auth precondition failed (${status.reason ?? "unknown"}; source=${status.source}). Run \`pnpm model:auth:login --provider ${status.provider}\` and retry.`,
+      `[outside-in] ${status.provider} auth precondition failed (${status.reason ?? "unknown"}; source=${status.source}). Run \`pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider ${status.provider}\` and retry.`,
     );
   }
   return status;

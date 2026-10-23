@@ -10,30 +10,40 @@
   "type": "module",
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./compiler": {
+      "development": "./src/compiler.ts",
       "types": "./dist/compiler.d.ts",
       "default": "./dist/compiler.js"
     },
     "./emit-scheme": {
+      "development": "./src/emit-scheme.ts",
       "types": "./dist/emit-scheme.d.ts",
       "default": "./dist/emit-scheme.js"
     },
     "./scheme-data/read": {
+      "development": "./src/scheme-data/read.ts",
       "types": "./dist/scheme-data/read.d.ts",
       "default": "./dist/scheme-data/read.js"
     },
     "./scheme-data/values": {
+      "development": "./src/scheme-data/values.ts",
       "types": "./dist/scheme-data/values.d.ts",
       "default": "./dist/scheme-data/values.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-compiler",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-compiler --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-compiler",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-compiler --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@babel/core": "^7.24.0",
@@ -41,12 +51,13 @@
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
     "effection": "catalog:",
-    "typescript": "catalog:"
+    "typescript-api": "catalog:"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
     "@types/babel__core": "^7.20.5",
     "@types/node": "catalog:",
+    "typescript": "catalog:",
     "vitest": "catalog:"
   }
 }

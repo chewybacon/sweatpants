@@ -18,13 +18,25 @@ export default async function globalSetup(): Promise<void> {
 
   const repoRoot = resolve(process.cwd(), "../..");
   try {
-    execFileSync("pnpm", ["--dir", repoRoot, "model:auth:refresh", "--provider", provider], {
-      stdio: "inherit",
-      env: process.env,
-    });
+    execFileSync(
+      "pnpm",
+      [
+        "--dir",
+        repoRoot,
+        "--filter",
+        "@sweatpants/model-provider-pi-ai",
+        "dev:auth:refresh",
+        "--provider",
+        provider,
+      ],
+      {
+        stdio: "inherit",
+        env: process.env,
+      },
+    );
   } catch (error) {
     throw new Error(
-      `[playwright-e2e] ${provider} auth precondition failed. Run \`pnpm model:auth:login --provider ${provider}\` and retry.`,
+      `[playwright-e2e] ${provider} auth precondition failed. Run \`pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:login --provider ${provider}\` and retry.`,
       { cause: error instanceof Error ? error : undefined },
     );
   }

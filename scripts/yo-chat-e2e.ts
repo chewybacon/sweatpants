@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   defaultModelForProvider,
   isYoChatAuthProvider,
@@ -49,6 +50,7 @@ const result = spawnSync(
   "pnpm",
   ["-C", "apps/yo-chat", "exec", "playwright", "test", ...playwrightArgs],
   {
+    cwd: fileURLToPath(new URL("../", import.meta.url)),
     stdio: "inherit",
     env: {
       ...process.env,

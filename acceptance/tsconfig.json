@@ -1,8 +1,10 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.base.json",
   "compilerOptions": {
+    "incremental": true,
     "noEmit": true,
-    "customConditions": ["development"]
+    "customConditions": ["development"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
   "include": [
     "__tests__/**/*.ts",

@@ -8,7 +8,7 @@ import type { ModelSelection } from "@sweatpants/model-provider-pi-ai";
 /**
  * Server-only default model resolution. Explicit process environment wins for
  * CI and one-off runs; otherwise yo-chat uses the model selected by
- * `pnpm model:auth:use`.
+ * `pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:use`.
  */
 export function defaultYoChatModel(): ModelSelection {
   const stored = readStoredModelSelection();

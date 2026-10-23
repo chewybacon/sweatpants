@@ -32,8 +32,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/durable-streams-cloudflare",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/durable-streams-cloudflare --fix",
+    "format": "cd ../.. && oxfmt packages/durable-streams-cloudflare",
+    "format:check": "cd ../.. && oxfmt packages/durable-streams-cloudflare --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@cloudflare/workers-types": "5.20261005.1",
