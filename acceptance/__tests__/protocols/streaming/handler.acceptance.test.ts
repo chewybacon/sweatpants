@@ -1,18 +1,17 @@
+// @vitest-environment node
 /**
  * Hello Stream API Route Tests
  *
  * Tests the pull-based streaming handler primitive via HTTP.
  * These tests validate that the createStreamingHandler works in a real server context.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 
-// We'll test the handler directly without spinning up a server
 import {
   createStreamingHandler,
   useHandlerContext,
 } from "@sweatpants/durable-chat-runtime/streaming";
-import { resource, sleep, call } from "effection";
-import type { Operation, Stream } from "effection";
+import { resource, sleep, call, type Operation, type Stream } from "effection";
 
 /**
  * Create a simple token stream that yields tokens with delays.
@@ -36,9 +35,10 @@ function createTokenStream(tokens: string[], delayMs = 0): Stream<string, void> 
   });
 }
 
-describe("Hello Stream API", () => {
+describe("public streaming handler", () => {
   describe("createStreamingHandler integration", () => {
     it("should stream tokens via pull-based ReadableStream", async () => {
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           return yield* createTokenStream(["Hello", " ", "world", "!"]);
@@ -50,8 +50,10 @@ describe("Hello Stream API", () => {
       );
 
       const request = new Request("http://localhost/api/hello-stream");
+      // Act
       const response = await handler(request);
 
+      // Assert
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toBe("text/plain");
 
@@ -60,6 +62,7 @@ describe("Hello Stream API", () => {
     });
 
     it("should handle POST with custom message from body", async () => {
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           const ctx = yield* useHandlerContext();
@@ -87,12 +90,14 @@ describe("Hello Stream API", () => {
         body: JSON.stringify({ message: "Hi!" }),
       });
 
+      // Act
       const response = await handler(request);
       const text = await response.text();
       expect(text).toBe("Hi!");
     });
 
     it("should set custom headers from handler context", async () => {
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           const ctx = yield* useHandlerContext();
@@ -110,6 +115,7 @@ describe("Hello Stream API", () => {
         method: "POST",
       });
 
+      // Act
       const response = await handler(request);
 
       expect(response.headers.get("X-Custom-Header")).toBe("custom-value");
@@ -117,6 +123,7 @@ describe("Hello Stream API", () => {
     });
 
     it("should stream NDJSON format with default serializer", async () => {
+      // Arrange
       const handler = createStreamingHandler(function* () {
         // Return JSON strings
         return yield* createTokenStream([
@@ -127,6 +134,7 @@ describe("Hello Stream API", () => {
       });
 
       const request = new Request("http://localhost/api/test");
+      // Act
       const response = await handler(request);
 
       expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
@@ -143,6 +151,7 @@ describe("Hello Stream API", () => {
     it("should handle streaming with delays", async () => {
       const startTime = Date.now();
 
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           return yield* createTokenStream(["a", "b", "c"], 20); // 20ms delay each
@@ -153,6 +162,7 @@ describe("Hello Stream API", () => {
       );
 
       const request = new Request("http://localhost/api/test");
+      // Act
       const response = await handler(request);
 
       const text = await response.text();
@@ -164,13 +174,16 @@ describe("Hello Stream API", () => {
     });
 
     it("should return 500 error if setup throws", async () => {
+      // Arrange
       const handler = createStreamingHandler(function* () {
         throw new Error("Setup exploded!");
       });
 
       const request = new Request("http://localhost/api/test");
+      // Act
       const response = await handler(request);
 
+      // Assert
       expect(response.status).toBe(500);
       expect(response.headers.get("Content-Type")).toBe("application/json");
 
@@ -179,6 +192,7 @@ describe("Hello Stream API", () => {
     });
 
     it("should handle empty stream", async () => {
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           return yield* createTokenStream([]);
@@ -189,6 +203,7 @@ describe("Hello Stream API", () => {
       );
 
       const request = new Request("http://localhost/api/test");
+      // Act
       const response = await handler(request);
 
       const text = await response.text();
@@ -197,6 +212,10 @@ describe("Hello Stream API", () => {
 
     it("should handle stream cancellation", async () => {
       let cleanupRan = false;
+      let cleanupFinished!: () => void;
+      const cleaned = new Promise<void>((resolve) => {
+        cleanupFinished = resolve;
+      });
 
       const infiniteStream: Stream<string, void> = resource(function* (provide) {
         let count = 0;
@@ -208,12 +227,14 @@ describe("Hello Stream API", () => {
         });
       });
 
+      // Arrange
       const handler = createStreamingHandler(
         function* () {
           return {
             subscription: yield* infiniteStream,
             cleanup: function* () {
               cleanupRan = true;
+              cleanupFinished();
             },
           };
         },
@@ -223,6 +244,7 @@ describe("Hello Stream API", () => {
       );
 
       const request = new Request("http://localhost/api/test");
+      // Act
       const response = await handler(request);
 
       const reader = response.body!.getReader();
@@ -235,8 +257,8 @@ describe("Hello Stream API", () => {
       // Cancel the stream
       await reader.cancel();
 
-      // Give cleanup a moment to run
-      await new Promise((r) => setTimeout(r, 50));
+      // Assert: await actual cleanup rather than a timing guess.
+      await cleaned;
 
       expect(cleanupRan).toBe(true);
     });

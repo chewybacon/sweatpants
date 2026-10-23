@@ -292,14 +292,14 @@ const checks: readonly RegisteredCheck[] = [
   // ── Cut 4 — Vocabulary ───────────────────────────────────────────────────
   check("E8a", ["REQ-017"], () => {
     const renamed =
-      exists("apps/yo-chat/acceptance/ephemeral-stale-elicit.acceptance.test.ts") &&
+      exists("acceptance/__tests__/application-composition/command-retries.acceptance.test.ts") &&
       exists("apps/yo-chat/acceptance/book-flight-ephemeral-invariance.acceptance.test.ts");
     const old =
       exists("apps/yo-chat/acceptance/foreign-stale-elicit.acceptance.test.ts") ||
       exists("apps/yo-chat/acceptance/book-flight-foreign-invariance.acceptance.test.ts");
     return {
       passed: renamed && !old,
-      detail: `renamed tests present=${renamed}, old names gone=${!old}`,
+      detail: `ephemeral contract evidence present=${renamed}, old names gone=${!old}`,
     };
   }),
   check("E8b", ["REQ-017", "REQ-003"], () => {

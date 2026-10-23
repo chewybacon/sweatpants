@@ -64,7 +64,8 @@
     "dev:yo-agent": "pnpm -C apps/yo-agent dev",
     "dev:yo-studio": "pnpm -C apps/yo-studio dev",
     "test:execution-recovery": "NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/recovery-middleware/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/host.mjs",
-    "verify:change": "tsx scripts/verify-change.ts"
+    "verify:change": "tsx scripts/verify-change.ts",
+    "check:landing": "pnpm check && pnpm check:tests && pnpm check:acceptance && pnpm check:apps"
   },
   "dependencies": {
     "@effectionx/context-api": "catalog:",

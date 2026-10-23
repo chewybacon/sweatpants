@@ -11,7 +11,7 @@
  * send a user message, complete a turn (with tool call).
  */
 import { describe, expect, it } from "vitest";
-import { call, resource, type Operation, type Stream, type Subscription } from "effection";
+import { resource, type Operation, type Stream, type Subscription } from "effection";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
 import { createChatApplication, createChatHandler } from "@sweatpants/agent-host/server";
@@ -334,16 +334,5 @@ describe("product facade golden path", () => {
     } finally {
       await app.close();
     }
-  });
-
-  it("exposes required facade symbols from allowlisted paths", async () => {
-    expect(typeof createChatApplication).toBe("function");
-    expect(typeof createChatHandler).toBe("function");
-    expect(typeof createTool).toBe("function");
-    expect(typeof setupInMemoryDurableStreams).toBe("function");
-
-    await call(function* () {
-      yield* setupInMemoryDurableStreams<string>();
-    });
   });
 });

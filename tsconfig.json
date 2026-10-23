@@ -115,6 +115,18 @@
     },
     {
       "path": "./packages/flowmode-runtime-lua"
+    },
+    {
+      "path": "./packages/storage-postgres"
+    },
+    {
+      "path": "./packages/stream-bridge"
+    },
+    {
+      "path": "./packages/workspace-runtime"
+    },
+    {
+      "path": "./packages/workspace-lambda-microvm"
     }
   ],
   "files": []

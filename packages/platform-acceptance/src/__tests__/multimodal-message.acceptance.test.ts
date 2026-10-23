@@ -1,3 +1,5 @@
+// binding-conformance: shared semantics run once over HTTP; in-process composition
+// and storage behavior have separate focused tests.
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
@@ -121,7 +123,7 @@ async function runMultimodalScenario(binding: Binding): Promise<void> {
 }
 
 describe("multimodal user message durability", () => {
-  it.each(["in-process", "http"] as const)(
+  it.each(["http"] as const)(
     "preserves ordered text, image, audio, video, and document parts %s",
     async (binding) => {
       await runMultimodalScenario(binding);

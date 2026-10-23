@@ -1,8 +1,8 @@
 # Public framework acceptance coverage
 
 Run every deterministic scenario with **`pnpm test:acceptance`**. The suite
-collects 94 cases: 36 application composition, 10 recovery, 47 runtime contracts,
-and one real host crash. Counts are collected test cases, not line coverage.
+collects 111 cases: 39 application composition, 10 recovery, 48 runtime contracts,
+13 protocol contracts, and one real host crash. Counts are collected test cases, not line coverage.
 
 ## Guarantees
 
@@ -48,6 +48,21 @@ and one real host crash. Counts are collected test cases, not line coverage.
   cancellation, malformed-command recovery, stale capabilities, ordinary-session
   deduplication and fail-closed workerd restart. No live Cloudflare account required.
 
+- **Command identity:** exact retries of accepted ordinary elicitation commands
+  return the current window without a new run; changed payloads under the same
+  command ID fail with `command_identity_conflict`. Covers accept/decline/cancel
+  separately from new commands using stale revisions.
+- **Streaming primitive:** pull-based text/NDJSON, request body and custom headers,
+  delayed and empty streams, setup failure, and cancellation cleanup. Cleanup is
+  observed directly rather than waiting an arbitrary sleep.
+- **MCP continuations:** typed form projection/context, accept/decline/cancel,
+  identical retries, missing capabilities, argument/token tampering, invalid
+  answers, concurrent duplicate settlement, conflicts, actual listening-origin
+  validation, and one actual ordinary tool body execution.
+- **Cancellation ordering:** cancellation of a durable parent aborts its ordinary
+  child's scope-owned signal exactly once, does not continue the body, and
+  journals child closure before parent resolution and closure.
+
 ## Replacement ledger
 
 Old paths below are relative to `packages/platform-acceptance/src/__tests__/`.
@@ -91,10 +106,10 @@ runtime cases rather than multiplying every semantic case across placements.
   reconnect, actual resource drainage, and the external-attempt file proving
   an unacknowledged worker operation is not executed twice.
 
-These are 59 removed source cases. They also remove 21 redundant SQLite lane
-reruns. The old platform collection is now 43 memory / 14 SQLite / 9 process;
+These were 59 removed source cases in the first migration, plus 21 redundant
+SQLite lane reruns. At that checkpoint the platform collection was 43 memory / 14 SQLite / 9 process;
 its retired 13-case tool-loop lane has no script, landing stage or baseline.
-The new package remains included in the ordinary package test gate.
+The new package is the acceptance stage of the four-gate `pnpm land` command.
 
 Also transferred and deleted from their former owners:
 
@@ -122,3 +137,83 @@ those consumers; the new package imports no old platform application fixture or
 conversation/turn facade. AgentCore's driver conformance reuses the public
 journal-authority testing contract, including its semantic-journal comparison;
 provider-wire history assertions in authoring tests stay explicit.
+
+## Shared contracts extracted from apps
+
+All eleven app directories were audited. This pass extracts framework guarantees
+only; acceptance imports no app source or app test harness. App-owned languages,
+product flows, configuration and placement wiring remain with their apps.
+
+- `apps/yo-chat/src/__tests__/hello-stream.test.ts` (8) →
+  `protocols/streaming/handler`; old file deleted.
+- `apps/yo-chat/src/__tests__/execution-spine-surface.test.ts` (1) →
+  retired as a null-cast/symbol smoke; strict public imports and actual executed
+  composition cases cover the useful surface. Old file deleted.
+- `apps/yo-chat/acceptance/durable-cancellation-abort-signal.acceptance.test.ts`
+  (1) → `tool-runtimes/in-process/cancellation-ordering`; old file deleted.
+- `apps/yo-chat/acceptance/ephemeral-stale-elicit.acceptance.test.ts` (3) →
+  `application-composition/command-retries`, using a minimal ordinary choice
+  tool instead of booking fixtures; old file deleted.
+- `apps/yo-mcp/src/__tests__/cli.acceptance.test.ts`: listening-origin and invalid
+  continuation cases (2) → `protocols/mcp/continuations`. Removed those cases
+  and the duplicated retry/response-stream assertions from the card outcomes.
+  Card-specific result/schema checks, greeting, inventory/CORS/server wiring,
+  and five-step trip revision/cancellation remain app-owned. New generic MCP
+  cases explicitly retain all three outcomes and actual execution counts.
+
+This pass removes 15 source cases in four whole files and two mixed-suite cases;
+17 focused replacements add independent outcome coverage; the null-cast smoke
+was retired. Yo Chat now collects 73 default cases; Yo MCP collects 12. No collection baseline was lowered.
+
+| App                                 | Retained coverage and extraction decision                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `yo-chat`                           | Extracted four framework-only suites. Booking/game behavior, actual app tools, host/Cloudflare/AgentCore placement, SQLite/env/routes/metadata/inspector, live and browser flows remain. Multi-generation game tests retain actual game-specific tool behavior and are not replaced by generic replay alone. |
+| `yo-mcp`                            | Extracted origin/continuation guarantees and retry assertions; retained actual server middleware, tool inventory and authored product outcomes.                                                                                                                                                              |
+| `yo-workflow`                       | Retained Scheme/Lua app tool adapters, language diagnostics, documents, fuel policy, execution inspector/service HTTP API, Cloudflare app composition and UI. These consume app-owned code rather than generic package fixtures.                                                                             |
+| `yo-studio`                         | Retained workspace authoring, real file/script mutations, conversation workspace affinity, deployment and session identity.                                                                                                                                                                                  |
+| `yo-agent`                          | Retained app-owned terminal interaction runtime and ask-user plugin behavior.                                                                                                                                                                                                                                |
+| `storage-inspector`                 | Retained inspector API privacy/redaction and SQLite query behavior.                                                                                                                                                                                                                                          |
+| `agentcore-tool-session-tracer`     | Retained deployment protocol/session registry, tool inventory and internal model-selection configuration.                                                                                                                                                                                                    |
+| `agentcore-durable-program-runtime` | No deterministic cases to extract; deployment-specific opt-in certification scripts remain.                                                                                                                                                                                                                  |
+| `lambda-durable-program-runtime`    | No deterministic cases to extract; deployment entry/build configuration remains.                                                                                                                                                                                                                             |
+| `lambda-microvm-sandbox`            | Parked deployment shell; no deterministic cases to extract.                                                                                                                                                                                                                                                  |
+| `yo-slides`                         | Documentation/presentation app; no framework tests to extract.                                                                                                                                                                                                                                               |
+
+## Duplicate-suite trimming
+
+The worker session suite now has five focused cases, replacing 17 broad cases
+and deleting its 832-line child-process/polling harness. Its actual workers
+still run; only the extra parent Node process per scenario and duplicate flows
+are removed. The fixture registry retains only tools used by those five cases
+or the separate local driver smoke tests.
+
+| Former worker cases                                                                                       | Retained guarantee                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Echo/result, ordinary elicit acceptance, first/second-stage decline and cancel, two-elicit booking/result | Central `local-worker/exchange`, `context`, and parameter/projection cases exercise real workers. Branch-specific booking results are fixture business logic; the transport outcomes remain covered. |
+| Missing remote tool                                                                                       | Focused worker session test retains remote registry failure and failed status, distinct from host inventory validation.                                                                              |
+| One sample; repeated samples                                                                              | Rich sample exchange plus three sequential requests with unique IDs and exact returned values.                                                                                                       |
+| Sample followed by elicit; two identical context fixtures                                                 | One worker sample-to-elicit case asserts awaiting states, response schema, complete nested context and final selected value.                                                                         |
+| System prompt, token budget, model preferences, model identity                                            | Preserved exactly in the sample-to-elicit boundary case.                                                                                                                                             |
+| Structured response schema/parsed result; sample tool definitions/choice/returned calls                   | Two focused wire exchange cases preserve all original assertions.                                                                                                                                    |
+| `afterLSN` replay                                                                                         | Three samples plus result have exact LSNs 1–4; replay after 2 returns exactly events 3–4 and terminates, without a timed partial collection.                                                         |
+
+Platform trimming retains **28 memory / 2 SQLite / 9 process** cases:
+
+- Removed old `history`, `streaming`, and `conversation-admission` files after
+  strengthening the central booking/streaming/retry cases. Exact tool arguments,
+  causal user/call/result/assistant/user order, nested-text privacy, streaming
+  deltas before completion, one durable assistant-text emission, stable assistant
+  identity without duplicate snapshots, and typed parked admission remain explicit.
+- Removed repeated in-process profiles for timeline, window, multimodal and
+  nested-ownership scenarios. Their unchanged behavioral assertions run over
+  HTTP; dedicated in-process composition/model-placement tests remain.
+- Run ordinary/durable multi-turn timeline cases once on SQLite, excluding them
+  from memory. Remove broad SQLite reruns of history/admission/window scenarios;
+  retained SQLite replacement/crash, caller-owned storage, adapter conformance,
+  and all nine process cases cover persistence-specific guarantees.
+- Retired the Yo Chat `expect(true).toBe(true)`, the central null-cast surface
+  test and the redundant platform symbol-only facade smoke. The actual product
+  facade golden-path scenario remains.
+
+No new public test command or implementation behavior changed. Baseline changes
+match only the actual reduced platform collections; no unrelated floor changed.

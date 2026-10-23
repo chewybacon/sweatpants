@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest run",
+    "test:watch": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest",
     "check": "tsc --noEmit && tsc --noEmit -p tsconfig.cloudflare.json",
     "lint": "oxlint __tests__ fixtures support"
   },

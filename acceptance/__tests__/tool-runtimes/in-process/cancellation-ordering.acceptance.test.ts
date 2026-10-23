@@ -1,15 +1,12 @@
-import { scoped } from "effection";
-import { createWorkflowProgramDriver } from "@sweatpants/journal-authority";
-import {
-  ProgramDriverRegistryContext,
-  createProgramDriverRegistry,
-} from "@sweatpants/durable-execution";
 // @vitest-environment node
-import { action, createQueue, run, spawn, type Operation } from "effection";
+import { action, createQueue, run, scoped, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/agent-sdk";
-import { createCapabilityKeyring } from "@sweatpants/journal-authority";
+import {
+  createCapabilityKeyring,
+  createWorkflowProgramDriver,
+} from "@sweatpants/journal-authority";
 import {
   createAuthorityScenarioDriver,
   type AuthorityScenarioDriver,
@@ -22,6 +19,10 @@ import {
   createDurableEffectRegistry,
 } from "@sweatpants/durable-effects/runtime";
 import {
+  ProgramDriverRegistryContext,
+  createProgramDriverRegistry,
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   defineDurableProgramManifest,
@@ -35,8 +36,6 @@ import {
   ephemeralToolAdapter,
   ephemeralToolSchemaEntries,
 } from "@sweatpants/tool-session/ephemeral";
-import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
-import { NULL_RESULT_SCHEMA_DESCRIPTOR } from "@sweatpants/durable-execution";
 import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
 import { createToolInvocationEphemeralEffectRegistrations } from "@sweatpants/tool-session/execution";
 
@@ -58,6 +57,7 @@ const parentManifest = defineDurableProgramManifest<null, Json>({
 describe("durable cancellation reaches an ordinary createTool AbortSignal", () => {
   it("aborts the scope-owned signal while cancelling the ephemeral child leaves-first", async () => {
     return await run(function* () {
+      // Arrange: an ordinary authored tool waits on its scope-owned signal.
       const toolStarted = createQueue<void, void>();
       let invocationSignal: AbortSignal | undefined;
       let signalAbortCount = 0;
@@ -74,7 +74,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
           yield* action<void>((resolve) => {
             if (context.signal.aborted) {
               resolve();
-              return;
+              return () => {};
             }
             const onAbort = () => {
               signalAbortCount += 1;
@@ -154,6 +154,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         yield* toolStarted.next();
         expect(invocationSignal?.aborted).toBe(false);
 
+        // Act: cancel the durable parent while its ordinary child is running.
         const accepted = yield* authority.requestCancellation(
           sessionId,
           parentTaskId,
@@ -164,6 +165,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         expect(yield* activation).toEqual({ state: "cancelled" });
       });
 
+      // Assert: abort fires once and cancellation settles children before their parent.
       expect(invocationSignal?.aborted).toBe(true);
       expect(signalAbortCount).toBe(1);
       expect(bodyContinuedAfterAbort).toBe(false);

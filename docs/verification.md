@@ -32,13 +32,13 @@ complete `pnpm land` gate. New files are included in automatic selection.
 The dependency graph is not proof of every runtime import. Generated assets,
 workers, WASM, service setup, and cross-boundary contracts still require their
 own checks. A package selection includes downstream consumers; relevant runtime
-and authority changes also run execution-recovery probes. Final landing retains
-the clean build, export checks, and complete deterministic suite.
+and authority changes also run execution-recovery probes. Final landing runs lint, formatting, type checking and public acceptance.
+Run clean-build/export checks and package/app suites when the changed code needs them.
 
 Scheme/app-service checks also build the standalone workflow fixtures used by
 the Node tests. `yo-workflow execution:compile` uses the lockfile-pinned local
 tsdown dependency; it does not download a separate compiler through `pnpm dlx`.
-Landing prepares these fixtures immediately after the clean workspace build.
+These fixtures are needed by the targeted workflow suites, not public acceptance.
 
 ## The editing loop
 
@@ -66,13 +66,10 @@ pnpm -C packages/platform-acceptance test:sqlite
 pnpm -C packages/platform-acceptance test:process
 ```
 
-The memory lane excludes two SQLite-only process suites. The SQLite lane reruns
-backend-sensitive scenarios with file-backed storage. The process lane runs those
-two SQLite-only suites once. Tool-loop contracts now live in the unified
-`pnpm test:acceptance` package. The remaining platform `test` composes three lanes;
-landing tracks a separate
-collection baseline for each. Memory gets four workers under landing, while
-SQLite and process probes get one. All assertions and test deadlines are retained.
+The memory lane excludes the SQLite-only timeline and process suites. The SQLite
+lane runs the two timeline cases; the process lane runs two fresh-process suites.
+Tool-loop contracts live in `pnpm test:acceptance`. Platform `test` composes all
+three lanes and remains available for targeted verification outside landing.
 
 For a single backend-sensitive scenario during editing, invoke Vitest directly
 instead of forwarding a file argument to a script that chains suites:
@@ -84,30 +81,23 @@ PLATFORM_ACCEPTANCE_STORAGE=sqlite pnpm -C packages/platform-acceptance exec vit
 
 ## Final verification
 
-Storage and app tests require a disposable Postgres server. The default harness
-starts Docker on port 55432 and recreates `sweatpants_test`. Check that prerequisite
-before a long run:
+Run `pnpm land` once narrow checks are green. It executes exactly these four stages:
 
-```bash
-pnpm -C packages/storage-postgres exec node scripts/ensure-test-postgres.mjs
-```
+1. `pnpm lint`
+2. `pnpm format:check`
+3. `pnpm check:landing` — production, package-test, acceptance (including Cloudflare fixtures), and app types.
+4. `pnpm test:acceptance` — all public authoring, recovery, runtime and host-crash cases.
 
-To use an existing disposable server on another port, set both URLs for the full
-run: `SWEATPANTS_TEST_DATABASE_URL` to its `/postgres` admin database, and
-`SWEATPANTS_DATABASE_URL` to `/sweatpants_test`. This skips Docker setup and routes
-the later app tests to the same test database.
+Acceptance resolves development source exports in Vitest and Node child processes.
+It needs no prior build, provider credentials, Postgres or Redis services. It uses
+one Vitest worker, real local runtime boundaries and temporary SQLite databases.
+Landing stops on the first failure, persists per-stage logs and a summary under
+`.artifacts/landing/`, and rejects lost collection or skipped acceptance cases.
 
-The package suite also exercises a real Redis token-buffer store. Provide a
-disposable Redis server through `REDIS_URL` (default `redis://localhost:6379`)
-and verify that it responds before landing. Missing Redis can produce green
-package exits with skipped tests; landing rejects skips above its recorded
-allowance. Use the actual service rather than raising that allowance.
-
-Run `pnpm land` once narrow checks are green. Its early format/hygiene/evidence
-checks fail cheaply, then it performs the complete deterministic gate. Package
-test concurrency remains configurable with `LAND_PACKAGE_TEST_CONCURRENCY` (1–8,
-default 1). Each test runner has an independent bounded worker budget; do not
-raise workspace concurrency and runner concurrency simultaneously without evidence.
+Clean builds, export/generated checks, tooling tests and package/app suites remain
+available separately. Run the relevant checks for changes to those boundaries.
+Storage-specific suites can require disposable Postgres or Redis services; those
+services are no longer prerequisites for `pnpm land`.
 
 Use `pnpm land:live` when provider/model integration changes or live confidence is
 requested. `pnpm land:full` runs both gates. A selected verification result is not

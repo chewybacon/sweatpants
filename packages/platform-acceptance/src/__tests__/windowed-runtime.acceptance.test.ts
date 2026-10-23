@@ -1,3 +1,5 @@
+// binding-conformance: shared semantics run once over HTTP; in-process composition
+// and storage behavior have separate focused tests.
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -47,7 +49,7 @@ async function runFiniteSegmentAndHydration(binding: Binding): Promise<void> {
 }
 
 describe("windowed native lifecycle", () => {
-  it.each(["in-process", "http"] as const)(
+  it.each(["http"] as const)(
     "uses one finite command segment and run-free hydration over %s",
     async (binding) => {
       await runFiniteSegmentAndHydration(binding);
@@ -105,7 +107,7 @@ describe("windowed native lifecycle", () => {
     );
   }, 30_000);
 
-  it.each(["in-process", "http"] as const)(
+  it.each(["http"] as const)(
     "reconnects to an active same-owner segment without rerunning the model over %s",
     async (binding) => {
       await withTestScenario(
@@ -149,7 +151,7 @@ describe("windowed native lifecycle", () => {
     30_000,
   );
 
-  it.each(["in-process", "http"] as const)(
+  it.each(["http"] as const)(
     "replays the complete active text lifecycle when reconnecting after content over %s",
     async (binding) => {
       await withTestScenario(

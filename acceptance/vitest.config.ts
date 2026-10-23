@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: { conditions: ["development"] },
   test: {
     include: ["__tests__/**/*.acceptance.test.{ts,tsx}"],
     environment: "../scripts/testing/jsdom-with-node-fetch.ts",
