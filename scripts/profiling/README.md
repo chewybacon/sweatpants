@@ -3,8 +3,8 @@
 From the repository root:
 
 ```sh
-pnpm profile:yo-chat      # three repetitions
-pnpm profile:yo-chat 5    # five repetitions
+pnpm --filter yo-chat dev:profile      # three repetitions
+pnpm --filter yo-chat dev:profile 5    # five repetitions
 ```
 
 To compare exact saved builds, set `YO_CHAT_CPU_PROFILE_BUNDLE` to a captured

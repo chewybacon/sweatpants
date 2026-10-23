@@ -25,7 +25,7 @@ export interface CloudflareChatEnv extends CloudflareChatBindings {
 export async function createCloudflareApplication(bindings: CloudflareChatEnv) {
   if (!bindings.MODEL_CREDENTIALS) {
     throw new Error(
-      "MODEL_CREDENTIALS is required; use pnpm dev:yo-chat --mode cloudflare for local auth",
+      "MODEL_CREDENTIALS is required; use pnpm --filter yo-chat dev --mode cloudflare for local auth",
     );
   }
   const records = JSON.parse(bindings.MODEL_CREDENTIALS) as Record<string, Credential>;

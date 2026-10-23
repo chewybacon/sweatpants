@@ -22,9 +22,14 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "db:generate": "node scripts/generate-schema.mjs && oxfmt src/schema-sql.ts"
+    "db:generate": "node scripts/generate-schema.mjs && oxfmt src/schema-sql.ts",
+    "lint": "cd ../.. && oxlint --type-aware packages/storage-d1",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/storage-d1 --fix",
+    "format": "cd ../.. && oxfmt packages/storage-d1",
+    "format:check": "cd ../.. && oxfmt packages/storage-d1 --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@cloudflare/workers-types": "5.20261005.1",

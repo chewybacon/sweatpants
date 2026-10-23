@@ -27,7 +27,13 @@ async function launch(): Promise<void> {
 
   if (isYoChatAuthProvider(provider)) {
     console.log(`Checking ${provider} credentials before starting yo-chat...`);
-    await runCommand(["model:auth:refresh", "--provider", provider]);
+    await runCommand([
+      "--filter",
+      "@sweatpants/model-provider-pi-ai",
+      "dev:auth:refresh",
+      "--provider",
+      provider,
+    ]);
   }
 
   if (mode === "cloudflare") {

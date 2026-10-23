@@ -144,8 +144,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/journal-authority",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/journal-authority --fix",
+    "format": "cd ../.. && oxfmt packages/journal-authority",
+    "format:check": "cd ../.. && oxfmt packages/journal-authority --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",

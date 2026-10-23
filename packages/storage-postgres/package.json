@@ -58,11 +58,15 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "typecheck": "tsc -b",
-    "lint": "oxlint src",
+    "lint": "cd ../.. && oxlint --type-aware packages/storage-postgres",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/storage-postgres --fix",
+    "format": "cd ../.. && oxfmt packages/storage-postgres",
+    "format:check": "cd ../.. && oxfmt packages/storage-postgres --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-storage-kernel": "workspace:*",

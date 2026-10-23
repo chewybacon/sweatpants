@@ -1,5 +1,5 @@
 import type { ValueType } from "./scheme-ir.js";
-import ts from "typescript";
+import ts from "typescript-api";
 import type * as Babel from "@babel/core";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";

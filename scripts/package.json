@@ -1,0 +1,24 @@
+{
+  "name": "@sweatpants/repository",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Repository-owned tooling, policies and files outside application/framework workspaces",
+  "type": "module",
+  "scripts": {
+    "lint": "cd .. && oxlint --type-aware . --ignore-pattern 'packages/**' --ignore-pattern 'apps/**' --ignore-pattern 'acceptance/**'",
+    "lint:fix": "pnpm lint --fix",
+    "format": "cd .. && oxfmt . '!packages/**' '!apps/**' '!acceptance/**'",
+    "format:check": "pnpm format --check",
+    "build:clean": "tsx clean-build.ts .",
+    "build:check": "tsx validate-package-exports.ts && tsx validate-product-surface.ts",
+    "check:hygiene": "tsx workspace-hygiene.ts",
+    "check:evidence": "tsx campaign-evidence.ts",
+    "check:evidence:closure": "tsx campaign-evidence.ts --closure",
+    "test": "cd .. && vitest run --config vitest.scripts.config.ts",
+    "lint:complexity": "cd .. && fallow health --complexity --sort cognitive --top 30",
+    "lint:hotspots": "cd .. && fallow health --hotspots --since 1y --min-commits 2",
+    "lint:targets": "cd .. && fallow health --targets",
+    "lint:dead-code": "cd .. && fallow dead-code --type-aware",
+    "lint:audit": "cd .. && fallow audit"
+  }
+}

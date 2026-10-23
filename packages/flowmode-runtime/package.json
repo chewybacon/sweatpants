@@ -32,8 +32,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/flowmode-runtime",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/flowmode-runtime --fix",
+    "format": "cd ../.. && oxfmt packages/flowmode-runtime",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-runtime --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/durable-execution": "workspace:*",

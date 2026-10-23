@@ -92,7 +92,7 @@ Path: [`docs/product-facade-allowlist.json`](./product-facade-allowlist.json)
 Validate with:
 
 ```bash
-pnpm validate:product-surface
+pnpm build:check
 ```
 
 Also runs as part of root `pnpm build` (after package builds and export validation).
@@ -143,7 +143,7 @@ Default cutover target: **`apps/yo-chat`**.
 
 ### Experimental import prohibition
 
-Product-lane packages and product apps MUST NOT add new imports from experimental-lane packages or experimental paths. Enforcement: `pnpm validate:product-surface` (see `scripts/validate-product-surface.ts`).
+Product-lane packages and product apps MUST NOT add new imports from experimental-lane packages or experimental paths. Enforcement: `pnpm build:check` (see `scripts/validate-product-surface.ts`).
 
 ## Import inventory (Phase 0 baseline)
 

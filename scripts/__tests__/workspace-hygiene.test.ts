@@ -75,6 +75,24 @@ describe("workspace hygiene gate", () => {
     expect(report.violations).toEqual([]);
   });
 
+  it("discovers the repository tooling workspace and requires its ledger annotation", () => {
+    const root = makeWorkspace();
+    mkdirSync(join(root, "scripts"));
+    writeFileSync(
+      join(root, "scripts", "package.json"),
+      JSON.stringify({ name: "@fixture/repository" }),
+    );
+    ledgerWith(root, "| `packages/orphan` | parked | fixture |\n");
+    expect(scanWorkspace(root, join(root, ".pi/specs/INDEX.md")).violations).toEqual([
+      expect.objectContaining({ member: "scripts" }),
+    ]);
+    ledgerWith(
+      root,
+      "| `packages/orphan` | parked | fixture |\n| `scripts` | infrastructure | repo tools |\n",
+    );
+    expect(scanWorkspace(root, join(root, ".pi/specs/INDEX.md")).violations).toEqual([]);
+  });
+
   it("fails loudly when the workspace ledger is missing", () => {
     const root = makeWorkspace();
     const ledgerPath = join(root, "docs", "workspace", "INDEX.md");

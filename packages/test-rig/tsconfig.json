@@ -1,8 +1,10 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
+    "incremental": true,
     "noEmit": true,
-    "customConditions": ["development"]
+    "customConditions": ["development"],
+    "tsBuildInfoFile": "./.cache/tsconfig.check.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
   "references": [
@@ -11,12 +13,6 @@
     },
     {
       "path": "../tool-session"
-    },
-    {
-      "path": "../durable-chat-runtime"
-    },
-    {
-      "path": "../agent-host"
     }
   ]
 }

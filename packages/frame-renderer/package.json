@@ -42,9 +42,14 @@
   "scripts": {
     "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run --passWithNoTests",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/frame-renderer",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/frame-renderer --fix",
+    "format": "cd ../.. && oxfmt packages/frame-renderer",
+    "format:check": "cd ../.. && oxfmt packages/frame-renderer --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "effection": "catalog:",

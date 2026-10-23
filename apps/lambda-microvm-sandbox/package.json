@@ -13,7 +13,12 @@
     "sandbox:resume": "./scripts/lifecycle.sh resume",
     "sandbox:terminate": "./scripts/lifecycle.sh terminate",
     "sandbox:request": "./scripts/request.sh",
-    "sandbox:shell": "./scripts/shell.sh"
+    "sandbox:shell": "./scripts/shell.sh",
+    "lint": "cd ../.. && oxlint --type-aware apps/lambda-microvm-sandbox",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/lambda-microvm-sandbox --fix",
+    "format": "cd ../.. && oxfmt apps/lambda-microvm-sandbox",
+    "format:check": "cd ../.. && oxfmt apps/lambda-microvm-sandbox --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/workspace-runtime": "workspace:*",

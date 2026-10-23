@@ -6,7 +6,7 @@
 
 ## User path
 
-1. Start yo-chat: `pnpm dev:yo-chat:local`
+1. Start yo-chat: `pnpm --filter yo-chat dev:local`
 2. Open [Card Picker](http://localhost:8000/chat/cards/)
 3. Trigger the card-picking flow so the tool waits on a human choice
 4. Select a card in the browser UI

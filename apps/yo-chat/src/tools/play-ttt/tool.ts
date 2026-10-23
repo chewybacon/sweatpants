@@ -1,5 +1,6 @@
 /** Journal-native tic-tac-toe program and public tool contract. */
 import { createDurableTool } from "@sweatpants/agent-sdk";
+import type { ProgramElicitResult } from "@sweatpants/durable-execution";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 import type { Operation } from "effection";
@@ -142,17 +143,18 @@ The program flips a recorded coin for symbols, alternates model and user moves, 
         let accepted = false;
         while (!accepted) {
           const last = moveHistory.at(-1);
-          const response = yield* context.elicit("pickMove", {
-            message: `Your turn! You're playing as ${userSymbol}.`,
-            context: {
-              board,
-              moveHistory,
-              /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-              ...(last ? { lastMove: { position: last.position, player: last.player } } : {}),
-              modelSymbol,
-              userSymbol,
-            },
-          });
+          const response: ProgramElicitResult<z.infer<typeof PickMoveResponseSchema>> =
+            yield* context.elicit("pickMove", {
+              message: `Your turn! You're playing as ${userSymbol}.`,
+              context: {
+                board,
+                moveHistory,
+                /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
+                ...(last ? { lastMove: { position: last.position, player: last.player } } : {}),
+                modelSymbol,
+                userSymbol,
+              },
+            });
           if (response.action !== "accept") {
             return {
               success: false as const,

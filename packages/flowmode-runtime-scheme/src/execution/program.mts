@@ -19,6 +19,7 @@ import {
   createWorkflowKernel,
   createWorkflowRuntime,
 } from "@sweatpants/flowmode-runtime";
+import { canonicalDigest } from "@sweatpants/foundation";
 import { CrankError } from "@sweatpants/durable-execution";
 import { call } from "effection";
 
@@ -52,12 +53,20 @@ function kernel(
   }
   let suspension = 0;
   let current: WorkflowBoundary;
-  function boundary(step: HootBoundary): WorkflowBoundary {
+  function boundary(step: HootBoundary, preserveSuspension = false): WorkflowBoundary {
     if (step.kind === "effect") {
+      const request = decodeExchange(step.site, step.value);
+      // Cancellation may return the cleanup that is already pending. It must
+      // retain the capability identifying that occurrence until it is resumed.
+      const unchanged =
+        preserveSuspension &&
+        current.kind === "suspended" &&
+        canonicalDigest(request) === canonicalDigest(current.request);
       return {
         kind: "suspended",
-        suspensionId: String(++suspension),
-        request: decodeExchange(step.site, step.value),
+        suspensionId:
+          unchanged && current.kind === "suspended" ? current.suspensionId : String(++suspension),
+        request,
       };
     }
     if (step.kind === "returned" || step.kind === "thrown") {
@@ -70,10 +79,10 @@ function kernel(
     }
     throw Error("Unknown Hoot boundary");
   }
-  function transition(action: () => HootBoundary): WorkflowBoundary {
+  function transition(action: () => HootBoundary, preserveSuspension = false): WorkflowBoundary {
     let result;
     try {
-      result = boundary(action());
+      result = boundary(action(), preserveSuspension);
     } catch (error) {
       throw new CrankError(
         "workflow_failed",
@@ -90,7 +99,7 @@ function kernel(
     *turn(command) {
       if (command.kind === "cancel") {
         check();
-        return transition(() => check().cancel());
+        return transition(() => check().cancel(), true);
       }
       const reply = command.reply;
       check();

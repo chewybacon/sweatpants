@@ -60,7 +60,12 @@
     "dev": "tsup --watch",
     "check": "tsc -b",
     "test": "vitest run --passWithNoTests",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/chat-client",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/chat-client --fix",
+    "format": "cd ../.. && oxfmt packages/chat-client",
+    "format:check": "cd ../.. && oxfmt packages/chat-client --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/chat-core": "workspace:*",

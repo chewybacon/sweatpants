@@ -1,8 +1,8 @@
 # Public framework acceptance coverage
 
-Run every deterministic scenario with **`pnpm test:acceptance`**. The suite
-collects 111 cases: 39 application composition, 10 recovery, 48 runtime contracts,
-13 protocol contracts, and one real host crash. Counts are collected test cases, not line coverage.
+Run every deterministic scenario with **`pnpm --filter @sweatpants/acceptance test`**. The suite
+collects 132 cases: 39 application composition, 9 recovery, 48 runtime contracts,
+13 protocol contracts, 18 Flowmode, 4 storage, and one real host crash. Counts are collected test cases, not line coverage.
 
 ## Guarantees
 
@@ -26,8 +26,24 @@ collects 111 cases: 39 application composition, 10 recovery, 48 runtime contract
   outcomes, exact-once follow-up call/results, pending identity and streamed
   narration after reload, cancellation during an elicit or nested provider call,
   host-effect failure and recovery.
-- **Host lifecycle:** graceful replacement closes and reopens the same SQLite
-  file; SIGKILL destroys a separate Node host and a new process resumes the same
+- **Storage matrix:** the same real HTTP client/server scenario runs against
+  memory kernel, SQLite, Postgres and local workerd D1. Fresh application and
+  store compositions recover a parked tool, accepted recording, nested sampling
+  and elicitation without repeating the recorded effect. SQLite opens a new
+  connection to the same file; Postgres opens a new pool to a test-owned cluster;
+  D1 keeps its caller-owned workerd binding. Memory keeps its kernel and makes
+  no process-persistence claim.
+- **Flowmode:** the TypeScript frontend and both target compilers consume an
+  acceptance-owned authored durable tool. Lua and Scheme callers link that
+  compiled tool and execute real Wasm. Both kernels restore JSON-roundtripped
+  approval and cleanup snapshots in fresh instances, complete cancellation
+  cleanup despite repeated cancellation, reject changed artifacts/incompatible
+  snapshots, and diagnose malformed callers. The shared program driver and
+  real journal recover both languages across all four storage backends without
+  duplicating accepted pulls. Ordinary Lua replay separately uses real durable
+  records without repeating accepted Wasm computation; the distinct Scheme
+  session evaluator separately exchanges capability requests and JSON replies.
+- **Host lifecycle:** graceful replacement closes and reopens storage; SIGKILL destroys a separate Node host and a new process resumes the same
   database. Crash evidence counts actual effect executions outside both process
   generations. Accepted history and one final result survive. These tests do not
   claim disk-loss or machine-power-failure coverage.
@@ -88,12 +104,12 @@ runtime cases rather than multiplying every semantic case across placements.
   and ordinary decline/cancel exchanges have explicit runtime assertions.
 - `durable-tool.acceptance.test.ts` (5): `application-composition/durable-tools`,
   `durable-cancellation`, `tool-runtimes/local-worker/durable-lifecycle` and
-  `recovery/host-replacement`. Worker attachment/shutdown counts, fenced
+  `storage/recovery`. Worker attachment/shutdown counts, fenced
   placement, child activity identity, journal facts and private-history checks
   are preserved.
 - `nested-failure.acceptance.test.ts` (3):
   `application-composition/nested-failures`.
-- `host-replacement.acceptance.test.ts` (1): `recovery/host-replacement`.
+- `host-replacement.acceptance.test.ts` (1): `storage/recovery`.
 - `pending-elicit-reconnect.acceptance.test.ts` (4 binding-expanded cases):
   `recovery/replay`, including preceding streamed narration; real worker
   reconnect also remains covered in its runtime folder.
@@ -217,3 +233,17 @@ Platform trimming retains **28 memory / 2 SQLite / 9 process** cases:
 
 No new public test command or implementation behavior changed. Baseline changes
 match only the actual reduced platform collections; no unrelated floor changed.
+
+## Flowmode and storage scope
+
+The storage recovery scenario moved from `recovery/host-replacement` into the
+four-backend matrix at `storage/recovery`; its existing assertions remain.
+Flowmode compiler admission, helper/import, evaluator language, fuel, adapter
+atomicity/rollback, database conformance and process contention suites stay with
+their packages. These acceptance rigs do not replace those finer guarantees.
+No package-owned tests were deleted in this pass.
+
+The Flowmode storage matrix reconstructs authority/program/driver instances over
+the same open storage connection. The separate HTTP storage matrix additionally
+closes and reopens SQLite connections and Postgres pools during host replacement.
+Neither matrix claims a process crash; `host-crash/` retains that explicit scope.

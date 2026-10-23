@@ -30,8 +30,13 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/stream-bridge",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/stream-bridge --fix",
+    "format": "cd ../.. && oxfmt packages/stream-bridge",
+    "format:check": "cd ../.. && oxfmt packages/stream-bridge --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "effection": "catalog:"

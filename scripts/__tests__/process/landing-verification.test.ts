@@ -35,7 +35,7 @@ function fixture(dropAcceptanceCoverage: boolean) {
     `#!/usr/bin/env node
 const args = process.argv.slice(2);
 console.log('POOL=' + process.env.VITEST_MAX_THREADS);
-if (args.includes('test:acceptance')) console.log('Tests ${dropAcceptanceCoverage ? 1 : 111} passed (${dropAcceptanceCoverage ? 1 : 111})');
+if (args.includes('@sweatpants/acceptance')) console.log('Tests ${dropAcceptanceCoverage ? 1 : 111} passed (${dropAcceptanceCoverage ? 1 : 111})');
 if (args.includes(process.env.FAIL_COMMAND)) process.exit(1);
 `,
     { mode: 0o755 },
@@ -61,8 +61,8 @@ it("runs only lint, format, types and acceptance with a bounded worker budget", 
   expect(summary.stages.map((stage: { command: string }) => stage.command)).toEqual([
     "pnpm lint",
     "pnpm format:check",
-    "pnpm check:landing",
-    "pnpm test:acceptance",
+    "pnpm check",
+    "pnpm --filter @sweatpants/acceptance test",
   ]);
   const acceptance = summary.stages.at(-1);
   expect(readFileSync(join(root, acceptance.log), "utf8")).toContain("POOL=1");
@@ -98,7 +98,7 @@ it("stops before acceptance when type checking fails", () => {
     env: {
       ...process.env,
       PATH: `${join(root, "bin")}:${process.env.PATH}`,
-      FAIL_COMMAND: "check:landing",
+      FAIL_COMMAND: "check",
     },
   });
   expect(result.status).toBe(1);

@@ -48,9 +48,14 @@
   },
   "scripts": {
     "build": "tsup && pnpm build:types",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run --passWithNoTests",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/cli",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/cli --fix",
+    "format": "cd ../.. && oxfmt packages/cli",
+    "format:check": "cd ../.. && oxfmt packages/cli --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
@@ -66,7 +71,7 @@
     "@sweatpants/foundation": "workspace:*",
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.0",
+    "typescript": "catalog:",
     "vitest": "^1.6.0"
   }
 }

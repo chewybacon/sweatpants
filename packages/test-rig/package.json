@@ -72,9 +72,13 @@
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck",
-    "lint": "oxlint src",
-    "test": "vitest run"
+    "check": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "lint": "cd ../.. && oxlint --type-aware packages/test-rig",
+    "test": "vitest run",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/test-rig --fix",
+    "format": "cd ../.. && oxfmt packages/test-rig",
+    "format:check": "cd ../.. && oxfmt packages/test-rig --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@simulacrum/foundation-simulator": "0.8.0",

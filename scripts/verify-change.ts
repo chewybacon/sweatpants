@@ -29,7 +29,7 @@ async function main(): Promise<void> {
       planOnly = true;
     } else if (flag === "--help") {
       console.log(
-        "pnpm verify:change [--base REF] [--package NAME_OR_DIRECTORY] [--test PATH] [--plan]",
+        "pnpm check:change [--base REF] [--package NAME_OR_DIRECTORY] [--test PATH] [--plan]",
       );
       console.log(
         "Default: staged, unstaged and untracked changes against HEAD, plus downstream consumers.",
@@ -58,27 +58,32 @@ async function main(): Promise<void> {
     throw new Error("Use --test or --package, not both");
   }
   const projects: WorkspaceProject[] = [];
-  for (const parent of ["packages", "apps"]) {
-    for (const entry of readdirSync(resolve(root, parent), { withFileTypes: true })) {
-      const directory = `${parent}/${entry.name}`;
-      const manifest = resolve(root, directory, "package.json");
-      if (!entry.isDirectory() || !existsSync(manifest)) {
-        continue;
-      }
-      const pkg = JSON.parse(readFileSync(manifest, "utf8"));
-      projects.push({
-        name: pkg.name,
-        directory,
-        dependencies: Object.keys({
-          ...pkg.dependencies,
-          ...pkg.devDependencies,
-          ...pkg.peerDependencies,
-          ...pkg.optionalDependencies,
-        }),
-        scripts: pkg.scripts ?? {},
-        testTypes: existsSync(resolve(root, directory, "tsconfig.test.json")),
-      });
+  const directories = [
+    "acceptance",
+    "scripts",
+    ...["packages", "apps"].flatMap((parent) =>
+      readdirSync(resolve(root, parent), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => `${parent}/${entry.name}`),
+    ),
+  ];
+  for (const directory of directories) {
+    const manifest = resolve(root, directory, "package.json");
+    if (!existsSync(manifest)) {
+      continue;
     }
+    const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+    projects.push({
+      name: pkg.name,
+      directory,
+      dependencies: Object.keys({
+        ...pkg.dependencies,
+        ...pkg.devDependencies,
+        ...pkg.peerDependencies,
+        ...pkg.optionalDependencies,
+      }),
+      scripts: pkg.scripts ?? {},
+    });
   }
   const git = (...gitArgs: string[]) =>
     execFileSync("git", gitArgs, { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
@@ -133,19 +138,6 @@ async function main(): Promise<void> {
         args: ["--filter", "yo-workflow", "execution:compile"],
       });
     }
-    commands.push({
-      label: "Type-aware lint",
-      args: [
-        "exec",
-        "oxlint",
-        "--type-aware",
-        "--import-plugin",
-        "--react-plugin",
-        "--promise-plugin",
-        "--vitest-plugin",
-        ...selection.projects.map((p) => p.directory),
-      ],
-    });
     for (const project of selection.projects) {
       if (project.scripts["check"]) {
         commands.push({
@@ -163,26 +155,22 @@ async function main(): Promise<void> {
           });
         }
       }
-      if (project.testTypes) {
-        commands.push({
-          label: `Test types: ${project.name}`,
-          args: ["check:tests", project.directory],
-        });
-      }
       if (project.scripts["lint"]) {
         commands.push({ label: `Lint: ${project.name}`, args: ["-C", project.directory, "lint"] });
       }
       commands.push({
         label: `Format: ${project.name}`,
-        args: ["exec", "oxfmt", "--check", project.directory],
+        args: ["-C", project.directory, "format:check"],
       });
       if (testFile) {
         const local = relative(project.directory, testFile);
         commands.push({
           label: `Test: ${testFile}`,
-          args: /\.[cm][jt]s$/.test(local)
-            ? ["-C", project.directory, "exec", "node", "--import", "tsx", "--test", local]
-            : ["-C", project.directory, "exec", "vitest", "run", local, "--maxWorkers=1"],
+          args: ["acceptance", "scripts"].includes(project.directory)
+            ? ["-C", project.directory, "test", project.directory === "scripts" ? testFile : local]
+            : /\.[cm][jt]s$/.test(local)
+              ? ["-C", project.directory, "exec", "node", "--import", "tsx", "--test", local]
+              : ["-C", project.directory, "exec", "vitest", "run", local, "--maxWorkers=1"],
         });
       } else if (project.name === "@sweatpants/platform-acceptance") {
         for (const lane of acceptanceLanes) {

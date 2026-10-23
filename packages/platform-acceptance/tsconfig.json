@@ -1,5 +1,10 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.package.json",
-  "compilerOptions": { "noEmit": true, "customConditions": ["development"] },
+  "compilerOptions": {
+    "incremental": true,
+    "noEmit": true,
+    "customConditions": ["development"],
+    "tsBuildInfoFile": "./.cache/tsconfig.check.tsbuildinfo"
+  },
   "include": ["src/**/*.ts"]
 }

@@ -17,7 +17,7 @@ All app import samples use the product facade only (see [product-surface.md](../
 
 ```bash
 # From monorepo root — local/in-memory defaults (no Redis / AgentCore required)
-pnpm dev:yo-chat:local
+pnpm --filter yo-chat dev:local
 # open http://localhost:8000/lab/durability
 ```
 

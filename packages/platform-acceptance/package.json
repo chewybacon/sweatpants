@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint src",
+    "lint": "cd ../.. && oxlint --type-aware packages/platform-acceptance",
     "test": "pnpm test:memory && pnpm test:sqlite && pnpm test:process",
     "test:sqlite": "PLATFORM_ACCEPTANCE_STORAGE=sqlite vitest run --maxWorkers=1 src/__tests__/message-order.acceptance.test.ts",
     "test:memory": "PLATFORM_ACCEPTANCE_STORAGE=memory vitest run --maxWorkers=4 --exclude src/__tests__/process/storage-spine.test.ts --exclude src/__tests__/process/storage-spine-defects.acceptance.test.ts --exclude src/__tests__/message-order.acceptance.test.ts",
-    "test:process": "vitest run --maxWorkers=1 src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts"
+    "test:process": "vitest run --maxWorkers=1 src/__tests__/process/storage-spine.test.ts src/__tests__/process/storage-spine-defects.acceptance.test.ts",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/platform-acceptance --fix",
+    "format": "cd ../.. && oxfmt packages/platform-acceptance",
+    "format:check": "cd ../.. && oxfmt packages/platform-acceptance --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@ag-ui/core": "1.0.1",

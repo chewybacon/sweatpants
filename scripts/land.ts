@@ -50,11 +50,11 @@ async function main(): Promise<void> {
     return [
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
       { name: "format:repository", command: "pnpm", args: ["format:check"], timeoutMs: 5 * 60_000 },
-      { name: "types", command: "pnpm", args: ["check:landing"], timeoutMs: 15 * 60_000 },
+      { name: "types", command: "pnpm", args: ["check"], timeoutMs: 15 * 60_000 },
       {
         name: "test:acceptance",
         command: "pnpm",
-        args: ["test:acceptance"],
+        args: ["--filter", "@sweatpants/acceptance", "test"],
         timeoutMs: 10 * 60_000,
         forbidSkips: true,
       },
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
         args:
           process.env["DEFAULT_CHAT_MODEL_PROVIDER"] === "openai"
             ? ["exec", "tsx", "scripts/check-openai-connection.ts"]
-            : ["model:auth:refresh"],
+            : ["--filter", "@sweatpants/model-provider-pi-ai", "dev:auth:refresh"],
         timeoutMs: 30_000,
       },
       {
@@ -434,7 +434,7 @@ async function main(): Promise<void> {
     const log = relativeArtifact(logPath);
     switch (classification) {
       case "PROVIDER_AUTH_FAILED":
-        return `refresh with \`pnpm model:auth:refresh\` (or login), then rerun once; details: ${log}`;
+        return `refresh with \`pnpm --filter @sweatpants/model-provider-pi-ai dev:auth:refresh\` (or login), then rerun once; details: ${log}`;
       case "PORT_OCCUPIED":
         return "identify the owning process or choose an isolated LAND_*_PLAYWRIGHT_PORT";
       case "APPLICATION_ASSERTION":

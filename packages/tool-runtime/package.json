@@ -24,7 +24,12 @@
   "scripts": {
     "build": "tsup",
     "check": "tsc -b",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "cd ../.. && oxlint --type-aware packages/tool-runtime",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/tool-runtime --fix",
+    "format": "cd ../.. && oxfmt packages/tool-runtime",
+    "format:check": "cd ../.. && oxfmt packages/tool-runtime --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/agent-sdk": "workspace:*",

@@ -2,7 +2,7 @@
 
 Public authoring contracts live in [`acceptance/COVERAGE.md`](../../acceptance/COVERAGE.md).
 That ledger maps removed cases to replacements and records runtime/storage
-coverage. The single public command remains `pnpm test:acceptance`.
+coverage. The single public command remains `pnpm --filter @sweatpants/acceptance test`.
 
 This package retains distinct guarantees:
 

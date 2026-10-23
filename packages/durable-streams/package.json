@@ -93,8 +93,13 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/durable-streams",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/durable-streams --fix",
+    "format": "cd ../.. && oxfmt packages/durable-streams",
+    "format:check": "cd ../.. && oxfmt packages/durable-streams --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/foundation": "workspace:*",

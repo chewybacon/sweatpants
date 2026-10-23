@@ -54,4 +54,4 @@ fi
 
 echo "Launching yo-chat in AgentCore mode..."
 cd "$REPO_ROOT"
-exec pnpm dev:yo-chat:agentcore
+exec pnpm --filter yo-chat dev:agentcore

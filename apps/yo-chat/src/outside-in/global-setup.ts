@@ -21,7 +21,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     if (isYoChatAuthProvider(provider)) {
       execFileSync(
         "pnpm",
-        ["--dir", resolve(process.cwd(), "../.."), "model:auth:refresh", "--provider", provider],
+        [
+          "--dir",
+          resolve(process.cwd(), "../.."),
+          "--filter",
+          "@sweatpants/model-provider-pi-ai",
+          "dev:auth:refresh",
+          "--provider",
+          provider,
+        ],
         { stdio: "inherit", env: process.env },
       );
     }

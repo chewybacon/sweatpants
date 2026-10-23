@@ -15,7 +15,12 @@
     "deploy:agentcore": "tsx scripts/deploy-agentcore-runtime.ts",
     "build:image": "./scripts/build-image.sh",
     "check": "tsc --noEmit",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "lint": "cd ../.. && oxlint --type-aware apps/agentcore-tool-session-tracer",
+    "lint:fix": "cd ../.. && oxlint --type-aware apps/agentcore-tool-session-tracer --fix",
+    "format": "cd ../.. && oxfmt apps/agentcore-tool-session-tracer",
+    "format:check": "cd ../.. && oxfmt apps/agentcore-tool-session-tracer --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
@@ -47,6 +52,7 @@
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yo-chat": "workspace:*"
   }
 }

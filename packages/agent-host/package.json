@@ -78,8 +78,13 @@
   },
   "scripts": {
     "build": "tsup && tsc -b --force",
-    "check": "tsc -b",
-    "test": "vitest run"
+    "check": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "cd ../.. && oxlint --type-aware packages/agent-host",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/agent-host --fix",
+    "format": "cd ../.. && oxfmt packages/agent-host",
+    "format:check": "cd ../.. && oxfmt packages/agent-host --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/agent-sdk": "workspace:*",

@@ -6,21 +6,19 @@ import {
 } from "../verification.ts";
 
 const projects: WorkspaceProject[] = [
-  { name: "port", directory: "packages/port", dependencies: [], scripts: {}, testTypes: true },
+  { name: "port", directory: "packages/port", dependencies: [], scripts: {} },
   {
     name: "adapter",
     directory: "packages/adapter",
     dependencies: ["port"],
     scripts: {},
-    testTypes: true,
   },
-  { name: "app", directory: "apps/chat", dependencies: ["adapter"], scripts: {}, testTypes: false },
+  { name: "app", directory: "apps/chat", dependencies: ["adapter"], scripts: {} },
   {
     name: "unrelated",
     directory: "packages/unrelated",
     dependencies: [],
     scripts: {},
-    testTypes: true,
   },
 ];
 

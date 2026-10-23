@@ -21,6 +21,7 @@ status here. Statuses:
 | Member | Status | Note |
 |---|---|---|
 | `acceptance` | infrastructure | Public application composition and authoring experience acceptance |
+| `scripts` | infrastructure | Repository tooling, policy checks and files outside framework/application workspaces. |
 | `apps/agentcore-durable-program-runtime` | product | AgentCore-hosted durable program runtime deployment |
 | `apps/agentcore-tool-session-tracer` | product | AgentCore tool-session tracer deployment |
 | `apps/lambda-durable-program-runtime` | product | Lambda-hosted durable program runtime deployment |

@@ -7,6 +7,13 @@
     "tsconfig*.json"
   ],
   "type": "module",
+  "scripts": {
+    "lint": "cd ../.. && oxlint --type-aware packages/ts-config",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/ts-config --fix",
+    "format": "cd ../.. && oxfmt packages/ts-config",
+    "format:check": "cd ../.. && oxfmt packages/ts-config --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

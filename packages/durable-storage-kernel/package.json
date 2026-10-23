@@ -47,8 +47,12 @@
     "build": "tsup",
     "check": "tsc -b",
     "typecheck": "tsc -b",
-    "lint": "oxlint src",
-    "test": "vitest run"
+    "lint": "cd ../.. && oxlint --type-aware packages/durable-storage-kernel",
+    "test": "vitest run",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/durable-storage-kernel --fix",
+    "format": "cd ../.. && oxfmt packages/durable-storage-kernel",
+    "format:check": "cd ../.. && oxfmt packages/durable-storage-kernel --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@sweatpants/foundation": "workspace:*",

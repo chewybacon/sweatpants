@@ -27,9 +27,14 @@
   "scripts": {
     "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
-    "check": "tsc -b",
+    "check": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run --passWithNoTests",
-    "build:types": "tsc -b tsconfig.json --force"
+    "build:types": "tsc -b tsconfig.json --force",
+    "lint": "cd ../.. && oxlint --type-aware packages/vite-plugin",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/vite-plugin --fix",
+    "format": "cd ../.. && oxfmt packages/vite-plugin",
+    "format:check": "cd ../.. && oxfmt packages/vite-plugin --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
   "dependencies": {
     "@babel/core": "^7.24.0",
