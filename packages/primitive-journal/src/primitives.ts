@@ -82,3 +82,16 @@ export interface Runtime<Yielded> {
   /** The host boundary. Shared workflows themselves remain iterator-based. */
   start<T>(work: Work<T, Yielded>): Execution<T>;
 }
+
+/** Operation-backed native cursor. Each activation acquires one fresh cursor. */
+export interface Guest<T, Request, Y, Value = unknown, Error = unknown> {
+  start(): IterableOperation<Turn<T, Request>, Y>;
+  resume(outcome: Outcome<Value, Error>): IterableOperation<Turn<T, Request>, Y>;
+  /** Idempotent resource disposal, without logical cancellation. */
+  close(): IterableOperation<void, Y>;
+}
+
+export type GuestWork<T, Request, Y, Value = unknown, Error = unknown> = Work<
+  Guest<T, Request, Y, Value, Error>,
+  Y
+>;

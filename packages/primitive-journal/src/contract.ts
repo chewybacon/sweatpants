@@ -82,3 +82,21 @@ export function parseOutcome(value: unknown): Outcome<Json, Json> {
   }
   throw new Error("Invalid outcome");
 }
+
+export interface RequestOccurrence {
+  readonly id: string;
+  readonly sequence: number;
+  readonly request: Json;
+  readonly status: "pending" | "accepted";
+}
+
+/** Correlation is scoped to this local journal/Identity; IDs do not authorize answers. */
+export interface PendingJournal extends Journal {
+  readRequests(): readonly RequestOccurrence[];
+  park(sequence: number, request: Json): RequestOccurrence;
+  acceptRequest(id: string, outcome: Outcome<Json, Json>): AcceptedExchange;
+}
+
+export type Activation<T> =
+  | { readonly state: "parked"; readonly request: RequestOccurrence }
+  | { readonly state: "completed"; readonly value: T };

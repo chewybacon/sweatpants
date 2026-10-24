@@ -5,20 +5,27 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, expect, it } from "vitest";
-import { run } from "effection";
+import { call, run, type Operation } from "effection";
 import {
   encode,
   failure,
   driveJournal,
   success,
   type Handler,
+  type HandlerMiddleware,
+  type IterableOperation,
+  type Json,
   type Outcome,
   type Work,
   type Journal,
   type Snapshot,
 } from "@sweatpants/primitive-journal";
 import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
-import { createSequenceRunner } from "@sweatpants/primitive-journal/example";
+import {
+  createSequenceRunner,
+  record,
+  type RecordRequest,
+} from "@sweatpants/primitive-journal/example";
 import type { DurableSemanticRecord } from "../../../packages/journal-authority/src/contract/semantic-record.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -511,6 +518,247 @@ it.each(["changed-request", "premature-completion", "changed-result"] as const)(
     } finally {
       writeFileSync(`${path}.evidence.json`, JSON.stringify(evidence, null, 2));
       journal.close();
+    }
+  },
+);
+
+it.each(["live", "interrupted"] as const)(
+  "accepts the final composed middleware Outcome across %s delivery",
+  async (delivery) => {
+    const path = join(directory, `middleware-${delivery}.sqlite`);
+    const identity = {
+      executionId: `middleware-${delivery}`,
+      program: { id: "middleware", version: "1", digest: "fixture" },
+      input: null,
+    };
+    const request: RecordRequest = {
+      kind: "record",
+      key: "primary",
+      retrySafety: { mode: "repeatable" },
+    };
+    const entry = { sequence: 0, request, outcome: success("outer:fallback") };
+    const attempt = { sequence: 0, number: 0, request, retryMode: "repeatable" };
+    const acceptedSnapshot = {
+      identity,
+      status: "running",
+      entries: [entry],
+      attempts: [{ ...attempt, status: "accepted" }],
+    };
+    const completedSnapshot = {
+      ...acceptedSnapshot,
+      status: "completed",
+      value: "outer:fallback:done",
+    };
+    const events: unknown[] = [];
+    const handlerCalls: RecordRequest[] = [];
+    let recoveryCalls = 0;
+    const guests: { received: string[]; caught: unknown[] }[] = [];
+    const sentinelCalls: unknown[] = [];
+    const notifications: unknown[] = [];
+    const evidence: unknown[] = [];
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const interruption = new Error("primitive_loop_3_after_acceptance");
+    let journal = new SqliteJournal(path, identity);
+    const observe = (phase: string) => {
+      const snapshot = journal.read();
+      evidence.push(
+        structuredClone({
+          phase,
+          snapshot,
+          events,
+          handlerCalls,
+          recoveryCalls,
+          guests,
+          sentinelCalls,
+          notifications,
+        }),
+      );
+      return snapshot;
+    };
+    const createWork = (): Work<string, RecordRequest> => {
+      const guest = { received: [] as string[], caught: [] as unknown[] };
+      guests.push(guest);
+      return function* () {
+        try {
+          const reply = yield* record("primary");
+          guest.received.push(reply);
+          events.push(["guest received", reply]);
+          return `${reply}:done`;
+        } catch (error) {
+          guest.caught.push(error);
+          events.push(["guest caught", error]);
+          throw error;
+        }
+      };
+    };
+    type Yielded = Operation<unknown> extends IterableOperation<unknown, infer Y> ? Y : never;
+    type Layer = HandlerMiddleware<RecordRequest, Yielded, Outcome<Json, Json>>;
+    const handler: Handler<RecordRequest, Yielded, Outcome<Json, Json>> = function* (value) {
+      handlerCalls.push(value);
+      events.push(["handler called", value]);
+      return failure("unavailable");
+    };
+    const recover: Layer = function* ([value], next) {
+      events.push(["inner entered", value]);
+      const outcome = yield* next(value);
+      events.push(["inner observed", outcome]);
+      expect(outcome).toEqual(failure("unavailable"));
+      yield* call(() => {
+        recoveryCalls++;
+        events.push("native recovery entered");
+        entered.resolve();
+        return release.promise;
+      });
+      events.push("native recovery finished");
+      const recovered = success("fallback");
+      events.push(["inner returns", recovered]);
+      return recovered;
+    };
+    const outer: Layer = function* ([value], next) {
+      events.push(["outer entered", value]);
+      const outcome = yield* next(value);
+      events.push(["outer observed", outcome]);
+      expect(outcome).toEqual(success("fallback"));
+      if (!outcome.ok) {
+        throw new Error("expected recovery");
+      }
+      const transformed = success(`outer:${outcome.value}`);
+      events.push(["outer returns", transformed]);
+      return transformed;
+    };
+    const suspendedEvents = [
+      ["outer entered", request],
+      ["inner entered", request],
+      ["handler called", request],
+      ["inner observed", failure("unavailable")],
+      "native recovery entered",
+    ];
+    const acceptedEvents = [
+      ...suspendedEvents,
+      "native recovery finished",
+      ["inner returns", success("fallback")],
+      ["outer observed", success("fallback")],
+      ["outer returns", success("outer:fallback")],
+      ["accepted", entry],
+    ];
+    const sentinel: typeof handler = function* (value) {
+      sentinelCalls.push(["handler", value]);
+      throw new Error("replay must not dispatch handler");
+    };
+    const createSentinel = (name: string): Layer =>
+      function* ([value]) {
+        sentinelCalls.push([name, value]);
+        throw new Error(`replay must not dispatch ${name}`);
+      };
+    const sentinelLayers = [createSentinel("outer"), createSentinel("recover")];
+    const reopen = () => {
+      journal.close();
+      journal = new SqliteJournal(path, identity);
+    };
+    const replaySaved = () =>
+      run(() =>
+        driveJournal(createWork(), journal, sentinel, sentinelLayers, (accepted) => {
+          notifications.push(accepted);
+        }),
+      );
+    const task = run(() =>
+      driveJournal(createWork(), journal, handler, [outer, recover], (accepted) => {
+        events.push(["accepted", accepted]);
+        expect(observe("accepted-before-delivery")).toEqual(acceptedSnapshot);
+        expect(events).toEqual(acceptedEvents);
+        expect(guests).toEqual([{ received: [], caught: [] }]);
+        if (delivery === "interrupted") {
+          throw interruption;
+        }
+      }),
+    );
+    // Attach rejection handling immediately, including failures before the handshake.
+    const settled = Promise.resolve(task).then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    try {
+      await Promise.race([
+        entered.promise,
+        settled.then(() => {
+          throw new Error("fixture ended before recovery suspension");
+        }),
+      ]);
+      expect(observe("suspended")).toEqual({
+        identity,
+        status: "running",
+        entries: [],
+        attempts: [{ ...attempt, status: "started" }],
+      });
+      expect(events).toEqual(suspendedEvents);
+      expect(guests).toEqual([{ received: [], caught: [] }]);
+      expect(handlerCalls).toEqual([request]);
+      expect(recoveryCalls).toBe(1);
+      release.resolve();
+      const result = await settled;
+      if (delivery === "live") {
+        expect(result).toEqual({ ok: true, value: "outer:fallback:done" });
+        expect(events).toEqual([...acceptedEvents, ["guest received", "outer:fallback"]]);
+        expect(guests).toEqual([{ received: ["outer:fallback"], caught: [] }]);
+      } else {
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+          throw new Error("expected host interruption");
+        }
+        expect(result.error).toBe(interruption);
+        expect(events).toEqual(acceptedEvents);
+        expect(guests).toEqual([{ received: [], caught: [] }]);
+      }
+      const finished = observe("initial-run-finished");
+      expect(finished).toEqual(delivery === "live" ? completedSnapshot : acceptedSnapshot);
+      const initialEvents = [...events];
+      const initialGuests = structuredClone(guests);
+      reopen();
+      expect(observe("reopened")).toEqual(finished);
+      expect(await replaySaved()).toBe("outer:fallback:done");
+      expect(guests).toEqual([...initialGuests, { received: ["outer:fallback"], caught: [] }]);
+      expect(events).toEqual([...initialEvents, ["guest received", "outer:fallback"]]);
+      expect(sentinelCalls).toEqual([]);
+      expect(notifications).toEqual([]);
+      expect(handlerCalls).toEqual([request]);
+      expect(recoveryCalls).toBe(1);
+      const completed = observe("replay-completed");
+      expect(completed).toEqual(completedSnapshot);
+      if (delivery === "live") {
+        expect(completed).toEqual(finished);
+      } else {
+        reopen();
+        expect(observe("completed-reopened")).toEqual(completed);
+        expect(await replaySaved()).toBe("outer:fallback:done");
+        expect(guests).toEqual([
+          ...initialGuests,
+          { received: ["outer:fallback"], caught: [] },
+          { received: ["outer:fallback"], caught: [] },
+        ]);
+        expect(events).toEqual([
+          ...initialEvents,
+          ["guest received", "outer:fallback"],
+          ["guest received", "outer:fallback"],
+        ]);
+        expect(sentinelCalls).toEqual([]);
+        expect(notifications).toEqual([]);
+        expect(handlerCalls).toEqual([request]);
+        expect(recoveryCalls).toBe(1);
+        expect(observe("completed-replay-completed")).toEqual(completed);
+      }
+    } finally {
+      release.resolve();
+      try {
+        await task.halt();
+        await settled;
+      } finally {
+        try {
+          writeFileSync(`${path}.evidence.json`, JSON.stringify(evidence, null, 2));
+        } finally {
+          journal.close();
+        }
+      }
     }
   },
 );

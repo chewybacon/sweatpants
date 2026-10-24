@@ -1,3 +1,4 @@
+import { validateReplayRequest, validateReplayTerminal } from "./guest-turn.ts";
 import type {
   Handler,
   HandlerMiddleware,
@@ -39,13 +40,7 @@ function feed<T, Request extends Json>(
   entry: AcceptedExchange,
   sequence: number,
 ): Turn<T, Request> {
-  if (
-    turn.kind !== "suspended" ||
-    entry.sequence !== sequence ||
-    encode(turn.request) !== encode(entry.request)
-  ) {
-    throw new Error("Replay request mismatch");
-  }
+  validateReplayRequest(turn, entry, sequence);
   if (entry.outcome.ok) {
     return advance(iterator, entry.outcome.value);
   }
@@ -68,12 +63,7 @@ export function replay<T extends Json, Request extends Json>(
   for (const [sequence, entry] of snapshot.entries.entries()) {
     turn = feed(iterator, turn, entry, sequence);
   }
-  if (
-    snapshot.status === "completed" &&
-    (turn.kind !== "completed" || encode(turn.value) !== encode(snapshot.value))
-  ) {
-    throw new Error("Terminal replay mismatch");
-  }
+  validateReplayTerminal(turn, snapshot);
   return { iterator, turn, sequence: snapshot.entries.length };
 }
 
