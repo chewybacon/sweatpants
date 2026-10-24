@@ -88,6 +88,13 @@ relevant checks. `--plan` prints commands without executing them.
 
 ## Final verification
 
+Acceptance stops after the first failure and performs no retries. Individual test
+timeouts remain 30 seconds (unless a test explicitly overrides them), and fixture
+subprocess deadlines remain in force. The acceptance stage has a 12-minute outer
+cap, allowing headroom for the expanded suite (recently about 581 seconds). A
+synchronous event-loop lock can prevent a test timer from firing; the separate
+landing process deadline remains the backstop. Landing stops after a failed stage.
+
 Run `pnpm land` once focused checks pass. It owns exactly four sequential stages:
 
 1. `pnpm lint`

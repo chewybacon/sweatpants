@@ -16,6 +16,7 @@ import type {
   AuthoritySessionState,
   AuthorityState,
   PullState,
+  RecordRecoveryObservation,
   TaskState,
 } from "../contract/authority-contract.ts";
 
@@ -105,6 +106,56 @@ export function planForestReplay(
     rows,
     replay,
     peers,
+  };
+}
+
+/** Explicit parked-prefix observation. Does not change planner admission or issue tokens. */
+export function observeRecordRecovery(
+  state: AuthorityState,
+  sessionId: string,
+  taskId: string,
+  nowMs: number,
+): RecordRecoveryObservation {
+  const session = state.sessions.get(sessionId);
+  const task = session?.execution.tasks.get(taskId);
+  if (
+    !session ||
+    !task ||
+    session.execution.tasks.size !== 1 ||
+    task.origin.kind !== "root" ||
+    task.forkGroup ||
+    task.execution.checkpoint ||
+    task.lifecycle.status !== "active" ||
+    task.lifecycle.cancellation.type !== "none"
+  ) {
+    throw new CrankError(
+      "invalid_command",
+      "Recovery observation requires one uncancelled root strand",
+    );
+  }
+  const action = task.actions[task.nextActionIndex];
+  if (
+    action?.kind !== "pull" ||
+    action.pull.resolution.status !== "open" ||
+    action.pull.resolution.revoked
+  ) {
+    throw new CrankError("invalid_command", "Recovery observation requires an open occurrence");
+  }
+  const attempt = action.pull.attempts.at(-1);
+  if (!attempt) {
+    throw new CrankError("invalid_command", "Recovery observation requires an attempt");
+  }
+  const plan = planForestReplay(state, sessionId, session.control.journalHeadId ?? "", nowMs);
+  return {
+    item: buildReplayItem(task, plan.rows[0]!),
+    attachmentId: task.execution.attachmentId,
+    pending: {
+      actionIndex: action.actionIndex,
+      pullIndex: action.pullIndex,
+      pullId: action.pull.pullId,
+      expectedAttemptId: attempt.attemptId,
+      descriptor: structuredClone(action.pull.request.proposedDescriptor),
+    },
   };
 }
 

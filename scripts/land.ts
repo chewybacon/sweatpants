@@ -55,7 +55,8 @@ async function main(): Promise<void> {
         name: "test:acceptance",
         command: "pnpm",
         args: ["--filter", "@sweatpants/acceptance", "test"],
-        timeoutMs: 10 * 60_000,
+        // The expanded suite takes ~581s; leave headroom without an unbounded run.
+        timeoutMs: 12 * 60_000,
         forbidSkips: true,
       },
     ];

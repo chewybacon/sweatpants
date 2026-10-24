@@ -32,6 +32,7 @@ import {
   completeTask,
   completeUnderMandate,
   emitUnderMandate,
+  recoverRecord,
   reserveUnderMandate,
   resolvePull,
 } from "./pull-decisions.ts";
@@ -116,6 +117,9 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.report-peer-loss":
       result = reportPeerLoss(kernel, command.request);
+      break;
+    case "execution.recover-record":
+      result = recoverRecord(draft, command.request);
       break;
     case "execution.reserve-pull":
       result = kernel.reservePull(command.request);

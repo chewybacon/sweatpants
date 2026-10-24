@@ -298,6 +298,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../packages/model-provider-pi-ai
+      '@sweatpants/primitive-journal':
+        specifier: workspace:*
+        version: link:../packages/primitive-journal
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../packages/react-chat
@@ -2477,6 +2480,21 @@ importers:
       ws:
         specifier: 'catalog:'
         version: 8.21.0
+
+  packages/primitive-journal:
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/react-chat:
     dependencies:

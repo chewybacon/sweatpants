@@ -1,13 +1,21 @@
+import { deepStrictEqual } from "node:assert";
+import type { Mandate } from "@sweatpants/durable-execution";
+import { BetterSqliteDatabase } from "@sweatpants/storage-sqlite/better-sqlite3";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import type {
   AuthorityCommand,
   JournalAuthorityContract,
+  RecordRecoveryObservation,
 } from "../../../packages/journal-authority/src/contract/authority-contract.ts";
 import { openBetterSqliteStorageForTest } from "../../../packages/storage-sqlite/src/better-sqlite3.ts";
 import { run } from "effection";
 import { openBetterSqliteStorage } from "@sweatpants/storage-sqlite/better-sqlite3";
 import { createJournal } from "../../../packages/journal-authority/src/shell/journal.ts";
-import { createCapabilityKeyring } from "../../../packages/journal-authority/src/contract/capabilities.ts";
+import {
+  signCapability,
+  verifyResolutionCapability,
+  createCapabilityKeyring,
+} from "../../../packages/journal-authority/src/contract/capabilities.ts";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { createSchemaFixture, stringGuard } from "@sweatpants/journal-authority/testing";
 import { createWorkflowProgramDriver } from "../../../packages/journal-authority/src/workflow/program-driver.ts";
@@ -30,6 +38,7 @@ if (!path || (engine !== "candidate" && engine !== "reference" && engine !== "in
   throw new Error("worker engine database [stop index]");
 }
 const stop = Number(stopText);
+const recoverPending = process.env.SEQUENCE_RECOVERY === "1";
 const input = createSchemaFixture(
   "sequence/input",
   "program_input",
@@ -60,7 +69,9 @@ const attach = {
   route: { driverKind: "program" },
   executionEpoch: 1,
 };
-let now = 1000;
+let now = existsSync(`${path}.clock.json`)
+  ? Number(readFileSync(`${path}.clock.json`, "utf8"))
+  : 1000;
 const options = {
   journalId: "sequence-journal",
   journalIncarnation: "1",
@@ -68,6 +79,27 @@ const options = {
   keyring: createCapabilityKeyring("fixture", [{ keyId: "fixture", secret: "x".repeat(32) }]),
   schemaRegistry: createDurableSchemaRegistry([input.entry, output.entry]),
 };
+type Retained = { mandate: Mandate; capability: string; legacy: string; pullId: string };
+function retained(): Retained[] {
+  return readFileSync(`${path}.capabilities.jsonl`, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Retained);
+}
+function databaseState() {
+  const database = new BetterSqliteDatabase(path!, { readonly: true });
+  try {
+    const tables = database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as { name: string }[];
+    return tables.map(({ name }) => ({
+      name,
+      rows: database.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all(),
+    }));
+  } finally {
+    database.close();
+  }
+}
 function record() {
   const ledger = `${path}.calls.jsonl`;
   const count = existsSync(ledger) ? readFileSync(ledger, "utf8").trim().split("\n").length : 0;
@@ -92,7 +124,14 @@ const work: Computation = function* () {
     retrySafety: { mode: variant === "unsafe" ? "unsafe" : "repeatable" },
   };
   trace({ type: "delivered", occurrence: 0, value: first });
-  const second = yield { kind: "record", key: "same", retrySafety: { mode: "repeatable" } };
+  if (variant === "pending-completed") {
+    return "early";
+  }
+  const second = yield {
+    kind: "record",
+    key: variant === "pending-divergent" ? "changed" : "same",
+    retrySafety: { mode: "repeatable" },
+  };
   trace({ type: "delivered", occurrence: 1, value: second });
   if (typeof first !== "string" || typeof second !== "string") {
     throw new Error("Expected string outcomes");
@@ -132,6 +171,103 @@ try {
         },
       });
     }
+    if (variant === "seed-second-root") {
+      yield* journal.advance({
+        type: "execution.open-task",
+        request: {
+          ...attach,
+          taskId: "other-root",
+          turnId: "turn",
+          manifest,
+          attachmentId: "other-root",
+          audience: "program-host",
+        },
+      });
+      return { records: yield* journal.readSession(attach.sessionId) };
+    }
+    if (variant === "seed-unsafe") {
+      const active = yield* journal.query({
+        type: "task.recovery-state",
+        sessionId: attach.sessionId,
+        taskId: attach.taskId,
+      });
+      if (active.status !== "active") {
+        throw new Error("Expected active fixture");
+      }
+      const current = active.activeTasks[0]!;
+      const bound = yield* journal.advance({
+        type: "execution.bind-attachment",
+        request: { sessionId: attach.sessionId, ...current },
+      });
+      yield* journal.advance({
+        type: "execution.reserve-pull",
+        request: {
+          sessionId: attach.sessionId,
+          turnId: "turn",
+          taskId: attach.taskId,
+          actionIndex: 0,
+          pullIndex: 0,
+          programCapability: bound.programCapability,
+          descriptor: { kind: "record", key: "same", retrySafety: { mode: "unsafe" } },
+        },
+      });
+      return { records: yield* journal.readSession(attach.sessionId) };
+    }
+    if (variant === "probe-retained" || variant === "probe-retained-second") {
+      const capabilities = retained();
+      const occurrence = variant === "probe-retained-second" ? 1 : 0;
+      const old =
+        occurrence === 0
+          ? capabilities[0]!
+          : capabilities.find((entry) => entry.pullId !== capabilities[0]!.pullId)!;
+      const before = databaseState();
+      const results: unknown[] = [];
+      for (const value of [
+        occurrence === 0 ? "hello:recorded:3" : "hello:recorded:6",
+        "late-changed",
+      ]) {
+        for (const [capability, code] of [
+          [old.capability, "capability_revoked"],
+          [old.legacy, "invalid_resolution_capability"],
+        ]) {
+          const result = yield* journal.advance({
+            type: "execution.resolve-pull",
+            request: {
+              capability: capability!,
+              audience: "program-execution",
+              outcome: { status: "ok", value },
+            },
+          });
+          deepStrictEqual(result, { status: "rejected", code });
+          deepStrictEqual(databaseState(), before);
+          results.push(result);
+        }
+      }
+      let code;
+      try {
+        yield* journal.advance({
+          type: "execution.reserve-pull",
+          request: {
+            ...old.mandate.address,
+            actionIndex: occurrence,
+            pullIndex: occurrence,
+            programCapability: old.mandate.programCapability,
+            descriptor: { kind: "record", key: "same", retrySafety: { mode: "repeatable" } },
+          },
+        });
+      } catch (error) {
+        code = (error as { code: string }).code;
+      }
+      deepStrictEqual(code, "stale_program_capability");
+      deepStrictEqual(databaseState(), before);
+      const release = yield* journal.advance({
+        type: "execution.release-mandate",
+        request: { mandate: old.mandate, reason: "failed" },
+      });
+      deepStrictEqual(release, { status: "stale" });
+      deepStrictEqual(databaseState(), before);
+      return { results, code, release, records: yield* journal.readSession(attach.sessionId) };
+    }
     if (engine === "inspect") {
       return {
         state,
@@ -139,6 +275,7 @@ try {
         records: yield* journal.readSession(attach.sessionId),
       };
     }
+    let currentMandate: Mandate | undefined;
     let lastBind: Extract<AuthorityCommand, { type: "execution.bind-mandate" }> | undefined;
     const authority: JournalAuthorityContract = {
       *command(command) {
@@ -210,10 +347,81 @@ try {
             }
           }
         }
-        return yield* journal.advance(command);
+        if (command.type === "execution.recover-record" && variant === "old-settlement-wins") {
+          const accepted = yield* journal.advance({
+            type: "execution.resolve-pull",
+            request: {
+              capability: retained()[0]!.capability,
+              audience: "program-execution",
+              outcome: { status: "ok", value: "old-winner" },
+            },
+          });
+          deepStrictEqual(accepted.status, "accepted");
+          writeFileSync(`${path}.winner-state.json`, JSON.stringify(databaseState()));
+        }
+        const result = yield* journal.advance(command);
+        if (command.type === "execution.bind-mandate") {
+          const bound = result as { status: string; mandate: Mandate };
+          if (bound.status === "bound") {
+            currentMandate = bound.mandate;
+          }
+        }
+        if (
+          command.type === "execution.mandate-reserve" ||
+          command.type === "execution.recover-record"
+        ) {
+          const reservation = result as {
+            status: string;
+            resolutionCapability: string;
+            pullId: string;
+            mandate?: Mandate;
+          };
+          currentMandate = reservation.mandate ?? currentMandate;
+          if (reservation.status === "authorized" && currentMandate) {
+            const {
+              version: _version,
+              issuer: _issuer,
+              keyId: _keyId,
+              ...claims
+            } = verifyResolutionCapability(
+              reservation.resolutionCapability,
+              options.keyring,
+              "program-execution",
+            );
+            // Host-signed compatibility fixture with the old attemptless claim shape.
+            // It is retained before takeover; normal authority issuance never uses this route.
+            const legacy = signCapability({ ...claims, attemptId: "none" }, options.keyring);
+            appendFileSync(
+              `${path}.capabilities.jsonl`,
+              `${JSON.stringify({ mandate: currentMandate, capability: reservation.resolutionCapability, legacy, pullId: reservation.pullId })}\n`,
+            );
+          }
+        }
+        if (command.type === "execution.recover-record" && variant === "loss-after-permission") {
+          trace({ type: "permission-committed" });
+          process.exit(75);
+        }
+        return result;
       },
       *query(query) {
         const result = yield* journal.query(query);
+        if (query.type === "task.record-recovery-observation") {
+          const observation = result as RecordRecoveryObservation;
+          const item = observation.item;
+          const entries = item.replay as Array<(typeof item.replay)[number]>;
+          if (variant === "truncated") {
+            entries.pop();
+          }
+          if (variant === "digest-invalid" && entries[0]) {
+            entries[0] = { ...entries[0], entryDigest: "0".repeat(64) };
+          }
+          if (variant === "wrong-head") {
+            (item as { plannedHead: typeof item.plannedHead }).plannedHead = {
+              ...item.plannedHead,
+              digest: "0".repeat(64),
+            };
+          }
+        }
         if (query.type === "forest.replay-plan") {
           const plan = result as ForestReplayPlan;
           const item = plan.replay.at(0);
@@ -241,18 +449,37 @@ try {
       engine === "candidate"
         ? yield* driveSequentialJournal({
             authority,
+            recoverPending,
             attach:
               variant === "changed-input"
                 ? { ...attach, input: "changed" }
                 : variant === "changed-program"
                   ? { ...attach, program: { ...attach.program, digest: "d".repeat(64) } }
-                  : attach,
+                  : variant === "unsupported-driver"
+                    ? { ...attach, route: { driverKind: "remote" } }
+                    : variant === "affinity"
+                      ? { ...attach, affinity: { kind: "workspace", key: "elsewhere" } }
+                      : attach,
             work,
             *handler() {
               if (variant === "handler-error" || variant === "cleanup-error") {
                 throw new Error("fixture handler failure");
               }
-              return { status: "ok", value: record() };
+              if (recoverPending) {
+                const current = retained().at(-1)!;
+                const claims = verifyResolutionCapability(
+                  current.capability,
+                  options.keyring,
+                  "program-execution",
+                );
+                trace({ type: "dispatch", pullId: claims.pullId, attemptId: claims.attemptId });
+              }
+              const value = record();
+              if (variant === "loss-before-acceptance") {
+                trace({ type: "external-completed", value });
+                process.exit(74);
+              }
+              return { status: "ok", value };
             },
             afterAccepted(index) {
               if (index === stop) {
@@ -273,6 +500,15 @@ try {
     return { result, records };
   });
   writeFileSync(`${path}.report.json`, JSON.stringify(report, null, 2));
+} catch (error) {
+  writeFileSync(
+    `${path}.error.json`,
+    JSON.stringify({
+      code: (error as { code?: string }).code ?? null,
+      message: (error as Error).message,
+    }),
+  );
+  throw error;
 } finally {
   await run(() => handle.close());
 }

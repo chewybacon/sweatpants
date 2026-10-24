@@ -33,6 +33,7 @@
     "@sweatpants/history-store": "workspace:*",
     "@sweatpants/journal-authority": "workspace:*",
     "@sweatpants/model-provider-pi-ai": "workspace:*",
+    "@sweatpants/primitive-journal": "workspace:*",
     "@sweatpants/react-chat": "workspace:*",
     "@sweatpants/storage-d1": "workspace:*",
     "@sweatpants/storage-postgres": "workspace:*",

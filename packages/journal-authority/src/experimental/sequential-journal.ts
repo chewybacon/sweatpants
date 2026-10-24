@@ -11,6 +11,7 @@ import {
   type ReplayItem,
 } from "@sweatpants/durable-execution";
 import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
+import type { BindMandateRequest, RecoverRecordResult } from "../contract/authority-types.ts";
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
 
 export type Outcome = OperationOutcome;
@@ -37,6 +38,17 @@ function advance(iterator: ReturnType<Computation>, actionIndex: number, value: 
 function reconstruct(work: Computation, item: ReplayItem) {
   if (item.checkpoint) {
     throw new Error("Experimental journal does not support continuation checkpoints");
+  }
+  const seed = sha256(
+    canonicalJson({
+      domain: "sweatpants.forest-replay.v2",
+      address: item.address,
+      strand: item.strand,
+      program: item.program,
+    }),
+  );
+  if (seed !== item.replayChainSeed) {
+    throw new Error("Experimental replay identity mismatch");
   }
   let chain = item.replayChainSeed;
   for (const [index, entry] of item.replay.entries()) {
@@ -77,6 +89,8 @@ export function* driveSequentialJournal(request: {
   attach: AttachProgramRequest;
   work: Computation;
   handler: Handler;
+  /** Trusted host opt-in: may recover unknown repeatable records after lease release/expiry. */
+  recoverPending?: boolean;
   /** Trusted interruption seam receives only an occurrence number, never mutable accepted data. */
   afterAccepted?: (actionIndex: number) => void;
 }): Operation<Json> {
@@ -128,17 +142,42 @@ export function* driveSequentialJournal(request: {
       }
       return terminal.outcome.value;
     }
-    const item = plan.replay.find((candidate) => candidate.address.taskId === attach.taskId);
-    if (!item || row.classification !== "replayable") {
+    const observation =
+      request.recoverPending && row.parked
+        ? yield* authority.query({
+            type: "task.record-recovery-observation",
+            sessionId: attach.sessionId,
+            taskId: attach.taskId,
+          })
+        : undefined;
+    const item =
+      observation?.item ??
+      plan.replay.find((candidate) => candidate.address.taskId === attach.taskId);
+    if (!item || (!observation && row.classification !== "replayable")) {
       throw new Error("Experimental journal requires a replayable local strand");
     }
     if (
+      canonicalJson(item.address) !== canonicalJson(row.address) ||
+      item.strand !== row.strand ||
+      canonicalJson(item.plannedHead) !== canonicalJson(row.head) ||
+      canonicalJson(item.groupContext) !== canonicalJson(row.groupContext) ||
+      programRouteDriverKind(item.route) !== "program" ||
+      canonicalJson(item.route) !== canonicalJson(attach.route) ||
       canonicalJson(item.program) !== canonicalJson(attach.program) ||
       canonicalJson(item.input) !== canonicalJson(attach.input)
     ) {
       throw new Error("Experimental program/input identity mismatch");
     }
     const turn = reconstruct(request.work, item);
+    if (
+      observation &&
+      (turn.type !== "operation" ||
+        turn.actionIndex !== observation.pending.actionIndex ||
+        canonicalJson(turn.descriptor) !== canonicalJson(observation.pending.descriptor) ||
+        observation.pending.pullId !== row.parked?.pullId)
+    ) {
+      throw new Error("Experimental pending occurrence differs from guest frontier");
+    }
     const frontierDigest = sha256(
       canonicalJson({
         domain: "sweatpants.caught-up-frontier.v1",
@@ -147,38 +186,65 @@ export function* driveSequentialJournal(request: {
         frontier: turn,
       }),
     );
-    const bound = yield* authority.command({
-      type: "execution.bind-mandate",
-      request: {
-        address: item.address,
-        strand: item.strand,
-        program: item.program,
-        attachmentId: `experimental:${crypto.randomUUID()}`,
-        ownerId: "experimental-sequential",
-        leaseDurationMs: 30000,
-        placement: {
-          route: { kind: "local", driverKind: "program", route: attach.route },
-          evaluatorKind: "program",
-          sandbox: { mode: "allocate" },
-        },
-        expected: {
-          strandHeadDigest: item.plannedHead.digest,
-          leaseEpoch: item.executionEpoch,
-          forkGroupRevision: item.groupContext.groupRevision,
-        },
-        frontierProof: {
-          frontierDigest,
-          strandHeadDigest: item.plannedHead.digest,
-          replayedThroughActionIndex: item.replayedThroughActionIndex,
-          replayChainDigest: item.replayChainDigest,
-          cancellationReplayed: false,
-        },
+    const replacement: BindMandateRequest = {
+      address: item.address,
+      strand: item.strand,
+      program: item.program,
+      attachmentId: `experimental:${crypto.randomUUID()}`,
+      ownerId: "experimental-sequential",
+      leaseDurationMs: 30000,
+      placement: {
+        route: { kind: "local", driverKind: "program", route: attach.route },
+        evaluatorKind: "program",
+        sandbox: { mode: "allocate" },
       },
-    });
-    if (bound.status !== "bound") {
-      throw new Error("Experimental stale mandate");
+      expected: {
+        strandHeadDigest: item.plannedHead.digest,
+        leaseEpoch: item.executionEpoch,
+        forkGroupRevision: item.groupContext.groupRevision,
+      },
+      frontierProof: {
+        frontierDigest,
+        strandHeadDigest: item.plannedHead.digest,
+        replayedThroughActionIndex: item.replayedThroughActionIndex,
+        replayChainDigest: item.replayChainDigest,
+        cancellationReplayed: false,
+      },
+    };
+    let recovered: RecoverRecordResult | undefined;
+    let mandate;
+    if (observation) {
+      // Administrative host binding to the observed CURRENT attachment, never replacement.
+      // A stale epoch rejects; only recover-record rotates ownership and grants dispatch.
+      const current = yield* authority.command({
+        type: "execution.bind-attachment",
+        request: {
+          sessionId: attach.sessionId,
+          taskId: attach.taskId,
+          attachmentId: observation.attachmentId,
+          executionEpoch: item.executionEpoch,
+        },
+      });
+      recovered = yield* authority.command({
+        type: "execution.recover-record",
+        request: {
+          ...item.address,
+          ...observation.pending,
+          programCapability: current.programCapability,
+          replacement,
+        },
+      });
+      mandate = recovered.mandate;
+    } else {
+      const bound = yield* authority.command({
+        type: "execution.bind-mandate",
+        request: replacement,
+      });
+      if (bound.status !== "bound") {
+        throw new Error("Experimental stale mandate");
+      }
+      mandate = bound.mandate;
     }
-    const mandate = bound.mandate;
     try {
       if (turn.type === "completed") {
         const closed = yield* authority.command({
@@ -190,10 +256,12 @@ export function* driveSequentialJournal(request: {
         }
         return turn.value;
       }
-      const reservation = yield* authority.command({
-        type: "execution.mandate-reserve",
-        request: { mandate, descriptor: turn.descriptor },
-      });
+      const reservation =
+        recovered ??
+        (yield* authority.command({
+          type: "execution.mandate-reserve",
+          request: { mandate, descriptor: turn.descriptor },
+        }));
       if (reservation.status !== "authorized") {
         throw new Error("Experimental journal cannot park");
       }
