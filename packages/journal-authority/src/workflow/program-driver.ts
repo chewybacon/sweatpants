@@ -1,15 +1,12 @@
 import {
   CrankError,
   DurableProgramCancellation,
-  replayProgramRecovery,
   programRouteDriverKind,
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type ProgramCheckpoint,
   type ProgramRestoreRequest,
   type RestoredProgramAttachment,
-  verifyProgramReplayEntry,
-  assertProgramReplayFrontier,
   type DurableProgramManifest,
   type DurableToolRegistry,
   type EffectDescriptor,
@@ -21,7 +18,7 @@ import {
 } from "@sweatpants/durable-execution";
 import { durableEffectKey, type DurableEffectRegistry } from "@sweatpants/durable-effects";
 import { assertJson, digestCanonicalJson, type Json } from "@sweatpants/foundation";
-import { call, createScope, withResolvers, type Operation } from "effection";
+import { resource, createScope, withResolvers, type Operation } from "effection";
 import {
   InstalledEffectPort,
   openProgramAttachment,
@@ -34,6 +31,9 @@ import {
   type ProgramBackend,
   type BackendComputation,
 } from "./program-backend.ts";
+
+import { createProgramKernel, type ProgramKernel } from "./program-kernel.ts";
+import type { Reconstruction } from "./program-reconstruction.ts";
 
 /**
  * Host-configured implementation for one installed effect. The authority
@@ -115,6 +115,7 @@ export function createWorkflowProgramDriver(
     request: AttachProgramRequest,
     checkpoint?: Extract<ProgramCheckpoint, { kind: "continuation" }>,
     actionIndex = 0,
+    recovery?: Reconstruction,
   ): Operation<ProgramAttachment> {
     // Installed-effect handlers are host configuration: install them into
     // the caller's scope so every attachment opened here can reach them.
@@ -141,8 +142,17 @@ export function createWorkflowProgramDriver(
       if (options.setup) {
         yield* options.setup();
       }
-      const computation = yield* backend.open(request, checkpoint);
-      const owned = yield* openProgramAttachment(request, computation, actionIndex);
+      const computation = createProgramKernel(yield* backend.open(request, checkpoint));
+      // Register release before launching compute. The attachment resource is acquired
+      // afterward, so scope teardown halts its tasks before disposing the kernel.
+      yield* resource<void>(function* (provide) {
+        try {
+          yield* provide(undefined);
+        } finally {
+          yield* computation.dispose();
+        }
+      });
+      const owned = yield* openProgramAttachment(request, computation, actionIndex, recovery);
       return { owned, computation };
     };
     let handle: WorkflowDriverAttachmentHandle;
@@ -150,7 +160,7 @@ export function createWorkflowProgramDriver(
       const [scope, destroyScope] = createScope();
       const ready = withResolvers<{
         owned: ProgramAttachmentHandle;
-        computation: BackendComputation;
+        computation: ProgramKernel;
       }>("workflow driver attachment ready");
       const release = withResolvers<void>("workflow driver attachment release");
       const owner = scope.run(function* () {
@@ -162,28 +172,36 @@ export function createWorkflowProgramDriver(
           throw error;
         }
       });
-      const { owned, computation } = yield* ready.operation;
-      handle = new WorkflowDriverAttachmentHandle(
-        structuredClone(request),
-        computation,
-        owned,
-        function* (reason) {
-          try {
-            yield* owned.close(reason);
-          } finally {
+      let acquired = false;
+      try {
+        const { owned, computation } = yield* ready.operation;
+        handle = new WorkflowDriverAttachmentHandle(
+          structuredClone(request),
+          computation,
+          owned,
+          function* (reason) {
             try {
-              yield* computation.dispose();
+              yield* owned.close(reason);
             } finally {
-              release.resolve();
               try {
-                yield* owner;
+                yield* computation.dispose();
               } finally {
-                yield* destroyScope();
+                release.resolve();
+                try {
+                  yield* owner;
+                } finally {
+                  yield* destroyScope();
+                }
               }
             }
-          }
-        },
-      );
+          },
+        );
+        acquired = true;
+      } finally {
+        if (!acquired) {
+          yield* destroyScope();
+        }
+      }
     } else {
       const { owned, computation } = yield* open();
       handle = new WorkflowDriverAttachmentHandle(
@@ -309,97 +327,64 @@ export function createWorkflowProgramDriver(
     },
 
     *restore(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment> {
-      if (request.checkpoint.kind === "replay") {
-        return yield* replayProgramRecovery.restore.call(this, request);
-      }
       const checkpoint = request.checkpoint;
-      const state = checkpoint.state;
-      if (
-        checkpoint.format !== backend.capabilities.continuation?.format ||
-        checkpoint.programDigest !== request.attach.program.digest ||
-        !state ||
-        typeof state !== "object" ||
-        Array.isArray(state) ||
-        state.identity !== recoveryIdentity(request.attach) ||
-        typeof state.index !== "number" ||
-        !Number.isSafeInteger(state.index) ||
-        state.index < 0 ||
-        state.index !== checkpoint.resumeAfter.actionIndex + 1 ||
-        typeof state.frontierDigest !== "string" ||
-        !("backend" in state)
-      ) {
-        throw protocol("Checkpoint identity or position differs");
-      }
-      const attachment = yield* attachProgram(
-        request.attach,
-        { ...checkpoint, state: state.backend },
-        state.index,
-      );
-      let success = false;
-      try {
-        let frontier = yield* this.step(attachment, { type: "start", input: request.attach.input });
-        if (digestCanonicalJson(frontier as unknown as Json) !== state.frontierDigest) {
-          throw new CrankError("replay_diverged", "Restored workflow frontier differs");
-        }
-        let previous = checkpoint.resumeAfter.replayChainDigest;
-        let through = checkpoint.resumeAfter.actionIndex;
-        const iterator =
-          request.replay[Symbol.iterator]?.() ?? request.replay[Symbol.asyncIterator]?.();
-        if (!iterator) {
-          throw protocol("Replay source has no iterator");
-        }
-        let exhausted = false;
-        try {
-          for (;;) {
-            const next = yield* call(() => Promise.resolve(iterator.next()));
-            if (next.done) {
-              exhausted = true;
-              break;
-            }
-            const entry = next.value;
-            verifyProgramReplayEntry(request.replayChainSeed, entry, previous);
-            assertProgramReplayFrontier(frontier, entry);
-            frontier = yield* this.step(
-              attachment,
-              entry.type === "operation"
-                ? {
-                    type: "resume",
-                    actionIndex: entry.actionIndex,
-                    outcome: entry.outcome,
-                    receipt: entry.receipt,
-                    replayed: true,
-                  }
-                : { type: "ack_emission", actionIndex: entry.actionIndex, offset: entry.offset },
-            );
-            previous = entry.entryDigest;
-            through = entry.actionIndex;
-          }
-        } finally {
-          const close = iterator.return?.bind(iterator);
-          if (!exhausted && close) {
-            yield* call(() => Promise.resolve(close()));
-          }
-        }
+      let recovery: Reconstruction = { request };
+      let saved: Extract<ProgramCheckpoint, { kind: "continuation" }> | undefined;
+      let index = 0;
+      if (checkpoint.kind === "continuation") {
+        const state = checkpoint.state;
         if (
-          through !== request.replayedThroughActionIndex ||
-          previous !== request.replayChainDigest
+          checkpoint.format !== backend.capabilities.continuation?.format ||
+          checkpoint.programDigest !== request.attach.program.digest ||
+          !state ||
+          typeof state !== "object" ||
+          Array.isArray(state) ||
+          state.identity !== recoveryIdentity(request.attach) ||
+          typeof state.index !== "number" ||
+          !Number.isSafeInteger(state.index) ||
+          state.index < 0 ||
+          state.index !== checkpoint.resumeAfter.actionIndex + 1 ||
+          typeof state.frontierDigest !== "string" ||
+          !("backend" in state)
         ) {
-          throw new CrankError(
-            "replay_diverged",
-            "Recovery did not reach requested journal position",
-          );
+          throw protocol("Checkpoint identity or position differs");
         }
+        index = state.index;
+        saved = { ...checkpoint, state: state.backend };
+        recovery = { request, frontierDigest: state.frontierDigest };
+      }
+      const attachment = yield* attachProgram(request.attach, saved, index, recovery);
+      let success = false;
+      let failure: unknown;
+      try {
+        const frontier = yield* this.step(attachment, {
+          type: "start",
+          input: request.attach.input,
+        });
         success = true;
         return {
           attachment,
           frontier,
           frontierDigest: digestCanonicalJson(frontier as unknown as Json),
-          replayedThroughActionIndex: through,
-          replayChainDigest: previous,
+          replayedThroughActionIndex: request.replayedThroughActionIndex,
+          replayChainDigest: request.replayChainDigest,
         };
+      } catch (error) {
+        failure =
+          checkpoint.kind !== "replay" || error instanceof CrankError
+            ? error
+            : new CrankError(
+                "replay_diverged",
+                "Evaluator failed while restoring history",
+                {
+                  cause: error instanceof Error ? error.message : String(error),
+                },
+                { cause: error },
+              );
+        throw failure;
       } finally {
         if (!success) {
-          yield* this.shutdown(attachment, "failed");
+          yield* closeUnsuccessful(attachmentHandleOf(attachment), failure);
         }
       }
     },
@@ -458,7 +443,7 @@ class WorkflowDriverAttachmentHandle {
 
   constructor(
     readonly request: AttachProgramRequest,
-    readonly computation: BackendComputation,
+    readonly computation: ProgramKernel,
     readonly value: ProgramAttachmentHandle,
     readonly dispose: (reason: ProgramShutdownReason) => Operation<void>,
   ) {}
@@ -494,4 +479,18 @@ function recoveryIdentity(request: AttachProgramRequest): string {
     program: request.program,
     input: request.input,
   });
+}
+
+function* closeUnsuccessful(
+  handle: WorkflowDriverAttachmentHandle,
+  failure: unknown,
+): Operation<void> {
+  try {
+    yield* handle.close("failed");
+  } catch (error) {
+    if (!(failure instanceof Error)) {
+      throw error;
+    }
+    Object.defineProperty(failure, "reconstructionShutdownError", { value: error });
+  }
 }
