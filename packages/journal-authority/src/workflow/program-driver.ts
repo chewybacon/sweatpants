@@ -32,7 +32,7 @@ import {
 import {
   createEffectionProgramBackend,
   type ProgramBackend,
-  type ProgramComputation,
+  type BackendComputation,
 } from "./program-backend.ts";
 
 /**
@@ -106,7 +106,7 @@ export interface WorkflowProgramDriverOptions {
  * transports by registry.
  */
 export function createWorkflowProgramDriver(
-  programs: DurableToolRegistry | ProgramBackend,
+  programs: DurableToolRegistry | ProgramBackend<BackendComputation>,
   options: WorkflowProgramDriverOptions = {},
 ): ProgramDriver {
   const backend = "open" in programs ? programs : createEffectionProgramBackend(programs);
@@ -150,7 +150,7 @@ export function createWorkflowProgramDriver(
       const [scope, destroyScope] = createScope();
       const ready = withResolvers<{
         owned: ProgramAttachmentHandle;
-        computation: ProgramComputation;
+        computation: BackendComputation;
       }>("workflow driver attachment ready");
       const release = withResolvers<void>("workflow driver attachment release");
       const owner = scope.run(function* () {
@@ -458,7 +458,7 @@ class WorkflowDriverAttachmentHandle {
 
   constructor(
     readonly request: AttachProgramRequest,
-    readonly computation: ProgramComputation,
+    readonly computation: BackendComputation,
     readonly value: ProgramAttachmentHandle,
     readonly dispose: (reason: ProgramShutdownReason) => Operation<void>,
   ) {}

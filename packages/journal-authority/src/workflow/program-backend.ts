@@ -10,7 +10,8 @@ import {
   type ProgramCheckpoint,
   type ProgramDriverCapabilities,
 } from "@sweatpants/durable-execution";
-import { EffectionKernel } from "./effection-kernel.ts";
+import type { Work } from "@sweatpants/primitive-journal";
+import type { Json } from "@sweatpants/foundation";
 import type { ProgramExecutionState } from "./program-execution.ts";
 import { durableToolWorkflow } from "./tool-adapter.ts";
 
@@ -22,22 +23,36 @@ export interface ProgramComputation {
   dispose(): Operation<void>;
 }
 
+/** Native scheduling capability; cursor implementers keep ProgramComputation unchanged. */
+export interface NativeWorkComputation {
+  readonly work: Work<
+    Json,
+    ReturnType<Operation<Json>[typeof Symbol.iterator]> extends Iterator<infer Y> ? Y : never
+  >;
+  capture(): Operation<ProgramCheckpoint>;
+  dispose(): Operation<void>;
+}
+
+export type BackendComputation = ProgramComputation | NativeWorkComputation;
+
 /**
  * Executes pinned code without owning program routing or the attachment protocol.
  * open is resource-owned: its compute is released when the attachment scope ends.
  * A restored computation's start returns its saved boundary before advancing.
  */
-export interface ProgramBackend {
+export interface ProgramBackend<C extends BackendComputation = ProgramComputation> {
   readonly capabilities: ProgramDriverCapabilities;
   manifest(program: PinnedProgram): Operation<DurableProgramManifest>;
   open(
     request: AttachProgramRequest,
     checkpoint?: Extract<ProgramCheckpoint, { kind: "continuation" }>,
-  ): Operation<ProgramComputation>;
+  ): Operation<C>;
 }
 
 /** Ordinary developer generators; execution state is reconstructed by replay. */
-export function createEffectionProgramBackend(tools: DurableToolRegistry): ProgramBackend {
+export function createEffectionProgramBackend(
+  tools: DurableToolRegistry,
+): ProgramBackend<NativeWorkComputation> {
   function toolFor(program: PinnedProgram) {
     const tool = tools.get(exactProgramKey(program));
     if (!tool) {
@@ -58,11 +73,9 @@ export function createEffectionProgramBackend(tools: DurableToolRegistry): Progr
         throw new CrankError("program_protocol_error", "Effection backend requires replay");
       }
       return {
-        start: () =>
-          EffectionKernel.start(
-            durableToolWorkflow(toolFor(request.program), request.input),
-            request.input,
-          ),
+        work: function* () {
+          return yield* durableToolWorkflow(toolFor(request.program), request.input)();
+        },
         *capture() {
           return { kind: "replay" };
         },

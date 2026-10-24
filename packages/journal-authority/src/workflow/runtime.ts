@@ -77,7 +77,8 @@ export {
   type RuntimeRecordBoundary,
   type SerializableProgramProposal,
 } from "./program-effect-runtime.ts";
-import { EffectionKernel } from "./effection-kernel.ts";
+import { executeNativeWork } from "./native-work.ts";
+import type { NativeWorkComputation } from "./program-backend.ts";
 import { driveProgramExecution, type ProgramExecutionState } from "./program-execution.ts";
 
 /** An Effection Effect that can be yielded by a constrained Workflow. */
@@ -1381,7 +1382,10 @@ function* superviseCommands(state: AttachmentState): Operation<void> {
 /** Opens one resource-owned program attachment. */
 export function openProgramAttachment(
   request: AttachProgramRequest,
-  workflow: (() => Operation<Json>) | { start(): Operation<ProgramExecutionState> },
+  workflow:
+    | (() => Operation<Json>)
+    | NativeWorkComputation
+    | { start(): Operation<ProgramExecutionState> },
   actionIndex = 0,
 ): Operation<ProgramAttachmentHandle> {
   return resource(function* (provide) {
@@ -1436,11 +1440,13 @@ export function openProgramAttachment(
     yield* ProgramEffectRuntimeContext.set(runtime);
     const workflowTask = yield* spawn(function* () {
       try {
-        const result = yield* driveProgramExecution(
-          typeof workflow === "function"
-            ? () => EffectionKernel.start(workflow, request.input)
-            : () => workflow.start(),
-        );
+        const result =
+          typeof workflow === "function" || "work" in workflow
+            ? yield* executeNativeWork(
+                typeof workflow === "function" ? workflow : workflow.work,
+                runtime,
+              )
+            : yield* driveProgramExecution(() => workflow.start());
         const value = assertReplayedCanonicalValue(result, "schema_validation_failed");
         assertInlineSize(value);
         state.events.add({

@@ -35,6 +35,7 @@
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
     "@sweatpants/journal-authority": "workspace:*",
+    "@sweatpants/primitive-journal": "workspace:*",
     "effection": "catalog:"
   },
   "devDependencies": {
