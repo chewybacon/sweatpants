@@ -14,6 +14,7 @@ import {
   beginCancellationUnwind,
   detachAttempt,
   forceOrphan,
+  orphanIfCurrent,
 } from "./execution-lifecycle-decisions.ts";
 import {
   bindDeliveryMandate,
@@ -164,6 +165,9 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.abandon-attempt":
       result = abandonAttempt(draft, command.request);
+      break;
+    case "execution.orphan-if-current":
+      result = orphanIfCurrent(draft, command.request);
       break;
     case "execution.force-orphan":
       result = forceOrphan(draft, command.request);

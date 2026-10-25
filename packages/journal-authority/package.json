@@ -159,7 +159,6 @@
     "@sweatpants/durable-execution": "workspace:*",
     "@sweatpants/durable-storage-kernel": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
-    "@sweatpants/primitive-journal": "workspace:*",
     "base64-js": "1.5.1",
     "effection": "catalog:",
     "zod": "catalog:"

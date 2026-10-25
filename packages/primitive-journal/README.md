@@ -1,18 +1,20 @@
 # Primitive journal experiment
 
-An independent port of effect-gh's iterator journal, hosted in Sweatpants. This
-package has **no runtime dependencies**. It does not call journal authority,
+An independent port of effect-gh's iterator journal, hosted in Sweatpants. Shared
+contracts and Outcome constructors come from foundation. It does not call journal authority,
 ProgramDriver, the durable fold, or Sweatpants storage. The earlier experiment in
 `journal-authority/src/experimental` remains a separate approach.
 
 ## Read from the bottom up
 
-1. `src/primitives.ts`: Outcome, IterableOperation, Turn, Work, Handler and middleware
-   (plus the shared runtime type contracts from effect-gh).
+1. `../foundation/src/computation.ts`: Outcome, IterableOperation, Turn, Work,
+   Handler, middleware, Guest and shared runtime contracts. `src/primitives.ts`
+   re-exports them for compatibility.
 2. `src/iterator-turn.ts`, `src/handler-middleware.ts`: one synchronous pull and
    handler composition.
-3. `src/contract.ts`: finite canonical JSON, identity, accepted exchanges, attempts,
-   and the four-method Journal contract.
+3. `../foundation/src/journal.ts`: identity, accepted exchanges, attempts, and
+   Journal contracts using foundation's ReadonlyJson. `src/contract.ts` re-exports
+   those contracts and retains the prototype's encoding/Outcome parsing behavior.
 4. `src/driver.ts`: replay, handle, accept, feed. Live and historical replies use
    the same delivery function. Live execution retains the iterator.
 5. `src/sqlite.ts`: an independent implementation with executions, exchanges and

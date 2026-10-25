@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { DocumentCommandRequest } from "./document-command.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type {
@@ -7,6 +8,7 @@ import type {
   DurableProgramManifest,
   ForestReplayPlan,
   ReplayItem,
+  ReplayEntry,
   PinnedProgram,
   ProgramRoute,
   ProgramRecoveryCheckpoint,
@@ -228,6 +230,10 @@ export type ExecutionCommand =
     }
   | { readonly type: "execution.detach-attempt"; readonly request: DetachAttemptCommand }
   | { readonly type: "execution.abandon-attempt"; readonly request: AbandonAttemptCommand }
+  | {
+      readonly type: "execution.orphan-if-current";
+      readonly request: { readonly fence: OrphanFence; readonly reason: "replay_diverged" };
+    }
   | { readonly type: "execution.force-orphan"; readonly request: ForceOrphanCommand };
 
 export type ActivationControlCommand =
@@ -280,6 +286,7 @@ export interface CommandResultByType {
   readonly "execution.begin-cancellation-unwind": DurableCancellationState;
   readonly "execution.detach-attempt": void;
   readonly "execution.abandon-attempt": void;
+  readonly "execution.orphan-if-current": { readonly status: "orphaned" | "stale" };
   readonly "execution.force-orphan": void;
   readonly "control.claim-activation": ClaimActivationResult;
   readonly "control.renew-activation": RenewActivationResult;
@@ -310,7 +317,35 @@ export interface RecordRecoveryObservation {
   };
 }
 
+/** Consistency witness for accepted history, never execution authority. */
+export interface AcceptedPrefixAnchor {
+  readonly address: ReplayItem["address"];
+  readonly strand: ReplayItem["strand"];
+  readonly program: ReplayItem["program"];
+  readonly replayChainSeed: string;
+  readonly throughActionIndex: number;
+  readonly replayChainDigest: string;
+}
+export interface AcceptedExtensionRequest {
+  readonly anchor: AcceptedPrefixAnchor;
+  readonly settled: {
+    readonly actionIndex: number;
+    readonly receipt: ResolutionReceipt;
+  };
+}
+export interface AcceptedExtensionObservation {
+  readonly anchor: AcceptedPrefixAnchor;
+  readonly entries: readonly ReplayEntry[];
+  readonly plannedHead: ReplayItem["plannedHead"];
+  readonly executionEpoch: number;
+  readonly groupContext: ReplayItem["groupContext"];
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainDigest: string;
+  readonly cancellationReplayed: boolean;
+}
+
 export type AuthorityQuery =
+  | { readonly type: "task.accepted-extension"; readonly request: AcceptedExtensionRequest }
   | {
       readonly type: "task.record-recovery-observation";
       readonly sessionId: string;
@@ -366,6 +401,7 @@ export type AuthorityQuery =
     };
 
 export interface QueryResultByType {
+  readonly "task.accepted-extension": AcceptedExtensionObservation;
   readonly "task.record-recovery-observation": RecordRecoveryObservation;
   readonly "control.activation-status": { readonly remainingMs: number };
   readonly "authority.identity": { readonly id: string; readonly incarnation: string };
@@ -621,4 +657,19 @@ export interface KernelTransition<C extends AuthorityCommand> {
   readonly state: AuthorityState;
   readonly entries: readonly DurableSemanticRecord[];
   readonly result: CommandResult<C>;
+}
+
+/** Automatic cleanup carries only the failed activation's original ownership. */
+export interface OrphanFence {
+  readonly address: ReplayItem["address"];
+  readonly program: ReplayItem["program"];
+  readonly executionEpoch: number;
+  readonly forkGroupRevision: number;
+}
+
+export class AcceptedExtensionUnavailable extends CrankError {
+  readonly tag = "accepted-extension-unavailable";
+  constructor() {
+    super("replay_diverged", "Settled strand was not replayable");
+  }
 }

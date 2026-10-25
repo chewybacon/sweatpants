@@ -2,10 +2,14 @@ import serializeCanonical from "canonicalize";
 import { sha256 as hashSha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-/** Portable, canonical JSON accepted at persistence and transport boundaries. */
+/** Mutable JSON for constructing values and detached parser output. Validate unknown data at runtime. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-/** Read-only view of admitted JSON for encoders and content identities. */
+/**
+ * Deeply read-only JSON for shared computation and persistence contracts.
+ * Accepts mutable Json too; readonly is a TypeScript view, not a runtime freeze.
+ * Neither JSON type proves finiteness, valid Unicode, or absence of cycles.
+ */
 export type ReadonlyJson =
   | null
   | boolean

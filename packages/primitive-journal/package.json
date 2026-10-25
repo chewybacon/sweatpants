@@ -53,7 +53,9 @@
     "format:check": "cd ../.. && oxfmt packages/primitive-journal --check",
     "build:clean": "tsx ../../scripts/clean-build.ts ."
   },
-  "dependencies": {},
+  "dependencies": {
+    "@sweatpants/foundation": "workspace:*"
+  },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",

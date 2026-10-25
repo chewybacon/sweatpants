@@ -1,12 +1,8 @@
-import type { Outcome } from "./primitives.ts";
+import type { Outcome } from "@sweatpants/foundation/computation";
+import type { ReadonlyJson as Json } from "@sweatpants/foundation/json";
 
-export type Json =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly Json[]
-  | { readonly [key: string]: Json };
+export type { ReadonlyJson as Json } from "@sweatpants/foundation/json";
+export type * from "@sweatpants/foundation/journal";
 
 /** Canonical JSON is both the persistence boundary and the equality rule. */
 export function encode(value: unknown): string {
@@ -30,45 +26,6 @@ export function encode(value: unknown): string {
   throw new TypeError("Expected finite JSON data");
 }
 
-export interface Identity {
-  readonly executionId: string;
-  readonly program: { readonly id: string; readonly version: string; readonly digest: string };
-  readonly input: Json;
-}
-
-export interface AcceptedExchange {
-  readonly sequence: number;
-  readonly request: Json;
-  readonly outcome: Outcome<Json, Json>;
-}
-
-export type RetryMode = "repeatable" | "unsafe";
-export interface Attempt {
-  readonly sequence: number;
-  readonly number: number;
-  readonly request: Json;
-  readonly retryMode: RetryMode;
-  readonly status: "started" | "unknown" | "accepted";
-}
-
-export type BeginAttempt =
-  | { readonly kind: "started"; readonly attempt: Attempt }
-  | { readonly kind: "uncertain"; readonly attempt: Attempt };
-
-export type Snapshot = {
-  readonly identity: Identity;
-  readonly entries: readonly AcceptedExchange[];
-  readonly attempts: readonly Attempt[];
-} & ({ readonly status: "running" } | { readonly status: "completed"; readonly value: Json });
-
-/** One local writer. Commit returns only after persistence; no remote authority implied. */
-export interface Journal {
-  read(): Snapshot;
-  begin(sequence: number, request: Json, retryMode: RetryMode): BeginAttempt;
-  accept(sequence: number, request: Json, outcome: Outcome<Json, Json>): AcceptedExchange;
-  complete(sequence: number, value: Json): void;
-}
-
 export function parseOutcome(value: unknown): Outcome<Json, Json> {
   encode(value);
   if (typeof value !== "object" || value === null || !("ok" in value)) {
@@ -82,21 +39,3 @@ export function parseOutcome(value: unknown): Outcome<Json, Json> {
   }
   throw new Error("Invalid outcome");
 }
-
-export interface RequestOccurrence {
-  readonly id: string;
-  readonly sequence: number;
-  readonly request: Json;
-  readonly status: "pending" | "accepted";
-}
-
-/** Correlation is scoped to this local journal/Identity; IDs do not authorize answers. */
-export interface PendingJournal extends Journal {
-  readRequests(): readonly RequestOccurrence[];
-  park(sequence: number, request: Json): RequestOccurrence;
-  acceptRequest(id: string, outcome: Outcome<Json, Json>): AcceptedExchange;
-}
-
-export type Activation<T> =
-  | { readonly state: "parked"; readonly request: RequestOccurrence }
-  | { readonly state: "completed"; readonly value: T };

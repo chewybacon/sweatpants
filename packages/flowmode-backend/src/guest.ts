@@ -24,7 +24,7 @@ import {
   type GuestWork,
   type Turn,
   type Work,
-} from "@sweatpants/primitive-journal";
+} from "@sweatpants/foundation/computation";
 
 type EffectionYielded =
   ReturnType<Operation<unknown>[typeof Symbol.iterator]> extends Iterator<infer Y, unknown, unknown>

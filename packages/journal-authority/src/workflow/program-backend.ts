@@ -10,7 +10,7 @@ import {
   type ProgramCheckpoint,
   type ProgramDriverCapabilities,
 } from "@sweatpants/durable-execution";
-import type { Work } from "@sweatpants/primitive-journal";
+import type { Work } from "@sweatpants/foundation/computation";
 import type { Json } from "@sweatpants/foundation";
 import type { ProgramExecutionState } from "./program-execution.ts";
 import { durableToolWorkflow } from "./tool-adapter.ts";

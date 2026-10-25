@@ -34,7 +34,11 @@ import {
   nextResolutionQueryNonce,
   signResolutionCapability,
 } from "../decisions/resolution-capability.ts";
-import { observeRecordRecovery, planForestReplay } from "../forest/forest-replay.ts";
+import {
+  observeAcceptedExtension,
+  observeRecordRecovery,
+  planForestReplay,
+} from "../forest/forest-replay.ts";
 import { parseRegisteredSchema } from "../contract/schema-registry.ts";
 import {
   identityConflict,
@@ -75,6 +79,9 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
       break;
     case "task.record-recovery-observation":
       result = observeRecordRecovery(state, query.sessionId, query.taskId, context.nowMs);
+      break;
+    case "task.accepted-extension":
+      result = observeAcceptedExtension(state, query.request, context.nowMs);
       break;
     case "forest.replay-plan":
       result = planForestReplay(

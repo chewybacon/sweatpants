@@ -107,6 +107,28 @@
         "default": "./dist/parser.js"
       },
       "default": "./src/parser.ts"
+    },
+    "./computation": {
+      "development": {
+        "import": "./src/computation.ts",
+        "types": "./src/computation.ts"
+      },
+      "import": {
+        "types": "./dist/computation.d.ts",
+        "default": "./dist/computation.js"
+      },
+      "default": "./src/computation.ts"
+    },
+    "./journal": {
+      "development": {
+        "import": "./src/journal.ts",
+        "types": "./src/journal.ts"
+      },
+      "import": {
+        "types": "./dist/journal.d.ts",
+        "default": "./dist/journal.js"
+      },
+      "default": "./src/journal.ts"
     }
   },
   "scripts": {

@@ -1,5 +1,5 @@
 import { scoped, type Operation } from "effection";
-import type { Handler } from "@sweatpants/primitive-journal";
+import type { Handler } from "@sweatpants/foundation/computation";
 import type { Json } from "@sweatpants/foundation";
 import type { ProgramCheckpoint } from "@sweatpants/durable-execution";
 import type { BackendComputation, NativeWorkComputation } from "./program-backend.ts";
