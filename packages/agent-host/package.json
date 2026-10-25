@@ -74,6 +74,17 @@
         "default": "./dist/node/index.js"
       },
       "default": "./src/node/index.ts"
+    },
+    "./primitive": {
+      "development": {
+        "import": "./src/primitive/app.ts",
+        "types": "./src/primitive/app.ts"
+      },
+      "import": {
+        "types": "./dist/primitive/app.d.ts",
+        "default": "./dist/primitive/app.js"
+      },
+      "default": "./src/primitive/app.ts"
     }
   },
   "scripts": {
@@ -98,6 +109,7 @@
     "@sweatpants/journal-authority": "workspace:*",
     "@sweatpants/model-provider": "workspace:*",
     "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/primitive-journal": "workspace:*",
     "@sweatpants/stream-bridge": "workspace:*",
     "@sweatpants/tool-runtime": "workspace:*",
     "@sweatpants/tool-session": "workspace:*",

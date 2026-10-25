@@ -38,6 +38,9 @@
     },
     {
       "path": "../model-sampling"
+    },
+    {
+      "path": "../primitive-journal"
     }
   ]
 }

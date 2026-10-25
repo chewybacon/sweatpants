@@ -1025,9 +1025,6 @@ importers:
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:../../packages/agent-sdk
-      '@sweatpants/tool-runtime-local':
-        specifier: workspace:*
-        version: link:../../packages/tool-runtime-local
       '@sweatpants/tool-session':
         specifier: workspace:*
         version: link:../../packages/tool-session
@@ -1392,6 +1389,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/primitive-journal':
+        specifier: workspace:*
+        version: link:../primitive-journal
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../stream-bridge
@@ -2437,6 +2437,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/primitive-journal':
+        specifier: workspace:*
+        version: link:../primitive-journal
       '@sweatpants/storage-sqlite':
         specifier: workspace:*
         version: link:../storage-sqlite
@@ -2995,6 +2998,9 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/primitive-journal':
+        specifier: workspace:*
+        version: link:../primitive-journal
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime

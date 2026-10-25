@@ -2,17 +2,16 @@ import { call, resource } from "effection";
 import { createMcpApp, type McpAppConfig } from "@sweatpants/agent-host/mcp";
 import { serve, type ApplicationServer } from "@sweatpants/agent-host/node";
 import { MCP_PROTOCOL_VERSION } from "@sweatpants/tool-session/mcp";
-import { testToolRuntime } from "./test-tool-runtime.ts";
 
 /** Real ingress and application lifetime; scenarios supply their authored tools. */
-export function useMcpServer(tools: McpAppConfig["tools"]) {
+export function useMcpServer(tools: McpAppConfig["tools"], effects?: McpAppConfig["effects"]) {
   return resource<ApplicationServer>(function* (provide) {
     const app = createMcpApp({
       name: "public-mcp-acceptance",
       version: "1.0.0",
       secret: "public-mcp-continuation-secret-at-least-32-bytes",
       tools,
-      execution: testToolRuntime(),
+      effects,
       *authenticate() {
         return "acceptance-client";
       },

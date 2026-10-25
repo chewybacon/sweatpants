@@ -4,21 +4,21 @@
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
 
-export const greetTool = createTool("greet")
-  .description("Generate a personalized greeting using AI")
-  .parameters(
-    z.object({
-      name: z.string().describe("Name of the person to greet"),
-      style: z
-        .enum(["formal", "casual", "poetic", "pirate"])
-        .default("casual")
-        .describe("Style of greeting"),
-    }),
-  )
-  .samples()
-  .execute(function* (params, ctx) {
+export const greetTool = defineJournalTool({
+  name: "greet",
+  description: "Generate a personalized greeting using AI",
+  parameters: z.object({
+    name: z.string().describe("Name of the person to greet"),
+    style: z
+      .enum(["formal", "casual", "poetic", "pirate"])
+      .default("casual")
+      .describe("Style of greeting"),
+  }),
+  sampling: true,
+  elicits: {},
+  execute: function* (params, ctx) {
     yield* ctx.notify("Generating greeting...");
 
     const greeting = yield* ctx.sample({
@@ -33,4 +33,6 @@ export const greetTool = createTool("greet")
       style: params.style,
       greeting: greeting.text ?? "",
     };
-  });
+  },
+  effects: {},
+});

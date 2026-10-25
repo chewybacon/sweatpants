@@ -1,0 +1,218 @@
+import { useAbortSignal, type Operation } from "effection";
+import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
+import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
+import type { Identity } from "@sweatpants/foundation/journal";
+import {
+  decodeModelResponse,
+  type Model,
+  type ModelProviderDriver,
+  type StreamOptions,
+  type ModelContext,
+  type ModelStreamEvent,
+} from "@sweatpants/model-provider";
+import type { ChatMessage } from "@sweatpants/chat-contract";
+import type { JournalRequest, JournalTool } from "@sweatpants/agent-sdk/primitive";
+
+export interface PrimitiveChatOptions {
+  database: string;
+  basePath?: string;
+  program: Identity["program"];
+  /** Covers model configuration without persisting credentials. Included in the pinned release. */
+  model: {
+    identity: string;
+    model: Model;
+    driver: ModelProviderDriver;
+    streamOptions?: StreamOptions;
+    select?(selection: unknown): string;
+    resolve?(identity: string): Model;
+  };
+  tools: readonly JournalTool[];
+  effects: Readonly<Record<string, (input: Json) => Operation<Outcome<Json, Json>>>>;
+  /** Required trusted deployment boundary; the default policy must never be inferred from client IDs. */
+  authorize(request: Request, conversationId: string): boolean | Promise<boolean>;
+}
+export type ChatRequest =
+  | JournalRequest
+  | { kind: "sample"; iteration: number; context: Json }
+  | {
+      kind: "tool-result";
+      iteration: number;
+      callId: string;
+      tool: string;
+      output: Json;
+      isError: boolean;
+    };
+export type TurnInput = { messageId: string; text: string; messages: Json; modelIdentity: string };
+
+export function* chatWork(
+  input: TurnInput,
+  tools: readonly JournalTool[],
+): IterableOperation<Json, ChatRequest> {
+  const messages = input.messages as unknown as ChatMessage[];
+  const declarations = tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.artifacts.parameters.inputProjection as JsonObject,
+  }));
+  for (let iteration = 0; iteration <= 10; iteration++) {
+    const response = decodeModelResponse(
+      yield {
+        kind: "sample",
+        iteration,
+        context: assertJson({ messages, tools: iteration < 10 ? declarations : [] }),
+      },
+    );
+    if (response.errorMessage) {
+      throw new Error(response.errorMessage);
+    }
+    messages.push(response.message);
+    const calls = response.message.content.filter((part) => part.type === "tool-call");
+    if (!calls.length) {
+      return assertJson({ messages });
+    }
+    if (iteration === 10) {
+      throw new Error("Tool iteration limit exceeded");
+    }
+    if (new Set(calls.map((part) => part.toolCall.id)).size !== calls.length) {
+      throw new Error("Duplicate tool call identity");
+    }
+    for (const { toolCall: call } of calls) {
+      const tool = tools.find((entry) => entry.name === call.name);
+      if (!tool) {
+        throw new Error(`Unsupported tool: ${call.name}`);
+      }
+      let output: Json;
+      let isError = false;
+      try {
+        output = yield* tool.invoke(call.input, call.id);
+      } catch (error) {
+        // Non-finite calculator output remains a visible turn failure.
+        if (tool.name === "calculator") {
+          throw error;
+        }
+        output = { error: error instanceof Error ? error.message : String(error) };
+        isError = true;
+      }
+      // Publish only accepted results, including deterministic tool computations.
+      yield { kind: "tool-result", iteration, callId: call.id, tool: call.name, output, isError };
+      messages.push({
+        role: "tool",
+        name: call.name,
+        toolCallId: call.id,
+        content: [{ type: "text", text: JSON.stringify(output) }],
+        isError,
+      });
+    }
+  }
+  return assertJson({ messages });
+}
+
+export function* handleChatRequest(
+  options: PrimitiveChatOptions,
+  request: ChatRequest,
+  publish: (event: ModelStreamEvent) => void = () => {},
+): Operation<Outcome<Json, Json>> {
+  if (request.kind === "progress" || request.kind === "tool-result") {
+    return success(null);
+  }
+  if (request.kind === "sample" || request.kind === "nested-sample") {
+    const signal = yield* useAbortSignal();
+    const nested = request.kind === "nested-sample";
+    const stream = yield* options.model.driver.stream({
+      model: options.model.model,
+      context: nested
+        ? {
+            messages: [{ role: "user", content: [{ type: "text", text: request.prompt }] }],
+            tools: [],
+          }
+        : (request.context as unknown as ModelContext),
+      options: {
+        ...options.model.streamOptions,
+        signal,
+        // CONDITIONAL-SPREAD: preserve caller token options for outer samples.
+        ...(nested ? { maxTokens: request.maxTokens } : {}),
+        // CONDITIONAL-SPREAD: preserve caller response format unless the nested sample declares one.
+        ...(nested && request.schema
+          ? { responseFormat: { type: "json_schema" as const, schema: request.schema } }
+          : {}),
+      },
+    });
+    const subscription = yield* stream;
+    let next = yield* subscription.next();
+    while (!next.done) {
+      publish(next.value);
+      next = yield* subscription.next();
+    }
+    const response = decodeModelResponse(next.value);
+    if (response.errorMessage) {
+      throw new Error(response.errorMessage);
+    }
+    return success(
+      nested
+        ? {
+            text: response.message.content
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join(""),
+          }
+        : assertJson(response),
+    );
+  }
+  if (request.kind !== "effect") {
+    throw new Error("Cannot dispatch an elicitation");
+  }
+  const tool = options.tools.find((entry) => entry.name === request.tool);
+  const effect = tool?.effects[request.key];
+  const handler = options.effects[`${request.tool}.${request.key}`];
+  if (
+    !effect ||
+    !(`${request.tool}.${request.key}` in options.effects) ||
+    effect.version !== request.version
+  ) {
+    throw new Error("Effect implementation unavailable");
+  }
+  const outcome = yield* handler(assertJson(effect.input.parse(request.input)));
+  return outcome.ok ? success(assertJson(effect.output.parse(outcome.value))) : outcome;
+}
+
+/** Keep complete accepted call/result groups; provisional and unfinished calls never enter inference history. */
+export function acceptedMessages(
+  input: TurnInput,
+  entries: readonly import("@sweatpants/foundation/journal").AcceptedExchange[],
+): Json[] {
+  const messages = structuredClone(input.messages) as Json[];
+  for (const entry of entries) {
+    const request = entry.request as ChatRequest;
+    if (request.kind !== "sample" || !entry.outcome.ok) {
+      continue;
+    }
+    const response = decodeModelResponse(entry.outcome.value);
+    const calls = response.message.content.filter((part) => part.type === "tool-call");
+    const results = calls.map(({ toolCall }) =>
+      entries.find((candidate) => {
+        const result = candidate.request as ChatRequest;
+        return (
+          candidate.sequence > entry.sequence &&
+          result.kind === "tool-result" &&
+          result.iteration === request.iteration &&
+          result.callId === toolCall.id
+        );
+      }),
+    );
+    if (results.some((result) => !result)) {
+      break;
+    }
+    messages.push(assertJson(response.message));
+    for (const result of results) {
+      const accepted = result!.request as Extract<ChatRequest, { kind: "tool-result" }>;
+      messages.push({
+        role: "tool",
+        name: accepted.tool,
+        toolCallId: accepted.callId,
+        content: [{ type: "text", text: JSON.stringify(accepted.output) }],
+        isError: accepted.isError,
+      });
+    }
+  }
+  return messages;
+}

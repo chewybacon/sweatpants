@@ -1087,6 +1087,10 @@ class ChatClientController<
       yield* this.flushPublication(
         {
           connectionStatus: "disconnected",
+          // CONDITIONAL-SPREAD: preserve existing error unless this segment supplies a terminal diagnostic.
+          ...(terminal?.type === EventType.RUN_ERROR
+            ? { error: new ChatClientError(terminal.code ?? "chat_run_failed", terminal.message) }
+            : {}),
           status:
             terminal?.type === EventType.RUN_ERROR
               ? "error"

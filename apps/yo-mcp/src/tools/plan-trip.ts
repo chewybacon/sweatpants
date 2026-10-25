@@ -1,29 +1,31 @@
-import { createTool } from "@sweatpants/agent-sdk";
+import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
 
-/** Multiple interactions and revision, all within one ordinary tool invocation. */
-export const planTripTool = createTool("plan_trip")
-  .description(
+/** Multiple interactions and revision, all within one journal invocation. */
+export const planTripTool = defineJournalTool({
+  name: "plan_trip",
+  description:
     "Plan a day trip together: choose a destination and activity, then review or revise. Does not book anything.",
-  )
-  .parameters(
-    z.object({
-      traveler: z.string().min(1).default("Traveler").describe("Who the day trip is for"),
-    }),
-  )
-  .elicits({
-    destination: z.object({ city: z.string().min(1).describe("City to visit") }),
-    activity: z.object({
-      activity: z.enum(["museum", "food tour", "park"]).describe("Activity for the day trip"),
-    }),
-    review: z.object({
-      confirmed: z
-        .boolean()
-        .default(false)
-        .describe("Confirm this plan; leave unchecked to choose another activity"),
-    }),
-  })
-  .execute(function* ({ traveler }, ctx) {
+  parameters: z.object({
+    traveler: z.string().min(1).default("Traveler").describe("Who the day trip is for"),
+  }),
+  elicits: {
+    destination: { response: z.object({ city: z.string().min(1).describe("City to visit") }) },
+    activity: {
+      response: z.object({
+        activity: z.enum(["museum", "food tour", "park"]).describe("Activity for the day trip"),
+      }),
+    },
+    review: {
+      response: z.object({
+        confirmed: z
+          .boolean()
+          .default(false)
+          .describe("Confirm this plan; leave unchecked to choose another activity"),
+      }),
+    },
+  },
+  execute: function* ({ traveler }, ctx) {
     const destination = yield* ctx.elicit("destination", {
       message: `${traveler}, which city would you like to visit?`,
     });
@@ -51,4 +53,6 @@ export const planTripTool = createTool("plan_trip")
         return { status: "planned", traveler, city, activity };
       }
     }
-  });
+  },
+  effects: {},
+});

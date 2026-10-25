@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
+    "primitive/app": "src/primitive/app.ts",
     index: "src/index.ts",
     "mcp/index": "src/mcp/index.ts",
     "node/index": "src/node/index.ts",
@@ -9,6 +10,8 @@ export default defineConfig({
     "logging/index": "src/logging/index.ts",
   },
   format: ["esm"],
+  // node:sqlite is a prefix-only builtin; stripping node: creates an invalid package import.
+  removeNodeProtocol: false,
   dts: { compilerOptions: { composite: false } },
   clean: true,
   sourcemap: true,

@@ -1,15 +1,16 @@
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
-import { createScope, ensure, useScope, type Operation } from "effection";
+import { call, createScope, ensure, useScope, type Operation } from "effection";
 import { z } from "zod";
-import type { AnyToolContract } from "@sweatpants/agent-sdk";
-import type { Json } from "@sweatpants/foundation";
-import {
-  ToolInvocationHostPort,
-  ToolInvocationEventSourcePort,
-  ToolInvocationHostError,
-  type ToolInvocationTurn,
-  type ToolInvocationResume,
-} from "../../invocation.ts";
+import type { JournalTool, JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { assertJson, requireJsonObject, type Json } from "@sweatpants/foundation";
+import type {
+  Identity,
+  PendingJournal,
+  Activation,
+  RequestOccurrence,
+} from "@sweatpants/foundation/journal";
+import { activateJournal, createIteratorGuest } from "@sweatpants/primitive-journal";
+import type { ToolInvocationAsk } from "../../invocation.ts";
 import { createMcpContinuations, McpContinuationError } from "../continuations.ts";
 import {
   readMcpRequestMetadata,
@@ -34,6 +35,8 @@ import {
 } from "./interactions.ts";
 import { projectMcpTool } from "./manifest.ts";
 
+type McpActivation = Activation<Json> | { state: "failed"; reason: string };
+
 const logLevels = ["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"];
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
@@ -41,7 +44,11 @@ export interface McpHandlerOptions {
   name: string;
   version: string;
   secret: string;
-  tools: readonly AnyToolContract[];
+  tools: readonly JournalTool[];
+  createJournal(
+    identity: Identity,
+  ): PendingJournal & { close(): void; settle(status: "failed", reason: string): void };
+  effects?: Readonly<Record<string, (input: Json) => Operation<Json>>>;
   /** Trusted application identity, never self-reported MCP clientInfo. */
   authenticate(request: Request): Operation<string>;
   /** Same-origin requests are accepted by default. */
@@ -50,8 +57,7 @@ export interface McpHandlerOptions {
 }
 function failure(error: unknown, id: string | number | null) {
   const known = error instanceof HttpError || error instanceof McpRequestMetadataError;
-  const stateError =
-    error instanceof McpContinuationError || error instanceof ToolInvocationHostError;
+  const stateError = error instanceof McpContinuationError;
   return {
     status: known ? error.status : stateError ? 400 : 500,
     body: {
@@ -72,10 +78,6 @@ export function* createMcpHandler(
   options: McpHandlerOptions,
 ): Operation<{ handler: McpHttpHandler }> {
   const installation = yield* useScope();
-  // SCOPE-CROSSING (ownership): HTTP request scopes dispatch into the application-owned invocation runtime.
-  const host = ToolInvocationHostPort.bind(installation);
-  // SCOPE-CROSSING (ownership): HTTP response readers consume the application's invocation projections.
-  const events = ToolInvocationEventSourcePort.bind(installation);
   const continuations = createMcpContinuations({ secret: options.secret });
   const tools = new Map(options.tools.map((tool) => [tool.name, tool]));
   if (tools.size !== options.tools.length) {
@@ -87,12 +89,50 @@ export function* createMcpHandler(
       compileMcpParameterHeaders(tool.artifacts.parameters.inputProjection),
     ]),
   );
-  const invocations = new Set<string>();
-  yield* ensure(function* () {
-    for (const id of invocations) {
-      yield* host.dispose(id);
+  // One journal and native lifetime per invocation. Reply tasks only bind a protocol
+  // retry to its original activation; accepted answers live in the journal.
+  const invocations = new Map<
+    string,
+    {
+      journal: ReturnType<McpHandlerOptions["createJournal"]>;
+      scope: ReturnType<typeof createScope>[0];
+      dispose(): Promise<void>;
+      replies: Map<string, Promise<McpActivation>>;
+      listeners: Set<() => void>;
     }
+  >();
+  yield* ensure(function* () {
+    for (const invocation of invocations.values()) {
+      yield* call(invocation.dispose);
+    }
+    invocations.clear();
   });
+  function askFor(tool: JournalTool, occurrence: RequestOccurrence): ToolInvocationAsk {
+    const request = occurrence.request as JournalRequest;
+    if (request.kind === "nested-sample") {
+      return {
+        kind: "sample",
+        requestId: occurrence.id,
+        messages: [{ role: "user", content: request.prompt }],
+        maxTokens: request.maxTokens,
+        // CONDITIONAL-SPREAD: absent schema must not advertise structured sampling.
+        ...(request.schema ? { schema: request.schema } : {}),
+      };
+    }
+    if (request.kind !== "elicit") {
+      throw new HttpError(400, -32602, "Invalid pending input");
+    }
+    return {
+      kind: "elicit",
+      requestId: occurrence.id,
+      key: request.key,
+      message: request.message,
+      // CONDITIONAL-SPREAD: absent authored context must not add an MCP form extension.
+      ...(request.context === null ? {} : { context: request.context }),
+      schema: requireJsonObject(tool.artifacts.elicits[request.key]!.response.inputProjection),
+      binding: tool.bindings.elicits[request.key]!,
+    };
+  }
   const serverMeta = {
     "io.modelcontextprotocol/serverInfo": { name: options.name, version: options.version },
   };
@@ -209,36 +249,35 @@ export function* createMcpHandler(
         params: { name, arguments: args, ...extra } as Json,
       };
       let invocationId: string;
-      let cursor = 0;
-      let resume: ToolInvocationResume | undefined;
+      let replyId = "initial";
+      let sequence = 0;
       if (requestState !== undefined) {
         if (typeof requestState !== "string") {
           throw new HttpError(400, -32602, "Invalid requestState");
         }
         const reference = await run(() => continuations.verify(requestState, binding));
         invocationId = reference.invocationId;
-        cursor = Number(reference.pullId);
-        if (!Number.isSafeInteger(cursor) || cursor < 1) {
-          throw new HttpError(400, -32602, "Invalid continuation cursor");
-        }
-        const parked = await run(() =>
-          host.turn({ invocationId, commandId: `mcp:inspect:${cursor}`, cursor: cursor - 1 }),
-        );
-        if (parked.type !== "parked" || parked.cursor !== cursor) {
+        replyId = reference.pullId;
+        const invocation = invocations.get(invocationId);
+        const occurrence = invocation?.journal.readRequests().find((item) => item.id === replyId);
+        if (!invocation || !occurrence) {
           throw new HttpError(400, -32602, "Pending input is unavailable");
         }
-        requireInputCapabilities(parked.ask, metadata.capabilities);
-        resume = resumeInput(parked.ask, inputResponses, forms);
+        const ask = askFor(tool, occurrence);
+        requireInputCapabilities(ask, metadata.capabilities);
+        const resume = resumeInput(ask, inputResponses, forms);
+        if (resume.kind === "cancel") {
+          throw new HttpError(400, -32602, "Invalid input response");
+        }
         if (
-          parked.ask.kind === "elicit" &&
+          ask.kind === "elicit" &&
           resume.kind === "elicit" &&
           resume.response.action === "accept"
         ) {
-          const validation = validateAuthoredSchema(
-            tool.elicits[parked.ask.key]?.response,
-            resume.response.content,
-          );
-          if (validation.status !== "ok") {
+          if (
+            validateAuthoredSchema(tool.elicits[ask.key]?.response, resume.response.content)
+              .status !== "ok"
+          ) {
             throw new HttpError(
               400,
               -32602,
@@ -246,59 +285,157 @@ export function* createMcpHandler(
             );
           }
         }
+        const value = resume.response;
+        try {
+          invocation.journal.acceptRequest(replyId, { ok: true, value: assertJson(value) });
+        } catch (error) {
+          throw new HttpError(
+            400,
+            -32602,
+            error instanceof Error ? error.message : "Invalid answer",
+          );
+        }
+        sequence = occurrence.sequence + 1;
       } else {
         if (inputResponses !== undefined) {
           throw new HttpError(400, -32602, "inputResponses requires requestState");
         }
         invocationId = crypto.randomUUID();
-        await run(() => host.start({ invocationId, tool, input: args }));
-        invocations.add(invocationId);
+        const journal = options.createJournal({
+          executionId: invocationId,
+          program: { id: tool.name, version: tool.version ?? "1", digest: tool.interfaceDigest },
+          input: assertJson(args),
+        });
+        const [owner, dispose] = createScope(installation);
+        let closing: Promise<void> | undefined;
+        invocations.set(invocationId, {
+          journal,
+          scope: owner,
+          dispose() {
+            return (closing ??= dispose().finally(() => {
+              journal.close();
+              invocations.delete(invocationId);
+            }));
+          },
+          replies: new Map(),
+          listeners: new Set(),
+        });
       }
-      const reader = await run(() => events.open(invocationId));
-      if (!reader) {
-        throw new HttpError(400, -32602, "Invocation is unavailable");
+      const invocation = invocations.get(invocationId)!;
+      const wake = () => {
+        for (const listener of invocation.listeners) {
+          listener();
+        }
+      };
+      let activation = invocation.replies.get(replyId);
+      if (!activation) {
+        activation = invocation.scope
+          .run(function* () {
+            // Catch inside the owner so a tool failure cannot tear down the app.
+            try {
+              return {
+                ok: true as const,
+                value: yield* activateJournal(
+                  function* () {
+                    return createIteratorGuest(() => tool.invoke(args, invocationId));
+                  },
+                  invocation.journal,
+                  {
+                    classify(effectRequest) {
+                      return effectRequest.kind === "elicit" ||
+                        effectRequest.kind === "nested-sample"
+                        ? "park"
+                        : effectRequest.kind === "effect"
+                          ? effectRequest.retrySafety.mode
+                          : "repeatable";
+                    },
+                    *handler(effectRequest) {
+                      if (effectRequest.kind !== "effect") {
+                        return { ok: true as const, value: null };
+                      }
+                      const effect =
+                        options.effects?.[`${effectRequest.tool}.${effectRequest.key}`];
+                      if (!effect) {
+                        throw new Error(
+                          `Missing MCP effect: ${effectRequest.tool}.${effectRequest.key}`,
+                        );
+                      }
+                      try {
+                        return {
+                          ok: true as const,
+                          value: assertJson(yield* effect(effectRequest.input)),
+                        };
+                      } catch (error) {
+                        return {
+                          ok: false as const,
+                          error: error instanceof Error ? error.message : String(error),
+                        };
+                      }
+                    },
+                    accepted: wake,
+                  },
+                ),
+              };
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
+              try {
+                invocation.journal.settle("failed", reason);
+                return { ok: true as const, value: { state: "failed" as const, reason } };
+              } catch (settlementError) {
+                return { ok: false as const, error: settlementError };
+              }
+            }
+          })
+          .then((result) => {
+            if (!result.ok) {
+              throw result.error;
+            }
+            return result.value;
+          });
+        invocation.replies.set(replyId, activation);
       }
-      // The host deduplicates retries by command identity and rejects changed answers.
-      const outcome = run(() =>
-        host.turn({ invocationId, commandId: `mcp:turn:${cursor}`, cursor, resume }),
-      ).then(
+      const outcome = activation.then(
         (turn) => ({ turn }),
-        (error) => ({ error }),
+        (error: unknown) => ({ error }),
       );
-      const turnFailure = outcome.then((result) =>
-        "error" in result ? { error: result.error } : new Promise<never>(() => {}),
-      );
+      let settled: Awaited<typeof outcome> | undefined;
+      void outcome.then((result) => {
+        settled = result;
+        wake();
+        return result;
+      });
+      let responseBoundary = false;
       let finished = false;
+      let stopWaiting: (() => void) | undefined;
       const encoder = new TextEncoder();
       const serialize = (message: unknown) =>
         encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`);
-      async function resultFor(turn: ToolInvocationTurn): Promise<unknown> {
-        if (turn.type === "parked") {
-          const ask = turn.ask;
+      async function resultFor(turn: McpActivation): Promise<unknown> {
+        if (turn.state === "parked") {
+          const ask = askFor(tool, turn.request);
           requireInputCapabilities(ask, metadata.capabilities);
-          const inputRequest = projectInputRequest(ask, forms);
           return {
             resultType: "input_required",
-            inputRequests: { [ask.requestId]: inputRequest },
+            inputRequests: { [ask.requestId]: projectInputRequest(ask, forms) },
             requestState: await run(() =>
-              continuations.issue(binding, { invocationId, pullId: String(turn.cursor) }),
+              continuations.issue(binding, { invocationId, pullId: ask.requestId }),
             ),
+          };
+        }
+        if (turn.state === "failed") {
+          return {
+            resultType: "complete",
+            isError: true,
+            content: [{ type: "text", text: turn.reason }],
           };
         }
         return {
           resultType: "complete",
-          isError: turn.type !== "completed",
+          isError: false,
           content: [
             {
               type: "text",
-              text:
-                turn.type === "completed"
-                  ? typeof turn.result === "string"
-                    ? turn.result
-                    : JSON.stringify(turn.result)
-                  : turn.type === "failed"
-                    ? turn.error.message
-                    : (turn.reason ?? "Cancelled"),
+              text: typeof turn.value === "string" ? turn.value : JSON.stringify(turn.value),
             },
           ],
         };
@@ -307,64 +444,75 @@ export function* createMcpHandler(
         {
           async pull(controller) {
             try {
-              // Pull exactly one projection record at a time. No background notification queue.
+              // Native activation/recording is independent of HTTP demand. Only response
+              // consumption is reader-paced: inspect one exchange, stop at each deliverable
+              // notification, and never prefetch the next one or load a replay snapshot.
               while (!finished) {
-                const settled = await Promise.race([
-                  run(function* () {
-                    const subscription = yield* reader.events(cursor);
-                    return { event: yield* subscription.next() };
-                  }),
-                  turnFailure,
-                ]);
+                while (!responseBoundary) {
+                  const entry = invocation.journal.readAccepted(sequence);
+                  if (!entry) {
+                    break;
+                  }
+                  const event = entry.request as JournalRequest;
+                  // An accepted historical input still ends this reply's notification window.
+                  if (event.kind === "elicit" || event.kind === "nested-sample") {
+                    responseBoundary = true;
+                    break;
+                  }
+                  sequence++;
+                  const progressToken = z
+                    .object({ progressToken: z.union([z.string(), z.number()]).optional() })
+                    .safeParse(_meta);
+                  if (
+                    event.kind === "progress" &&
+                    progressToken.success &&
+                    progressToken.data.progressToken !== undefined
+                  ) {
+                    controller.enqueue(
+                      serialize(
+                        encodeProgressNotification(event, progressToken.data.progressToken),
+                      ),
+                    );
+                    return;
+                  }
+                  if (
+                    event.kind === "log" &&
+                    metadata.logLevel &&
+                    logLevels.indexOf(event.level) >= logLevels.indexOf(metadata.logLevel)
+                  ) {
+                    controller.enqueue(serialize(encodeLogNotification(event)));
+                    return;
+                  }
+                }
+                if (!settled) {
+                  await new Promise<void>((resolve) => {
+                    const listener = () => {
+                      invocation.listeners.delete(listener);
+                      stopWaiting = undefined;
+                      resolve();
+                    };
+                    stopWaiting = listener;
+                    invocation.listeners.add(listener);
+                    // No asynchronous gap between journal read and listener registration.
+                  });
+                  continue;
+                }
                 if ("error" in settled) {
                   throw settled.error;
                 }
-                const next = settled.event;
-                if (next.done) {
-                  throw new Error("Invocation ended without a result");
-                }
-                cursor = next.value.lsn;
-                const event = next.value;
-                const progressToken = z
-                  .object({ progressToken: z.union([z.string(), z.number()]).optional() })
-                  .safeParse(_meta);
-                if (
-                  event.type === "progress" &&
-                  progressToken.success &&
-                  progressToken.data.progressToken !== undefined
-                ) {
-                  controller.enqueue(
-                    serialize(encodeProgressNotification(event, progressToken.data.progressToken)),
-                  );
+                const result = await resultFor(settled.turn);
+                if (finished) {
                   return;
                 }
-                if (
-                  event.type === "log" &&
-                  metadata.logLevel &&
-                  logLevels.indexOf(event.level) >= logLevels.indexOf(metadata.logLevel)
-                ) {
-                  controller.enqueue(serialize(encodeLogNotification(event)));
-                  return;
-                }
-                if (
-                  event.type === "log" ||
-                  event.type === "progress" ||
-                  event.type === "sample_response_queued"
-                ) {
-                  continue;
-                }
-                const result = await outcome;
-                if ("error" in result) {
-                  throw result.error;
-                }
-                controller.enqueue(
-                  serialize({ jsonrpc: "2.0", id, result: await resultFor(result.turn) }),
-                );
+                controller.enqueue(serialize({ jsonrpc: "2.0", id, result }));
                 finished = true;
                 controller.close();
                 await destroy();
               }
             } catch (error) {
+              if (finished) {
+                return;
+              }
               finished = true;
               controller.enqueue(serialize(failure(error, id).body));
               controller.close();
@@ -376,8 +524,9 @@ export function* createMcpHandler(
               return;
             }
             finished = true;
+            stopWaiting?.();
             await destroy();
-            await installation.run(() => host.dispose(invocationId));
+            await invocation.dispose();
             invocations.delete(invocationId);
           },
         },

@@ -76,7 +76,7 @@ function mapLogLevel(level: ToolLogLevel): McpLogLevel {
  * Encode a progress event as an MCP progress notification.
  */
 export function encodeProgressNotification(
-  event: ProgressEvent,
+  event: Pick<ProgressEvent, "message" | "progress">,
   progressToken: string | number,
 ): JsonRpcNotification<"notifications/progress", McpProgressParams> {
   return {
@@ -95,7 +95,7 @@ export function encodeProgressNotification(
  * Encode a log event as an MCP message notification.
  */
 export function encodeLogNotification(
-  event: LogEvent,
+  event: Pick<LogEvent, "level" | "message">,
   logger?: string,
 ): JsonRpcNotification<"notifications/message", McpMessageParams> {
   return {

@@ -54,6 +54,17 @@
         "types": "./dist/transport/worker.d.ts",
         "default": "./dist/transport/worker.js"
       }
+    },
+    "./primitive": {
+      "development": {
+        "import": "./src/primitive.ts",
+        "types": "./src/primitive.ts"
+      },
+      "import": {
+        "types": "./dist/primitive.d.ts",
+        "default": "./dist/primitive.js"
+      },
+      "default": "./src/primitive.ts"
     }
   },
   "scripts": {

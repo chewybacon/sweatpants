@@ -4,17 +4,10 @@ import {
   type McpHttpHandler,
   type McpHandlerOptions,
 } from "@sweatpants/tool-session/mcp";
-import {
-  createToolInvocationHost,
-  ToolInvocationHostPort,
-  ToolInvocationEventSourcePort,
-} from "@sweatpants/tool-session";
-import type { ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
-
+import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 export type { McpFormAdapter, McpFormAdapters } from "@sweatpants/tool-session/mcp";
 
-export interface McpAppConfig extends McpHandlerOptions {
-  execution: ToolExecutionAdapter;
+export interface McpAppConfig extends Omit<McpHandlerOptions, "createJournal"> {
   setup?: {
     application?: (context: { signal: AbortSignal }) => Operation<void>;
   };
@@ -27,23 +20,13 @@ export interface McpApp {
 
 /** A lazy MCP application. Owns setup, runtime resources and response lifetimes. */
 export function createMcpApp(config: McpAppConfig): McpApp {
-  const { execution, setup, ...options } = config;
+  const { setup, ...options } = config;
   const names = new Set<string>();
   for (const tool of options.tools) {
     if (names.has(tool.name)) {
       throw new Error(`Duplicate MCP tool name: ${tool.name}`);
     }
     names.add(tool.name);
-    if (tool.execution === "crank_native") {
-      throw new Error(
-        "McpApp requires invocation tools; durable programs require a journal-backed host",
-      );
-    }
-  }
-  const prepared = execution.prepare(options.tools, "tools");
-  const { createResources } = prepared;
-  if (!createResources) {
-    throw new Error("MCP execution adapter must provide invocation resources");
   }
 
   let ready: Promise<McpHttpHandler> | undefined;
@@ -65,19 +48,10 @@ export function createMcpApp(config: McpAppConfig): McpApp {
             if (setup?.application) {
               yield* setup.application({ signal });
             }
-            if (prepared.setup) {
-              yield* prepared.setup();
-            }
-            const factory = yield* createResources();
-            yield* ToolInvocationHostPort.installDriver(
-              createToolInvocationHost({ driver: factory }),
-            );
-            yield* ToolInvocationEventSourcePort.installDriver({
-              *open(id) {
-                return (yield* factory.open(id))?.projection ?? null;
-              },
+            const { handler } = yield* createMcpHandler({
+              ...options,
+              createJournal: (identity) => new SqliteJournal(":memory:", identity),
             });
-            const { handler } = yield* createMcpHandler(options);
             resolve(handler);
             yield* suspend();
           })

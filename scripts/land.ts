@@ -56,7 +56,9 @@ async function main(): Promise<void> {
         command: "pnpm",
         args: ["--filter", "@sweatpants/acceptance", "test"],
         // The expanded suite takes ~581s; leave headroom without an unbounded run.
-        timeoutMs: 12 * 60_000,
+        // Local primitive app/recovery/history journeys add ~77s of cases plus collection.
+        // Prior 12m run reached 43 passing files; retain a bounded full-suite budget.
+        timeoutMs: 14 * 60_000,
         forbidSkips: true,
       },
     ];

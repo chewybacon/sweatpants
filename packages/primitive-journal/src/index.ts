@@ -5,3 +5,4 @@ export * from "./iterator-turn.ts";
 export * from "./handler-middleware.ts";
 export * from "./guest-turn.ts";
 export * from "./activation.ts";
+export * from "./iterator-guest.ts";

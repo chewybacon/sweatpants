@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { call, run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,28 +6,48 @@ import {
   MCP_PROTOCOL_VERSION,
   type McpHttpHandler,
 } from "@sweatpants/tool-session/mcp";
-import { createLocalToolInvocationRuntime } from "@sweatpants/tool-runtime-local";
+import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
+import { z } from "zod";
 import {
   ACCEPTANCE_TOOL_NAME,
   NESTED_SAMPLE_PROMPT_MARKER,
   TOOL_RESULT_MARKER,
-  acceptanceBookingTool,
 } from "../lib/acceptance-app.ts";
 
-function workerBootstrapUrl(): URL {
-  const candidates = [
-    resolve(process.cwd(), "src/fixtures/acceptance-tool-worker-bootstrap.mjs"),
-    resolve(
-      process.cwd(),
-      "packages/platform-acceptance/src/fixtures/acceptance-tool-worker-bootstrap.mjs",
-    ),
-  ];
-  const candidate = candidates.find(existsSync);
-  if (!candidate) {
-    throw new Error("Failed to resolve MCP acceptance worker bootstrap");
-  }
-  return pathToFileURL(candidate);
-}
+const booking = defineJournalTool({
+  name: ACCEPTANCE_TOOL_NAME,
+  description: "MCP booking continuation fixture",
+  parameters: z.object({ from: z.string(), destination: z.string() }),
+  effects: {},
+  sampling: true,
+  elicits: {
+    pickFlight: { response: z.object({ flightId: z.string() }) },
+    pickSeat: { response: z.object({ row: z.number(), seat: z.string() }) },
+  },
+  *execute(params, ctx) {
+    const flight = yield* ctx.elicit("pickFlight", {
+      message: `Select a flight from ${params.from} to ${params.destination}`,
+    });
+    if (flight.action !== "accept") {
+      return { success: false };
+    }
+    const seat = yield* ctx.elicit("pickSeat", { message: "Select your seat" });
+    if (seat.action !== "accept") {
+      return { success: false };
+    }
+    const tip = yield* ctx.sample({
+      prompt: `${NESTED_SAMPLE_PROMPT_MARKER} Give a brief travel tip for ${params.destination}`,
+    });
+    return {
+      success: true,
+      marker: TOOL_RESULT_MARKER,
+      flight: flight.content.flightId,
+      seat: `${seat.content.row}${seat.content.seat}`,
+      travelTip: tip.text,
+    };
+  },
+});
 
 interface MrtResult {
   resultType: string;
@@ -77,20 +94,18 @@ function* invoke(handler: McpHttpHandler, params: Record<string, unknown>): Oper
   return messages.at(-1).result;
 }
 
-describe("MCP modern worker integration", () => {
-  it("routes two elicitations and sampling through continuations into one worker invocation", async () => {
+describe("MCP primitive integration", () => {
+  it("routes two elicitations and sampling through continuations into one journal invocation", async () => {
     // This asserts MCP wire envelopes directly. The chat scenario vocabulary does
     // not expose server/discover or input_required HTTP round trips.
     const result = await run(function* () {
       expect(classifyMcpToolDurability({})).toBe("opaque");
-      yield* createLocalToolInvocationRuntime({
-        worker: { workerUrl: workerBootstrapUrl(), isDev: false },
-      });
       const { handler } = yield* createMcpHandler({
         name: "acceptance",
         version: "1",
         secret: "acceptance-continuation-secret-at-least-32-bytes",
-        tools: [acceptanceBookingTool],
+        tools: [booking],
+        createJournal: (identity) => new SqliteJournal(":memory:", identity),
         *authenticate() {
           return "acceptance-user";
         },

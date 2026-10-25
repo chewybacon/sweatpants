@@ -1,16 +1,25 @@
 // @vitest-environment node
-import { all, call, run } from "effection";
-import { expect, it } from "vitest";
+import { all, call, run, ensure, suspend } from "effection";
+import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createMcpApp } from "@sweatpants/agent-host/mcp";
+import { z } from "zod";
+import { expect, it, vi } from "vitest";
+import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 import { MCP_PROTOCOL_VERSION } from "@sweatpants/tool-session/mcp";
-import { createSingleChoice } from "../../../fixtures/single-choice.ts";
+import { mcpSingleChoice } from "../../../fixtures/mcp-single-choice.ts";
 import { mcpRequest, useMcpServer } from "../../../support/mcp.ts";
 
 for (const action of ["accept", "decline", "cancel"] as const) {
   it(`settles ${action} once and replays an identical MCP continuation`, async () => {
     await run(function* () {
-      // Arrange: the execution adapter runs the authored generator body.
+      // Arrange: the primitive handler records an observable effect.
       let executions = 0;
-      const server = yield* useMcpServer([createSingleChoice(() => executions++)]);
+      const server = yield* useMcpServer([mcpSingleChoice], {
+        *"choose_number.count"() {
+          executions++;
+          return null;
+        },
+      });
       const params = { name: "choose_number", arguments: { count: 3 } };
 
       // Act: start the invocation and inspect its typed continuation request.
@@ -42,7 +51,7 @@ for (const action of ["accept", "decline", "cancel"] as const) {
       const completed = yield* mcpRequest(server.origin, "tools/call", continuation);
       const duplicate = yield* mcpRequest(server.origin, "tools/call", continuation);
 
-      // Assert: the serialized result is retained without another body entry.
+      // Assert: the serialized result is retained without repeating the accepted effect.
       expect(completed.body.result).toMatchObject({ resultType: "complete", isError: false });
       expect(JSON.parse(completed.body.result.content[0].text)).toEqual({
         action,
@@ -58,7 +67,12 @@ it("rejects invalid MCP continuations without consuming the pending answer", asy
   await run(function* () {
     // Arrange
     let executions = 0;
-    const server = yield* useMcpServer([createSingleChoice(() => executions++)]);
+    const server = yield* useMcpServer([mcpSingleChoice], {
+      *"choose_number.count"() {
+        executions++;
+        return null;
+      },
+    });
     const params = { name: "choose_number", arguments: { count: 3 } };
     const called = yield* mcpRequest(server.origin, "tools/call", params);
     const pending = called.body.result;
@@ -110,7 +124,11 @@ it("rejects invalid MCP continuations without consuming the pending answer", asy
 it("validates MCP browser origins against the actual listening address", async () => {
   await run(function* () {
     // Arrange
-    const server = yield* useMcpServer([createSingleChoice()]);
+    const server = yield* useMcpServer([mcpSingleChoice], {
+      *"choose_number.count"() {
+        return null;
+      },
+    });
     for (const [origin, expected] of [
       [server.origin, 200],
       ["https://untrusted.example", 403],
@@ -146,3 +164,128 @@ it("validates MCP browser origins against the actual listening address", async (
     }
   });
 });
+
+for (const stop of ["app-close", "reader-cancel", "demand-cancel"] as const) {
+  it(`releases an active MCP effect and response reader on ${stop}`, async () => {
+    // Observe real storage reads, not enqueues or a substitute evaluator. Snapshot
+    // reads during execution are legitimate; response demand must not add any.
+    const reads =
+      stop === "demand-cancel" ? vi.spyOn(SqliteJournal.prototype, "readAccepted") : undefined;
+    const snapshots =
+      stop === "demand-cancel" ? vi.spyOn(SqliteJournal.prototype, "read") : undefined;
+    let started!: () => void;
+    const active = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let disposed = 0;
+    const tool = defineJournalTool({
+      name: "waiting",
+      description: "Notify, then wait for native cancellation",
+      parameters: z.object({}),
+      elicits: {},
+      effects: {
+        wait: {
+          version: "1",
+          input: z.null(),
+          output: z.null(),
+          retrySafety: { mode: "repeatable" },
+        },
+      },
+      *execute(_input, ctx) {
+        yield* ctx.notify("working", 0.5);
+        yield* ctx.log("info", "waiting");
+        if (stop === "demand-cancel") {
+          yield* ctx.log("info", "must remain unread");
+        }
+        yield* ctx.effect("wait", null);
+        return {};
+      },
+    });
+    const app = createMcpApp({
+      name: "cleanup",
+      version: "1",
+      secret: "cleanup-continuation-secret-at-least-32-bytes",
+      tools: [tool],
+      effects: {
+        *"waiting.wait"() {
+          yield* ensure(() => {
+            disposed++;
+          });
+          started();
+          yield* suspend();
+          return null;
+        },
+      },
+      *authenticate() {
+        return "cleanup-client";
+      },
+    });
+    try {
+      const response = await app.handler(
+        new Request("http://localhost/mcp", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+            "Mcp-Method": "tools/call",
+            "Mcp-Name": "waiting",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "waiting",
+              arguments: {},
+              _meta: {
+                progressToken: "cleanup-progress",
+                "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/logLevel": "info",
+              },
+            },
+          }),
+        }),
+      );
+      await active;
+      const snapshotCount = snapshots?.mock.calls.length;
+      const reader = response.body!.getReader();
+      // Let stream scheduling run with an accepted backlog but no reader demand.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(reads?.mock.calls.length ?? 0).toBe(0);
+      const decode = (value?: Uint8Array) => new TextDecoder().decode(value);
+      expect(decode((await reader.read()).value)).toContain('"progressToken":"cleanup-progress"');
+      if (reads) {
+        expect(reads.mock.calls).toEqual([[0]]);
+      }
+      expect(decode((await reader.read()).value)).toContain("notifications/message");
+      if (reads) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(reads.mock.calls).toEqual([[0], [1]]);
+        expect(snapshots!.mock.calls.length).toBe(snapshotCount);
+        await reader.cancel();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(reads.mock.calls).toEqual([[0], [1]]);
+        expect((await reader.read()).done).toBe(true);
+        expect(disposed).toBe(1);
+        return;
+      }
+      const waiting = reader.read();
+      if (stop === "app-close") {
+        await app.close();
+        expect(decode((await waiting).value)).toContain('"error"');
+      } else {
+        await reader.cancel();
+        expect((await waiting).done).toBe(true);
+      }
+      expect(disposed).toBe(1);
+      await app.close();
+      expect(disposed).toBe(1);
+    } finally {
+      await app.close();
+      reads?.mockRestore();
+      snapshots?.mockRestore();
+    }
+  });
+}

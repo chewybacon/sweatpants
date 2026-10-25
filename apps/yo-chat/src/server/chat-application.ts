@@ -1,3 +1,12 @@
+import { createLocalYoChatApplication } from "./local-chat-application";
+import { createYoChatStorageConfig } from "./storage-config";
+import { env } from "@/env";
+import {
+  createPiAiModelProvider,
+  resolveModelSelection,
+  parseAllowedModelsJson,
+  parseRequestModelSelection,
+} from "@sweatpants/model-provider-pi-ai";
 import { FileCredentialStore } from "@sweatpants/model-provider-pi-ai";
 import { pi } from "@sweatpants/model-provider-pi-ai";
 import { createYoChatModels } from "./model-catalog";
@@ -12,10 +21,36 @@ import { yoChatConfig } from "./chat-handler";
 export { withDefaultSystemPrompt } from "./default-system-prompt";
 export { ProgramDriverConfigurationError } from "./chat-handler";
 
-export type YoChatApplication = ChatApp;
+export type YoChatApplication = Pick<ChatApp, "handler" | "close" | "inspect">;
 
 /** Creates yo-chat with one root scope and route-independent endpoints. */
 export function createYoChatApplication(): YoChatApplication {
+  const storage = createYoChatStorageConfig();
+  if (env.MCP_TOOL_RUNTIME === "local" && storage.kind === "sqlite" && "path" in storage) {
+    const provider = createPiAiModelProvider({
+      models: createYoChatModels(new FileCredentialStore()),
+    });
+    const select = (value: unknown) =>
+      JSON.stringify(
+        resolveModelSelection({
+          requestModel: parseRequestModelSelection(value, "model"),
+          defaultModel: defaultYoChatModel(),
+          allowedModels: parseAllowedModelsJson(env.ALLOWED_CHAT_MODELS_JSON),
+          unsafeAllowAny: env.UNSAFE_ALLOW_ANY_CHAT_MODEL === "yes",
+        }),
+      );
+    const identity = select(undefined);
+    return createLocalYoChatApplication({
+      database: `${storage.path}.primitive-v2`,
+      model: {
+        identity,
+        model: provider.resolveModel(JSON.parse(identity)),
+        driver: provider.driver,
+        select,
+        resolve: (key) => provider.resolveModel(JSON.parse(key)),
+      },
+    });
+  }
   const { setup: chat, programs: _programs, ...config } = yoChatConfig();
   const metadata = getThreadMetadataStore();
   const selection = defaultYoChatModel();

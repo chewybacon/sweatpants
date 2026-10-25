@@ -37,6 +37,9 @@ function handle(request: Request) {
       version: "1",
       secret: "test-continuation-secret-at-least-32-bytes",
       tools: [],
+      createJournal() {
+        throw new Error("No invocation in profile checks");
+      },
       *authenticate() {
         return "test-user";
       },

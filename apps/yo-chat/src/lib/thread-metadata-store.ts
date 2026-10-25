@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "@/lib/threaded-chat-types";
+import type { ThreadSummary } from "./threaded-chat-types";
 
 export interface CreateThreadMetadataInput {
   namespace?: string;

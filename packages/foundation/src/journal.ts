@@ -33,6 +33,7 @@ export type Snapshot = {
 } & (
   | { readonly status: "running" }
   | { readonly status: "completed"; readonly value: ReadonlyJson }
+  | { readonly status: "interrupting" | "cancelled" | "failed"; readonly reason: string }
 );
 
 /** One local writer. Commit returns only after persistence; no remote authority implied. */
@@ -56,6 +57,10 @@ export interface RequestOccurrence {
 
 /** Correlation is scoped to this local journal/Identity; IDs do not authorize answers. */
 export interface PendingJournal extends Journal {
+  /** Read at most one accepted exchange, without scanning history or prefetching.
+   * Absent means not accepted yet. Full replay/integrity validation remains read().
+   */
+  readAccepted(sequence: number): AcceptedExchange | undefined;
   readRequests(): readonly RequestOccurrence[];
   park(sequence: number, request: ReadonlyJson): RequestOccurrence;
   acceptRequest(id: string, outcome: Outcome<ReadonlyJson, ReadonlyJson>): AcceptedExchange;

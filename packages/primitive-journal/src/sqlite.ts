@@ -32,7 +32,7 @@ export class SqliteJournal implements PendingJournal {
         PRAGMA synchronous = FULL;
         CREATE TABLE IF NOT EXISTS executions (
           id TEXT PRIMARY KEY, identity_json TEXT NOT NULL, head INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running','completed')), result_json TEXT
+          status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running','completed','interrupting','cancelled','failed')), result_json TEXT
         );
         CREATE TABLE IF NOT EXISTS exchanges (
           execution_id TEXT NOT NULL REFERENCES executions(id), sequence INTEGER NOT NULL,
@@ -61,6 +61,27 @@ export class SqliteJournal implements PendingJournal {
       this.#database.close();
       throw error;
     }
+  }
+
+  readAccepted(sequence: number): AcceptedExchange | undefined {
+    if (!Number.isSafeInteger(sequence) || sequence < 0) {
+      throw new Error("Invalid exchange sequence");
+    }
+    const row = this.#database
+      .prepare("SELECT * FROM exchanges WHERE execution_id = ? AND sequence = ?")
+      .get(this.#identity.executionId, sequence);
+    if (!row) {
+      return undefined;
+    }
+    const accepted = {
+      sequence,
+      request: JSON.parse(String(row.request_json)) as Json,
+      outcome: parseOutcome(JSON.parse(String(row.outcome_json))),
+    };
+    if (row.digest !== digest(accepted)) {
+      throw new Error("Accepted entry integrity mismatch");
+    }
+    return accepted;
   }
 
   read(): Snapshot {
@@ -158,9 +179,21 @@ export class SqliteJournal implements PendingJournal {
         if (!entry || encode(entry.request) !== encode(request.request)) {
           throw new Error("Request accepted without matching entry");
         }
-      } else if (request.sequence !== entries.length || row.status !== "running") {
+      } else if (request.sequence !== entries.length || row.status === "completed") {
         throw new Error("Pending request must be the running head");
       }
+    }
+    if (row.status === "interrupting" || row.status === "cancelled" || row.status === "failed") {
+      if (typeof row.result_json !== "string") {
+        throw new Error("Missing terminal reason");
+      }
+      return {
+        identity: structuredClone(this.#identity),
+        entries,
+        attempts,
+        status: row.status,
+        reason: JSON.parse(row.result_json) as string,
+      };
     }
     if (row.status === "completed") {
       if (attempts.some((attempt) => attempt.sequence === entries.length)) {
@@ -270,6 +303,9 @@ export class SqliteJournal implements PendingJournal {
     const encoded = encode(value);
     this.#transaction(() => {
       const snapshot = this.read();
+      if (snapshot.status !== "running" && snapshot.status !== "completed") {
+        throw new Error("Cannot complete an interrupted or failed execution");
+      }
       if (snapshot.entries.length !== sequence) {
         throw new Error("Terminal head mismatch");
       }
@@ -288,6 +324,39 @@ export class SqliteJournal implements PendingJournal {
       this.#database
         .prepare("UPDATE executions SET status = 'completed', result_json = ? WHERE id = ?")
         .run(encoded, this.#identity.executionId);
+    });
+  }
+
+  /** Admission is durable before native cancellation. Disposal alone is never completion. */
+  interrupt(reason: string): void {
+    this.#transaction(() => {
+      const snapshot = this.read();
+      if (snapshot.status !== "running") {
+        return;
+      }
+      this.#database
+        .prepare("UPDATE executions SET status='interrupting', result_json=? WHERE id=?")
+        .run(encode(reason), this.#identity.executionId);
+    });
+  }
+
+  settle(status: "cancelled" | "failed", reason: string): void {
+    this.#transaction(() => {
+      const snapshot = this.read();
+      if (snapshot.status !== "running" && snapshot.status !== "interrupting") {
+        return;
+      }
+      if (
+        snapshot.attempts.some(
+          (attempt) =>
+            attempt.sequence === snapshot.entries.length && attempt.retryMode === "unsafe",
+        )
+      ) {
+        throw new Error("outcome_unknown: cannot settle an unaccepted unsafe attempt");
+      }
+      this.#database
+        .prepare("UPDATE executions SET status=?, result_json=? WHERE id=?")
+        .run(status, encode(reason), this.#identity.executionId);
     });
   }
 
