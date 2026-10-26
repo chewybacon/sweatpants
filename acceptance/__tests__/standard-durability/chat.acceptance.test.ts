@@ -6,7 +6,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { assertJson } from "@sweatpants/foundation";
 import type { Outcome } from "../../../experiments/standard-durability/api-definition.ts";
-import type { ModelResponse } from "@sweatpants/model-provider";
+import {
+  modelOutcome,
+  type ModelSuccess,
+} from "../../../experiments/standard-durability/model-api.ts";
 import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 import { approveRecord } from "../../fixtures/approve-record.ts";
 import {
@@ -54,7 +57,7 @@ const model = {
   contextWindow: 4096,
   maxTokens: 100,
 };
-function response(tool: boolean): ModelResponse {
+function response(tool: boolean): ModelSuccess {
   return {
     message: {
       role: "assistant",
@@ -79,7 +82,7 @@ function response(tool: boolean): ModelResponse {
     errorMessage: null,
   };
 }
-function transformed(value: ModelResponse): ModelResponse {
+function transformed(value: ModelSuccess): ModelSuccess {
   return {
     ...value,
     responseId: "middleware-accepted",
@@ -145,7 +148,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               const result = response(number === 0);
               yield* host.wait(Promise.resolve());
               yield* chat.Output.operations.publish({ type: "start", partial: result.message });
-              return { ok: true, value: result };
+              return modelOutcome(result);
             },
           });
           yield* chat.Model.host.around({
@@ -178,7 +181,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
           kind: "api",
           api: "sweatpants.model",
           method: "sample",
-          version: "1",
+          version: "2",
           retrySafety: { mode: "repeatable" },
         });
         expect(JSON.stringify(journal.readAccepted(0)?.request)).not.toContain("host-only-fixture");
@@ -239,7 +242,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               yield* c.ensure(function* () {
                 released = true;
               });
-              return { ok: true, value: response(false) };
+              return modelOutcome(response(false));
             },
           });
           yield* chat.Model.host.around({
@@ -278,6 +281,93 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       }
     });
 
+    it("persists provider failures for replay but leaves invalid success, abort and thrown failures unaccepted", async () => {
+      for (const kind of [
+        "reported",
+        "missing-message",
+        "invalid-success",
+        "aborted",
+        "thrown",
+      ] as const) {
+        const directory = await mkdtemp(join(tmpdir(), "scoped-model-failure-"));
+        const database = join(directory, "chat.sqlite");
+        let journal = new SqliteJournal(database, identity);
+        let calls = 0;
+        let released = false;
+        const nativeFailure = new Error("Native provider defect");
+        const activate = () => {
+          const chat = createScopedChat(c);
+          return host.start(function* () {
+            yield* chat.Model.host.install({
+              *sample() {
+                calls++;
+                yield* c.ensure(function* () {
+                  released = true;
+                });
+                if (kind === "thrown") {
+                  return yield* host.wait(Promise.reject(nativeFailure));
+                }
+                if (kind === "invalid-success") {
+                  // Deliberately violate the provider contract: runtime validation must reject it.
+                  return {
+                    ok: true,
+                    value: {
+                      ...response(false),
+                      errorMessage: "Hidden failure",
+                    } as unknown as ModelSuccess,
+                  };
+                }
+                return modelOutcome({
+                  ...response(false),
+                  stopReason: kind === "aborted" ? "aborted" : "error",
+                  errorMessage: kind === "reported" ? "Provider unavailable" : null,
+                });
+              },
+            });
+            return yield* chat.activate(
+              { model: { model }, tools: [], effects: {} },
+              input,
+              journal,
+              {
+                accepted() {
+                  expect(released).toBe(true);
+                },
+              },
+            );
+          }).result;
+        };
+        const expected =
+          kind === "reported"
+            ? "Provider unavailable"
+            : kind === "missing-message"
+              ? "Model provider failed"
+              : kind === "invalid-success"
+                ? "API schema validation failed"
+                : kind === "aborted"
+                  ? "Model sample aborted"
+                  : "Native provider defect";
+        try {
+          await expect(activate()).rejects.toThrow(expected);
+          expect(released).toBe(true);
+          const durable = kind === "reported" || kind === "missing-message";
+          expect(journal.read().entries).toHaveLength(durable ? 1 : 0);
+          if (durable) {
+            expect(journal.readAccepted(0)?.outcome).toEqual({
+              ok: true,
+              value: { ok: false, error: { code: "model-error", message: expected } },
+            });
+            journal.close();
+            journal = new SqliteJournal(database, identity);
+            await expect(activate()).rejects.toThrow(expected);
+            expect(calls).toBe(1);
+          }
+        } finally {
+          journal.close();
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    });
+
     it("awaits native sample cleanup on disposal and never accepts provisional streamed output", async () => {
       const journal = new SqliteJournal(":memory:", identity);
       const chat = createScopedChat(c);
@@ -288,7 +378,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       let released = false;
       const execution = host.start(function* () {
         yield* chat.Model.host.install({
-          *sample(): Operation<Outcome<ModelResponse, never>, Y> {
+          *sample(): Operation<Outcome<ModelSuccess, never>, Y> {
             yield* c.ensure(function* () {
               cleaning.resolve();
               yield* host.wait(release.promise);
@@ -299,7 +389,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               partial: response(false).message,
             });
             ready.resolve();
-            return yield* host.wait(new Promise<Outcome<ModelResponse, never>>(() => {}));
+            return yield* host.wait(new Promise<Outcome<ModelSuccess, never>>(() => {}));
           },
         });
         return yield* chat.activate({ model: { model }, tools: [], effects: {} }, input, journal, {

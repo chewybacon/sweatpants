@@ -133,6 +133,7 @@ activation retains its existing sampling behavior; an optional sampling operatio
 lets the experiment use the same chat/tool computation with a typed API boundary.
 
 ```ts
+// modelOutcome is the completed-native-response adapter from model-api.ts.
 const chat = createScopedChat(composition);
 
 yield *
@@ -143,7 +144,7 @@ yield *
         { model, context, options: streamOptions },
         chat.Output.operations.publish,
       );
-      return { ok: true, value: response };
+      return modelOutcome(response);
     },
   });
 yield *
@@ -172,14 +173,33 @@ the caller's execution identity; this does not hash or freeze host configuration
 Each live sample owns a child scope. Cleanup finishes before the final transformed
 outcome is accepted. Replay validates the accepted domain outcome and bypasses
 provider/middleware dispatch. Domain model failures are typed values; the chat
-sampling operation turns them into turn failures. Native runtime errors still
-propagate as errors. The existing model response contract also retains errorMessage.
+sampling operation turns them into turn failures after acceptance. `modelOutcome`
+adapts completed native responses: a non-null errorMessage or error stop reason
+becomes `{ ok: false, error: { code: "model-error", message } }`. An error stop reason
+without a message uses "Model provider failed". An aborted stop reason throws and
+is not accepted as a domain outcome. This ordinary thrown abort report is not a
+synthesized native cancellation signal.
 
-The same six chat acceptance cases cover streaming, a real authored tool, parking,
+Successful values require errorMessage: null and cannot have error/aborted stop
+reasons. The success schema also checks final middleware output, so an adapter cannot
+accidentally accept a hidden failure as success. Native rejected effects, defects,
+validation errors and cancellation are not caught or converted into domain values.
+The production ModelResponse type retains its nullable field; this experimental
+success type narrows it to null. The sampling contract is now version 2; old version-1
+journals are not migrated.
+
+An accepted model-error replays as the same chat failure without another provider
+call. The journal's existing activation stays running when chat throws; this change
+does not introduce a durable terminal-failure status or a retry/reset API. A new
+logical turn requires its own identity/journal as before.
+
+Eight chat acceptance cases (four shared stories under both runtimes) cover streaming, a real authored tool, parking,
 SQLite reopen/reconnect, accepted-before-delivery recovery and awaited cleanup on
 disposal under both runtimes. The streaming case also checks native configuration
 lookup, child overrides/restoration, scope release, suspending output middleware,
-and that the credential fixture is absent from the durable request.
+and that the credential fixture is absent from the durable request. The additional
+failure story checks reported/missing-message errors across SQLite reopen, rejection
+of malformed success, native rejected effects and aborted responses. No new harness.
 
 Top-level samples now use `kind: "api"` and a domain Outcome inside the journal's
 exchange Outcome. Existing sample-format journals and production history projections

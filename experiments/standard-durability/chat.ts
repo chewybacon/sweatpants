@@ -113,7 +113,10 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
                             retrySafety: { mode: "repeatable" },
                           });
                           if (!outcome.ok) {
-                            throw new Error("Model sampling failed");
+                            const failure = ModelDefinition.operations.sample.failure.parse(
+                              outcome.error,
+                            );
+                            throw new Error(failure.message);
                           }
                           return decodeModelResponse(outcome.value);
                         },
