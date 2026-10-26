@@ -4,7 +4,7 @@ import {
   type JournalRequest,
 } from "../../packages/agent-sdk/src/primitive.ts";
 import {
-  bookFlightDefinition,
+  bookFlightTool,
   executeBookFlight,
 } from "../../apps/yo-chat/src/tools/primitive/book-flight.ts";
 
@@ -68,8 +68,8 @@ export function bookFlightWithCapabilities<Y>(
   return composition.scoped(function* () {
     yield* tool.Capabilities.install(capabilities);
     return yield* executeBookFlight(
-      bookFlightDefinition.parameters.parse(input),
-      tool.forTool(bookFlightDefinition, callId),
+      bookFlightTool.parameters.parse(input),
+      tool.forTool(bookFlightTool, callId),
     );
   });
 }

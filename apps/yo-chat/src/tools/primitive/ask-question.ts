@@ -1,19 +1,18 @@
+import {
+  AskQuestionParametersSchema,
+  AskQuestionContextSchema,
+  AskQuestionResponseSchema,
+} from "../schemas/ask-question.ts";
 import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
-import { z } from "zod";
 
-export const askQuestion = createDurableTool("ask_question", { version: "1" })
+export const askQuestion = createDurableTool("ask_question", {
+  version: "1",
+})
   .description("Ask a question to the user")
-  .parameters(
-    z.object({
-      question: z.string().describe("Question to ask the user"),
-    }),
-  )
+  .parameters(AskQuestionParametersSchema)
   .effects({})
   .elicits({
-    askQuestion: {
-      context: z.object({ question: z.string() }),
-      response: z.object({ answer: z.string() }),
-    },
+    askQuestion: { context: AskQuestionContextSchema, response: AskQuestionResponseSchema },
   })
   .execute(function* (params, ctx) {
     const result = yield* ctx.elicit("askQuestion", {

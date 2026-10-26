@@ -1,31 +1,25 @@
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
-import { CardSchema } from "../pick-card/cards";
-export const PickCardParametersSchema = z.object({
-  count: z.number().int().min(2).max(10).default(5).describe("Number of cards to draw"),
-});
+import {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+  DrawInputSchema,
+  DrawOutputSchema,
+} from "../schemas/pick-card.ts";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 
-/** Accepted CardPicker content schema (not the outer action envelope). */
-export const PickCardResponseSchema = z.object({
-  picked: CardSchema,
-});
-
-/** Canonical authored CardPicker context; correlation metadata stays private. */
-export const PickCardContextSchema = z.object({
-  cards: z.array(CardSchema),
-  prompt: z.string(),
-});
-
-export const pickCard = createDurableTool("pick_card", { version: "2.0.0" })
+export const pickCard = createDurableTool("pick_card", {
+  version: "2.0.0",
+})
   .description("Draw random cards and let the user pick one")
   .parameters(PickCardParametersSchema)
   .output(z.string())
   .effects({
     draw: {
       version: "1",
-      input: z.object({ count: z.number().int().min(2).max(10) }),
-      output: z.object({ cards: z.array(CardSchema).min(2).max(10) }),
-      retrySafety: { mode: "repeatable" },
+      input: DrawInputSchema,
+      output: DrawOutputSchema,
+      retrySafety: { mode: "repeatable" as const },
     },
   })
   .elicits({ pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } })
@@ -54,3 +48,9 @@ export const pickCard = createDurableTool("pick_card", { version: "2.0.0" })
       "Acknowledge the specific selected card to the user now.",
     ].join(" ");
   });
+
+export {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+} from "../schemas/pick-card.ts";

@@ -1,3 +1,12 @@
+import { fireEvent } from "@testing-library/react";
+import { useUI } from "../../support/ui.tsx";
+import { bookFlightPlugin } from "../../../apps/yo-chat/src/tools/book-flight/plugin.ts";
+import { pickCardPlugin } from "../../../apps/yo-chat/src/tools/pick-card/plugin.ts";
+import { playTttPlugin } from "../../../apps/yo-chat/src/tools/play-ttt/plugin.ts";
+import { tictactoePlugin } from "../../../apps/yo-chat/src/tools/tictactoe/plugin.ts";
+import { askQuestionPlugin } from "../../../apps/yo-chat/src/tools/general/ask-question/plugin.ts";
+import { localJournalTools } from "../../../apps/yo-chat/src/tools/primitive/index.ts";
+import { tools as retainedTools } from "../../../apps/yo-chat/src/server/tool-definitions.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
 import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
@@ -87,6 +96,22 @@ function outputs(input: unknown) {
 }
 
 it("actual local yo-chat streams, correlates every call, repeats the loop and reconnects to one running inference", async () => {
+  for (const plugin of [
+    bookFlightPlugin,
+    pickCardPlugin,
+    playTttPlugin,
+    tictactoePlugin,
+    askQuestionPlugin,
+  ]) {
+    for (const inventory of [localJournalTools, retainedTools]) {
+      const tool = inventory.find((item) => item.name === plugin.client.toolName)!;
+      expect(plugin.client.ownerInterfaceDigest).toBe(tool.interfaceDigest);
+      for (const [id, binding] of plugin.client.bindings) {
+        expect(tool.bindings.elicits[binding.key]).toEqual({ id });
+        expect(binding.artifacts).toEqual(tool.artifacts.elicits[binding.key]);
+      }
+    }
+  }
   await scenario(function* (rig) {
     const client = yield* clientFor(rig);
     const sending = yield* spawn(() => call(() => client.sendMessage("Compute 42 * 17 and 2 + 2")));
@@ -207,16 +232,20 @@ for (const action of ["accept", "decline", "cancel"] as const) {
 
 it("flight preserves both choices and a nested sample in the same turn", async () => {
   await scenario(function* (rig) {
-    const conversation = rig.conversation();
-    const turn = yield* conversation.send("Book a flight");
+    using ui = yield* useUI(rig, { plugins: [bookFlightPlugin] });
+    const sending = yield* spawn(() => call(() => ui.client.sendMessage("Book a flight")));
     const first = yield* rig.model.request();
     yield* first.respond.toolCalls([
       { id: "booking", name: "book_flight", arguments: { from: "NYC", destination: "LAX" } },
     ]);
-    const flight = yield* turn.elicit("pickFlight");
-    yield* flight.accept({ flightId: "FL001" });
-    const seat = yield* turn.elicit("pickSeat");
-    yield* seat.accept({ row: 2, seat: "A" });
+    const flight = yield* ui.waitForElement("SkyHigh flight", () =>
+      ui.queryByRole<HTMLButtonElement>("button", { name: /SkyHigh Airways/ }),
+    );
+    flight.click();
+    const seat = yield* ui.waitForEnabledButton("Seat 2A");
+    seat.click();
+    const confirm = yield* ui.waitForEnabledButton("Confirm Seat 2A");
+    confirm.click();
     const nested = yield* rig.model.request();
     expect(JSON.stringify(nested.body.input)).toContain("LAX airport");
     yield* nested.respond.text("Take the airport shuttle.");
@@ -233,15 +262,17 @@ it("flight preserves both choices and a nested sample in the same turn", async (
       },
     ]);
     yield* final.respond.text("Booked.");
-    yield* turn.settled();
+    yield* sending;
   });
 });
 
 for (const name of ["play_ttt", "tictactoe"]) {
   it(`${name} alternates nested model calls and choices through the final board`, async () => {
     await scenario(function* (rig) {
-      const conversation = rig.conversation();
-      const turn = yield* conversation.send("Play a game");
+      using ui = yield* useUI(rig, {
+        plugins: [name === "play_ttt" ? playTttPlugin : tictactoePlugin],
+      });
+      const sending = yield* spawn(() => call(() => ui.client.sendMessage("Play a game")));
       const first = yield* rig.model.request();
       yield* first.respond.toolCalls([{ id: "game", name, arguments: {} }]);
       const model = yield* spawn(function* () {
@@ -273,19 +304,62 @@ for (const name of ["play_ttt", "tictactoe"]) {
         throw new Error("Game did not finish");
       });
       for (let moves = 0; moves < 10; moves++) {
-        const choice = yield* turn.elicit("pickMove");
-        const context = choice.context as { board: (string | null)[]; gameOver?: boolean };
-        yield* choice.accept({ position: context.gameOver ? -1 : context.board.indexOf(null) });
-        if (context.gameOver) {
+        const next = yield* ui.waitForElement(
+          "legal move or completed game",
+          () =>
+            ui.queryByText("Good game.") ??
+            ui
+              .queryAllByRole<HTMLButtonElement>("button", { name: /^[0-8]$/ })
+              .find((button) => !button.disabled) ??
+            null,
+        );
+        if (next.textContent === "Good game.") {
           break;
         }
+        next.click();
+        // Wait for the selected render to settle before observing the next board.
+        yield* ui.waitForElement("completed move", () => (next.isConnected ? null : document.body));
       }
       yield* model;
-      yield* turn.settled();
-      expect(JSON.stringify(conversation.snapshot().messages)).toContain("gameOver");
+      yield* sending;
+      expect(JSON.stringify(ui.client.getSnapshot().messages)).toContain("gameOver");
     });
   });
 }
+
+it("actual card and question plugins consume the shared contracts", async () => {
+  await scenario(function* (rig) {
+    using ui = yield* useUI(rig, { plugins: [pickCardPlugin, askQuestionPlugin] });
+    const sending = yield* spawn(() => call(() => ui.client.sendMessage("Draw cards then ask me")));
+    const first = yield* rig.model.request();
+    yield* first.respond.toolCalls([{ id: "cards", name: "pick_card", arguments: {} }]);
+    yield* ui.waitForText("Pick one of these 5 cards:");
+    const cards = ui
+      .queryAllByRole<HTMLButtonElement>("button")
+      .filter((button) => /[♠♥♦♣]/.test(button.textContent ?? ""));
+    expect(cards).toHaveLength(5);
+    const selected = cards[0]!.textContent!;
+    cards[0]!.click();
+    const question = yield* rig.model.request();
+    expect(outputs(question.body.input)[0]!.output).toContain(selected);
+    yield* question.respond.toolCalls([
+      { id: "question", name: "ask_question", arguments: { question: "Ready?" } },
+    ]);
+    const answer = yield* ui.waitForElement("answer input", () =>
+      ui.queryByRole<HTMLInputElement>("textbox", { name: "Answer" }),
+    );
+    fireEvent.change(answer, { target: { value: "Yes" } });
+    const submit = yield* ui.waitForEnabledButton("Answer");
+    submit.click();
+    const final = yield* rig.model.request();
+    expect(outputs(final.body.input).at(-1)).toEqual({
+      id: "question",
+      output: { question: "Ready?", answer: "Yes" },
+    });
+    yield* final.respond.text("Recorded.");
+    yield* sending;
+  });
+});
 
 it("Stop cancels a nested flight sample and supersession cancels a parked question", async () => {
   await scenario(function* (rig) {

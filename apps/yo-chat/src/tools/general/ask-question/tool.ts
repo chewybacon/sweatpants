@@ -1,18 +1,15 @@
+import {
+  AskQuestionParametersSchema,
+  AskQuestionContextSchema,
+  AskQuestionResponseSchema,
+} from "../../schemas/ask-question.ts";
 import { createTool } from "@sweatpants/agent-sdk";
-import { z } from "zod";
 
 export const askQuestion = createTool("ask_question")
   .description("Ask a question to the user")
-  .parameters(
-    z.object({
-      question: z.string().describe("Question to ask the user"),
-    }),
-  )
+  .parameters(AskQuestionParametersSchema)
   .elicits({
-    askQuestion: {
-      context: z.object({ question: z.string() }),
-      response: z.object({ answer: z.string() }),
-    },
+    askQuestion: { context: AskQuestionContextSchema, response: AskQuestionResponseSchema },
   })
   .execute(function* (params, ctx) {
     const result = yield* ctx.elicit("askQuestion", {

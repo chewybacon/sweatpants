@@ -1,39 +1,27 @@
+import { z } from "zod";
+import {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+  DrawInputSchema,
+  DrawOutputSchema,
+} from "../schemas/pick-card.ts";
 import { CrankError } from "@sweatpants/durable-execution";
 import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
 import { sha256 } from "@sweatpants/foundation";
-import { z } from "zod";
-
-import { CardSchema } from "./cards";
-
-/** One public parameter schema shared by model inventory and durable execution. */
-export const PickCardParametersSchema = z.object({
-  count: z.number().int().min(2).max(10).default(5).describe("Number of cards to draw"),
-});
-
-/** Accepted CardPicker content schema (not the outer action envelope). */
-export const PickCardResponseSchema = z.object({
-  picked: CardSchema,
-});
-
-/** Canonical authored CardPicker context; correlation metadata stays private. */
-export const PickCardContextSchema = z.object({
-  cards: z.array(CardSchema),
-  prompt: z.string(),
-});
 
 /** Host-side card draw contract with Zod-authored Standard Schema validators. */
 export const drawPickCards = defineEffect({
   name: "pick-card.draw",
   version: "1",
-  input: z.object({ count: z.number().int().min(2).max(10) }),
-  output: z.object({ cards: z.array(CardSchema).min(2).max(10) }),
+  input: DrawInputSchema,
+  output: DrawOutputSchema,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
 /**
- * The one `pick_card` contract and exact crank-native program definition.
- * Inventory, plugin UI, placement, and validator catalog all derive from this
- * object; no ordinary fallback exists.
+ * Retained crank-native execution of the shared pick_card declaration.
+ * Its program identity, retry policy and catalog remain route-specific.
  */
 export const pickCard = createDurableTool("pick_card")
   .description("Draw random cards and let the user pick one")
@@ -43,12 +31,7 @@ export const pickCard = createDurableTool("pick_card")
   })
   .parameters(PickCardParametersSchema)
   .output(z.string())
-  .elicits({
-    pickCard: {
-      response: PickCardResponseSchema,
-      context: PickCardContextSchema,
-    },
-  })
+  .elicits({ pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } })
   .effects({ [drawPickCards.name]: drawPickCards })
   .execute(function* (input, context) {
     const { cards } = yield* context.effect(drawPickCards, { count: input.count });
@@ -75,3 +58,9 @@ export const pickCard = createDurableTool("pick_card")
       "Acknowledge the specific selected card to the user now.",
     ].join(" ");
   });
+
+export {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+} from "../schemas/pick-card.ts";

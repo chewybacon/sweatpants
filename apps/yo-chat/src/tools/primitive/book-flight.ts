@@ -1,87 +1,43 @@
 import { createDurableTool, type JournalToolContext } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
-const FlightSchema = z.object({
-  id: z.string(),
-  airline: z.string(),
-  flightNumber: z.string(),
-  departure: z.string(),
-  arrival: z.string(),
-  duration: z.string(),
-  price: z.number(),
-});
+import {
+  BookFlightParametersSchema,
+  PickFlightResponseSchema,
+  PickFlightContextSchema,
+  PickSeatResponseSchema,
+  PickSeatContextSchema,
+  FlightSchema,
+  SeatMapSchema,
+} from "../schemas/book-flight.ts";
 
-const SeatMapSchema = z.object({
-  rows: z.number(),
-  seatsPerRow: z.array(z.string()),
-  taken: z.array(z.string()),
-});
-
-// =============================================================================
-// TOOL DEFINITION
-// =============================================================================
-
-export const bookFlightDefinition = {
-  sampling: true,
-  name: "book_flight",
-  description: "Book a flight for the user with interactive flight and seat selection",
-  parameters: z.object({
-    from: z.string().describe("Departure city or airport code"),
-    destination: z.string().describe("Destination city or airport code"),
-  }),
-  elicits: {
-    pickFlight: {
-      response: z.object({
-        flightId: z.string().describe("Selected flight ID"),
-      }),
-      context: z.object({
-        flights: z.array(FlightSchema),
-      }),
-    },
-    pickSeat: {
-      response: z.object({
-        row: z.number().describe("Selected row number"),
-        seat: z.string().describe("Selected seat letter (A-F)"),
-      }),
-      context: z.object({
-        seatMap: SeatMapSchema,
-        flightInfo: z
-          .object({
-            airline: z.string(),
-            flightNumber: z.string(),
-          })
-          .optional(),
-      }),
-    },
+const flightElicits = {
+  pickFlight: { response: PickFlightResponseSchema, context: PickFlightContextSchema },
+  pickSeat: { response: PickSeatResponseSchema, context: PickSeatContextSchema },
+};
+const flightEffects = {
+  search: {
+    version: "1",
+    input: z.object({ from: z.string(), destination: z.string() }),
+    output: z.array(FlightSchema),
+    retrySafety: { mode: "repeatable" as const },
   },
-  effects: {
-    search: {
-      version: "1",
-      input: z.object({ from: z.string(), destination: z.string() }),
-      output: z.array(FlightSchema),
-      retrySafety: { mode: "repeatable" as const },
-    },
-    seats: {
-      version: "1",
-      input: z.object({}),
-      output: SeatMapSchema,
-      retrySafety: { mode: "repeatable" as const },
-    },
-    ticket: {
-      version: "1",
-      input: z.object({}),
-      output: z.string(),
-      retrySafety: { mode: "repeatable" as const },
-    },
+  seats: {
+    version: "1",
+    input: z.object({}),
+    output: SeatMapSchema,
+    retrySafety: { mode: "repeatable" as const },
+  },
+  ticket: {
+    version: "1",
+    input: z.object({}),
+    output: z.string(),
+    retrySafety: { mode: "repeatable" as const },
   },
 };
 
 export function* executeBookFlight<Y>(
-  params: z.output<typeof bookFlightDefinition.parameters>,
-  ctx: JournalToolContext<
-    typeof bookFlightDefinition.effects,
-    typeof bookFlightDefinition.elicits,
-    Y
-  >,
+  params: z.output<typeof BookFlightParametersSchema>,
+  ctx: JournalToolContext<typeof flightEffects, typeof flightElicits, Y>,
 ) {
   // 1. Search for flights
   yield* ctx.notify("Searching for flights...", 0.1);
@@ -191,10 +147,12 @@ export function* executeBookFlight<Y>(
   };
 }
 
-export const bookFlightTool = createDurableTool(bookFlightDefinition.name, { version: "1" })
-  .description(bookFlightDefinition.description)
-  .parameters(bookFlightDefinition.parameters)
-  .effects(bookFlightDefinition.effects)
-  .elicits(bookFlightDefinition.elicits)
+export const bookFlightTool = createDurableTool("book_flight", {
+  version: "1",
+})
+  .description("Book a flight for the user with interactive flight and seat selection")
+  .parameters(BookFlightParametersSchema)
+  .effects(flightEffects)
+  .elicits(flightElicits)
   .samples()
   .execute(executeBookFlight);

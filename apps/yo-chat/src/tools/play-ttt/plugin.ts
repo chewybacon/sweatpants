@@ -5,7 +5,7 @@
  * Uses the GameChatView component to render the game as a chat-style conversation.
  */
 import { makePlugin } from "@sweatpants/react-chat";
-import { playTttTool } from "./tool";
+import { playTttTool } from "../primitive/play-ttt.ts";
 import { GameChatView } from "./components/GameChatView";
 
 // =============================================================================

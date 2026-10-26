@@ -642,3 +642,16 @@ DO namespace beside the Dynamic Worker loader. Route ordinary tools with
 inventory. Ordinary DO sessions retain a generator across requests, with a bounded
 ten-minute lifetime and explicit failure after compute loss. They do not replay
 ordinary effects after restart.
+
+### Shared local and retained tool schemas
+
+Tools keep fluent authoring through `createTool` or `createDurableTool`. The five
+chat plugins import the corresponding `tools/primitive/` tool directly and pass
+it to `makePlugin(tool)`. Vite extracts the browser contract from that definition;
+authors do not declare or project a separate plugin contract.
+
+`src/tools/schemas/` shares ordinary schema objects and Flight/SeatMap types with
+retained ordinary/crank producers. Names, versions, descriptions and interaction
+wiring stay on the fluent definitions. Retained crank identities, catalogs and
+retry policies remain route-specific, including the longer `play_ttt` description.
+MCP's incompatible `pick_card` remains separate.

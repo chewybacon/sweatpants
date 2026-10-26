@@ -1,3 +1,10 @@
+import {
+  GameMoveSchema,
+  PickMoveResponseSchema,
+  ModelCellSchema,
+  PlayTttResultSchema,
+  PickMoveContextSchema,
+} from "../schemas/play-ttt.ts";
 /** Journal-native tic-tac-toe program and public tool contract. */
 import { createDurableTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { assertJson, type JsonObject } from "@sweatpants/foundation";
@@ -14,66 +21,6 @@ import {
   formatBoard,
 } from "../tictactoe/types.ts";
 
-const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
-const BoardSchema = z.tuple([
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-  CellSchema,
-]);
-const LastMoveSchema = z.object({
-  position: z.number().int().min(0).max(8),
-  player: z.enum(["X", "O"]),
-});
-const GameMoveSchema = z.object({
-  position: z.number().int().min(0).max(8),
-  player: z.enum(["X", "O"]),
-  isModel: z.boolean(),
-  boardAfter: BoardSchema,
-  moveNumber: z.number().int().positive(),
-  reasoning: z.string().optional(),
-});
-const PickMoveResponseSchema = z.object({
-  // -1 acknowledges the terminal board.
-  position: z.number().int().min(-1).max(8),
-});
-const ModelCellSchema = z.object({ cell: z.number().int().min(0).max(8) });
-const PickMoveContextSchema = z.object({
-  board: BoardSchema,
-  moveHistory: z.array(GameMoveSchema),
-  lastMove: LastMoveSchema.optional(),
-  winningLine: z.array(z.number().int()).optional(),
-  gameOver: z.boolean().optional(),
-  resultMessage: z.string().optional(),
-  modelSymbol: z.enum(["X", "O"]),
-  userSymbol: z.enum(["X", "O"]),
-});
-const PlayTttResultSchema = z.union([
-  z.object({
-    success: z.literal(true),
-    modelSymbol: z.enum(["X", "O"]),
-    userSymbol: z.enum(["X", "O"]),
-    result: z.enum(["model_wins", "user_wins", "draw"]),
-    winner: z.enum(["X", "O"]).nullable(),
-    board: BoardSchema,
-    boardDisplay: z.string(),
-    winningLine: z.array(z.number().int()).optional(),
-    message: z.string(),
-  }),
-  z.object({
-    success: z.literal(false),
-    cancelled: z.literal(true),
-    message: z.string(),
-    board: BoardSchema.optional(),
-    boardDisplay: z.string().optional(),
-  }),
-]);
-
 type GameMove = z.infer<typeof GameMoveSchema>;
 
 /**
@@ -81,7 +28,9 @@ type GameMove = z.infer<typeof GameMoveSchema>;
  * assignment is an execution-owned recorded coin flip, user moves are
  * elicitations, and model moves are completed model.sample pulls.
  */
-export const playTttTool = createDurableTool("play_ttt", { version: "3.0.0" })
+export const playTttTool = createDurableTool("play_ttt", {
+  version: "3.0.0",
+})
   .description("Play a complete game of tic-tac-toe against the user.")
   .parameters(z.object({}))
   .effects({
@@ -89,7 +38,7 @@ export const playTttTool = createDurableTool("play_ttt", { version: "3.0.0" })
       version: "1",
       input: z.object({}),
       output: z.object({ side: z.enum(["heads", "tails"]) }),
-      retrySafety: { mode: "repeatable" },
+      retrySafety: { mode: "repeatable" as const },
     },
   })
   .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })

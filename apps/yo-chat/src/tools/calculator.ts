@@ -1,13 +1,9 @@
+import { CalculatorParametersSchema } from "./schemas/calculator.ts";
 import { createTool } from "@sweatpants/agent-sdk";
-import { z } from "zod";
 
 export const calculator = createTool("calculator")
   .description("Evaluate a mathematical expression")
-  .parameters(
-    z.object({
-      expression: z.string().describe("The mathematical expression to evaluate"),
-    }),
-  )
+  .parameters(CalculatorParametersSchema)
   .execute(function* (params) {
     try {
       const sanitized = params.expression.replace(/[^0-9+\-*/().%\s]/g, "");

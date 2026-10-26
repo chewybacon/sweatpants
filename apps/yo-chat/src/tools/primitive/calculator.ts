@@ -1,13 +1,11 @@
+import { CalculatorParametersSchema } from "../schemas/calculator.ts";
 import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
-import { z } from "zod";
 
-export const calculator = createDurableTool("calculator", { version: "1" })
+export const calculator = createDurableTool("calculator", {
+  version: "1",
+})
   .description("Evaluate a mathematical expression")
-  .parameters(
-    z.object({
-      expression: z.string().describe("The mathematical expression to evaluate"),
-    }),
-  )
+  .parameters(CalculatorParametersSchema)
   .effects({})
   .elicits({})
   .execute(function* (params) {

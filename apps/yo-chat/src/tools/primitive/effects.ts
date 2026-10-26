@@ -2,7 +2,7 @@ import { sleep } from "effection";
 import { success } from "@sweatpants/foundation/computation";
 import { assertJson } from "@sweatpants/foundation";
 import type { PrimitiveChatOptions } from "@sweatpants/agent-host/primitive";
-import type { Flight, SeatMap } from "../book-flight/tool";
+import type { Flight, SeatMap } from "../schemas/book-flight.ts";
 import { createCardDeck } from "../pick-card/cards";
 function mockFlightSearch(_from: string, _destination: string): Flight[] {
   // Simulate flight search - in production this would call an API

@@ -1,3 +1,8 @@
+import {
+  GameMoveSchema,
+  PickMoveResponseSchema,
+  PickMoveContextSchema,
+} from "../schemas/tictactoe.ts";
 /**
  * TicTacToe Tool (MCP Standard Sampling)
  *
@@ -21,34 +26,6 @@ import {
 // SCHEMAS
 // =============================================================================
 
-const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
-const BoardSchema = z
-  .tuple([
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-  ])
-  .describe("Board state: 9 cells");
-
-const LastMoveSchema = z.object({
-  position: z.number().min(0).max(8),
-  player: z.enum(["X", "O"]),
-});
-
-const GameMoveSchema = z.object({
-  position: z.number().min(0).max(8),
-  player: z.enum(["X", "O"]),
-  isModel: z.boolean(),
-  boardAfter: BoardSchema,
-  moveNumber: z.number(),
-});
-
 type GameMove = z.infer<typeof GameMoveSchema>;
 
 type GameClientResult =
@@ -70,7 +47,9 @@ type GameClientResult =
 // TOOL DEFINITION
 // =============================================================================
 
-export const tictactoeTool = createDurableTool("tictactoe", { version: "1" })
+export const tictactoeTool = createDurableTool("tictactoe", {
+  version: "1",
+})
   .description(`Play a complete game of tic-tac-toe against the user.
 
 This tool handles the entire game - just call it once and it will:
@@ -92,27 +71,10 @@ Board positions:
       version: "1",
       input: z.object({}),
       output: z.number(),
-      retrySafety: { mode: "repeatable" },
+      retrySafety: { mode: "repeatable" as const },
     },
   })
-  .elicits({
-    pickMove: {
-      response: z.object({
-        // -1 is used by the game-over UI acknowledgement.
-        position: z.number().min(-1).max(8).describe("Cell position user clicked"),
-      }),
-      context: z.object({
-        board: BoardSchema,
-        moveHistory: z.array(GameMoveSchema).describe("History of all moves"),
-        lastMove: LastMoveSchema.optional(),
-        winningLine: z.array(z.number()).optional(),
-        gameOver: z.boolean().optional(),
-        resultMessage: z.string().optional(),
-        modelSymbol: z.enum(["X", "O"]),
-        userSymbol: z.enum(["X", "O"]),
-      }),
-    },
-  })
+  .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })
   .samples()
   .execute(function* (_params, ctx) {
     const modelPlaysX = (yield* ctx.effect("random", {})) < 0.5;

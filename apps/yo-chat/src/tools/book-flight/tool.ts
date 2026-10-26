@@ -7,29 +7,22 @@
  * - Multi-step user interaction (flight selection, seat selection)
  * - LLM sampling for travel tips
  */
-import { z } from "zod";
+import {
+  type Flight,
+  type SeatMap,
+  BookFlightParametersSchema,
+  PickFlightResponseSchema,
+  PickFlightContextSchema,
+  PickSeatResponseSchema,
+  PickSeatContextSchema,
+} from "../schemas/book-flight.ts";
+export type { Flight, SeatMap } from "../schemas/book-flight.ts";
 import { createTool } from "@sweatpants/agent-sdk";
 import { sleep } from "effection";
 
 // =============================================================================
 // TYPES
 // =============================================================================
-
-export interface Flight {
-  id: string;
-  airline: string;
-  flightNumber: string;
-  departure: string;
-  arrival: string;
-  duration: string;
-  price: number;
-}
-
-export interface SeatMap {
-  rows: number;
-  seatsPerRow: string[];
-  taken: string[]; // e.g., ['1A', '2C', '5F']
-}
 
 // =============================================================================
 // MOCK DATA
@@ -89,58 +82,16 @@ function generateTicketNumber(): string {
 // SCHEMAS
 // =============================================================================
 
-const FlightSchema = z.object({
-  id: z.string(),
-  airline: z.string(),
-  flightNumber: z.string(),
-  departure: z.string(),
-  arrival: z.string(),
-  duration: z.string(),
-  price: z.number(),
-});
-
-const SeatMapSchema = z.object({
-  rows: z.number(),
-  seatsPerRow: z.array(z.string()),
-  taken: z.array(z.string()),
-});
-
 // =============================================================================
 // TOOL DEFINITION
 // =============================================================================
 
 export const bookFlightTool = createTool("book_flight")
   .description("Book a flight for the user with interactive flight and seat selection")
-  .parameters(
-    z.object({
-      from: z.string().describe("Departure city or airport code"),
-      destination: z.string().describe("Destination city or airport code"),
-    }),
-  )
+  .parameters(BookFlightParametersSchema)
   .elicits({
-    pickFlight: {
-      response: z.object({
-        flightId: z.string().describe("Selected flight ID"),
-      }),
-      context: z.object({
-        flights: z.array(FlightSchema),
-      }),
-    },
-    pickSeat: {
-      response: z.object({
-        row: z.number().describe("Selected row number"),
-        seat: z.string().describe("Selected seat letter (A-F)"),
-      }),
-      context: z.object({
-        seatMap: SeatMapSchema,
-        flightInfo: z
-          .object({
-            airline: z.string(),
-            flightNumber: z.string(),
-          })
-          .optional(),
-      }),
-    },
+    pickFlight: { response: PickFlightResponseSchema, context: PickFlightContextSchema },
+    pickSeat: { response: PickSeatResponseSchema, context: PickSeatContextSchema },
   })
   .samples()
   .execute(function* (params, ctx) {
