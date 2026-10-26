@@ -57,3 +57,8 @@ of the portable activation supply one through `ChatModelStream`.
 
 The caller owns the journal and must keep it open until `result` or `cancel()` has
 settled. Disposing an activation is distinct from persisting a logical Stop command.
+
+For scoped composition, `activateChat(capabilities, input, journal, events)` returns
+an iterable operation without starting another root runtime. This lets API/context
+bindings remain visible to model handlers. `startChatActivation` delegates to this
+same operation. The caller still owns the journal lifetime.

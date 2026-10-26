@@ -123,3 +123,46 @@ Portable cleanup uses `composition.ensure`. JavaScript generator `finally` aroun
 a native suspension is not specified as a cross-runtime cancellation finalizer.
 Native error channels remain native; use explicit Outcome values for portable
 expected failures rather than assume JavaScript catch intercepts native failures.
+
+## Scoped model API on the production chat activation
+
+`chat.ts` defines `createScopedChat(composition)`, which binds model sampling through
+createApi while calling the production `activateChat` operation. `startChatActivation`
+uses that same operation for the existing HTTP host. There is no second chat loop.
+
+```ts
+const chat = createScopedChat(composition);
+
+yield * chat.Model.install(provider);
+yield *
+  chat.Model.around({
+    *sample(args, next) {
+      const response = yield* next(...args);
+      return transform(response);
+    },
+  });
+return yield * chat.activate(capabilities, input, journal);
+```
+
+Each live model sample owns a child scope. The provider and middleware can acquire
+native resources there. Cleanup finishes before the final transformed response is
+accepted. Streaming publication remains provisional. Replay bypasses the sampling
+API entirely for accepted outcomes, so middleware must not be relied upon for
+replay observation.
+
+`chat.acceptance.test.ts` adds three shared stories under both runtimes:
+
+- sample and invoke the real authored approve-record tool, park for its answer,
+  close/reopen SQLite, complete, then reconnect without repeating accepted model
+  work, middleware, or the unsafe record effect;
+- interrupt after acceptance and before guest delivery, reopen SQLite, and recover
+  the transformed response without calling the provider again;
+- dispose during a streaming sample, wait for asynchronous resource cleanup, and
+  leave provisional output unaccepted and the logical execution still running.
+
+These use scripted model responses with native runtime suspension. They exercise
+production chat/tool/journal code, not a live model vendor or an Effect HTTP host.
+Recovery uses fresh scope bindings and reopened SQLite handles in one process;
+there is no new SIGKILL or cross-process claim. The fault after acceptance is an
+explicit injected exception. Existing full-suite crash tests remain regression
+coverage for the production Effection host.
