@@ -1,3 +1,6 @@
+import { call, ensure, run, spawn, type Operation } from "effection";
+import { createDurableTool, defineDurableContextExtension } from "@sweatpants/agent-sdk";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { inProcess } from "@sweatpants/agent-host/server";
 import { routeTools } from "@sweatpants/tool-session/execution";
@@ -92,6 +95,187 @@ describe("durable tool authoring", () => {
       );
     });
   }
+
+  it("owns immutable extension clients through nested, concurrent, failed and cancelled invocations", async () => {
+    const identities = new WeakMap<object, number>();
+    const closed: number[] = [];
+    const cleanupValues: number[] = [];
+    const ready = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const bothReady = Promise.withResolvers<void>();
+    const cancelledReady = Promise.withResolvers<void>();
+    let waiting = 0;
+    let nextIdentity = 0;
+    let leaked: { read(): Operation<number> } | undefined;
+    const extension = defineDurableContextExtension({
+      name: "acceptance-scoped-client",
+      api: {
+        *read(): Operation<number> {
+          throw new Error("missing client");
+        },
+        *recursive(): Operation<number> {
+          throw new Error("missing client");
+        },
+        *record(): Operation<string> {
+          throw new Error("missing client");
+        },
+      },
+      client({ context, self }) {
+        let registered = false;
+        return {
+          *read() {
+            expect(Object.isFrozen(self)).toBe(true);
+            let identity = identities.get(context);
+            if (identity === undefined) {
+              identity = ++nextIdentity;
+              identities.set(context, identity);
+            }
+            if (!registered) {
+              registered = true;
+              yield* ensure(function* () {
+                yield* call(() => Promise.resolve());
+                cleanupValues.push(yield* self.read());
+                closed.push(identity!);
+              });
+            }
+            return identity;
+          },
+          *recursive() {
+            return yield* self.read();
+          },
+          *record() {
+            return yield* context.record({ key: "extension-context-record" }, function* () {
+              return "recorded through the installed context";
+            });
+          },
+        };
+      },
+    });
+    const child = createDurableTool("scoped_child")
+      .description("Nested scope-owned client")
+      .identity({ version: "1", digest: "a".repeat(64) })
+      .parameters(z.object({ mode: z.enum(["success", "failure", "cancel"]) }))
+      .uses({ extension })
+      .execute(function* ({ mode }, ctx) {
+        const identity = yield* ctx.extension.recursive();
+        if (mode === "failure") {
+          throw new Error("child failed");
+        }
+        if (mode === "cancel") {
+          cancelledReady.resolve();
+          yield* call(() => new Promise<never>(() => {}));
+        }
+        ready.resolve();
+        if (++waiting === 2) {
+          bothReady.resolve();
+        }
+        yield* call(() => release.promise);
+        return identity;
+      });
+    const tool = createDurableTool("scoped_extensions")
+      .description("Exercise extension invocation lifetimes through the host")
+      .identity({ version: "1", digest: "b".repeat(64) })
+      .parameters(z.object({}))
+      .uses({ extension })
+      .execute(function* (_input, ctx) {
+        try {
+          leaked = ctx.extension;
+          expect(ctx.use(extension)).toBe(ctx.extension);
+          expect(
+            Reflect.set(ctx.extension, "read", function* () {
+              return -100;
+            }),
+          ).toBe(false);
+          expect(Object.isFrozen(ctx.extension)).toBe(true);
+          const parent = yield* ctx.extension.read();
+          const recorded = yield* ctx.extension.record();
+          yield* extension.clientApi.around(
+            {
+              *read(args, next) {
+                return (yield* next(...args)) + 10;
+              },
+            },
+            { at: "min" },
+          );
+          yield* extension.clientApi.around(
+            {
+              *read(args, next) {
+                return (yield* next(...args)) * 2;
+              },
+            },
+            { at: "max" },
+          );
+          yield* extension.clientApi.around({
+            *read(args, next) {
+              return (yield* next(...args)) + 1;
+            },
+          });
+          // Forward the real host authority through distinct invocation contexts.
+          // The factory must retain each context while lazy calls select its scope.
+          const first = yield* spawn(() => child.program({ mode: "success" }, { ...ctx }));
+          yield* call(() => ready.promise);
+          const second = yield* spawn(() => child.program({ mode: "success" }, { ...ctx }));
+          yield* call(() => bothReady.promise);
+          // Both children have executed up to the same deterministic gate.
+          expect(nextIdentity).toBe(3);
+          expect(yield* ctx.extension.recursive()).toBe(24);
+          release.resolve();
+          expect(yield* first).toBe(26);
+          expect(yield* second).toBe(28);
+          expect(closed).toEqual([2, 3]);
+          try {
+            yield* child.program({ mode: "failure" }, { ...ctx });
+            throw new Error("expected child failure");
+          } catch (error) {
+            expect(String(error)).toContain("child failed");
+          }
+          expect(closed).toEqual([2, 3, 4]);
+          const cancelled = yield* spawn(() => child.program({ mode: "cancel" }, { ...ctx }));
+          yield* call(() => cancelledReady.promise);
+          yield* cancelled.halt();
+          expect(closed).toEqual([2, 3, 4, 5]);
+          expect(yield* ctx.extension.recursive()).toBe(24);
+          return { parent, recorded, restored: yield* ctx.extension.recursive() };
+        } catch (error) {
+          return { failure: String(error) };
+        }
+      });
+    await withTestScenario(
+      {
+        ...options,
+        createApplication: (context) =>
+          createApplication(context, {
+            tools: [tool],
+            execution: inProcess(),
+          }),
+      },
+      function* (rig) {
+        using ui = yield* useUI(rig, { plugins: [selectionPlugin] });
+        (yield* ui.waitForEnabledButton("Book trip")).click();
+        const request = yield* rig.model.request();
+        yield* request.respond.toolCalls([
+          { id: "scoped", name: "scoped_extensions", arguments: {} },
+        ]);
+        const final = yield* rig.model.request();
+        yield* final.respond.text("Scopes complete");
+        yield* ui.waitForText("Scopes complete");
+        yield* ui.waitForEnabledButton("Book trip");
+        expect(JSON.stringify(final.body.input)).toContain(
+          "recorded through the installed context",
+        );
+        const outputs = (final.body.input as { type: string; output?: string }[])
+          .filter((item) => item.type === "function_call_output")
+          .map((item) => JSON.parse(item.output!));
+        expect(outputs).toEqual([
+          { parent: 1, recorded: "recorded through the installed context", restored: 24 },
+        ]);
+        expect(closed).toEqual([2, 3, 4, 5, 1]);
+        expect(cleanupValues).toEqual([26, 28, 30, 32, 24]);
+      },
+    );
+    expect(leaked).toBeDefined();
+    await expect(Promise.resolve(run(() => leaked!.read()))).rejects.toThrow("not context-bound");
+  });
 
   it("routes ordinary and durable calls from the same model response", async () => {
     await withTestScenario(

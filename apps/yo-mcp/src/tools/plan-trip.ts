@@ -1,15 +1,18 @@
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
 
 /** Multiple interactions and revision, all within one journal invocation. */
-export const planTripTool = defineJournalTool({
-  name: "plan_trip",
-  description:
+export const planTripTool = createDurableTool("plan_trip", { version: "1" })
+  .description(
     "Plan a day trip together: choose a destination and activity, then review or revise. Does not book anything.",
-  parameters: z.object({
-    traveler: z.string().min(1).default("Traveler").describe("Who the day trip is for"),
-  }),
-  elicits: {
+  )
+  .parameters(
+    z.object({
+      traveler: z.string().min(1).default("Traveler").describe("Who the day trip is for"),
+    }),
+  )
+  .effects({})
+  .elicits({
     destination: { response: z.object({ city: z.string().min(1).describe("City to visit") }) },
     activity: {
       response: z.object({
@@ -24,8 +27,8 @@ export const planTripTool = defineJournalTool({
           .describe("Confirm this plan; leave unchecked to choose another activity"),
       }),
     },
-  },
-  execute: function* ({ traveler }, ctx) {
+  })
+  .execute(function* ({ traveler }, ctx) {
     const destination = yield* ctx.elicit("destination", {
       message: `${traveler}, which city would you like to visit?`,
     });
@@ -53,6 +56,4 @@ export const planTripTool = defineJournalTool({
         return { status: "planned", traveler, city, activity };
       }
     }
-  },
-  effects: {},
-});
+  });

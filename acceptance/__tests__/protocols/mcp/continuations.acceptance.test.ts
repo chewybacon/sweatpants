@@ -1,6 +1,7 @@
 // @vitest-environment node
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { all, call, run, ensure, suspend } from "effection";
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { createMcpApp } from "@sweatpants/agent-host/mcp";
 import { z } from "zod";
 import { expect, it, vi } from "vitest";
@@ -105,6 +106,18 @@ it("rejects invalid MCP continuations without consuming the pending answer", asy
     expect(invalid.response.status).toBe(400);
     expect(invalid.body.error.code).toBe(-32602);
 
+    for (const malformed of [
+      { action: "accept" },
+      { action: "decline", extra: true },
+      { action: "cancel", content: { number: 1 } },
+    ]) {
+      const rejected = yield* mcpRequest(server.origin, "tools/call", {
+        ...continuation,
+        inputResponses: { [key]: malformed },
+      });
+      expect(rejected.response.status).toBe(400);
+    }
+
     // Act: submit two valid continuations concurrently at the HTTP boundary.
     const [first, duplicate] = yield* all([
       mcpRequest(server.origin, "tools/call", continuation),
@@ -178,20 +191,19 @@ for (const stop of ["app-close", "reader-cancel", "demand-cancel"] as const) {
       started = resolve;
     });
     let disposed = 0;
-    const tool = defineJournalTool({
-      name: "waiting",
-      description: "Notify, then wait for native cancellation",
-      parameters: z.object({}),
-      elicits: {},
-      effects: {
+    const tool = createDurableTool("waiting", { version: "1" })
+      .description("Notify, then wait for native cancellation")
+      .parameters(z.object({}))
+      .effects({
         wait: {
           version: "1",
           input: z.null(),
           output: z.null(),
           retrySafety: { mode: "repeatable" },
         },
-      },
-      *execute(_input, ctx) {
+      })
+      .elicits({})
+      .execute(function* (_input, ctx) {
         yield* ctx.notify("working", 0.5);
         yield* ctx.log("info", "waiting");
         if (stop === "demand-cancel") {
@@ -199,8 +211,7 @@ for (const stop of ["app-close", "reader-cancel", "demand-cancel"] as const) {
         }
         yield* ctx.effect("wait", null);
         return {};
-      },
-    });
+      });
     const app = createMcpApp({
       name: "cleanup",
       version: "1",
@@ -289,3 +300,174 @@ for (const stop of ["app-close", "reader-cancel", "demand-cancel"] as const) {
     }
   });
 }
+
+// A synchronous vendor-independent schema deliberately accepts only raw strings.
+// Revalidating its transformed numbers would fail, exposing replay boundary bugs.
+const numericForm: StandardSchemaV1<{ value?: string }, { value: number }> = {
+  "~standard": {
+    version: 1 as const,
+    vendor: "acceptance-numeric-form",
+    validate(input: unknown) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return { issues: [{ message: "Expected a form" }] };
+      }
+      const value = "value" in input ? input.value : "2";
+      if (typeof value !== "string" || !/^\d+$/.test(value)) {
+        return { issues: [{ message: "Expected numeric text" }] };
+      }
+      return { value: { value: Number(value) } };
+    },
+  },
+};
+const numericProjections = {
+  inputProjection: { type: "object", properties: { value: { type: "string" } } },
+  outputProjection: { type: "object", properties: { value: { type: "number" } } },
+};
+
+it("runs projected Standard Schemas through MCP and replays raw accepted answers and effects", async () => {
+  const declaration = () =>
+    createDurableTool("projected", { version: "1" }).description(
+      "Transform a form through the journal",
+    );
+  expect(() =>
+    declaration()
+      .parameters(numericForm)
+      .execute(function* () {
+        return {};
+      }),
+  ).toThrow(/projection/);
+  const tool = declaration()
+    .parameters(numericForm, numericProjections)
+    .output(numericForm, numericProjections)
+    .effects({
+      increment: {
+        version: "1",
+        input: numericForm,
+        output: numericForm,
+        inputProjections: numericProjections,
+        outputProjections: numericProjections,
+        retrySafety: { mode: "unsafe" },
+      },
+    })
+    .elicits({
+      choose: {
+        response: numericForm,
+        context: numericForm,
+        responseProjections: numericProjections,
+        contextProjections: numericProjections,
+      },
+    })
+    .execute(function* (input, ctx) {
+      const effect = yield* ctx.effect("increment", { value: String(input.value + 1) });
+      const answer = yield* ctx.elicit("choose", {
+        message: "Choose numeric text",
+        context: { value: String(effect.value) },
+      });
+      return {
+        value: String(effect.value + (answer.action === "accept" ? answer.content.value : 0)),
+      };
+    });
+  await run(function* () {
+    let executions = 0;
+    const server = yield* useMcpServer([tool], {
+      *"projected.increment"(input) {
+        executions++;
+        expect(input).toEqual({ value: 3 });
+        return { value: "4" };
+      },
+    });
+    const listed = yield* mcpRequest(server.origin, "tools/list", {});
+    expect(listed.body.result.tools[0]._meta["x-sweatpants"].elicits.choose.context).toEqual(
+      numericProjections.inputProjection,
+    );
+    const params = { name: "projected", arguments: {} };
+    const called = yield* mcpRequest(server.origin, "tools/call", params);
+    const pending = called.body.result;
+    expect(pending.resultType).toBe("input_required");
+    const key = Object.keys(pending.inputRequests)[0];
+    expect(pending.inputRequests[key].params.requestedSchema["x-elicit-context"]).toEqual({
+      value: "4",
+    });
+    const continuation = { ...params, requestState: pending.requestState };
+    const invalid = yield* mcpRequest(server.origin, "tools/call", {
+      ...continuation,
+      inputResponses: { [key]: { action: "accept", content: { value: 5 } } },
+    });
+    expect(invalid.response.status).toBe(400);
+    const accepted = {
+      ...continuation,
+      inputResponses: { [key]: { action: "accept", content: { value: "5" } } },
+    };
+    const completed = yield* mcpRequest(server.origin, "tools/call", accepted);
+    const replayed = yield* mcpRequest(server.origin, "tools/call", accepted);
+    expect(completed.body.result).toMatchObject({ resultType: "complete", isError: false });
+    expect(JSON.parse(completed.body.result.content[0].text)).toEqual({ value: 9 });
+    expect(replayed.body.result).toEqual(completed.body.result);
+    expect(executions).toBe(1);
+  });
+});
+
+it("reports invalid effect and tool outputs through MCP instead of successful completion", async () => {
+  await run(function* () {
+    const effectTool = createDurableTool("invalid_effect", { version: "1" })
+      .description("Reject invalid effect output")
+      .parameters(z.object({}))
+      .effects({
+        read: {
+          version: "1",
+          input: z.null(),
+          output: numericForm,
+          outputProjections: numericProjections,
+          retrySafety: { mode: "repeatable" },
+        },
+      })
+      .execute(function* (_input, ctx) {
+        yield* ctx.effect("read", null);
+        return {};
+      });
+    const outputTool = createDurableTool("invalid_output", { version: "1" })
+      .description("Reject invalid tool output")
+      .parameters(z.object({}))
+      .output(z.string().min(2))
+      .execute(function* () {
+        return "";
+      });
+    const server = yield* useMcpServer([effectTool, outputTool], {
+      *"invalid_effect.read"() {
+        return { value: 4 };
+      },
+    });
+    for (const name of ["invalid_effect", "invalid_output"]) {
+      const result = yield* mcpRequest(server.origin, "tools/call", { name, arguments: {} });
+      expect(result.body.result).toMatchObject({ resultType: "complete", isError: true });
+    }
+  });
+});
+
+it("rejects asynchronous Standard Schema validators at the MCP boundary", async () => {
+  const tool = createDurableTool("async_schema", { version: "1" })
+    .description("Requires synchronous validation")
+    .parameters(
+      {
+        "~standard": {
+          ...numericForm["~standard"],
+          async validate() {
+            return { value: { value: 2 } };
+          },
+        },
+      },
+      numericProjections,
+    )
+    .execute(function* () {
+      return {};
+    });
+  await run(function* () {
+    const server = yield* useMcpServer([tool]);
+    const result = yield* mcpRequest(server.origin, "tools/call", {
+      name: tool.name,
+      arguments: {},
+    });
+    expect(result.response.status).toBe(400);
+    expect(result.body.error.code).toBe(-32602);
+  });
+});

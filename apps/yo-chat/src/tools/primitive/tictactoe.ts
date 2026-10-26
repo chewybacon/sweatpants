@@ -6,7 +6,7 @@
  * then the tool parses the free-form response and falls back to a random legal
  * move only when the sampled text is unusable.
  */
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
 import {
   type Board,
@@ -70,10 +70,8 @@ type GameClientResult =
 // TOOL DEFINITION
 // =============================================================================
 
-export const tictactoeTool = defineJournalTool({
-  sampling: true,
-  name: "tictactoe",
-  description: `Play a complete game of tic-tac-toe against the user.
+export const tictactoeTool = createDurableTool("tictactoe", { version: "1" })
+  .description(`Play a complete game of tic-tac-toe against the user.
 
 This tool handles the entire game - just call it once and it will:
 1. Randomly assign X or O to you and the user
@@ -87,9 +85,17 @@ Board positions:
 ---------
 3 | 4 | 5
 ---------
-6 | 7 | 8`,
-  parameters: z.object({}),
-  elicits: {
+6 | 7 | 8`)
+  .parameters(z.object({}))
+  .effects({
+    random: {
+      version: "1",
+      input: z.object({}),
+      output: z.number(),
+      retrySafety: { mode: "repeatable" },
+    },
+  })
+  .elicits({
     pickMove: {
       response: z.object({
         // -1 is used by the game-over UI acknowledgement.
@@ -106,16 +112,9 @@ Board positions:
         userSymbol: z.enum(["X", "O"]),
       }),
     },
-  },
-  effects: {
-    random: {
-      version: "1",
-      input: z.object({}),
-      output: z.number(),
-      retrySafety: { mode: "repeatable" },
-    },
-  },
-  execute: function* (_params, ctx) {
+  })
+  .samples()
+  .execute(function* (_params, ctx) {
     const modelPlaysX = (yield* ctx.effect("random", {})) < 0.5;
     const modelSymbol = (modelPlaysX ? "X" : "O") as Player;
     const userSymbol = (modelPlaysX ? "O" : "X") as Player;
@@ -320,8 +319,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
             ? "I won the game!"
             : "The user won the game!",
     };
-  },
-});
+  });
 
 export type TicTacToeResult =
   | {

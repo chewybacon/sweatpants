@@ -7,37 +7,35 @@ The normal React chat client and `makePlugin(tool)` use the existing HTTP protoc
 Author deterministic tools with `@sweatpants/agent-sdk/primitive`:
 
 ```ts
-const approveRecord = defineJournalTool({
-  name: "approve_record",
-  description: "Record a request, then ask whether to finish it",
-  parameters: z.object({ topic: z.string() }),
-  output: z.object({ receipt: z.string(), approved: z.boolean() }),
-  effects: {
+const approveRecord = createDurableTool("approve_record", { version: "1" })
+  .description("Record a request, then ask whether to finish it")
+  .parameters(z.object({ topic: z.string() }))
+  .output(z.object({ receipt: z.string(), approved: z.boolean() }))
+  .effects({
     record: {
       version: "1",
       input: z.object({ topic: z.string() }),
       output: z.object({ receipt: z.string() }),
       retrySafety: { mode: "unsafe" },
     },
-  },
-  elicits: {
+  })
+  .elicits({
     approve: {
       response: z.object({ approved: z.boolean() }),
       context: z.object({ receipt: z.string() }),
     },
-  },
-  *execute({ topic }, ctx) {
+  })
+  .execute(function* ({ topic }, ctx) {
     const { receipt } = yield* ctx.effect("record", { topic });
     const answer = yield* ctx.elicit("approve", {
       message: "Recorded. Finish this request?",
       context: { receipt },
     });
     return { receipt, approved: answer.action === "accept" && answer.content.approved };
-  },
-});
+  });
 ```
 
-Import `z` from `zod` and `defineJournalTool` from the primitive SDK entrypoint.
+Import `z` from `zod` and `createDurableTool` from the primitive SDK entrypoint.
 The executable example is `acceptance/fixtures/approve-record.ts`; its React plugin
 is beside it. Approval concerns completion, not authorization of the prior record.
 Decline/cancel returns normally with `approved: false`.
@@ -56,7 +54,8 @@ const app = createPrimitiveChatApp({
   authorize: (request, conversationId) => accessPolicy(request, conversationId),
   effects: {
     "approve_record.record": function* (input) {
-      const args = approveRecord.effects.record.input.parse(input);
+      // The host supplies validated handler input.
+      const args = input;
       const result = yield* call(() => externalService.record(args));
       return success(result);
     },
@@ -75,7 +74,7 @@ without storing credentials. Both must remain pinned when reopening the database
 One journal owns each turn: model responses, effects, elicitation answers,
 notifications, tool results and nested samples. `chat.ts` runs the ten-iteration
 model/tool loop; every call in a completed model response runs in causal order.
-`defineJournalTool` bodies compose with ordinary `yield*`. Arithmetic is computation,
+`createDurableTool` bodies compose with ordinary `yield*`. Arithmetic is computation,
 not an effect. `context.sample` and `context.notify` yield into the same journal.
 Native provider work uses `ModelProviderDriver.stream`; partial text, reasoning and
 arguments are presentation, never permission to invoke a tool.
@@ -142,3 +141,13 @@ billing if its result was not accepted. Accepted effects do not repeat on replay
 Read `acceptance/__tests__/host-crash/primitive-recovery.acceptance.test.tsx` for the
 public crash story and `fixtures/primitive-host.ts` for host composition. The
 shared process helper owns fork, SIGKILL, awaited exit and HTTP forwarding.
+
+The fluent builder accepts synchronous Standard Schema V1 schemas. Pass explicit
+`inputProjection` and `outputProjection` options to `.parameters()`/`.output()`
+for non-Zod schemas; elicitation declarations use `responseProjections` and
+`contextProjections`, and effects use `inputProjections`/`outputProjections`.
+Missing projections reject at declaration time. Async validators reject at execution.
+Effects and elicitation answers retain raw JSON outcomes in the journal; hosts
+validate before acceptance, and resumed tool contexts transform those raw values.
+This prevents applying a transform to an already transformed accepted outcome.
+Repeated `.effects()` and `.elicits()` merge maps, with later keys replacing earlier ones.

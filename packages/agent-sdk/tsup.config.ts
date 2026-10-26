@@ -7,7 +7,7 @@ export default defineConfig({
     "tool/index": "src/tool/index.ts",
     "transport/worker": "src/transport/worker/index.ts",
   },
-  tsconfig: "../ts-config/tsconfig.tsup.json",
+  tsconfig: "./tsconfig.tsup.json",
   format: ["esm"],
   dts: true,
   clean: true,

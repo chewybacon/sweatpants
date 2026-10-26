@@ -4,7 +4,6 @@ import type {
   Api,
   Composition,
   Context,
-  Middleware,
   Operations,
   Operation as PortableOperation,
 } from "@sweatpants/standard-durability";
@@ -33,14 +32,29 @@ export const effection: Composition<EffectionYield> = {
     if (Object.values(defaults).some((value) => typeof value !== "function")) {
       throw new TypeError("API declarations must contain only operation methods");
     }
-    // Every member here already returns a native-compatible Operation. Effection's
-    // additional plain-value lifting branches are unreachable, but TypeScript
-    // cannot reduce the nested conditional mapped types for a generic Signature.
-    const api = createApi(name, defaults) as unknown as Pick<
+    const binding = createContext<{ scope: Scope; driver: Operations<Signature, EffectionYield> }>(
+      `${name}:driver`,
+    );
+    // Drivers replace the core, not a middleware layer. Native decoration still
+    // surrounds the nearest binding, including inherited min middleware.
+    const core = Object.fromEntries(
+      Object.keys(defaults).map((key) => [
+        key,
+        function* (...args: unknown[]) {
+          const target = (yield* binding.get())?.driver ?? defaults;
+          return yield* Reflect.apply(
+            target[key as keyof Signature] as (...args: unknown[]) => Operation<unknown>,
+            target,
+            args,
+          );
+        },
+      ]),
+    );
+    // Dynamic enumeration erases the per-key signature correlation once here.
+    const api = createApi(name, core) as unknown as Pick<
       Api<Signature, EffectionYield>,
       "operations" | "around"
     >;
-    const owner = createContext<Scope>(`${name}:driver-owner`);
     return {
       operations: api.operations,
       around(middleware, options) {
@@ -48,24 +62,10 @@ export const effection: Composition<EffectionYield> = {
       },
       *install(driver) {
         const scope = yield* useScope();
-        if ((yield* owner.get()) === scope) {
+        if ((yield* binding.get())?.scope === scope) {
           throw new Error(`Driver already installed in this scope: ${name}`);
         }
-        // The dynamic property loop loses each key's argument/value correlation.
-        // Restore it once here; the public surface retains the exact signature.
-        const terminal = Object.fromEntries(
-          Object.keys(defaults).map((key) => [
-            key,
-            (args: unknown[]) =>
-              Reflect.apply(
-                driver[key as keyof Signature] as (...args: unknown[]) => unknown,
-                driver,
-                args,
-              ),
-          ]),
-        ) as unknown as Middleware<Signature, EffectionYield>;
-        yield* api.around(terminal, { at: "min" });
-        yield* owner.set(scope);
+        yield* binding.set({ scope, driver });
       },
     };
   },

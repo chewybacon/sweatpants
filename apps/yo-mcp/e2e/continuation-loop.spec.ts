@@ -1,8 +1,9 @@
+import { enableInspectorConnection } from "./fixtures/inspector.ts";
 import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("switch", { name: /Connect or disconnect/ }).click({ force: true });
+  await enableInspectorConnection(page);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByText(/MCP\s+2026-07-28/)).toBeVisible();
   await page.locator('label[for$="-Tools"]').click();

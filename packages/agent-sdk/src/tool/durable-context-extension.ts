@@ -130,6 +130,9 @@ export function defineDurableContextExtension<
     `durable-extension:${options.name}`,
     defaults,
   );
+  // Shared lazy dispatch is safe to share only if callers and semantic factories
+  // cannot replace methods for other invocations or recursive self calls.
+  const self = Object.freeze(composed.operations) as unknown as Client;
   const clientApi: DurableClientApi<Client> = { around: composed.around };
 
   const digest = sha256(
@@ -148,7 +151,6 @@ export function defineDurableContextExtension<
     clientApi,
     *installClient(context) {
       // Calls, including recursive self calls, resolve through the same installed API.
-      const self = composed.operations as unknown as Client;
       const implementation = options.client
         ? options.client({ api: options.api, self, context })
         : (options.api as unknown as Client);

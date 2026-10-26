@@ -1,7 +1,12 @@
+import {
+  parseJournalAnswer,
+  validateJournalValue,
+  type JournalTool,
+  type JournalRequest,
+} from "@sweatpants/agent-sdk/primitive";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { call, createScope, ensure, useScope, type Operation } from "effection";
 import { z } from "zod";
-import type { JournalTool, JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { assertJson, requireJsonObject, type Json } from "@sweatpants/foundation";
 import type {
   Identity,
@@ -269,15 +274,10 @@ export function* createMcpHandler(
         if (resume.kind === "cancel") {
           throw new HttpError(400, -32602, "Invalid input response");
         }
-        if (
-          ask.kind === "elicit" &&
-          resume.kind === "elicit" &&
-          resume.response.action === "accept"
-        ) {
-          if (
-            validateAuthoredSchema(tool.elicits[ask.key]?.response, resume.response.content)
-              .status !== "ok"
-          ) {
+        if (ask.kind === "elicit" && resume.kind === "elicit") {
+          try {
+            parseJournalAnswer(tool.elicits[ask.key].response, resume.response);
+          } catch {
             throw new HttpError(
               400,
               -32602,
@@ -361,10 +361,16 @@ export function* createMcpHandler(
                         );
                       }
                       try {
-                        return {
-                          ok: true as const,
-                          value: assertJson(yield* effect(effectRequest.input)),
-                        };
+                        const declaration = tool.effects[effectRequest.key];
+                        if (!declaration || declaration.version !== effectRequest.version) {
+                          throw new Error("Effect declaration unavailable");
+                        }
+                        const input = assertJson(
+                          validateJournalValue(declaration.input, effectRequest.input),
+                        );
+                        const value = assertJson(yield* effect(input));
+                        assertJson(validateJournalValue(declaration.output, value));
+                        return { ok: true as const, value };
                       } catch (error) {
                         return {
                           ok: false as const,

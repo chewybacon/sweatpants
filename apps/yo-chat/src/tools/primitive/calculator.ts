@@ -1,15 +1,16 @@
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
 
-export const calculator = defineJournalTool({
-  name: "calculator",
-  description: "Evaluate a mathematical expression",
-  parameters: z.object({
-    expression: z.string().describe("The mathematical expression to evaluate"),
-  }),
-  effects: {},
-  elicits: {},
-  execute: function* (params) {
+export const calculator = createDurableTool("calculator", { version: "1" })
+  .description("Evaluate a mathematical expression")
+  .parameters(
+    z.object({
+      expression: z.string().describe("The mathematical expression to evaluate"),
+    }),
+  )
+  .effects({})
+  .elicits({})
+  .execute(function* (params) {
     try {
       const sanitized = params.expression.replace(/[^0-9+\-*/().%\s]/g, "");
       if (sanitized !== params.expression) {
@@ -35,5 +36,4 @@ export const calculator = defineJournalTool({
         error: e instanceof Error ? e.message : "Unknown error",
       };
     }
-  },
-});
+  });

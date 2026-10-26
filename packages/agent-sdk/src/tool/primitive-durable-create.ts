@@ -1,9 +1,13 @@
-import type { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { SchemaProjectionOptions } from "./types.ts";
 import type { Operation } from "@sweatpants/standard-durability";
-import { defineJournalTool, type JournalRequest, type JournalToolContext } from "../primitive.ts";
-
-type Effects = Parameters<typeof defineJournalTool>[0]["effects"];
-type Elicits = Parameters<typeof defineJournalTool>[0]["elicits"];
+import {
+  compileJournalTool,
+  type Effects,
+  type Elicits,
+  type JournalRequest,
+  type JournalToolContext,
+} from "./journal-compiler.ts";
 
 type Context<E extends Effects, L extends Elicits, Sampling extends boolean> = Omit<
   JournalToolContext<E, L>,
@@ -14,8 +18,8 @@ type Context<E extends Effects, L extends Elicits, Sampling extends boolean> = O
   (keyof E extends never ? {} : Pick<JournalToolContext<E, L>, "effect">);
 
 interface Definition<
-  P extends z.ZodType,
-  O extends z.ZodType | undefined,
+  P extends StandardSchemaV1,
+  O extends StandardSchemaV1 | undefined,
   E extends Effects,
   L extends Elicits,
 > {
@@ -24,6 +28,8 @@ interface Definition<
   description: string;
   parameters: P;
   output: O;
+  parametersProjections?: SchemaProjectionOptions;
+  outputProjections?: SchemaProjectionOptions;
   effects: E;
   elicits: L;
   sampling: boolean;
@@ -31,37 +37,47 @@ interface Definition<
 
 /** Fluent authoring over the existing primitive compiler and journal request contract. */
 class DurableToolBuilder<
-  P extends z.ZodType,
-  O extends z.ZodType | undefined = undefined,
+  P extends StandardSchemaV1,
+  O extends StandardSchemaV1 | undefined = undefined,
   E extends Effects = {},
   L extends Elicits = {},
   Sampling extends boolean = false,
 > {
   constructor(private readonly definition: Definition<P, O, E, L>) {}
 
-  output<Next extends z.ZodType>(schema: Next) {
-    return new DurableToolBuilder<P, Next, E, L, Sampling>({ ...this.definition, output: schema });
+  output<Next extends StandardSchemaV1>(schema: Next, projections?: SchemaProjectionOptions) {
+    return new DurableToolBuilder<P, Next, E, L, Sampling>({
+      ...this.definition,
+      output: schema,
+      outputProjections: projections,
+    });
   }
 
   effects<Next extends Effects>(effects: Next) {
-    return new DurableToolBuilder<P, O, E & Next, L, Sampling>({
+    return new DurableToolBuilder<P, O, Omit<E, keyof Next> & Next, L, Sampling>({
       ...this.definition,
       effects: { ...this.definition.effects, ...effects },
     });
   }
 
   elicits<Next extends Elicits>(elicits: Next) {
-    return new DurableToolBuilder<P, O, E, Next, Sampling>({ ...this.definition, elicits });
+    return new DurableToolBuilder<P, O, E, Omit<L, keyof Next> & Next, Sampling>({
+      ...this.definition,
+      elicits: { ...this.definition.elicits, ...elicits },
+    });
   }
 
   samples() {
     return new DurableToolBuilder<P, O, E, L, true>({ ...this.definition, sampling: true });
   }
 
-  execute<Result extends O extends z.ZodType ? z.output<O> : unknown>(
-    body: (input: z.output<P>, ctx: Context<E, L, Sampling>) => Operation<Result, JournalRequest>,
+  execute<Result extends O extends StandardSchemaV1 ? StandardSchemaV1.InferInput<O> : unknown>(
+    body: (
+      input: StandardSchemaV1.InferOutput<P>,
+      ctx: Context<E, L, Sampling>,
+    ) => Operation<Result, JournalRequest>,
   ) {
-    return defineJournalTool({ ...this.definition, execute: body });
+    return compileJournalTool({ ...this.definition, execute: body });
   }
 }
 
@@ -77,12 +93,13 @@ export function createDurableTool(name: string, options: { version: string }) {
         throw new Error("Durable tool description must be non-empty");
       }
       return {
-        parameters<P extends z.ZodType>(schema: P) {
+        parameters<P extends StandardSchemaV1>(schema: P, projections?: SchemaProjectionOptions) {
           return new DurableToolBuilder<P>({
             name,
             version,
             description,
             parameters: schema,
+            parametersProjections: projections,
             output: undefined,
             effects: {},
             elicits: {},

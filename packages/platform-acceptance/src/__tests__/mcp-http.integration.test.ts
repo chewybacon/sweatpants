@@ -6,7 +6,7 @@ import {
   MCP_PROTOCOL_VERSION,
   type McpHttpHandler,
 } from "@sweatpants/tool-session/mcp";
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 import { z } from "zod";
 import {
@@ -15,17 +15,16 @@ import {
   TOOL_RESULT_MARKER,
 } from "../lib/acceptance-app.ts";
 
-const booking = defineJournalTool({
-  name: ACCEPTANCE_TOOL_NAME,
-  description: "MCP booking continuation fixture",
-  parameters: z.object({ from: z.string(), destination: z.string() }),
-  effects: {},
-  sampling: true,
-  elicits: {
+const booking = createDurableTool(ACCEPTANCE_TOOL_NAME, { version: "1" })
+  .description("MCP booking continuation fixture")
+  .parameters(z.object({ from: z.string(), destination: z.string() }))
+  .effects({})
+  .elicits({
     pickFlight: { response: z.object({ flightId: z.string() }) },
     pickSeat: { response: z.object({ row: z.number(), seat: z.string() }) },
-  },
-  *execute(params, ctx) {
+  })
+  .samples()
+  .execute(function* (params, ctx) {
     const flight = yield* ctx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
     });
@@ -46,8 +45,7 @@ const booking = defineJournalTool({
       seat: `${seat.content.row}${seat.content.seat}`,
       travelTip: tip.text,
     };
-  },
-});
+  });
 
 interface MrtResult {
   resultType: string;

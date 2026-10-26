@@ -1,4 +1,4 @@
-import type { UserConfig } from "vite";
+import { defineConfig, type UserConfig } from "vite";
 import { readStoredModelSelection } from "@sweatpants/model-provider-pi-ai";
 import baseConfig from "./vite.config";
 
@@ -21,34 +21,34 @@ const selectedModel = readStoredModelSelection();
  * NOTE: `test` is replaced (not merged) so the base run's outside-in exclude
  * glob does not leak in and hide these tests.
  */
-const base = baseConfig as UserConfig;
-
-const config: UserConfig = {
-  ...base,
-  test: {
-    environment: "node",
-    env: {
-      DEFAULT_CHAT_MODEL_PROVIDER:
-        process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selectedModel?.provider ?? "github-copilot",
-      DEFAULT_CHAT_MODEL_ID:
-        process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.6",
+export default defineConfig((env) => {
+  const base = typeof baseConfig === "function" ? baseConfig(env) : baseConfig;
+  const config: UserConfig = {
+    ...base,
+    test: {
+      environment: "node",
+      env: {
+        DEFAULT_CHAT_MODEL_PROVIDER:
+          process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? selectedModel?.provider ?? "github-copilot",
+        DEFAULT_CHAT_MODEL_ID:
+          process.env["DEFAULT_CHAT_MODEL_ID"] ?? selectedModel?.id ?? "claude-sonnet-4.6",
+      },
+      include: ["src/outside-in/**/*.test.ts"],
+      exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+      globalSetup: ["./src/outside-in/global-setup.ts"],
+      // Fork pool: tool workers are real worker threads; the worker config also
+      // passes explicit dev/tsx execArgv for workspace source imports.
+      pool: "forks",
+      // Bound live-flow fan-out so the complete matrix remains below the
+      // 120-second suite budget while avoiding unbounded provider/runtime load.
+      fileParallelism: true,
+      maxWorkers: Number.parseInt(process.env["OUTSIDE_IN_MAX_WORKERS"] ?? "2", 10),
+      // One failing flow must stop the matrix immediately; otherwise Tier A/B
+      // permutations can serialize the same failure for several minutes.
+      bail: 1,
+      testTimeout: Number.parseInt(process.env["OUTSIDE_IN_TEST_TIMEOUT_MS"] ?? "85000", 10),
+      hookTimeout: Number.parseInt(process.env["OUTSIDE_IN_HOOK_TIMEOUT_MS"] ?? "60000", 10),
     },
-    include: ["src/outside-in/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
-    globalSetup: ["./src/outside-in/global-setup.ts"],
-    // Fork pool: tool workers are real worker threads; the worker config also
-    // passes explicit dev/tsx execArgv for workspace source imports.
-    pool: "forks",
-    // Bound live-flow fan-out so the complete matrix remains below the
-    // 120-second suite budget while avoiding unbounded provider/runtime load.
-    fileParallelism: true,
-    maxWorkers: Number.parseInt(process.env["OUTSIDE_IN_MAX_WORKERS"] ?? "2", 10),
-    // One failing flow must stop the matrix immediately; otherwise Tier A/B
-    // permutations can serialize the same failure for several minutes.
-    bail: 1,
-    testTimeout: Number.parseInt(process.env["OUTSIDE_IN_TEST_TIMEOUT_MS"] ?? "85000", 10),
-    hookTimeout: Number.parseInt(process.env["OUTSIDE_IN_HOOK_TIMEOUT_MS"] ?? "60000", 10),
-  },
-};
-
-export default config;
+  };
+  return config;
+});

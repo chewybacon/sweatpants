@@ -19,9 +19,9 @@ createDurableTool("book_flight", { version: "1" })
   });
 ```
 
-The production `apps/yo-chat/src/tools/primitive/book-flight.ts` now uses this
-builder. Its body, schema declarations, request representation and default version
-remain the same. The existing primitive chat host receives the resulting tool
+All six yo-chat local tools and all five yo-mcp tools use this builder. Their
+bodies, schema declarations, request representation and declared versions remain
+the same. The existing primitive chat host receives the resulting tool
 through its existing tool list. No new host API or execution engine is required.
 
 ## Implementation and retirement
@@ -37,21 +37,23 @@ consumers. Its removal depends on migrating those consumers, including deferred
 workflow/codemode support. The primitive subpath is a temporary import boundary,
 not a third intended authoring model. Once its required surface and consumers have
 moved, the primitive implementation should take the root name and the old compiler
-should be deleted. `defineJournalTool` remains the interim compiler/export for
-other consumers; flight booking no longer authors against that object-style API.
+should be deleted. The public object authoring API has been removed after
+migrating every caller. One internal compiler remains in `tool/journal-compiler.ts`,
+without a builder import cycle.
 
 ## Supported surface and remaining differences
 
 This replacement currently implements description, parameters, output, effects,
 elicits, samples and execute. Context capabilities are inferred from declarations;
 undeclared sample/effect/elicit methods are absent in authored context types.
-Effect maps accumulate; elicitation declarations replace the prior map, matching
-the existing fluent conventions. Output schemas constrain authored result types,
+Effect and elicitation maps accumulate; later keys replace earlier declarations.
+Output schemas constrain authored result types,
 and the underlying compiler performs runtime validation and JSON capture.
 
-It deliberately exposes the existing primitive compiler's Zod schemas in this
-first production slice. The root builder's broader Standard Schema/projection
-support, typed context extensions (`uses`), richer sampling, document support,
+It supports synchronous Standard Schema V1 with the existing portable projection
+machinery for parameters, output, effects and elicitation response/context. Non-Zod
+schemas require explicit input/output projections; asynchronous validators reject.
+The root builder’s typed context extensions (`uses`), richer sampling, document support,
 decisions, explicit artifact identities and codemode are not implemented by this
 builder yet. Those methods are absent rather than silently ignored. Do not treat
 this subset as feature parity or label the crank builder retired.
@@ -60,6 +62,4 @@ The current ephemeral builder is still Effection-specific. Its migration to a
 runtime adapter remains separate. Standard-durability core has no new runtime
 or storage dependency from this work.
 
-Validation: focused SDK and experiment TypeScript checks, including the actual
-flight-booking source through development package resolution. No tests, landing,
-or live provider calls were run. Runtime behavior has not been verified this pass.
+Runtime verification is pending the integrated source freeze; see the workspace implementation report.

@@ -428,10 +428,9 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
                 throw new Error("Invalid request kind");
               }
               const tool = options.tools.find((entry) => entry.name === pending.tool)!;
-              const answer = parseJournalAnswer(
-                tool.elicits[pending.key].response,
-                command.status === "cancelled" ? { action: "cancel" } : command.payload,
-              );
+              const answer =
+                command.status === "cancelled" ? { action: "cancel" } : command.payload;
+              parseJournalAnswer(tool.elicits[pending.key].response, answer);
               store.answer(
                 turn.identity.executionId,
                 command.commandId,

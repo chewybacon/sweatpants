@@ -4,24 +4,26 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from "zod";
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 
 const confirmSchema = z.object({
   confirmed: z.boolean().describe("Whether to proceed"),
   reason: z.string().optional().describe("Optional reason for your choice"),
 });
 
-export const confirmTool = defineJournalTool({
-  name: "confirm",
-  description: "Ask the user to confirm an action",
-  parameters: z.object({
-    action: z.string().describe("Description of the action to confirm"),
-    dangerous: z.boolean().default(false).describe("Whether this is a dangerous action"),
-  }),
-  elicits: {
+export const confirmTool = createDurableTool("confirm", { version: "1" })
+  .description("Ask the user to confirm an action")
+  .parameters(
+    z.object({
+      action: z.string().describe("Description of the action to confirm"),
+      dangerous: z.boolean().default(false).describe("Whether this is a dangerous action"),
+    }),
+  )
+  .effects({})
+  .elicits({
     confirmation: { response: confirmSchema },
-  },
-  execute: function* (params, ctx) {
+  })
+  .execute(function* (params, ctx) {
     const prefix = params.dangerous ? "WARNING: " : "";
     const message = `${prefix}${params.action}\n\nDo you want to proceed?`;
 
@@ -54,6 +56,4 @@ export const confirmTool = defineJournalTool({
         ? `User confirmed: ${params.action}`
         : `User rejected: ${params.action}${result.content.reason ? ` (Reason: ${result.content.reason})` : ""}`,
     };
-  },
-  effects: {},
-});
+  });

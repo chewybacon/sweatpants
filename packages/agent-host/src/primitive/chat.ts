@@ -1,3 +1,8 @@
+import {
+  validateJournalValue,
+  type JournalRequest,
+  type JournalTool,
+} from "@sweatpants/agent-sdk/primitive";
 import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
 import {
@@ -10,7 +15,6 @@ import {
   type ModelStreamEvent,
 } from "@sweatpants/model-provider";
 import type { ChatMessage } from "@sweatpants/chat-contract";
-import type { JournalRequest, JournalTool } from "@sweatpants/agent-sdk/primitive";
 
 /** Consume one model stream within the selected runtime's resource lifetime. */
 export interface ChatModelStream<Y> {
@@ -173,8 +177,13 @@ export function* handleChatRequest<Y>(
   ) {
     throw new Error("Effect implementation unavailable");
   }
-  const outcome = yield* handler(assertJson(effect.input.parse(request.input)));
-  return outcome.ok ? success(assertJson(effect.output.parse(outcome.value))) : outcome;
+  const outcome = yield* handler(assertJson(validateJournalValue(effect.input, request.input)));
+  if (outcome.ok) {
+    assertJson(outcome.value);
+    assertJson(validateJournalValue(effect.output, outcome.value));
+  }
+  // Persist raw output; the resumed author context applies its transform once.
+  return outcome;
 }
 
 /** Keep complete accepted call/result groups; provisional and unfinished calls never enter inference history. */

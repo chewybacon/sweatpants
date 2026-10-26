@@ -7,7 +7,7 @@ retain `JournalRequest` as the default.
 
 `createJournalToolContext(definition, callId, dispatch)` owns the existing request
 construction, correlation, effect input/output validation and elicitation answer
-validation. `defineJournalTool.invoke` uses it with a handler that yields each
+validation. The fluent tool’s compiled `invoke` uses it with a handler that yields each
 request to the journal. The old inline context construction was extracted, not
 copied into a second implementation. Sampling retains its existing asserted reply
 shape; this pass does not add runtime sampling validation.
@@ -22,18 +22,19 @@ Application composition looks like this (with host implementations supplied by
 the application):
 
 ```ts
-const tool = createToolContext(effection);
-yield* tool.Capabilities.install({ sample, elicit, effect, log, notify });
-yield* tool.Capabilities.around({
-  *sample([request], next) {
-    return yield* next({ ...request, maxTokens: Math.min(request.maxTokens, 200) });
-  },
-});
-const context = tool.forTool(bookFlightDefinition, callId);
-const result = yield* executeBookFlight(
-  bookFlightDefinition.parameters.parse(input),
-  context,
-);
+function* booking() {
+  return yield* effection.scoped(function* () {
+    const tool = createToolContext(effection);
+    yield* tool.Capabilities.install({ sample, elicit, effect, log, notify });
+    yield* tool.Capabilities.around({
+      *sample([request], next) {
+        return yield* next({ ...request, maxTokens: Math.min(request.maxTokens, 200) });
+      },
+    });
+    const context = tool.forTool(bookFlightDefinition, callId);
+    return yield* executeBookFlight(bookFlightDefinition.parameters.parse(input), context);
+  });
+}
 ```
 
 The installation and middleware belong inside a caller-owned scope. Context

@@ -1,4 +1,4 @@
-import { defineJournalTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
 import { z } from "zod";
 import { CardSchema } from "../pick-card/cards";
 export const PickCardParametersSchema = z.object({
@@ -16,22 +16,20 @@ export const PickCardContextSchema = z.object({
   prompt: z.string(),
 });
 
-export const pickCard = defineJournalTool({
-  name: "pick_card",
-  version: "2.0.0",
-  description: "Draw random cards and let the user pick one",
-  parameters: PickCardParametersSchema,
-  output: z.string(),
-  effects: {
+export const pickCard = createDurableTool("pick_card", { version: "2.0.0" })
+  .description("Draw random cards and let the user pick one")
+  .parameters(PickCardParametersSchema)
+  .output(z.string())
+  .effects({
     draw: {
       version: "1",
       input: z.object({ count: z.number().int().min(2).max(10) }),
       output: z.object({ cards: z.array(CardSchema).min(2).max(10) }),
       retrySafety: { mode: "repeatable" },
     },
-  },
-  elicits: { pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } },
-  execute: function* (input, context) {
+  })
+  .elicits({ pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } })
+  .execute(function* (input, context) {
     const { cards } = yield* context.effect("draw", { count: input.count });
     const prompt = `Pick one of these ${cards.length} cards:`;
     const result = yield* context.elicit("pickCard", {
@@ -55,5 +53,4 @@ export const pickCard = defineJournalTool({
       "Remember this selected card for later questions in the same conversation.",
       "Acknowledge the specific selected card to the user now.",
     ].join(" ");
-  },
-});
+  });

@@ -17,7 +17,7 @@ interface Frame {
   readonly parent?: Frame;
   readonly scope: Scope.Scope;
   readonly values: Map<string, unknown>;
-  readonly drivers: Set<string>;
+  readonly drivers: Map<string, Record<string, Invoke>>;
   readonly middleware: Map<string, Decoration[]>;
   closed: boolean;
 }
@@ -51,7 +51,7 @@ function owned<T>(work: Work<T, EffectYield>, parent?: Frame): Effect.Effect<T> 
       parent,
       scope,
       values: new Map(),
-      drivers: new Set(),
+      drivers: new Map(),
       middleware: new Map(),
       closed: false,
     };
@@ -138,7 +138,19 @@ export const effect: Composition<EffectYield> = {
         key,
         (...args: unknown[]) =>
           Effect.flatMap(CompositionFrame, (frame) => {
-            const all = ancestors(frame).flatMap((current) => current.middleware.get(name) ?? []);
+            const chain = ancestors(frame);
+            const all = chain.flatMap((current) => current.middleware.get(name) ?? []);
+            // Middleware may enter a child scope before invoking its continuation.
+            // Resolve only the terminal core there, without redispatching wrappers.
+            const terminal: Invoke = (...input) =>
+              Effect.flatMap(CompositionFrame, (current) => {
+                const target =
+                  ancestors(current)
+                    .reverse()
+                    .find((ancestor) => ancestor.drivers.has(name))
+                    ?.drivers.get(name) ?? core;
+                return execute(() => Reflect.apply(target[key]!, target, input));
+              });
             const ordered = [
               ...all.filter((entry) => entry.at === "max"),
               ...all.filter((entry) => entry.at === "min").reverse(),
@@ -146,7 +158,7 @@ export const effect: Composition<EffectYield> = {
             const invoke = ordered.reduceRight<Invoke>((next, entry) => {
               const middleware = entry.methods[key];
               return middleware ? (...input) => middleware(input, next) : next;
-            }, core[key]!);
+            }, terminal);
             return execute(() => invoke(...args));
           }),
       ]),
@@ -174,19 +186,7 @@ export const effect: Composition<EffectYield> = {
           if (frame.drivers.has(name)) {
             throw new Error(`Driver already installed in this scope: ${name}`);
           }
-          const methods = Object.fromEntries(
-            Object.keys(defaults).map((key) => [
-              key,
-              (args: unknown[]) =>
-                Reflect.apply(
-                  driver[key as keyof Signature] as (...args: unknown[]) => ReturnType<Invoke>,
-                  driver,
-                  args,
-                ),
-            ]),
-          );
-          decorate(frame, methods, "min");
-          frame.drivers.add(name);
+          frame.drivers.set(name, driver as unknown as Record<string, Invoke>);
         }),
     };
   },

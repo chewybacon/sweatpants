@@ -1,5 +1,5 @@
 /** Journal-native tic-tac-toe program and public tool contract. */
-import { defineJournalTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { assertJson, type JsonObject } from "@sweatpants/foundation";
 import type { IterableOperation } from "@sweatpants/foundation/computation";
 import type { ProgramElicitResult } from "@sweatpants/durable-execution";
@@ -81,22 +81,20 @@ type GameMove = z.infer<typeof GameMoveSchema>;
  * assignment is an execution-owned recorded coin flip, user moves are
  * elicitations, and model moves are completed model.sample pulls.
  */
-export const playTttTool = defineJournalTool({
-  sampling: true,
-  name: "play_ttt",
-  version: "3.0.0",
-  description: "Play a complete game of tic-tac-toe against the user.",
-  parameters: z.object({}),
-  elicits: { pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } },
-  effects: {
+export const playTttTool = createDurableTool("play_ttt", { version: "3.0.0" })
+  .description("Play a complete game of tic-tac-toe against the user.")
+  .parameters(z.object({}))
+  .effects({
     coin: {
       version: "1",
       input: z.object({}),
       output: z.object({ side: z.enum(["heads", "tails"]) }),
       retrySafety: { mode: "repeatable" },
     },
-  },
-  execute: function* (_input, context): IterableOperation<PlayTttResult, JournalRequest> {
+  })
+  .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })
+  .samples()
+  .execute(function* (_input, context): IterableOperation<PlayTttResult, JournalRequest> {
     const coinFlip = yield* context.effect("coin", {});
     const modelSymbol: Player = coinFlip.side === "heads" ? "X" : "O";
     const userSymbol: Player = modelSymbol === "X" ? "O" : "X";
@@ -236,7 +234,6 @@ export const playTttTool = defineJournalTool({
       }
       currentPlayer = currentPlayer === "X" ? "O" : "X";
     }
-  },
-});
+  });
 
 export type PlayTttResult = z.infer<typeof PlayTttResultSchema>;

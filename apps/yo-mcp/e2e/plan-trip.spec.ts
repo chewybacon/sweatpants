@@ -1,10 +1,11 @@
+import { enableInspectorConnection } from "./fixtures/inspector.ts";
 import { test, expect } from "@playwright/test";
 
 test("plan a trip through five prompts and revise within the original invocation", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("switch", { name: /Connect or disconnect/ }).click({ force: true });
+  await enableInspectorConnection(page);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await page.locator('label[for$="-Tools"]').click();
   await page.getByRole("button", { name: "plan_trip", exact: true }).click();

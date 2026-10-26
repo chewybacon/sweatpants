@@ -9,7 +9,7 @@ import {
   type EffectYield,
 } from "@sweatpants/standard-durability-effect";
 import { createConversation } from "../../../experiments/standard-durability/conversation.ts";
-import type { Composition, Operation, Work } from "@sweatpants/standard-durability";
+import type { Composition, Operation, Operations, Work } from "@sweatpants/standard-durability";
 
 interface Host<Y> {
   composition: Composition<Y>;
@@ -162,6 +162,68 @@ function scenarios<Y>(name: string, host: Host<Y>) {
         return yield* api.operations.read();
       }).result;
       expect(result).toBe("max1(max2(min2(min1(core))))");
+    });
+
+    it("keeps inherited middleware around child drivers and restores the parent core", async () => {
+      const driver = (value: string): Operations<{ read(): string; helper(): string }, Y> => ({
+        *read() {
+          return yield* this.helper();
+        },
+        *helper() {
+          return value;
+        },
+      });
+      const api = c.createApi<{ read(): string; helper(): string }>(
+        "driver-ordering",
+        driver("default"),
+      );
+      const result = await host.start(function* () {
+        yield* api.around(
+          {
+            *read(args, next) {
+              return `max(${yield* next(...args)})`;
+            },
+          },
+          { at: "max" },
+        );
+        yield* api.around(
+          {
+            *read(args, next) {
+              return `min(${yield* next(...args)})`;
+            },
+          },
+          { at: "min" },
+        );
+        yield* api.around({
+          *read(args, next) {
+            return `ordinary(${yield* next(...args)})`;
+          },
+        });
+        const before = yield* api.operations.read();
+        yield* api.install(driver("parent"));
+        const child = yield* c.scoped(function* () {
+          yield* api.install(driver("child"));
+          return yield* api.operations.read();
+        });
+        const continuation = yield* c.scoped(function* () {
+          yield* api.around({
+            *read(args, next) {
+              return yield* c.scoped(function* () {
+                yield* api.install(driver("continuation"));
+                return yield* next(...args);
+              });
+            },
+          });
+          return yield* api.operations.read();
+        });
+        return [before, child, continuation, yield* api.operations.read()];
+      }).result;
+      expect(result).toEqual([
+        "max(ordinary(min(default)))",
+        "max(ordinary(min(child)))",
+        "max(ordinary(min(continuation)))",
+        "max(ordinary(min(parent)))",
+      ]);
     });
 
     it("fails visibly for missing context, missing driver and duplicate installation", async () => {

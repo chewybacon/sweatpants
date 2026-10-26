@@ -1,3 +1,7 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { z } from "zod";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createPrimitiveChatApp } from "@sweatpants/agent-host/primitive";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -5,9 +9,9 @@ import { call, spawn, resource, type Operation } from "effection";
 import { expect, it, vi } from "vitest";
 import { withTestScenario, type ScenarioContext } from "@sweatpants/test-rig";
 import { createPiAiModelProvider } from "@sweatpants/model-provider-pi-ai";
-import { createChatClient, type ReactChatClient } from "@sweatpants/react-chat";
+import { createChatClient, makePlugin, type ReactChatClient } from "@sweatpants/react-chat";
 import { createLocalYoChatApplication } from "../../../apps/yo-chat/src/server/local-chat-application.ts";
-import { waitForSnapshot } from "../../support/client.ts";
+import { useClient, waitForSnapshot } from "../../support/client.ts";
 
 vi.mock("../../../packages/agent-host/src/server/index.ts", async (original) => ({
   ...(await original<object>()),
@@ -362,3 +366,93 @@ for (const prior of ["failed", "cancelled"] as const) {
     });
   });
 }
+
+it("transforms projected non-Zod elicitation context once in the public plugin and completes", async () => {
+  const contextSchema: StandardSchemaV1<{ value: string }, { value: number }> = {
+    "~standard": {
+      version: 1,
+      vendor: "acceptance-context",
+      validate(input) {
+        if (
+          !input ||
+          typeof input !== "object" ||
+          !("value" in input) ||
+          typeof input.value !== "string" ||
+          !/^\d+$/.test(input.value)
+        ) {
+          return { issues: [{ message: "Expected numeric text context" }] };
+        }
+        return { value: { value: Number(input.value) + 1 } };
+      },
+    },
+  };
+  const tool = createDurableTool("projected_context", { version: "1" })
+    .description("Project context through the public client")
+    .parameters(z.object({}))
+    .elicits({
+      choose: {
+        response: z.object({ selected: z.number() }),
+        context: contextSchema,
+        contextProjections: {
+          inputProjection: { type: "object", properties: { value: { type: "string" } } },
+          outputProjection: { type: "object", properties: { value: { type: "number" } } },
+        },
+      },
+    })
+    .execute(function* (_, ctx) {
+      const answer = yield* ctx.elicit("choose", { message: "Choose", context: { value: "4" } });
+      return answer.action === "accept" ? answer.content : null;
+    });
+  const seen: unknown[] = [];
+  const plugin = makePlugin(tool)
+    .onElicit({
+      *choose(request) {
+        seen.push(request.context);
+        expect(request.context).toEqual({ value: 5 });
+        return { action: "accept", content: { selected: request.context.value } };
+      },
+    })
+    .build();
+  const directory = await mkdtemp(join(tmpdir(), "projected-chat-"));
+  try {
+    await withTestScenario(
+      {
+        binding: "http",
+        createApplication: (context) => {
+          const app = createPrimitiveChatApp({
+            database: join(directory, "chat.sqlite"),
+            basePath: "/assistant/chat",
+            program: { id: "projected-chat", version: "1", digest: "projected-chat-v1" },
+            tools: [tool],
+            effects: {},
+            model: {
+              identity: "scripted",
+              model: context.model.model,
+              driver: createPiAiModelProvider().driver,
+              streamOptions: context.model.streamOptions,
+            },
+            authorize: () => true,
+          });
+          return { handle: app.handler, close: app.close };
+        },
+      },
+      function* (rig) {
+        const client = yield* useClient(rig, { threadId: "projected", plugins: [plugin] });
+        const sending = yield* spawn(() => call(() => client.sendMessage("Choose")));
+        const first = yield* rig.model.request();
+        yield* first.respond.toolCalls([{ id: "projected-call", name: tool.name, arguments: {} }]);
+        const final = yield* rig.model.request();
+        expect(outputs(final.body.input)).toEqual([
+          { id: "projected-call", output: { selected: 5 } },
+        ]);
+        yield* final.respond.text("Completed");
+        yield* sending;
+        yield* waitForSnapshot(client, (state) => state.status === "ready");
+        expect(client.getSnapshot().error).toBeNull();
+        expect(seen).toEqual([{ value: 5 }]);
+      },
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
