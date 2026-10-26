@@ -38,6 +38,7 @@
     "@sweatpants/journal-authority": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
+    "effect": "^4.0.6",
     "fallow": "3.19.0",
     "oxc-parser": "^0.123.0",
     "oxfmt": "^0.43.0",

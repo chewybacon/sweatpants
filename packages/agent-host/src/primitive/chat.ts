@@ -1,11 +1,10 @@
-import { useAbortSignal, type Operation } from "effection";
 import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
-import type { Identity } from "@sweatpants/foundation/journal";
 import {
   decodeModelResponse,
   type Model,
-  type ModelProviderDriver,
+  type ModelProviderStreamRequest,
+  type ModelResponse,
   type StreamOptions,
   type ModelContext,
   type ModelStreamEvent,
@@ -13,23 +12,22 @@ import {
 import type { ChatMessage } from "@sweatpants/chat-contract";
 import type { JournalRequest, JournalTool } from "@sweatpants/agent-sdk/primitive";
 
-export interface PrimitiveChatOptions {
-  database: string;
-  basePath?: string;
-  program: Identity["program"];
-  /** Covers model configuration without persisting credentials. Included in the pinned release. */
+/** Consume one model stream within the selected runtime's resource lifetime. */
+export interface ChatModelStream<Y> {
+  stream(
+    request: ModelProviderStreamRequest,
+    publish: (event: ModelStreamEvent) => void,
+  ): IterableOperation<ModelResponse, Y>;
+}
+
+export interface ChatCapabilities<Y> {
   model: {
-    identity: string;
     model: Model;
-    driver: ModelProviderDriver;
+    driver: ChatModelStream<Y>;
     streamOptions?: StreamOptions;
-    select?(selection: unknown): string;
-    resolve?(identity: string): Model;
   };
   tools: readonly JournalTool[];
-  effects: Readonly<Record<string, (input: Json) => Operation<Outcome<Json, Json>>>>;
-  /** Required trusted deployment boundary; the default policy must never be inferred from client IDs. */
-  authorize(request: Request, conversationId: string): boolean | Promise<boolean>;
+  effects: Readonly<Record<string, (input: Json) => IterableOperation<Outcome<Json, Json>, Y>>>;
 }
 export type ChatRequest =
   | JournalRequest
@@ -107,43 +105,39 @@ export function* chatWork(
   return assertJson({ messages });
 }
 
-export function* handleChatRequest(
-  options: PrimitiveChatOptions,
+export function* handleChatRequest<Y>(
+  options: ChatCapabilities<Y>,
   request: ChatRequest,
   publish: (event: ModelStreamEvent) => void = () => {},
-): Operation<Outcome<Json, Json>> {
+): IterableOperation<Outcome<Json, Json>, Y> {
   if (request.kind === "progress" || request.kind === "tool-result") {
     return success(null);
   }
   if (request.kind === "sample" || request.kind === "nested-sample") {
-    const signal = yield* useAbortSignal();
     const nested = request.kind === "nested-sample";
-    const stream = yield* options.model.driver.stream({
-      model: options.model.model,
-      context: nested
-        ? {
-            messages: [{ role: "user", content: [{ type: "text", text: request.prompt }] }],
-            tools: [],
-          }
-        : (request.context as unknown as ModelContext),
-      options: {
-        ...options.model.streamOptions,
-        signal,
-        // CONDITIONAL-SPREAD: preserve caller token options for outer samples.
-        ...(nested ? { maxTokens: request.maxTokens } : {}),
-        // CONDITIONAL-SPREAD: preserve caller response format unless the nested sample declares one.
-        ...(nested && request.schema
-          ? { responseFormat: { type: "json_schema" as const, schema: request.schema } }
-          : {}),
-      },
-    });
-    const subscription = yield* stream;
-    let next = yield* subscription.next();
-    while (!next.done) {
-      publish(next.value);
-      next = yield* subscription.next();
-    }
-    const response = decodeModelResponse(next.value);
+    const response = decodeModelResponse(
+      yield* options.model.driver.stream(
+        {
+          model: options.model.model,
+          context: nested
+            ? {
+                messages: [{ role: "user", content: [{ type: "text", text: request.prompt }] }],
+                tools: [],
+              }
+            : (request.context as unknown as ModelContext),
+          options: {
+            ...options.model.streamOptions,
+            // CONDITIONAL-SPREAD: preserve caller token options for outer samples.
+            ...(nested ? { maxTokens: request.maxTokens } : {}),
+            // CONDITIONAL-SPREAD: preserve caller response format unless the nested sample declares one.
+            ...(nested && request.schema
+              ? { responseFormat: { type: "json_schema" as const, schema: request.schema } }
+              : {}),
+          },
+        },
+        publish,
+      ),
+    );
     if (response.errorMessage) {
       throw new Error(response.errorMessage);
     }

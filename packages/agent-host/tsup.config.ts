@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
+    "primitive/activation": "src/primitive/activation.ts",
     "primitive/app": "src/primitive/app.ts",
     index: "src/index.ts",
     "mcp/index": "src/mcp/index.ts",

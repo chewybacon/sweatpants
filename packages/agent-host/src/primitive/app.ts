@@ -1,20 +1,16 @@
-import { run, type Task } from "effection";
+import { runtime } from "@sweatpants/runtime-effection";
+import type { RuntimeExecution } from "@sweatpants/foundation/computation";
+import { startChatActivation } from "./activation.ts";
+import { effectionModelStream, type PrimitiveChatOptions } from "./effection.ts";
 import { z } from "zod";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import { activateJournal, createIteratorGuest } from "@sweatpants/primitive-journal";
 import { parseJournalAnswer, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { createChatRouter, normalizeChatBasePath } from "../server/chat-router.ts";
-import {
-  chatWork,
-  handleChatRequest,
-  acceptedMessages,
-  type PrimitiveChatOptions,
-  type TurnInput,
-} from "./chat.ts";
+import { acceptedMessages, type TurnInput } from "./chat.ts";
 import { resolveTurnDisposition } from "./disposition.ts";
 import { ChatStore, type TurnRecord } from "./store.ts";
 import { reconcileAndProjectChat, type LiveSample } from "./presentation.ts";
-export type { PrimitiveChatOptions } from "./chat.ts";
+export type { PrimitiveChatOptions } from "./effection.ts";
 
 const id = z.string().min(1).max(1024);
 const base = {
@@ -106,7 +102,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
   let tail: Promise<unknown> = Promise.resolve();
   type Owner = {
     failure?: { code: string; message: string };
-    task?: Task<unknown>;
+    task?: RuntimeExecution<unknown>;
     done: Promise<void>;
     live?: LiveSample;
     listeners: Set<() => void>;
@@ -159,59 +155,44 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
           if (disposition.state !== "running") {
             return;
           }
-          owner.task = run(function* () {
-            return yield* activateJournal(
-              function* () {
-                return createIteratorGuest(() =>
-                  chatWork(structuredClone(turn.identity.input) as TurnInput, options.tools),
-                );
+          owner.task = startChatActivation(
+            runtime,
+            {
+              ...options,
+              model: {
+                ...options.model,
+                driver: effectionModelStream(options.model.driver),
+                model:
+                  options.model.resolve?.((turn.identity.input as TurnInput).modelIdentity) ??
+                  options.model.model,
               },
-              journal,
-              {
-                classify: (request) =>
-                  request.kind === "elicit"
-                    ? "park"
-                    : request.kind === "effect"
-                      ? request.retrySafety.mode
-                      : "repeatable",
-                accepted() {
-                  owner.live = undefined;
+            },
+            turn.identity.input as TurnInput,
+            journal,
+            {
+              accepted() {
+                owner.live = undefined;
+                for (const listener of owner.listeners) {
+                  listener();
+                }
+              },
+              publish(event, request) {
+                if ("partial" in event) {
+                  owner.live = {
+                    execution,
+                    sequence: journal.read().entries.length,
+                    request,
+                    message: event.partial,
+                  };
+                  store.publish(execution, assertJson(owner.live));
                   for (const listener of owner.listeners) {
                     listener();
                   }
-                },
-                handler: (request) =>
-                  handleChatRequest(
-                    {
-                      ...options,
-                      model: {
-                        ...options.model,
-                        model:
-                          options.model.resolve?.(
-                            (turn.identity.input as TurnInput).modelIdentity,
-                          ) ?? options.model.model,
-                      },
-                    },
-                    request,
-                    (event) => {
-                      if ("partial" in event) {
-                        owner.live = {
-                          execution,
-                          sequence: journal.read().entries.length,
-                          request,
-                          message: event.partial,
-                        };
-                        store.publish(execution, assertJson(owner.live));
-                        for (const listener of owner.listeners) {
-                          listener();
-                        }
-                      }
-                    },
-                  ),
+                }
               },
-            );
-          });
-          await owner.task;
+            },
+          );
+          await owner.task.result;
         } catch (error) {
           const snapshot = journal.read();
           if (
@@ -479,7 +460,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
           try {
             store.reconcileAnswers(turn, journal);
             projection = project(conversation);
-            await owner?.task?.halt();
+            await owner?.task?.cancel();
             await owner?.done;
             const disposition = resolveTurnDisposition(journal, { type: "interrupt" });
             if (disposition.snapshot.status !== "cancelled") {
@@ -577,7 +558,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
         let failed = false;
         // Attempt every cleanup step, retaining the first (native) failure.
         for (const cleanup of [
-          () => Promise.all([...owners.values()].map((owner) => owner.task?.halt())),
+          () => Promise.all([...owners.values()].map((owner) => owner.task?.cancel())),
           () => Promise.all([...owners.values()].map((owner) => owner.done)),
           () => tail,
           () => store.close(),

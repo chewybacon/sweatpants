@@ -208,6 +208,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
       fallow:
         specifier: 3.19.0
         version: 3.19.0
@@ -1392,6 +1395,9 @@ importers:
       '@sweatpants/primitive-journal':
         specifier: workspace:*
         version: link:../primitive-journal
+      '@sweatpants/runtime-effection':
+        specifier: workspace:*
+        version: link:../runtime-effection
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../stream-bridge
@@ -2548,6 +2554,44 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
+
+  packages/runtime-effect:
+    dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/runtime-effection:
+    dependencies:
+      '@sweatpants/foundation':
+        specifier: workspace:*
+        version: link:../foundation
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/storage-d1:
     dependencies:
@@ -9437,6 +9481,9 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  effect@4.0.6:
+    resolution: {integrity: sha512-Tc3mkzuLR6t6P9dhLt0D2GrxYtmU5td4XEJEiXCmILz53IRIfJyHsKZWjTA3xEjiwpNTtXBgI4iqYPxMztBDrw==}
 
   effection@4.2.0:
     resolution: {integrity: sha512-exjR8G1aFFcmNMUSsAZKsFJXB1K7CZQm6eKFcNyNnFOG7yEcVo81GLWGEadjheFIr0Mxvi6e40TzN+HyW/uyxw==}
@@ -19905,6 +19952,8 @@ snapshots:
       safe-buffer: 5.2.1
 
   ee-first@1.1.1: {}
+
+  effect@4.0.6: {}
 
   effection@4.2.0: {}
 
