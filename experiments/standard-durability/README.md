@@ -265,3 +265,9 @@ model schemas, journal/chat integration and native providers. Imports select pac
 explicitly; there is no core barrel that loads both runtimes. All three packages are
 private experimental scaffolds. Existing runtime-\* packages retain their distinct
 execution-capability role.
+
+The portable core now includes `ApiRequest<Wire>` and binding signatures. Local
+`api-bindings.ts` specializes them to foundation Json. `journal-api.ts` owns the
+`journalHandler(host)` adapter; the scope/dispatch binding no longer embeds the
+journal's outer successful exchange wrapper. Authored operations, installation and
+middleware keep their existing facade; persistence fields and outcomes are unchanged.

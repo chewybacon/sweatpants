@@ -70,7 +70,8 @@ The guest validates replies again, including replies supplied during replay.
 Object identity is used only for in-memory caching; persisted identity is explicit.
 Versioning schema/implementation changes remains the author's responsibility.
 
-`host.dispatch` returns the operation's domain Outcome. `host.handle` adapts that
+`host.dispatch` returns the operation's domain Outcome. `journalHandler(host)` in
+`journal-api.ts` adapts that
 value to the existing journal protocol by wrapping it in an outer successful
 exchange Outcome. Thus a payment decline is persisted and returned as a value;
 validation defects, missing providers, and native interruption are not fabricated
@@ -112,3 +113,9 @@ proved sufficient for every schema library. Native interruption and simultaneous
 body/finalizer errors retain the earlier composition experiment's limitations.
 
 Full repository verification is recorded in the shared research handoff.
+
+The request and binding signatures now come from core: `ApiRequest<Wire>`,
+`GuestOperations<D, Wire>`, `HostBinding<D, Y, Wire>` and `Host<Y, Wire>`. This JSON
+implementation supplies Json as Wire through local aliases. The operations/host
+facade is unchanged; journal call sites use `journalHandler(Api.host)` instead of
+`Api.host.handle`. Wire fields and nested domain/exchange Outcome layout are unchanged.

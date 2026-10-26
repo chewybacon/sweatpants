@@ -1,3 +1,4 @@
+import { journalHandler } from "../../../experiments/standard-durability/journal-api.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -79,6 +80,14 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       try {
         const result = await host.run(function* () {
           yield* installExample(() => {});
+          const domain = yield* Payments.host.dispatch({
+            ...request,
+            method: "lookup",
+            input: { receipt: "" },
+            retrySafety: { mode: "repeatable" },
+          });
+          expect(domain).toEqual({ ok: false, error: { code: "missing" } });
+          expect(journal.read().entries).toHaveLength(0);
           return yield* driveJournal(
             function* () {
               const first = yield* Payments.operations.lookup({ receipt: "acme:10" });
@@ -86,7 +95,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               return assertJson([first, second]);
             },
             journal,
-            (pending) => Payments.host.handle(pending),
+            journalHandler(Payments.host),
           );
         });
         expect(result).toEqual([
@@ -155,7 +164,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               return value;
             },
             journal,
-            (pending) => Payments.host.handle(pending),
+            journalHandler(Payments.host),
             [],
             () => {
               if (interrupt) {
@@ -237,7 +246,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
                 },
                 journal,
                 (pending) =>
-                  Payments.host.handle(
+                  journalHandler(Payments.host)(
                     invalid === "version" ? { ...pending, version: "wrong" } : pending,
                   ),
               );

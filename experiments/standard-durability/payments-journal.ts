@@ -1,3 +1,4 @@
+import { journalHandler } from "./journal-api.ts";
 import type { Journal } from "@sweatpants/foundation/journal";
 import { driveJournal } from "../../packages/primitive-journal/src/driver.ts";
 import { createPayments } from "./payments.ts";
@@ -20,7 +21,7 @@ export function paymentWork<Y>(
       return yield* driveJournal(
         () => purchase(account, amount),
         journal,
-        (request) => Payments.host.handle(request),
+        journalHandler(Payments.host),
       );
     });
 }

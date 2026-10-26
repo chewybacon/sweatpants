@@ -1,3 +1,4 @@
+import { journalHandler } from "./journal-api.ts";
 import type {
   ChatActivationEvents,
   ChatCapabilities,
@@ -90,7 +91,9 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
           accepted: () => events.accepted?.(),
           handler: (request) => {
             if (request.kind === "api") {
-              return withSampling(capabilities.model, request, () => Model.host.handle(request));
+              return withSampling(capabilities.model, request, () =>
+                journalHandler(Model.host)(request),
+              );
             }
             return handleChatRequest(
               {

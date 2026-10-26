@@ -1,37 +1,23 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
-import type { Api, Composition, Operation, Operations } from "@sweatpants/standard-durability";
+import type { Composition, Operation, Operations } from "@sweatpants/standard-durability";
 import type {
   ApiDefinition,
+  ApiRequest as PortableApiRequest,
+  GuestOperations as PortableGuestOperations,
+  HostBinding as PortableHostBinding,
+  Host as PortableHost,
   AnyOperation,
-  InputOf,
   OperationDefinitions,
   Outcome,
-  OutcomeOf,
   Signature,
 } from "@sweatpants/standard-durability";
 
-/** The serializable boundary. Identity/version/policy are checked against the declaration. */
-export type ApiRequest = {
-  readonly kind: "api";
-  readonly api: string;
-  readonly method: string;
-  readonly version: string;
-  readonly input: Json;
-  readonly retrySafety: { readonly mode: "repeatable" | "unsafe" };
-};
-export type GuestOperations<D extends OperationDefinitions> = {
-  readonly [K in keyof D]: (input: InputOf<D[K]>) => Operation<OutcomeOf<D[K]>, ApiRequest>;
-};
-export interface HostBinding<D extends OperationDefinitions, Y> extends Api<Signature<D>, Y> {
-  /** Transport entry: validates metadata/input and final middleware output before acceptance. */
-  dispatch(request: ApiRequest): Operation<Outcome<unknown, unknown>, Y>;
-  /** Existing journal convention: domain Outcome is the successful exchange value. */
-  handle(request: ApiRequest): Operation<Outcome<Json, never>, Y>;
-}
-export interface Host<Y> {
-  use<D extends OperationDefinitions>(definition: ApiDefinition<D>): HostBinding<D, Y>;
-}
+/** This implementation chooses JSON; core contracts leave the wire representation open. */
+export type ApiRequest = PortableApiRequest<Json>;
+export type GuestOperations<D extends OperationDefinitions> = PortableGuestOperations<D, Json>;
+export type HostBinding<D extends OperationDefinitions, Y> = PortableHostBinding<D, Y, Json>;
+export type Host<Y> = PortableHost<Y, Json>;
 
 /** Scaffold constraint: synchronous validation of canonical JSON without transformations.
  * Revalidating replay must not silently transform an already transformed value again.
@@ -135,10 +121,6 @@ export function createHost<Y>(composition: Composition<Y>): Host<Y> {
           ) => Operation<unknown, Y>;
           const outcome = yield* invoke(input);
           return validateOutcome(spec, outcome);
-        },
-        *handle(request) {
-          const outcome = yield* bound.dispatch(request);
-          return { ok: true, value: assertJson(outcome) };
         },
       };
       identities.set(definition.id, definition);

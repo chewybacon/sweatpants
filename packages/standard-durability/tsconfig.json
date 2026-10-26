@@ -3,12 +3,13 @@
   "compilerOptions": {
     "composite": true,
     "emitDeclarationOnly": true,
-    "outDir": "./dist",
+    "outDir": "./.cache/types",
     "rootDir": "./src",
     "customConditions": ["development"],
     "noUncheckedIndexedAccess": false,
     "types": [],
-    "lib": ["ES2022"]
+    "lib": ["ES2022"],
+    "tsBuildInfoFile": "./.cache/tsconfig.check.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "**/*.test.ts"],
