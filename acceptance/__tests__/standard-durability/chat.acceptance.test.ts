@@ -5,6 +5,7 @@ import { call, run } from "effection";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { assertJson } from "@sweatpants/foundation";
+import type { Outcome } from "../../../experiments/standard-durability/api-definition.ts";
 import type { ModelResponse } from "@sweatpants/model-provider";
 import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 import { approveRecord } from "../../fixtures/approve-record.ts";
@@ -99,7 +100,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       let modelCalls = 0;
       let effectCalls = 0;
       const capabilities: ScopedChatCapabilities<Y> = {
-        model: { model },
+        model: { model, streamOptions: { apiKey: "host-only-fixture", temperature: 0.25 } },
         tools: [approveRecord],
         effects: {
           "approve_record.record": function* () {
@@ -113,31 +114,48 @@ function scenarios<Y>(name: string, host: Host<Y>) {
         // state is recovered from the old frame; the journal is the authority.
         const chat = createScopedChat(c);
         return host.start(function* () {
-          yield* chat.Model.install({
-            *sample(request, publish) {
+          yield* chat.Output.around({
+            *publish(args, next) {
+              trace.push("output-middleware");
+              yield* host.wait(Promise.resolve());
+              yield* next(...args);
+            },
+          });
+          yield* chat.Model.host.install({
+            *sample(context) {
+              const configuration = yield* chat.ModelConfig.expect();
+              expect(configuration.model).toBe(model);
+              expect(configuration.streamOptions?.apiKey).toBe("host-only-fixture");
+              expect(configuration.streamOptions?.temperature).toBe(0.25);
+              yield* c.scoped(function* () {
+                yield* chat.ModelConfig.set({ model, streamOptions: { temperature: 0.75 } });
+                const overridden = yield* chat.ModelConfig.expect();
+                expect(overridden.streamOptions?.temperature).toBe(0.75);
+              });
+              const restored = yield* chat.ModelConfig.expect();
+              expect(restored).toBe(configuration);
               const number = modelCalls++;
               trace.push(`acquire:${number}`);
               yield* c.ensure(function* () {
                 trace.push(`release:${number}`);
               });
               if (number === 1) {
-                expect(request.context.messages.some((message) => message.role === "tool")).toBe(
-                  true,
-                );
+                expect(context.messages.some((message) => message.role === "tool")).toBe(true);
               }
               const result = response(number === 0);
               yield* host.wait(Promise.resolve());
-              publish({ type: "start", partial: result.message });
-              return result;
+              yield* chat.Output.operations.publish({ type: "start", partial: result.message });
+              return { ok: true, value: result };
             },
           });
-          yield* chat.Model.around({
+          yield* chat.Model.host.around({
             *sample(args, next) {
               trace.push("middleware");
-              return transformed(yield* next(...args));
+              const outcome = yield* next(...args);
+              return outcome.ok ? { ok: true, value: transformed(outcome.value) } : outcome;
             },
           });
-          return yield* chat.activate(capabilities, input, journal, {
+          const result = yield* chat.activate(capabilities, input, journal, {
             publish() {
               trace.push("publish");
             },
@@ -145,6 +163,9 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               trace.push(`accepted:${journal.read().entries.length - 1}`);
             },
           });
+          const outside = yield* chat.ModelConfig.get();
+          expect(outside).toBeUndefined();
+          return result;
         }).result;
       };
       try {
@@ -153,9 +174,17 @@ function scenarios<Y>(name: string, host: Host<Y>) {
         if (parked.state !== "parked") {
           throw new Error("Expected approval request");
         }
+        expect(journal.readAccepted(0)?.request).toMatchObject({
+          kind: "api",
+          api: "sweatpants.model",
+          method: "sample",
+          version: "1",
+          retrySafety: { mode: "repeatable" },
+        });
+        expect(JSON.stringify(journal.readAccepted(0)?.request)).not.toContain("host-only-fixture");
         expect(journal.readAccepted(0)?.outcome).toEqual({
           ok: true,
-          value: assertJson(transformed(response(true))),
+          value: { ok: true, value: assertJson(transformed(response(true))) },
         });
         expect(trace.indexOf("release:0")).toBeLessThan(trace.indexOf("accepted:0"));
         expect(trace.indexOf("publish")).toBeLessThan(trace.indexOf("accepted:0"));
@@ -171,11 +200,12 @@ function scenarios<Y>(name: string, host: Host<Y>) {
         expect(effectCalls).toBe(1);
         expect(journal.readAccepted(4)?.outcome).toEqual({
           ok: true,
-          value: assertJson(transformed(response(false))),
+          value: { ok: true, value: assertJson(transformed(response(false))) },
         });
         expect(trace.indexOf("release:1")).toBeLessThan(trace.indexOf("accepted:4"));
         expect(trace.filter((event) => event === "middleware")).toHaveLength(2);
         expect(trace.filter((event) => event === "publish")).toHaveLength(2);
+        expect(trace.filter((event) => event === "output-middleware")).toHaveLength(2);
         const beforeReconnect = [...trace];
         journal.close();
         journal = new SqliteJournal(database, identity);
@@ -200,7 +230,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       const activate = (interrupt: boolean) => {
         const chat = createScopedChat(c);
         return host.start(function* () {
-          yield* chat.Model.install({
+          yield* chat.Model.host.install({
             *sample() {
               calls++;
               if (!interrupt) {
@@ -209,13 +239,14 @@ function scenarios<Y>(name: string, host: Host<Y>) {
               yield* c.ensure(function* () {
                 released = true;
               });
-              return response(false);
+              return { ok: true, value: response(false) };
             },
           });
-          yield* chat.Model.around({
+          yield* chat.Model.host.around({
             *sample(args, next) {
               middlewareCalls++;
-              return transformed(yield* next(...args));
+              const outcome = yield* next(...args);
+              return outcome.ok ? { ok: true, value: transformed(outcome.value) } : outcome;
             },
           });
           return yield* chat.activate(capabilities, input, journal, {
@@ -233,7 +264,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
         expect(journal.read().status).toBe("running");
         expect(journal.readAccepted(0)?.outcome).toEqual({
           ok: true,
-          value: assertJson(transformed(response(false))),
+          value: { ok: true, value: assertJson(transformed(response(false))) },
         });
         journal.close();
         journal = new SqliteJournal(database, identity);
@@ -256,16 +287,19 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       let published = false;
       let released = false;
       const execution = host.start(function* () {
-        yield* chat.Model.install({
-          *sample(_request, publish): Operation<ModelResponse, Y> {
+        yield* chat.Model.host.install({
+          *sample(): Operation<Outcome<ModelResponse, never>, Y> {
             yield* c.ensure(function* () {
               cleaning.resolve();
               yield* host.wait(release.promise);
               released = true;
             });
-            publish({ type: "start", partial: response(false).message });
+            yield* chat.Output.operations.publish({
+              type: "start",
+              partial: response(false).message,
+            });
             ready.resolve();
-            return yield* host.wait(new Promise<ModelResponse>(() => {}));
+            return yield* host.wait(new Promise<Outcome<ModelResponse, never>>(() => {}));
           },
         });
         return yield* chat.activate({ model: { model }, tools: [], effects: {} }, input, journal, {

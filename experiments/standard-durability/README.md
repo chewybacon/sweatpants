@@ -124,45 +124,74 @@ a native suspension is not specified as a cross-runtime cancellation finalizer.
 Native error channels remain native; use explicit Outcome values for portable
 expected failures rather than assume JavaScript catch intercepts native failures.
 
-## Scoped model API on the production chat activation
+## Typed model API on the production chat computation
 
-`chat.ts` defines `createScopedChat(composition)`, which binds model sampling through
-createApi while calling the production `activateChat` operation. `startChatActivation`
-uses that same operation for the existing HTTP host. There is no second chat loop.
+`model-api.ts` declares `ModelDefinition` once, using Standard Schema contracts backed
+by the existing model parsers. `chat.ts` binds it with `bindApi` and composes the
+production `chatWork` with the existing `activateJournal`. The production default
+activation retains its existing sampling behavior; an optional sampling operation
+lets the experiment use the same chat/tool computation with a typed API boundary.
 
 ```ts
 const chat = createScopedChat(composition);
 
-yield * chat.Model.install(provider);
 yield *
-  chat.Model.around({
+  chat.Model.host.install({
+    *sample(context) {
+      const { model, streamOptions } = yield* chat.ModelConfig.expect();
+      const response = yield* sampleWithNativeProvider(
+        { model, context, options: streamOptions },
+        chat.Output.operations.publish,
+      );
+      return { ok: true, value: response };
+    },
+  });
+yield *
+  chat.Model.host.around({
     *sample(args, next) {
-      const response = yield* next(...args);
-      return transform(response);
+      const outcome = yield* next(...args);
+      return outcome.ok ? { ok: true, value: transform(outcome.value) } : outcome;
     },
   });
 return yield * chat.activate(capabilities, input, journal);
 ```
 
-Each live model sample owns a child scope. The provider and middleware can acquire
-native resources there. Cleanup finishes before the final transformed response is
-accepted. Streaming publication remains provisional. Replay bypasses the sampling
-API entirely for accepted outcomes, so middleware must not be relied upon for
-replay observation.
+Inside a provider, `yield* chat.Output.operations.publish(event)` publishes provisional
+output through an ordinary scoped API. `Output.around(...)` can filter, transform or
+suspend publication; `Output.install(...)` binds a sink in the current scope. The chat
+activation installs its event sink in each sample scope, inheriting outer middleware.
+The native adapter above must yield the supplied publish operation as it consumes events.
 
-`chat.acceptance.test.ts` adds three shared stories under both runtimes:
+`yield* chat.ModelConfig.expect()` reads model selection and native options (including
+credentials/signals). A child scope can override them with `ModelConfig.set(...)`
+without modifying its parent. These are the existing API/context primitives; no new
+core interfaces or chat-specific lookup/publication helpers are needed. Only model context is in the
+portable API request. Selection/configuration compatibility remains governed by
+the caller's execution identity; this does not hash or freeze host configuration.
 
-- sample and invoke the real authored approve-record tool, park for its answer,
-  close/reopen SQLite, complete, then reconnect without repeating accepted model
-  work, middleware, or the unsafe record effect;
-- interrupt after acceptance and before guest delivery, reopen SQLite, and recover
-  the transformed response without calling the provider again;
-- dispose during a streaming sample, wait for asynchronous resource cleanup, and
-  leave provisional output unaccepted and the logical execution still running.
+Each live sample owns a child scope. Cleanup finishes before the final transformed
+outcome is accepted. Replay validates the accepted domain outcome and bypasses
+provider/middleware dispatch. Domain model failures are typed values; the chat
+sampling operation turns them into turn failures. Native runtime errors still
+propagate as errors. The existing model response contract also retains errorMessage.
 
-These use scripted model responses with native runtime suspension. They exercise
-production chat/tool/journal code, not a live model vendor or an Effect HTTP host.
-Recovery uses fresh scope bindings and reopened SQLite handles in one process;
-there is no new SIGKILL or cross-process claim. The fault after acceptance is an
-explicit injected exception. Existing full-suite crash tests remain regression
-coverage for the production Effection host.
+The same six chat acceptance cases cover streaming, a real authored tool, parking,
+SQLite reopen/reconnect, accepted-before-delivery recovery and awaited cleanup on
+disposal under both runtimes. The streaming case also checks native configuration
+lookup, child overrides/restoration, scope release, suspending output middleware,
+and that the credential fixture is absent from the durable request.
+
+Top-level samples now use `kind: "api"` and a domain Outcome inside the journal's
+exchange Outcome. Existing sample-format journals and production history projections
+are not migrated. Nested tool samples retain their existing journal boundary and
+use the typed host dispatcher; their migration and dedicated evidence are deferred.
+These are scripted providers and SQLite reopen in one process, not a live vendor,
+SIGKILL proof, or migration of the production HTTP host.
+
+## Typed API declaration and facade scaffold
+
+See [typed-api.md](./typed-api.md) and `payments.ts` for a declaration shared by
+explicit guest/host bindings, exposed as `Payments.operations` and `Payments.host`.
+This follow-up has six focused acceptance cases passing across Effect and Effection;
+its validation limits and domain-outcome/journal-outcome distinction are documented
+separately in typed-api.md.

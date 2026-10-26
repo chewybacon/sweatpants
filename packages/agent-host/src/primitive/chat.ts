@@ -42,10 +42,13 @@ export type ChatRequest =
     };
 export type TurnInput = { messageId: string; text: string; messages: Json; modelIdentity: string };
 
-export function* chatWork(
+export function* chatWork<Q = never>(
   input: TurnInput,
   tools: readonly JournalTool[],
-): IterableOperation<Json, ChatRequest> {
+  sample?: (
+    request: Extract<ChatRequest, { kind: "sample" }>,
+  ) => IterableOperation<ModelResponse, Q>,
+): IterableOperation<Json, ChatRequest | Q> {
   const messages = input.messages as unknown as ChatMessage[];
   const declarations = tools.map((tool) => ({
     name: tool.name,
@@ -53,13 +56,18 @@ export function* chatWork(
     parameters: tool.artifacts.parameters.inputProjection as JsonObject,
   }));
   for (let iteration = 0; iteration <= 10; iteration++) {
-    const response = decodeModelResponse(
-      yield {
-        kind: "sample",
-        iteration,
-        context: assertJson({ messages, tools: iteration < 10 ? declarations : [] }),
-      },
-    );
+    const request: Extract<ChatRequest, { kind: "sample" }> = {
+      kind: "sample",
+      iteration,
+      context: assertJson({ messages, tools: iteration < 10 ? declarations : [] }),
+    };
+    let sampled: unknown;
+    if (sample) {
+      sampled = yield* sample(request);
+    } else {
+      sampled = yield request;
+    }
+    const response = decodeModelResponse(sampled);
     if (response.errorMessage) {
       throw new Error(response.errorMessage);
     }

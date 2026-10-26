@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.0.1",
+    "@standard-schema/spec": "catalog:",
     "@sweatpants/agent-sdk": "workspace:*",
     "@sweatpants/durable-execution": "workspace:*",
     "@sweatpants/flowmode-runtime": "workspace:*",
