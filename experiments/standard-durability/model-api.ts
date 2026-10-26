@@ -7,7 +7,7 @@ import {
   type ModelResponse,
 } from "../../packages/model-provider/src/model.ts";
 import { z } from "zod";
-import { defineApi, operation, type OutcomeOf } from "./api-definition.ts";
+import { defineApi, operation, type OutcomeOf } from "@sweatpants/standard-durability";
 
 /** Reuse the model contract's validation; the API binding rejects normalization on the wire. */
 function schema<T>(parser: Parser<T>): StandardSchemaV1<T, T> {

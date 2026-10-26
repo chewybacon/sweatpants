@@ -1,7 +1,4 @@
-/** Design scaffold, not a published standard. This module has no runtime imports.
- * These two structural types mirror foundation/computation; a future extraction
- * must give production and this contract one source, rather than maintain copies.
- */
+/** Portable composition contracts. No runtime imports or native scheduler types. */
 export interface Operation<T, Y> {
   [Symbol.iterator](): Iterator<Y, T, unknown>;
 }

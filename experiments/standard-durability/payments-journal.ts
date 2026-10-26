@@ -1,7 +1,7 @@
 import type { Journal } from "@sweatpants/foundation/journal";
 import { driveJournal } from "../../packages/primitive-journal/src/driver.ts";
 import { createPayments } from "./payments.ts";
-import type { Composition } from "./contracts.ts";
+import type { Composition } from "@sweatpants/standard-durability";
 
 /** Callable scaffold using the existing journal loop. The caller owns storage.
  * Use a fresh journal/identity for different account/amount inputs.

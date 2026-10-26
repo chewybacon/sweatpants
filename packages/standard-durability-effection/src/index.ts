@@ -7,7 +7,7 @@ import type {
   Middleware,
   Operations,
   Operation as PortableOperation,
-} from "./contracts.ts";
+} from "@sweatpants/standard-durability";
 
 export type EffectionYield =
   Operation<unknown> extends PortableOperation<unknown, infer Y> ? Y : never;

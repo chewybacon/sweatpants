@@ -1,6 +1,6 @@
 # Effect composition adapter
 
-Implemented in `effect.ts`, with Effect 4.0.6. The public vocabulary remains
+Implemented in `packages/standard-durability-effect/src/index.ts`, with Effect 4.0.6. The public vocabulary remains
 createApi / install / around / contexts / scoped / ensure.
 
 ## Ownership

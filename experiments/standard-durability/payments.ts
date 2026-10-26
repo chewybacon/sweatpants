@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { defineApi, operation } from "./api-definition.ts";
+import { defineApi, operation } from "@sweatpants/standard-durability";
 import { bindApi, createHost, type ApiRequest } from "./api-bindings.ts";
-import type { Composition, Operation } from "./contracts.ts";
+import type { Composition, Operation } from "@sweatpants/standard-durability";
 
 /** One runtime-independent declaration shared by guest and host views. */
 export const PaymentDefinition = defineApi("example.payments", {

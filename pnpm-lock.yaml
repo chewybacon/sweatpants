@@ -205,6 +205,15 @@ importers:
       '@sweatpants/journal-authority':
         specifier: workspace:*
         version: link:packages/journal-authority
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:packages/standard-durability
+      '@sweatpants/standard-durability-effect':
+        specifier: workspace:*
+        version: link:packages/standard-durability-effect
+      '@sweatpants/standard-durability-effection':
+        specifier: workspace:*
+        version: link:packages/standard-durability-effection
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:packages/ts-config
@@ -313,6 +322,15 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../packages/react-chat
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../packages/standard-durability
+      '@sweatpants/standard-durability-effect':
+        specifier: workspace:*
+        version: link:../packages/standard-durability-effect
+      '@sweatpants/standard-durability-effection':
+        specifier: workspace:*
+        version: link:../packages/standard-durability-effection
       '@sweatpants/storage-d1':
         specifier: workspace:*
         version: link:../packages/storage-d1
@@ -2150,6 +2168,9 @@ importers:
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
       canonicalize:
         specifier: 5.1.0
         version: 5.1.0
@@ -2592,6 +2613,60 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/standard-durability:
+    dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/standard-durability-effect:
+    dependencies:
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/standard-durability-effection:
+    dependencies:
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.21.0)(yaml@2.9.1)

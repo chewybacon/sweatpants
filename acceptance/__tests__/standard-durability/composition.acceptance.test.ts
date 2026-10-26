@@ -1,22 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { call, run, spawn } from "effection";
 import { Effect, Fiber } from "effect";
-import {
-  effection,
-  type EffectionYield,
-} from "../../../experiments/standard-durability/effection.ts";
+import { effection, type EffectionYield } from "@sweatpants/standard-durability-effection";
 import {
   effect,
   effectProgram,
   execute,
   type EffectYield,
-} from "../../../experiments/standard-durability/effect.ts";
+} from "@sweatpants/standard-durability-effect";
 import { createConversation } from "../../../experiments/standard-durability/conversation.ts";
-import type {
-  Composition,
-  Operation,
-  Work,
-} from "../../../experiments/standard-durability/contracts.ts";
+import type { Composition, Operation, Work } from "@sweatpants/standard-durability";
 
 interface Host<Y> {
   composition: Composition<Y>;

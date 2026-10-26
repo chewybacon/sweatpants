@@ -14,20 +14,10 @@ import {
 } from "../../../experiments/standard-durability/payments.ts";
 import { paymentWork } from "../../../experiments/standard-durability/payments-journal.ts";
 import { guest, type ApiRequest } from "../../../experiments/standard-durability/api-bindings.ts";
-import {
-  defineApi,
-  type OutcomeOf,
-} from "../../../experiments/standard-durability/api-definition.ts";
-import {
-  effect,
-  effectProgram,
-  type EffectYield,
-} from "../../../experiments/standard-durability/effect.ts";
-import {
-  effection,
-  type EffectionYield,
-} from "../../../experiments/standard-durability/effection.ts";
-import type { Composition, Work } from "../../../experiments/standard-durability/contracts.ts";
+import { defineApi, type OutcomeOf } from "@sweatpants/standard-durability";
+import { effect, effectProgram, type EffectYield } from "@sweatpants/standard-durability-effect";
+import { effection, type EffectionYield } from "@sweatpants/standard-durability-effection";
+import type { Composition, Work } from "@sweatpants/standard-durability";
 
 interface Host<Y> {
   composition: Composition<Y>;

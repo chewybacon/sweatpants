@@ -7,7 +7,7 @@ import type {
   Operations,
   Operation,
   Work,
-} from "./contracts.ts";
+} from "@sweatpants/standard-durability";
 
 // Frames contain bindings only. Effect owns fibers, interruption and finalization.
 type Invoke = (...args: unknown[]) => Operation<unknown, EffectYield>;

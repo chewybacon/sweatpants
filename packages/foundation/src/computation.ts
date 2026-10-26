@@ -1,7 +1,13 @@
-/** Expected application success/failure. Cancellation and defects remain runtime-owned. */
-export type Outcome<T, E> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: E };
+import type {
+  Outcome,
+  Operation as IterableOperation,
+  Work,
+} from "@sweatpants/standard-durability";
+export type {
+  Outcome,
+  Operation as IterableOperation,
+  Work,
+} from "@sweatpants/standard-durability";
 
 export function success<T>(value: T): Outcome<T, never> {
   return { ok: true, value };
@@ -27,11 +33,6 @@ export type Computation<F extends RuntimeType, A, E = never, R = never> = (F & {
   readonly Target: A;
 })["type"];
 
-/** Shared structural minimum for yield* composition; Yielded remains runtime-specific. */
-export interface IterableOperation<T, Yielded> {
-  [Symbol.iterator](): Iterator<Yielded, T, unknown>;
-}
-
 /** One synchronous guest turn. Exceptions escape; suspension does not imply durable acceptance. */
 export type Turn<T, Request> =
   | { readonly kind: "suspended"; readonly request: Request }
@@ -53,9 +54,6 @@ export type HandlerMiddleware<Request, Yielded, Reply = unknown> = Middleware<
   [Request],
   IterableOperation<Reply, Yielded>
 >;
-
-/** A fresh operation per invocation; runtime descriptions must not reuse an exhausted iterator. */
-export type Work<T, Yielded> = () => IterableOperation<T, Yielded>;
 
 export interface RuntimeExecution<T> {
   /** Resolves only after all owned work and cleanup finish. */

@@ -21,7 +21,7 @@ import {
 } from "../../packages/model-provider/src/index.ts";
 import { bindApi, createHost, type ApiRequest } from "./api-bindings.ts";
 import { ModelDefinition } from "./model-api.ts";
-import type { Composition, Work } from "./contracts.ts";
+import type { Composition, Work } from "@sweatpants/standard-durability";
 
 export type ScopedChatCapabilities<Y> = Omit<ChatCapabilities<Y>, "model"> & {
   model: Omit<ChatCapabilities<Y>["model"], "driver">;

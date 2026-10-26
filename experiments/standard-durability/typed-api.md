@@ -1,7 +1,7 @@
 # One declaration, two bindings, one public facade
 
 Experimental scaffold with focused behavioral verification under both runtimes.
-No production migration. Read `payments.ts`, then `api-definition.ts` and `api-bindings.ts`.
+No production migration. Read `payments.ts`, then `packages/standard-durability/src/api-definition.ts` and local `api-bindings.ts`.
 
 ## Authoring
 

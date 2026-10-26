@@ -1,5 +1,5 @@
 import { run } from "effection";
-import { effection } from "./effection.ts";
+import { effection } from "@sweatpants/standard-durability-effection";
 import { createConversation } from "./conversation.ts";
 
 /** Callable example, deliberately not auto-executed on import. */

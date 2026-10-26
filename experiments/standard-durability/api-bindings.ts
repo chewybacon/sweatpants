@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, canonicalJson, type Json } from "@sweatpants/foundation";
-import type { Api, Composition, Operation, Operations } from "./contracts.ts";
+import type { Api, Composition, Operation, Operations } from "@sweatpants/standard-durability";
 import type {
   ApiDefinition,
   AnyOperation,
@@ -9,7 +9,7 @@ import type {
   Outcome,
   OutcomeOf,
   Signature,
-} from "./api-definition.ts";
+} from "@sweatpants/standard-durability";
 
 /** The serializable boundary. Identity/version/policy are checked against the declaration. */
 export type ApiRequest = {

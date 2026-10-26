@@ -1,4 +1,4 @@
-import type { Composition, Operation, Operations } from "./contracts.ts";
+import type { Composition, Operation, Operations } from "@sweatpants/standard-durability";
 
 /** Pure signatures: no Effect/Effection types and no service container. */
 export interface Model {

@@ -5,7 +5,7 @@ import { call, run } from "effection";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { assertJson } from "@sweatpants/foundation";
-import type { Outcome } from "../../../experiments/standard-durability/api-definition.ts";
+import type { Outcome } from "@sweatpants/standard-durability";
 import {
   modelOutcome,
   type ModelSuccess,
@@ -16,20 +16,9 @@ import {
   createScopedChat,
   type ScopedChatCapabilities,
 } from "../../../experiments/standard-durability/chat.ts";
-import {
-  effect,
-  effectProgram,
-  type EffectYield,
-} from "../../../experiments/standard-durability/effect.ts";
-import {
-  effection,
-  type EffectionYield,
-} from "../../../experiments/standard-durability/effection.ts";
-import type {
-  Composition,
-  Operation,
-  Work,
-} from "../../../experiments/standard-durability/contracts.ts";
+import { effect, effectProgram, type EffectYield } from "@sweatpants/standard-durability-effect";
+import { effection, type EffectionYield } from "@sweatpants/standard-durability-effection";
+import type { Composition, Operation, Work } from "@sweatpants/standard-durability";
 
 interface Host<Y> {
   composition: Composition<Y>;

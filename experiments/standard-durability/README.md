@@ -1,18 +1,18 @@
 # standard-durability: scoped composition scaffold
 
 Design experiment, not a standard or production migration. Start with the authoring
-experience in `conversation.ts`, then read `contracts.ts`. No storage, scheduler,
+experience in `conversation.ts`, then read `packages/standard-durability/src/contracts.ts`. No storage, scheduler,
 worker protocol or durable execution API is invented here.
 
 ## Reading order
 
-- `contracts.ts`: dependency-free structural types for operations, APIs, contexts,
+- `@sweatpants/standard-durability`: dependency-free structural types for operations, APIs, contexts,
   middleware, and scoped resource ownership.
 - `conversation.ts`: a runtime-generic framework module. One factory assembles its
   declarations; deeply nested calls use contexts rather than forwarding services.
-- `effection.ts`: reference adapter over native Effection createApi and scope APIs.
+- `@sweatpants/standard-durability-effection`: reference adapter over native Effection createApi and scope APIs.
 - `effection-example.ts`: callable example with primary and child model bindings.
-- `effect.ts`: Effect adapter using native resource scopes and a parent-linked
+- `@sweatpants/standard-durability-effect`: Effect adapter using native resource scopes and a parent-linked
   binding environment. `effectProgram(work)` supplies its root lifetime.
 - `effect-adapter.md`: implementation decisions and remaining boundaries.
 
@@ -114,9 +114,11 @@ The Effection bridge contains two localized assertions: conditional mapped-type
 normalization and dynamic construction of terminal middleware. Public signatures
 retain their exact argument/result mapping.
 
-`Operation` and `Work` structurally mirror foundation for this isolated sketch.
-Before promotion, extract one canonical dependency-free package and have foundation
-re-export it; do not maintain competing production definitions. Nothing here
+`Operation`, `Work` and `Outcome` now live in the runtime-neutral
+`@sweatpants/standard-durability` package. Foundation re-exports them (including the
+existing `IterableOperation` name); native composition adapters live in separate
+packages with runtime peers. The JSON/journal binding remains application code here
+because its foundation dependency carries Effection transitively. Nothing here
 changes the production API or claims full Effect error/environment inference.
 
 Portable cleanup uses `composition.ensure`. JavaScript generator `finally` around
@@ -215,3 +217,51 @@ explicit guest/host bindings, exposed as `Payments.operations` and `Payments.hos
 This follow-up has six focused acceptance cases passing across Effect and Effection;
 its validation limits and domain-outcome/journal-outcome distinction are documented
 separately in typed-api.md.
+
+## Existing native provider integration
+
+`provider-chat.ts` implements the provider composition with
+`createEffectionProviderChat(driver)`. It accepts the existing `ModelProviderDriver`,
+installs it through `Model.host`, consumes its native subscription, yields each
+`Output.operations.publish`, and maps the final response with `modelOutcome`.
+The sample scope owns cleanup; caller and scope abort signals are combined.
+
+```ts
+const provider = createPiAiModelProvider();
+const chat = createEffectionProviderChat(provider.driver);
+
+// Inside an Effection operation; input, journal, tools and effects are app-owned.
+yield * chat.Output.around(outputMiddleware);
+return (
+  yield *
+  chat.activate(
+    { model: { model: provider.resolveModel(selection), streamOptions }, tools, effects },
+    input,
+    journal,
+    events,
+  )
+);
+```
+
+The native driver is Effection-based. This adapter does not run that driver in
+Effect; the shared declarations/composition still have their separate two-runtime
+acceptance coverage. No generic promise bridge or extra runtime was introduced.
+
+Three acceptance cases use the actual Pi-AI driver and the existing test-rig HTTP
+model simulator: streaming with suspending output middleware and SQLite reconnect,
+provider-reported failure with replay, and cancellation observed at the HTTP peer.
+They check model/temperature forwarding, no credential fixture in the journal and
+no additional requests on replay. This is real provider-adapter/HTTP execution with
+a simulated upstream, not a live vendor call or production HTTP-host migration.
+Yielding publication controls subscription consumption; upstream buffering remains
+owned by the provider and is not claimed to be end-to-end backpressure.
+
+## Package boundary
+
+Core: `packages/standard-durability` (portable types and declarations only).
+Adapters: `packages/standard-durability-effection` and `packages/standard-durability-effect`.
+This directory retains application policy/examples: JSON wire validation, payments,
+model schemas, journal/chat integration and native providers. Imports select packages
+explicitly; there is no core barrel that loads both runtimes. All three packages are
+private experimental scaffolds. Existing runtime-\* packages retain their distinct
+execution-capability role.
