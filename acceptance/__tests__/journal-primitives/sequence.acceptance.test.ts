@@ -1,13 +1,13 @@
 // @vitest-environment node
-import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { launchLocal, launchProcess } from "../../fixtures/journal-primitives/launch.ts";
+import type { Engine } from "../../fixtures/journal-primitives/scenario.ts";
 import type { DurableSemanticRecord } from "../../../packages/journal-authority/src/contract/semantic-record.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const worker = resolve(root, "acceptance/fixtures/journal-primitives/worker.ts");
 const artifacts = resolve(root, ".artifacts/journal-primitives");
 mkdirSync(artifacts, { recursive: true });
 const directory = mkdtempSync(join(artifacts, "sequence-"));
@@ -17,43 +17,35 @@ interface Report {
   records: DurableSemanticRecord[];
   state?: { status: string };
 }
-async function launch(engine: string, database: string, stop: number, variant = "normal") {
-  return await new Promise<{ status: number | null; stdout: string; stderr: string }>(
-    (resolveProcess, reject) => {
-      const child = spawn(
-        process.execPath,
-        [
-          "--conditions=development",
-          "--import",
-          "tsx",
-          worker,
-          engine,
-          database,
-          String(stop),
-          variant,
-        ],
-        { cwd: root, timeout: 20000 },
-      );
-      let stdout = "";
-      let stderr = "";
-      child.stdout.setEncoding("utf8").on("data", (data: string) => {
-        stdout += data;
-      });
-      child.stderr.setEncoding("utf8").on("data", (data: string) => {
-        stderr += data;
-      });
-      child.on("error", reject);
-      child.on("close", (status) => {
-        resolveProcess({ status, stdout, stderr });
-      });
-    },
-  );
+let processLaunches = 0;
+let localLaunches = 0;
+async function launch(
+  engine: Engine,
+  database: string,
+  stop: number,
+  variant = "normal",
+  cold = false,
+) {
+  if (cold) {
+    processLaunches++;
+  } else {
+    localLaunches++;
+  }
+  return await (cold ? launchProcess : launchLocal)({ engine, path: database, stop, variant });
 }
-async function run(engine: string, database: string, stop = -1) {
-  const child = await launch(engine, database, stop);
+async function run(engine: Engine, database: string, stop = -1, cold = false) {
+  const child = await launch(engine, database, stop, "normal", cold);
   writeFileSync(`${database}.${engine}.${stop}.log`, child.stdout + child.stderr);
   expect(child.status, child.stderr).toBe(stop < 0 ? 0 : 73);
 }
+afterAll(() => {
+  writeFileSync(
+    join(directory, "launch-counts.json"),
+    JSON.stringify({ processLaunches, localLaunches }),
+  );
+  // One cold trajectory: two deaths, recovery, then completed reconnect.
+  expect(processLaunches).toBeLessThanOrEqual(4);
+});
 
 function report(database: string): Report {
   return JSON.parse(readFileSync(`${database}.report.json`, "utf8")) as Report;
@@ -91,15 +83,16 @@ const expectedCalls = [1, 2].map((number) => ({
 
 describe("experimental sequential journal against the production engine", () => {
   it.each([[], [0], [1], [0, 1]].map((stops) => ({ stops })))(
-    "persists and recovers acceptance boundaries %j in fresh processes",
+    "persists and reopens acceptance boundaries %j (both boundaries also run cold)",
     async ({ stops }) => {
+      const cold = stops.length === 2;
       const name = stops.length ? stops.join("-") : "uninterrupted";
       const reference = join(directory, `${name}-reference.sqlite`);
       const candidate = join(directory, `${name}-candidate.sqlite`);
       await run("reference", reference);
       const referenceReport = report(reference);
       for (const stop of stops) {
-        await run("candidate", candidate, stop);
+        await run("candidate", candidate, stop, cold);
         await run("inspect", candidate);
         const prefix = report(candidate);
         writeFileSync(`${candidate}.prefix-${stop}.json`, JSON.stringify(prefix, null, 2));
@@ -112,7 +105,7 @@ describe("experimental sequential journal against the production engine", () => 
         expect(prefix.records.some(({ payload }) => payload.type === "TaskClosed")).toBe(false);
         expect(calls(candidate)).toEqual(expectedCalls.slice(0, stop + 1));
       }
-      await run("candidate", candidate);
+      await run("candidate", candidate, -1, cold);
       const completed = report(candidate);
       expect(completed.result).toBe("hello:recorded:1|hello:recorded:2:done");
       expect(referenceReport.result).toEqual({ state: "completed", value: completed.result });
@@ -126,7 +119,7 @@ describe("experimental sequential journal against the production engine", () => 
       expect(requests[0]?.descriptor).toEqual(requests[1]?.descriptor);
       expect(new Set(requests.map((entry) => entry.pullId)).size).toBe(2);
       expect(requests.map((entry) => entry.actionIndex)).toEqual([0, 1]);
-      await run("candidate", candidate);
+      await run("candidate", candidate, -1, cold);
       expect(report(candidate)).toEqual(completed);
       expect(calls(candidate)).toEqual(expectedCalls);
       await run("reference", reference);

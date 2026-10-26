@@ -6,7 +6,6 @@ import {
   openBetterSqliteStorage,
   BetterSqliteDatabase,
 } from "@sweatpants/storage-sqlite/better-sqlite3";
-import { spawn } from "node:child_process";
 import {
   mkdtempSync,
   readFileSync,
@@ -17,7 +16,9 @@ import {
 } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { launchLocal, launchProcess } from "../../fixtures/journal-primitives/launch.ts";
+import type { Engine } from "../../fixtures/journal-primitives/scenario.ts";
 import type { DurableSemanticRecord } from "../../../packages/journal-authority/src/contract/semantic-record.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -25,41 +26,45 @@ const artifacts = resolve(root, ".artifacts/journal-primitives");
 mkdirSync(artifacts, { recursive: true });
 const directory = mkdtempSync(join(artifacts, "recovery-process-"));
 let invocation = 0;
-async function launch(database: string, variant = "normal", engine = "candidate", stop = -1) {
+let processLaunches = 0;
+let localLaunches = 0;
+async function launch(
+  database: string,
+  variant = "normal",
+  engine: Engine = "candidate",
+  stop = -1,
+  cold = false,
+) {
   const index = invocation++;
-  const result = await new Promise<{ status: number | null; stdout: string; stderr: string }>(
-    (done, reject) => {
-      const child = spawn(
-        process.execPath,
-        [
-          "--conditions=development",
-          "--import",
-          "tsx",
-          resolve(root, "acceptance/fixtures/journal-primitives/worker.ts"),
-          engine,
-          database,
-          String(stop),
-          variant,
-        ],
-        { cwd: root, env: { ...process.env, SEQUENCE_RECOVERY: "1" }, timeout: 20000 },
-      );
-      let stdout = "";
-      let stderr = "";
-      child.stdout.setEncoding("utf8").on("data", (data: string) => {
-        stdout += data;
-      });
-      child.stderr.setEncoding("utf8").on("data", (data: string) => {
-        stderr += data;
-      });
-      child.on("error", reject);
-      child.on("close", (status) => {
-        done({ status, stdout, stderr });
-      });
-    },
+  // Only genuine interruption paths need an OS process; inspection, corruption,
+  // fencing and ordinary reactivation use new resources in the existing process.
+  const subprocess =
+    cold || variant === "loss-before-acceptance" || variant === "loss-after-permission";
+  if (subprocess) {
+    processLaunches++;
+  } else {
+    localLaunches++;
+  }
+  const result = await (subprocess ? launchProcess : launchLocal)({
+    engine,
+    path: database,
+    stop,
+    variant,
+    recoverPending: true,
+  });
+  writeFileSync(
+    `${database}.${index}.${variant}.process.json`,
+    JSON.stringify({ ...result, subprocess }, null, 2),
   );
-  writeFileSync(`${database}.${index}.${variant}.process.json`, JSON.stringify(result, null, 2));
   return result;
 }
+afterAll(() => {
+  writeFileSync(
+    join(directory, "launch-counts.json"),
+    JSON.stringify({ processLaunches, localLaunches }),
+  );
+  expect(processLaunches).toBeLessThanOrEqual(12);
+});
 function lines(database: string, suffix: string): unknown[] {
   return existsSync(`${database}.${suffix}.jsonl`)
     ? readFileSync(`${database}.${suffix}.jsonl`, "utf8")
@@ -137,19 +142,28 @@ function delivered(database: string) {
   });
 }
 
-// Reuse only persisted setup for rejection cases. Every candidate and readback is
-// still a fresh OS process against its own copied database and external ledger.
+// Reuse immutable persisted setup for rejection cases. Each invocation creates
+// a fresh authority and SQLite handle against its own copied database and ledger.
 const pendingFixture = join(directory, "rejection-fixture.sqlite");
+const firstPendingFixture = join(directory, "first-pending-fixture.sqlite");
 let pendingReport: Awaited<ReturnType<typeof inspect>>;
 beforeAll(async () => {
   expect((await launch(pendingFixture, "normal", "candidate", 0)).status).toBe(73);
   expect((await launch(pendingFixture, "loss-before-acceptance")).status).toBe(74);
   pendingReport = await inspect(pendingFixture, "persisted-setup");
+  expect((await launch(firstPendingFixture, "loss-before-acceptance")).status).toBe(74);
+  // Reopen/close before copying: a crashed writer can leave committed data in WAL.
+  const firstPending = await inspect(firstPendingFixture, "first-pending-setup");
+  expect(payloads(firstPending.records, "AttemptStarted")).toHaveLength(1);
+  expect(payloads(firstPending.records, "PullResolved")).toHaveLength(0);
 });
-function copyPendingFixture(database: string) {
+function copyFixture(source: string, database: string) {
   for (const suffix of ["", ".calls.jsonl", ".guest.jsonl", ".capabilities.jsonl"]) {
-    copyFileSync(`${pendingFixture}${suffix}`, `${database}${suffix}`);
+    copyFileSync(`${source}${suffix}`, `${database}${suffix}`);
   }
+}
+function copyPendingFixture(database: string) {
+  copyFixture(pendingFixture, database);
   clock(database, 31001);
   return pendingReport;
 }
@@ -182,7 +196,7 @@ describe("explicit sequential recovery across OS process loss", () => {
     expect(lines(database, "calls")).toHaveLength(2);
     expect((await inspect(database, "live-denied")).records).toEqual(lost.records);
     clock(database, 31001);
-    const resumed = await launch(database);
+    const resumed = await launch(database, "normal", "candidate", -1, true);
     expect(resumed.status, resumed.stderr).toBe(0);
     const result = JSON.parse(readFileSync(`${database}.report.json`, "utf8")) as {
       result: string;
@@ -225,7 +239,7 @@ describe("explicit sequential recovery across OS process loss", () => {
     expect(delivered(database)).toEqual([]);
     expect((await launch(database)).stderr).toContain("Recovery cannot replace a live owner");
     clock(database, 61002);
-    const resumed = await launch(database);
+    const resumed = await launch(database, "normal", "candidate", -1, true);
     expect(resumed.status, resumed.stderr).toBe(0);
     const completed = await inspect(database, "completed");
     const attempts = completed.records.flatMap(({ payload }) =>
@@ -284,7 +298,8 @@ describe("explicit sequential recovery across OS process loss", () => {
 
   it("denies persisted multiple-root topology before recovery or dispatch", async () => {
     const database = join(directory, "multiple-roots.sqlite");
-    expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
+
+    copyFixture(firstPendingFixture, database);
     expect((await launch(database, "seed-second-root")).status).toBe(0);
     clock(database, 31001);
     const before = await inspect(database, "before");
@@ -328,7 +343,8 @@ describe("explicit sequential recovery across OS process loss", () => {
 
   it("releases a failed recovery handler mandate and can recover after legitimate release", async () => {
     const database = join(directory, "recovery-cleanup.sqlite");
-    expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
+
+    copyFixture(firstPendingFixture, database);
     clock(database, 31001);
     const failed = await launch(database, "handler-error");
     expect(failed.status).toBe(1);
@@ -343,12 +359,12 @@ describe("explicit sequential recovery across OS process loss", () => {
   });
 });
 
-// A single ordered crash trajectory, split at durable boundaries to keep each
-// phase inside the existing per-case budget. No synthetic interruption states.
-describe.sequential("repeated loss at both identical occurrences", () => {
+// One real process-loss trajectory. Policy probes and readback reopen resources
+// locally; only the five abrupt losses need fresh workers.
+describe("repeated loss at both identical occurrences", () => {
   const database = join(directory, "repeated.sqlite");
   let firstAccepted: DurableSemanticRecord[];
-  it("loses two first-occurrence results with an interleaved permission loss", async () => {
+  it("recovers repeated losses with exact lineage, fencing, and accepted outcomes", async () => {
     expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
     clock(database, 31001);
     expect((await launch(database, "loss-after-permission")).status).toBe(75);
@@ -364,8 +380,8 @@ describe.sequential("repeated loss at both identical occurrences", () => {
       code: "stale_program_capability",
       message: "Recovery cannot replace a live owner",
     });
-  });
-  it("accepts only the third external result then rejects retained authority again", async () => {
+
+    // accepts only the third external result then rejects retained authority again.
     clock(database, 91003);
     expect((await launch(database, "normal", "candidate", 0)).status).toBe(73);
     const accepted = await inspect(database, "first-accepted");
@@ -376,19 +392,21 @@ describe.sequential("repeated loss at both identical occurrences", () => {
     expect((await launch(database, "probe-retained")).status).toBe(0);
     expect(lines(database, "calls")).toHaveLength(3);
     expect(delivered(database)).toEqual([]);
-  });
-  it("loses two second-occurrence results without redispatching the accepted first", async () => {
+
+    // loses two second-occurrence results without redispatching the accepted first.
     expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
     clock(database, 121004);
     expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
-    const lost = await inspect(database, "second-lost-twice");
-    expect(payloads(lost.records, "PullResolved")).toEqual(payloads(firstAccepted, "PullResolved"));
+    const secondLost = await inspect(database, "second-lost-twice");
+    expect(payloads(secondLost.records, "PullResolved")).toEqual(
+      payloads(firstAccepted, "PullResolved"),
+    );
     expect(lines(database, "calls")).toHaveLength(5);
     expect(new Set(delivered(database))).toEqual(new Set(["hello:recorded:3"]));
     expect((await launch(database, "probe-retained-second")).status).toBe(0);
     expect((await launch(database, "probe-retained")).status).toBe(0);
-  });
-  it("completes with exact lineage, call order and accepted outcomes", async () => {
+
+    // completes with exact lineage, call order and accepted outcomes.
     clock(database, 151005);
     expect((await launch(database)).status).toBe(0);
     expect(JSON.parse(readFileSync(`${database}.report.json`, "utf8"))).toMatchObject({
@@ -459,7 +477,8 @@ describe.sequential("repeated loss at both identical occurrences", () => {
 
 it("refuses recovery if the retained old settlement wins immediately before takeover", async () => {
   const database = join(directory, "old-winner.sqlite");
-  expect((await launch(database, "loss-before-acceptance")).status).toBe(74);
+
+  copyFixture(firstPendingFixture, database);
   clock(database, 31001);
   expect((await launch(database, "old-settlement-wins")).status).toBe(1);
   expect(failure(database)).toEqual({
