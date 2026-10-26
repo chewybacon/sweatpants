@@ -367,7 +367,7 @@ for (const prior of ["failed", "cancelled"] as const) {
   });
 }
 
-it("transforms projected non-Zod elicitation context once in the public plugin and completes", async () => {
+it("preserves raw transformed effects, answers and context through the public chat plugin", async () => {
   const contextSchema: StandardSchemaV1<{ value: string }, { value: number }> = {
     "~standard": {
       version: 1,
@@ -389,9 +389,29 @@ it("transforms projected non-Zod elicitation context once in the public plugin a
   const tool = createDurableTool("projected_context", { version: "1" })
     .description("Project context through the public client")
     .parameters(z.object({}))
+    .effects({
+      read: {
+        version: "1",
+        input: contextSchema,
+        output: contextSchema,
+        inputProjections: {
+          inputProjection: { type: "object", properties: { value: { type: "string" } } },
+          outputProjection: { type: "object", properties: { value: { type: "number" } } },
+        },
+        outputProjections: {
+          inputProjection: { type: "object", properties: { value: { type: "string" } } },
+          outputProjection: { type: "object", properties: { value: { type: "number" } } },
+        },
+        retrySafety: { mode: "unsafe" },
+      },
+    })
     .elicits({
       choose: {
-        response: z.object({ selected: z.number() }),
+        response: contextSchema,
+        responseProjections: {
+          inputProjection: { type: "object", properties: { value: { type: "string" } } },
+          outputProjection: { type: "object", properties: { value: { type: "number" } } },
+        },
         context: contextSchema,
         contextProjections: {
           inputProjection: { type: "object", properties: { value: { type: "string" } } },
@@ -400,16 +420,21 @@ it("transforms projected non-Zod elicitation context once in the public plugin a
       },
     })
     .execute(function* (_, ctx) {
-      const answer = yield* ctx.elicit("choose", { message: "Choose", context: { value: "4" } });
-      return answer.action === "accept" ? answer.content : null;
+      const effect = yield* ctx.effect("read", { value: "2" });
+      const answer = yield* ctx.elicit("choose", {
+        message: "Choose",
+        context: { value: String(effect.value) },
+      });
+      return answer.action === "accept" ? { selected: answer.content.value } : null;
     });
   const seen: unknown[] = [];
+  const effectInputs: unknown[] = [];
   const plugin = makePlugin(tool)
     .onElicit({
       *choose(request) {
         seen.push(request.context);
         expect(request.context).toEqual({ value: 5 });
-        return { action: "accept", content: { selected: request.context.value } };
+        return { action: "accept", content: { value: String(request.context.value) } };
       },
     })
     .build();
@@ -424,7 +449,22 @@ it("transforms projected non-Zod elicitation context once in the public plugin a
             basePath: "/assistant/chat",
             program: { id: "projected-chat", version: "1", digest: "projected-chat-v1" },
             tools: [tool],
-            effects: {},
+            effectMiddleware: [
+              {
+                *effect([request], next) {
+                  expect(request.input).toEqual({ value: 3 });
+                  const outcome = yield* next({ ...request, input: { value: 30 } });
+                  expect(outcome).toEqual({ ok: true, value: { value: "30" } });
+                  return { ok: true, value: { value: "3" } };
+                },
+              },
+            ],
+            effects: {
+              *"projected_context.read"(input) {
+                effectInputs.push(input);
+                return { ok: true, value: { value: "30" } };
+              },
+            },
             model: {
               identity: "scripted",
               model: context.model.model,
@@ -443,13 +483,14 @@ it("transforms projected non-Zod elicitation context once in the public plugin a
         yield* first.respond.toolCalls([{ id: "projected-call", name: tool.name, arguments: {} }]);
         const final = yield* rig.model.request();
         expect(outputs(final.body.input)).toEqual([
-          { id: "projected-call", output: { selected: 5 } },
+          { id: "projected-call", output: { selected: 6 } },
         ]);
         yield* final.respond.text("Completed");
         yield* sending;
         yield* waitForSnapshot(client, (state) => state.status === "ready");
         expect(client.getSnapshot().error).toBeNull();
         expect(seen).toEqual([{ value: 5 }]);
+        expect(effectInputs).toEqual([{ value: 30 }]);
       },
     );
   } finally {

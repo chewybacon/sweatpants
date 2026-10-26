@@ -1,7 +1,9 @@
+import type { Middleware, Operations } from "@sweatpants/standard-durability";
 import {
-  validateJournalValue,
+  JournalEffectDeclarationError,
   type JournalRequest,
   type JournalTool,
+  type ToolEffectSignature,
 } from "@sweatpants/agent-sdk/primitive";
 import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
@@ -25,6 +27,8 @@ export interface ChatModelStream<Y> {
 }
 
 export interface ChatCapabilities<Y> {
+  /** Runs in array order inside declaration validation; receives canonical input, returns raw output. */
+  effectMiddleware?: readonly Middleware<ToolEffectSignature, Y>[];
   model: {
     model: Model;
     driver: ChatModelStream<Y>;
@@ -120,6 +124,7 @@ export function* chatWork<Q = never>(
 export function* handleChatRequest<Y>(
   options: ChatCapabilities<Y>,
   request: ChatRequest,
+  effects: Operations<ToolEffectSignature, Y>,
   publish: (event: ModelStreamEvent) => void = () => {},
 ): IterableOperation<Outcome<Json, Json>, Y> {
   if (request.kind === "progress" || request.kind === "tool-result") {
@@ -168,22 +173,17 @@ export function* handleChatRequest<Y>(
     throw new Error("Cannot dispatch an elicitation");
   }
   const tool = options.tools.find((entry) => entry.name === request.tool);
-  const effect = tool?.effects[request.key];
-  const handler = options.effects[`${request.tool}.${request.key}`];
-  if (
-    !effect ||
-    !(`${request.tool}.${request.key}` in options.effects) ||
-    effect.version !== request.version
-  ) {
+  if (!tool || !(`${request.tool}.${request.key}` in options.effects)) {
     throw new Error("Effect implementation unavailable");
   }
-  const outcome = yield* handler(assertJson(validateJournalValue(effect.input, request.input)));
-  if (outcome.ok) {
-    assertJson(outcome.value);
-    assertJson(validateJournalValue(effect.output, outcome.value));
+  try {
+    return yield* effects.effect(request);
+  } catch (error) {
+    if (error instanceof JournalEffectDeclarationError) {
+      throw new Error("Effect implementation unavailable");
+    }
+    throw error;
   }
-  // Persist raw output; the resumed author context applies its transform once.
-  return outcome;
 }
 
 /** Keep complete accepted call/result groups; provisional and unfinished calls never enter inference history. */

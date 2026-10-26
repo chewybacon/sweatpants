@@ -369,13 +369,26 @@ it("runs projected Standard Schemas through MCP and replays raw accepted answers
     });
   await run(function* () {
     let executions = 0;
-    const server = yield* useMcpServer([tool], {
-      *"projected.increment"(input) {
-        executions++;
-        expect(input).toEqual({ value: 3 });
-        return { value: "4" };
+    const server = yield* useMcpServer(
+      [tool],
+      {
+        *"projected.increment"(input) {
+          executions++;
+          expect(input).toEqual({ value: 30 });
+          return { value: "40" };
+        },
       },
-    });
+      [
+        {
+          *effect([request], next) {
+            expect(request.input).toEqual({ value: 3 });
+            const outcome = yield* next({ ...request, input: { value: 30 } });
+            expect(outcome).toEqual({ ok: true, value: { value: "40" } });
+            return { ok: true, value: { value: "4" } };
+          },
+        },
+      ],
+    );
     const listed = yield* mcpRequest(server.origin, "tools/list", {});
     expect(listed.body.result.tools[0]._meta["x-sweatpants"].elicits.choose.context).toEqual(
       numericProjections.inputProjection,
@@ -432,14 +445,27 @@ it("reports invalid effect and tool outputs through MCP instead of successful co
       .execute(function* () {
         return "";
       });
-    const server = yield* useMcpServer([effectTool, outputTool], {
-      *"invalid_effect.read"() {
-        return { value: 4 };
-      },
-    });
-    for (const name of ["invalid_effect", "invalid_output"]) {
-      const result = yield* mcpRequest(server.origin, "tools/call", { name, arguments: {} });
-      expect(result.body.result).toMatchObject({ resultType: "complete", isError: true });
+    for (const invalidAt of ["native", "middleware"] as const) {
+      const server = yield* useMcpServer(
+        [effectTool, outputTool],
+        {
+          *"invalid_effect.read"() {
+            return { value: invalidAt === "native" ? 4 : "4" };
+          },
+        },
+        [
+          {
+            *effect([request], next) {
+              const outcome = yield* next(request);
+              return invalidAt === "middleware" ? { ok: true, value: { value: 4 } } : outcome;
+            },
+          },
+        ],
+      );
+      for (const name of ["invalid_effect", "invalid_output"]) {
+        const result = yield* mcpRequest(server.origin, "tools/call", { name, arguments: {} });
+        expect(result.body.result).toMatchObject({ resultType: "complete", isError: true });
+      }
     }
   });
 });

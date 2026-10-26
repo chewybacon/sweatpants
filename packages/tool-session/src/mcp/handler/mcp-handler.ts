@@ -1,9 +1,9 @@
-import {
-  parseJournalAnswer,
-  validateJournalValue,
-  type JournalTool,
-  type JournalRequest,
-} from "@sweatpants/agent-sdk/primitive";
+import type { Middleware } from "@sweatpants/standard-durability";
+import type { EffectionYield } from "@sweatpants/standard-durability-effection";
+import type { ToolEffectSignature } from "@sweatpants/agent-sdk/primitive";
+import { effection } from "@sweatpants/standard-durability-effection";
+import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
+import { type JournalTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { call, createScope, ensure, useScope, type Operation } from "effection";
 import { z } from "zod";
@@ -53,6 +53,8 @@ export interface McpHandlerOptions {
   createJournal(
     identity: Identity,
   ): PendingJournal & { close(): void; settle(status: "failed", reason: string): void };
+  /** Runs in array order inside declaration validation; receives canonical input, returns raw output. */
+  effectMiddleware?: readonly Middleware<ToolEffectSignature, EffectionYield>[];
   effects?: Readonly<Record<string, (input: Json) => Operation<Json>>>;
   /** Trusted application identity, never self-reported MCP clientInfo. */
   authenticate(request: Request): Operation<string>;
@@ -276,7 +278,7 @@ export function* createMcpHandler(
         }
         if (ask.kind === "elicit" && resume.kind === "elicit") {
           try {
-            parseJournalAnswer(tool.elicits[ask.key].response, resume.response);
+            tool.validateAnswer(ask.key, resume.response);
           } catch {
             throw new HttpError(
               400,
@@ -331,55 +333,63 @@ export function* createMcpHandler(
       if (!activation) {
         activation = invocation.scope
           .run(function* () {
+            const Effects = createToolEffects(effection);
             // Catch inside the owner so a tool failure cannot tear down the app.
             try {
               return {
                 ok: true as const,
-                value: yield* activateJournal(
-                  function* () {
-                    return createIteratorGuest(() => tool.invoke(args, invocationId));
-                  },
-                  invocation.journal,
+                value: yield* Effects.withEffects(
+                  [tool],
                   {
-                    classify(effectRequest) {
-                      return effectRequest.kind === "elicit" ||
-                        effectRequest.kind === "nested-sample"
-                        ? "park"
-                        : effectRequest.kind === "effect"
-                          ? effectRequest.retrySafety.mode
-                          : "repeatable";
+                    *effect(request) {
+                      return {
+                        ok: true,
+                        value: yield* options.effects![`${request.tool}.${request.key}`]!(
+                          request.input,
+                        ),
+                      };
                     },
-                    *handler(effectRequest) {
-                      if (effectRequest.kind !== "effect") {
-                        return { ok: true as const, value: null };
-                      }
-                      const effect =
-                        options.effects?.[`${effectRequest.tool}.${effectRequest.key}`];
-                      if (!effect) {
-                        throw new Error(
-                          `Missing MCP effect: ${effectRequest.tool}.${effectRequest.key}`,
-                        );
-                      }
-                      try {
-                        const declaration = tool.effects[effectRequest.key];
-                        if (!declaration || declaration.version !== effectRequest.version) {
-                          throw new Error("Effect declaration unavailable");
-                        }
-                        const input = assertJson(
-                          validateJournalValue(declaration.input, effectRequest.input),
-                        );
-                        const value = assertJson(yield* effect(input));
-                        assertJson(validateJournalValue(declaration.output, value));
-                        return { ok: true as const, value };
-                      } catch (error) {
-                        return {
-                          ok: false as const,
-                          error: error instanceof Error ? error.message : String(error),
-                        };
-                      }
-                    },
-                    accepted: wake,
                   },
+                  function* () {
+                    return yield* activateJournal(
+                      function* () {
+                        return createIteratorGuest(() => tool.invoke(args, invocationId));
+                      },
+                      invocation.journal,
+                      {
+                        classify(effectRequest) {
+                          return effectRequest.kind === "elicit" ||
+                            effectRequest.kind === "nested-sample"
+                            ? "park"
+                            : effectRequest.kind === "effect"
+                              ? effectRequest.retrySafety.mode
+                              : "repeatable";
+                        },
+                        *handler(effectRequest) {
+                          if (effectRequest.kind !== "effect") {
+                            return { ok: true as const, value: null };
+                          }
+                          const effect =
+                            options.effects?.[`${effectRequest.tool}.${effectRequest.key}`];
+                          if (!effect) {
+                            throw new Error(
+                              `Missing MCP effect: ${effectRequest.tool}.${effectRequest.key}`,
+                            );
+                          }
+                          try {
+                            return yield* Effects.operations.effect(effectRequest);
+                          } catch (error) {
+                            return {
+                              ok: false as const,
+                              error: error instanceof Error ? error.message : String(error),
+                            };
+                          }
+                        },
+                        accepted: wake,
+                      },
+                    );
+                  },
+                  options.effectMiddleware,
                 ),
               };
             } catch (error) {

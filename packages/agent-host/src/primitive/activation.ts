@@ -1,3 +1,5 @@
+import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
+import type { Composition } from "@sweatpants/standard-durability";
 import type {
   Runtime,
   RuntimeExecution,
@@ -24,37 +26,53 @@ export interface ChatActivationEvents {
 
 /** Compose one activation inside the caller's scope. The caller owns the journal. */
 export function* activateChat<Y>(
+  composition: Composition<Y>,
   options: ChatCapabilities<Y>,
   input: TurnInput,
   journal: PendingJournal,
   events: ChatActivationEvents = {},
 ): IterableOperation<Activation<Json>, Y> {
-  return yield* activateJournal(
-    function* () {
-      return createIteratorGuest(() => chatWork(structuredClone(input), options.tools));
-    },
-    journal,
+  const Effects = createToolEffects(composition);
+  return yield* Effects.withEffects(
+    options.tools,
     {
-      classify: (request) =>
-        request.kind === "elicit"
-          ? "park"
-          : request.kind === "effect"
-            ? request.retrySafety.mode
-            : "repeatable",
-      accepted: () => events.accepted?.(),
-      handler: (request) =>
-        handleChatRequest(options, request, (event) => events.publish?.(event, request)),
+      *effect(request) {
+        return yield* options.effects[`${request.tool}.${request.key}`]!(request.input);
+      },
     },
+    function* () {
+      return yield* activateJournal(
+        function* () {
+          return createIteratorGuest(() => chatWork(structuredClone(input), options.tools));
+        },
+        journal,
+        {
+          classify: (request) =>
+            request.kind === "elicit"
+              ? "park"
+              : request.kind === "effect"
+                ? request.retrySafety.mode
+                : "repeatable",
+          accepted: () => events.accepted?.(),
+          handler: (request) =>
+            handleChatRequest(options, request, Effects.operations, (event) =>
+              events.publish?.(event, request),
+            ),
+        },
+      );
+    },
+    options.effectMiddleware,
   );
 }
 
 /** Root convenience boundary. Cancellation waits for activation cleanup. */
 export function startChatActivation<Y>(
   runtime: Runtime<Y>,
+  composition: Composition<Y>,
   options: ChatCapabilities<Y>,
   input: TurnInput,
   journal: PendingJournal,
   events: ChatActivationEvents = {},
 ): RuntimeExecution<Activation<Json>> {
-  return runtime.start(() => activateChat(options, input, journal, events));
+  return runtime.start(() => activateChat(composition, options, input, journal, events));
 }

@@ -144,6 +144,14 @@ export function compileJournalTool<
     },
     annotations: {},
     extensions: [],
+    validateAnswer(key: string, rawAnswer: unknown): Json {
+      const elicit = definition.elicits[key];
+      if (!elicit) {
+        throw new Error(`Unknown elicitation: ${key}`);
+      }
+      parseJournalAnswer(elicit.response, rawAnswer);
+      return assertJson(rawAnswer);
+    },
     *invoke(argumentsValue: unknown, callId: string): IterableOperation<Json, JournalRequest> {
       const context = createJournalToolContext(definition, callId, function* (request) {
         return yield request;
@@ -222,7 +230,7 @@ export function createJournalToolContext<E extends Effects, L extends Elicits, Y
   };
 }
 
-/** Synchronous Standard Schema validation shared by the compiler and hosts. */
+/** Private synchronous Standard Schema validation for compiled boundaries. */
 export function validateJournalValue<S extends StandardSchemaV1>(
   schema: S,
   value: unknown,
@@ -234,7 +242,7 @@ export function validateJournalValue<S extends StandardSchemaV1>(
   return checked.value;
 }
 
-export function parseJournalAnswer<S extends StandardSchemaV1>(
+function parseJournalAnswer<S extends StandardSchemaV1>(
   schema: S,
   value: unknown,
 ): Answer<StandardSchemaV1.InferOutput<S>> {
@@ -256,6 +264,14 @@ export function parseJournalAnswer<S extends StandardSchemaV1>(
   return answer;
 }
 
+/** Declaration failures are distinct from native handler and schema failures. */
+export class JournalEffectDeclarationError extends Error {
+  constructor() {
+    super("Effect declaration unavailable");
+    this.name = "JournalEffectDeclarationError";
+  }
+}
+
 /** Compiled host contract; independent of the authoring entrypoint. */
 export interface JournalTool {
   readonly name: string;
@@ -272,6 +288,8 @@ export interface JournalTool {
   readonly capabilities: { elicitation: boolean; sampling: boolean };
   readonly annotations: {};
   readonly extensions: readonly never[];
+  /** Validate the strict answer envelope and response schema; return raw JSON for acceptance. */
+  validateAnswer(key: string, rawAnswer: unknown): Json;
   invoke(input: unknown, callId: string): IterableOperation<Json, JournalRequest>;
 }
 

@@ -1,3 +1,4 @@
+import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
 import { journalHandler } from "./journal-api.ts";
 import type {
   ChatActivationEvents,
@@ -68,69 +69,83 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
           });
           return yield* work();
         });
-      return activateJournal(
-        function* () {
-          return createIteratorGuest(() =>
-            chatWork(structuredClone(input), capabilities.tools, function* (request) {
-              const outcome = yield* Model.operations.sample(decodeModelContext(request.context));
-              if (!outcome.ok) {
-                throw new Error(outcome.error.message);
-              }
-              return outcome.value;
-            }),
-          );
-        },
-        journal,
+      const Effects = createToolEffects(composition);
+      return Effects.withEffects(
+        capabilities.tools,
         {
-          classify: (request) =>
-            request.kind === "elicit"
-              ? "park"
-              : request.kind === "effect" || request.kind === "api"
-                ? request.retrySafety.mode
-                : "repeatable",
-          accepted: () => events.accepted?.(),
-          handler: (request) => {
-            if (request.kind === "api") {
-              return withSampling(capabilities.model, request, () =>
-                journalHandler(Model.host)(request),
-              );
-            }
-            return handleChatRequest(
-              {
-                ...capabilities,
-                model: {
-                  ...capabilities.model,
-                  driver: {
-                    // Nested tool sampling retains its existing durable request in this slice.
-                    stream: (nativeRequest) =>
-                      withSampling(
-                        { model: nativeRequest.model, streamOptions: nativeRequest.options },
-                        request,
-                        function* () {
-                          const outcome = yield* Model.host.dispatch({
-                            kind: "api",
-                            api: ModelDefinition.id,
-                            method: "sample",
-                            version: ModelDefinition.operations.sample.version,
-                            input: assertJson(nativeRequest.context),
-                            retrySafety: { mode: "repeatable" },
-                          });
-                          if (!outcome.ok) {
-                            const failure = ModelDefinition.operations.sample.failure.parse(
-                              outcome.error,
-                            );
-                            throw new Error(failure.message);
-                          }
-                          return decodeModelResponse(outcome.value);
-                        },
-                      ),
-                  },
-                },
-              },
-              request,
-            );
+          *effect(request) {
+            return yield* capabilities.effects[`${request.tool}.${request.key}`]!(request.input);
           },
         },
+        () =>
+          activateJournal(
+            function* () {
+              return createIteratorGuest(() =>
+                chatWork(structuredClone(input), capabilities.tools, function* (request) {
+                  const outcome = yield* Model.operations.sample(
+                    decodeModelContext(request.context),
+                  );
+                  if (!outcome.ok) {
+                    throw new Error(outcome.error.message);
+                  }
+                  return outcome.value;
+                }),
+              );
+            },
+            journal,
+            {
+              classify: (request) =>
+                request.kind === "elicit"
+                  ? "park"
+                  : request.kind === "effect" || request.kind === "api"
+                    ? request.retrySafety.mode
+                    : "repeatable",
+              accepted: () => events.accepted?.(),
+              handler: (request) => {
+                if (request.kind === "api") {
+                  return withSampling(capabilities.model, request, () =>
+                    journalHandler(Model.host)(request),
+                  );
+                }
+                return handleChatRequest(
+                  {
+                    ...capabilities,
+                    model: {
+                      ...capabilities.model,
+                      driver: {
+                        // Nested tool sampling retains its existing durable request in this slice.
+                        stream: (nativeRequest) =>
+                          withSampling(
+                            { model: nativeRequest.model, streamOptions: nativeRequest.options },
+                            request,
+                            function* () {
+                              const outcome = yield* Model.host.dispatch({
+                                kind: "api",
+                                api: ModelDefinition.id,
+                                method: "sample",
+                                version: ModelDefinition.operations.sample.version,
+                                input: assertJson(nativeRequest.context),
+                                retrySafety: { mode: "repeatable" },
+                              });
+                              if (!outcome.ok) {
+                                const failure = ModelDefinition.operations.sample.failure.parse(
+                                  outcome.error,
+                                );
+                                throw new Error(failure.message);
+                              }
+                              return decodeModelResponse(outcome.value);
+                            },
+                          ),
+                      },
+                    },
+                  },
+                  request,
+                  Effects.operations,
+                );
+              },
+            },
+          ),
+        capabilities.effectMiddleware,
       );
     },
   };

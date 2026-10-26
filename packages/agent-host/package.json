@@ -122,6 +122,8 @@
     "@sweatpants/model-sampling": "workspace:*",
     "@sweatpants/primitive-journal": "workspace:*",
     "@sweatpants/runtime-effection": "workspace:*",
+    "@sweatpants/standard-durability": "workspace:*",
+    "@sweatpants/standard-durability-effection": "workspace:*",
     "@sweatpants/stream-bridge": "workspace:*",
     "@sweatpants/tool-runtime": "workspace:*",
     "@sweatpants/tool-session": "workspace:*",

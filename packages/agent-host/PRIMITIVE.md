@@ -151,3 +151,22 @@ Effects and elicitation answers retain raw JSON outcomes in the journal; hosts
 validate before acceptance, and resumed tool contexts transform those raw values.
 This prevents applying a transform to an already transformed accepted outcome.
 Repeated `.effects()` and `.elicits()` merge maps, with later keys replacing earlier ones.
+
+The host binds `createToolEffects(composition)` once per activation, in a native
+child scope. Its private API uses `Api.around(toolEffectValidation(tools))`;
+chat and MCP call `Effects.operations.effect(request)` only for unreplayed work.
+Validation runs outermost, then configured `effectMiddleware` in array order,
+then the adapted native handler. Middleware receives canonical input and returns
+raw output. The outer validator checks the final successful output, including
+short circuits and transformations. Failed Outcomes pass through. No native
+operations enter the JSON guest. Activation cleanup joins before return, and
+parent context bindings remain inherited. Independent API identities isolate
+concurrent or nested activations; no global tool registry is used.
+
+The compiled `JournalTool.validateAnswer(key, rawAnswer)` is the separate
+answer-ingress boundary. It validates the strict action envelope and response,
+then returns raw JSON for acceptance. Author contexts transform accepted values
+on resume. Public `parseJournalAnswer` and `validateJournalValue` are retired;
+validation middleware shares the compiler's package-private parser. Native
+exceptions, missing implementations and declaration errors retain each host's
+policy. The primitive SDK builder remains temporary; root builders are unchanged.

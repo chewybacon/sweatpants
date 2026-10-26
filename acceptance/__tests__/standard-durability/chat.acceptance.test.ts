@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { activateChat } from "@sweatpants/agent-host/primitive/activation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -351,6 +354,260 @@ function scenarios<Y>(name: string, host: Host<Y>) {
             expect(calls).toBe(1);
           }
         } finally {
+          journal.close();
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("isolates concurrent production activations and composes multiple tool declarations in order", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "effect-activations-"));
+      const inherited = c.createContext<string>("activation-owner");
+      const entered = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+      const traces: string[][] = [[], []];
+      const journals = [0, 1].map(
+        (id) =>
+          new SqliteJournal(join(directory, `${id}.sqlite`), {
+            ...identity,
+            executionId: `activation-${id}`,
+          }),
+      );
+      const tools = ["first", "second"].map((name) =>
+        createDurableTool(name, { version: "1" })
+          .description(name)
+          .parameters(z.object({}))
+          .effects({
+            read: {
+              version: "1",
+              input: z.null(),
+              output: z.string(),
+              retrySafety: { mode: "repeatable" },
+            },
+          })
+          .execute(function* (_input, ctx) {
+            return yield* ctx.effect("read", null);
+          }),
+      );
+      const executions = journals.map((journal, id) =>
+        host.start(function* () {
+          yield* inherited.set(`owner-${id}`);
+          let samples = 0;
+          const result = yield* activateChat(
+            c,
+            {
+              tools,
+              model: {
+                model,
+                driver: {
+                  *stream() {
+                    const result = response(false);
+                    if (samples++ === 0) {
+                      return {
+                        ...result,
+                        message: {
+                          ...result.message,
+                          content: tools.map((tool) => ({
+                            type: "tool-call" as const,
+                            toolCall: {
+                              id: tool.name,
+                              name: tool.name,
+                              input: {},
+                              thoughtSignature: null,
+                            },
+                          })),
+                        },
+                      };
+                    }
+                    return result;
+                  },
+                },
+              },
+              effectMiddleware: [
+                {
+                  *effect([request], next) {
+                    traces[id]!.push(`outer:${request.tool}`);
+                    const owner = yield* inherited.expect();
+                    expect(owner).toBe(`owner-${id}`);
+                    yield* c.ensure(function* () {
+                      traces[id]!.push(`cleanup:${request.tool}`);
+                    });
+                    const result = yield* next(request);
+                    traces[id]!.push(`returned:${request.tool}`);
+                    return result;
+                  },
+                },
+                {
+                  *effect([request], next) {
+                    traces[id]!.push(`inner:${request.tool}`);
+                    return yield* next(request);
+                  },
+                },
+              ],
+              effects: Object.fromEntries(
+                tools.map((tool) => [
+                  `${tool.name}.read`,
+                  function* () {
+                    traces[id]!.push(`native:${tool.name}`);
+                    if (tool.name === "first") {
+                      entered[id]!.resolve();
+                      yield* host.wait(entered[1 - id]!.promise);
+                    }
+                    return { ok: true as const, value: `${id}:${tool.name}` };
+                  },
+                ]),
+              ),
+            },
+            input,
+            journal,
+          );
+          const owner = yield* inherited.expect();
+          expect(owner).toBe(`owner-${id}`);
+          return result;
+        }),
+      );
+      try {
+        await Promise.all(executions.map((execution) => execution.result));
+        for (const [id, journal] of journals.entries()) {
+          const effects = journal
+            .read()
+            .entries.filter(
+              (entry) =>
+                typeof entry.request === "object" &&
+                entry.request !== null &&
+                "kind" in entry.request &&
+                entry.request.kind === "effect",
+            );
+          expect(effects.map((entry) => entry.outcome)).toEqual([
+            { ok: true, value: `${id}:first` },
+            { ok: true, value: `${id}:second` },
+          ]);
+          expect(traces[id]!.slice(0, 8)).toEqual([
+            "outer:first",
+            "inner:first",
+            "native:first",
+            "returned:first",
+            "outer:second",
+            "inner:second",
+            "native:second",
+            "returned:second",
+          ]);
+          expect(traces[id]!.slice(8).sort()).toEqual(["cleanup:first", "cleanup:second"]);
+        }
+      } finally {
+        await Promise.all(executions.map((execution) => execution.cancel()));
+        journals.forEach((journal) => journal.close());
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves failed effect Outcomes, native failures and cancellation through activation middleware", async () => {
+      for (const kind of [
+        "reported",
+        "invalid",
+        "middleware-invalid",
+        "thrown",
+        "cancelled",
+      ] as const) {
+        const directory = await mkdtemp(join(tmpdir(), "scoped-effect-failure-"));
+        const journal = new SqliteJournal(join(directory, "chat.sqlite"), identity);
+        const entered = Promise.withResolvers<void>();
+        let released = false;
+        let middlewareReleased = false;
+        const inherited = c.createContext<string>("effect-inherited");
+        let samples = 0;
+        const chat = createScopedChat(c);
+        const execution = host.start(function* () {
+          yield* inherited.set("parent");
+          yield* chat.Model.host.install({
+            *sample() {
+              return { ok: true, value: response(samples++ === 0) };
+            },
+          });
+          return yield* chat.activate(
+            {
+              model: { model },
+              tools: [approveRecord],
+              effectMiddleware: [
+                {
+                  *effect([request], next) {
+                    const owner = yield* inherited.expect();
+                    expect(owner).toBe("parent");
+                    yield* c.ensure(function* () {
+                      middlewareReleased = true;
+                    });
+                    const result = yield* next(request);
+                    return kind === "middleware-invalid"
+                      ? { ok: true, value: { receipt: 42 } }
+                      : result;
+                  },
+                },
+              ],
+              effects: {
+                *"approve_record.record"() {
+                  return yield* c.scoped(function* () {
+                    yield* c.ensure(function* () {
+                      released = true;
+                    });
+                    entered.resolve();
+                    if (kind === "cancelled") {
+                      yield* host.wait(new Promise<void>(() => {}));
+                    }
+                    if (kind === "thrown") {
+                      throw new Error("Native effect defect");
+                    }
+                    return kind === "reported"
+                      ? { ok: false as const, error: { reason: "Record refused" } }
+                      : {
+                          ok: true as const,
+                          value: { receipt: kind === "middleware-invalid" ? "valid" : 42 },
+                        };
+                  });
+                },
+              },
+            },
+            input,
+            journal,
+          );
+        });
+        // Observe rejection before cancellation can complete on either native runtime.
+        const outcome = execution.result.then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+        try {
+          await entered.promise;
+          if (kind === "cancelled") {
+            await execution.cancel();
+          }
+          const result = await outcome;
+          expect(released).toBe(true);
+          expect(middlewareReleased).toBe(true);
+          const acceptedEffect = journal.read().entries.find((entry) => {
+            const request = entry.request;
+            return (
+              typeof request === "object" &&
+              request !== null &&
+              "kind" in request &&
+              request.kind === "effect"
+            );
+          });
+          if (kind === "reported") {
+            expect(result.ok).toBe(true);
+            expect(acceptedEffect?.outcome).toEqual({
+              ok: false,
+              error: { reason: "Record refused" },
+            });
+          } else {
+            expect(result.ok).toBe(false);
+            expect(acceptedEffect).toBeUndefined();
+            if (!result.ok && kind !== "cancelled") {
+              expect(String(result.error)).toContain(
+                kind === "thrown" ? "Native effect defect" : "Journal schema validation failed",
+              );
+            }
+          }
+        } finally {
+          await execution.cancel();
           journal.close();
           await rm(directory, { recursive: true, force: true });
         }

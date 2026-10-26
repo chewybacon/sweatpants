@@ -1,10 +1,11 @@
+import { effection } from "@sweatpants/standard-durability-effection";
 import { runtime } from "@sweatpants/runtime-effection";
 import type { RuntimeExecution } from "@sweatpants/foundation/computation";
 import { startChatActivation } from "./activation.ts";
 import { effectionModelStream, type PrimitiveChatOptions } from "./effection.ts";
 import { z } from "zod";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import { parseJournalAnswer, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { type JournalRequest } from "@sweatpants/agent-sdk/primitive";
 import { createChatRouter, normalizeChatBasePath } from "../server/chat-router.ts";
 import { acceptedMessages, type TurnInput } from "./chat.ts";
 import { resolveTurnDisposition } from "./disposition.ts";
@@ -81,6 +82,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
     "model",
     "tools",
     "effects",
+    "effectMiddleware",
     "authorize",
   ]);
   for (const key of Object.keys(options)) {
@@ -157,6 +159,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
           }
           owner.task = startChatActivation(
             runtime,
+            effection,
             {
               ...options,
               model: {
@@ -430,13 +433,13 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
               const tool = options.tools.find((entry) => entry.name === pending.tool)!;
               const answer =
                 command.status === "cancelled" ? { action: "cancel" } : command.payload;
-              parseJournalAnswer(tool.elicits[pending.key].response, answer);
+              const rawAnswer = tool.validateAnswer(pending.key, answer);
               store.answer(
                 turn.identity.executionId,
                 command.commandId,
                 canonical,
                 occurrence.id,
-                assertJson(answer),
+                rawAnswer,
               );
               store.reconcileAnswers(turn, journal);
             } finally {

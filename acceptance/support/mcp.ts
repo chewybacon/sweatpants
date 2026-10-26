@@ -4,7 +4,11 @@ import { serve, type ApplicationServer } from "@sweatpants/agent-host/node";
 import { MCP_PROTOCOL_VERSION } from "@sweatpants/tool-session/mcp";
 
 /** Real ingress and application lifetime; scenarios supply their authored tools. */
-export function useMcpServer(tools: McpAppConfig["tools"], effects?: McpAppConfig["effects"]) {
+export function useMcpServer(
+  tools: McpAppConfig["tools"],
+  effects?: McpAppConfig["effects"],
+  effectMiddleware?: McpAppConfig["effectMiddleware"],
+) {
   return resource<ApplicationServer>(function* (provide) {
     const app = createMcpApp({
       name: "public-mcp-acceptance",
@@ -12,6 +16,7 @@ export function useMcpServer(tools: McpAppConfig["tools"], effects?: McpAppConfi
       secret: "public-mcp-continuation-secret-at-least-32-bytes",
       tools,
       effects,
+      effectMiddleware,
       *authenticate() {
         return "acceptance-client";
       },

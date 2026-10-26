@@ -6,10 +6,10 @@ with the application host.
 
 ```ts
 import { startChatActivation } from "@sweatpants/agent-host/primitive/activation";
-import { runtime } from "@sweatpants/runtime-effect";
-// Or: import { runtime } from "@sweatpants/runtime-effection";
+import { runtime } from "@sweatpants/runtime-effection";
+import { effection as composition } from "@sweatpants/standard-durability-effection";
 
-const execution = startChatActivation(runtime, capabilities, input, journal, {
+const execution = startChatActivation(runtime, composition, capabilities, input, journal, {
   publish(event, request) {
     /* provisional model output */
   },
@@ -44,6 +44,9 @@ of each streaming chunk.
 
 Effect implementations can return `Effect.Effect<ModelResponse, never, R>`;
 `createRuntime<R>(provide)` supplies their native requirements at execution.
+When using the Effect composition adapter, provide its frame and native scope
+with `effectProgram(() => work)` at that boundary (in addition to application
+services); the bare default Effect runtime does not supply composition state.
 Expected effect-handler failures are returned as `Outcome`, while defects and
 interruption remain native runtime failures. The HKT `EffectRuntime` and
 `EffectionRuntime` exports describe native computation types; Effection does not
@@ -58,7 +61,7 @@ of the portable activation supply one through `ChatModelStream`.
 The caller owns the journal and must keep it open until `result` or `cancel()` has
 settled. Disposing an activation is distinct from persisting a logical Stop command.
 
-For scoped composition, `activateChat(capabilities, input, journal, events)` returns
+For scoped composition, `activateChat(composition, capabilities, input, journal, events)` returns
 an iterable operation without starting another root runtime. This lets API/context
 bindings remain visible to model handlers. `startChatActivation` delegates to this
 same operation. The caller still owns the journal lifetime.

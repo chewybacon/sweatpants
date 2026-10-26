@@ -1422,6 +1422,12 @@ importers:
       '@sweatpants/runtime-effection':
         specifier: workspace:*
         version: link:../runtime-effection
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpants/standard-durability-effection':
+        specifier: workspace:*
+        version: link:../standard-durability-effection
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../stream-bridge
@@ -3132,6 +3138,12 @@ importers:
       '@sweatpants/primitive-journal':
         specifier: workspace:*
         version: link:../primitive-journal
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpants/standard-durability-effection':
+        specifier: workspace:*
+        version: link:../standard-durability-effection
       '@sweatpants/tool-runtime':
         specifier: workspace:*
         version: link:../tool-runtime
