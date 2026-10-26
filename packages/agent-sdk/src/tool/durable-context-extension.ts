@@ -1,26 +1,23 @@
-import type { Operation, Scope } from "effection";
-import { createApi } from "effection/experimental";
+import type { Operation } from "effection";
+import { effection, type EffectionYield } from "@sweatpants/standard-durability-effection";
+import type { Api as ComposedApi, Operations } from "@sweatpants/standard-durability";
 
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
-import type { Json, OperationMiddleware } from "@sweatpants/foundation";
 import type { DurableProgramContext } from "@sweatpants/durable-execution";
 
 export type DurableClientMethod = (...args: any[]) => Operation<any>;
 export type DurableClientShape = Readonly<Record<string, DurableClientMethod>>;
 
-export interface DurableClientApi<Client extends DurableClientShape> {
-  around(
-    middleware: OperationMiddleware<Client>,
-    options?: { readonly at: "min" | "max" },
-  ): Operation<void>;
-  /** @internal Invokes one semantic client method through recursive middleware. */
-  invoke(
-    scope: Scope,
-    key: keyof Client,
-    args: readonly unknown[],
-    implementation: Client,
-  ): Operation<Json>;
-}
+type ClientSignature<Client extends DurableClientShape> = {
+  [K in keyof Client]: Client[K] extends (...args: infer Args) => Operation<infer Result>
+    ? (...args: Args) => Result
+    : never;
+};
+
+export type DurableClientApi<Client extends DurableClientShape> = Pick<
+  ComposedApi<ClientSignature<Client>, EffectionYield>,
+  "around"
+>;
 
 export interface DurableContextExtensionOptions<
   Name extends string,
@@ -50,8 +47,8 @@ export interface DurableContextExtension<
   readonly api: DurableClientApi<Client>;
   /** Alias retained as a descriptive middleware surface for client composition. */
   readonly clientApi: DurableClientApi<Client>;
-  /** @internal Creates one attachment-scope semantic client. */
-  createClient(context: DurableProgramContext): Client;
+  /** @internal Installs the semantic client in the current invocation scope. */
+  installClient(context: DurableProgramContext): Operation<Client>;
 }
 
 export type ExtensionClient<T> =
@@ -120,38 +117,20 @@ export function defineDurableContextExtension<
     throw new Error("Durable context extension client must contain named Effection methods");
   }
 
-  type InternalMethod = (implementation: Client, ...args: unknown[]) => Operation<Json>;
-  const internalCore = Object.fromEntries(
+  // Dynamic method discovery loses the mapped key/signature correlation once here.
+  const defaults = Object.fromEntries(
     methodKeys.map((key) => [
       key,
-      (implementation: Client, ...args: unknown[]) => {
-        const method = implementation[key] as (...values: unknown[]) => Operation<Json>;
-        return method(...args);
+      function* () {
+        throw new Error(`Durable extension ${options.name} is not context-bound`);
       },
     ]),
-  ) as Record<string, InternalMethod>;
-  const internalApi = createApi(`durable-extension:${options.name}`, internalCore);
-  const clientApi: DurableClientApi<Client> = {
-    around(middleware, aroundOptions) {
-      const adapted = Object.fromEntries(
-        Object.entries(middleware).map(([key, candidate]) => [
-          key,
-          (args: unknown[], next: (...nextArgs: unknown[]) => unknown) => {
-            const implementation = args[0] as Client;
-            const method = candidate as (
-              args: unknown[],
-              next: (...nextArgs: unknown[]) => unknown,
-            ) => unknown;
-            return method(args.slice(1), (...nextArgs) => next(implementation, ...nextArgs));
-          },
-        ]),
-      );
-      return internalApi.around(adapted as Parameters<typeof internalApi.around>[0], aroundOptions);
-    },
-    invoke(scope, key, args, implementation) {
-      return internalApi.invoke(scope, key as string, [implementation, ...args]) as Operation<Json>;
-    },
-  };
+  ) as unknown as Operations<ClientSignature<Client>, EffectionYield>;
+  const composed = effection.createApi<ClientSignature<Client>>(
+    `durable-extension:${options.name}`,
+    defaults,
+  );
+  const clientApi: DurableClientApi<Client> = { around: composed.around };
 
   const digest = sha256(
     canonicalJson({
@@ -167,41 +146,16 @@ export function defineDurableContextExtension<
     digest,
     api: clientApi,
     clientApi,
-    createClient(context) {
-      let bound: Client;
-      const self = new Proxy(
-        {},
-        {
-          get(_target, key) {
-            const method = bound[key as keyof Client];
-            if (typeof method !== "function") {
-              throw new Error(`Unknown durable extension method ${String(key)}`);
-            }
-            return method.bind(bound);
-          },
-        },
-      ) as Client;
-      const implementation = Object.freeze(
-        options.client
-          ? options.client({ api: options.api, self, context })
-          : (options.api as unknown as Client),
+    *installClient(context) {
+      // Calls, including recursive self calls, resolve through the same installed API.
+      const self = composed.operations as unknown as Client;
+      const implementation = options.client
+        ? options.client({ api: options.api, self, context })
+        : (options.api as unknown as Client);
+      yield* composed.install(
+        implementation as unknown as Operations<ClientSignature<Client>, EffectionYield>,
       );
-      bound = Object.freeze(
-        Object.fromEntries(
-          methodKeys.map((key) => [
-            key,
-            (...args: unknown[]) =>
-              (function* () {
-                const method = internalApi.operations[key] as unknown as (
-                  implementation: Client,
-                  ...values: unknown[]
-                ) => Operation<Json>;
-                return yield* method(implementation, ...args);
-              })(),
-          ]),
-        ),
-      ) as unknown as Client;
-      return bound;
+      return self;
     },
   };
   return Object.freeze(extension);

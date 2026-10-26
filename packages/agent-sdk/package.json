@@ -88,6 +88,8 @@
     "@sweatpants/model-decision": "workspace:*",
     "@sweatpants/model-provider": "workspace:*",
     "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/standard-durability": "workspace:*",
+    "@sweatpants/standard-durability-effection": "workspace:*",
     "base64-js": "1.5.1",
     "effection": "catalog:",
     "zod": "catalog:"

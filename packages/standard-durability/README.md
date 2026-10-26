@@ -34,3 +34,11 @@ merely because their imports are type-safe.
 The concrete binding chooses validation and representation. Host dispatch returns
 a domain Outcome and owns no journal acceptance. The experimental journal adapter
 in `journal-api.ts` adds the existing outer exchange Outcome separately.
+
+`Handler<Request, Y, Reply>` describes a request returning an `Operation<Reply, Y>`.
+`Dispatcher<Request, Y, Reply>` exposes that handler as `dispatch`; `HostBinding`
+extends it with API installation and middleware. Foundation re-exports the same
+Handler with its existing generic parameter order. Implementations can satisfy
+these structural contracts directly. The journal integration specializes Handler
+as `JournalHandler<Request, Y>` and supplies `journalHandler(binding)` as an optional
+adapter; its JSON requirement and outer Outcome remain outside this package.

@@ -271,3 +271,23 @@ The portable core now includes `ApiRequest<Wire>` and binding signatures. Local
 `journalHandler(host)` adapter; the scope/dispatch binding no longer embeds the
 journal's outer successful exchange wrapper. Authored operations, installation and
 middleware keep their existing facade; persistence fields and outcomes are unchanged.
+
+## Small application reading guide
+
+Start with [chat-app.ts](./chat-app.ts) and [chat-app.md](./chat-app.md) for one complete
+text-only turn: provider selection, scoped output middleware, identity, SQLite journal
+attachment and cleanup. This is an authoring example, not a production app migration.
+
+## Tool context composition
+
+[tool-context.ts](./tool-context.ts) composes the real yo-chat flight-booking body
+through installed capabilities. See [tool-context.md](./tool-context.md) for the
+authoring contract, shared validation path, and durability boundary.
+
+## Public tool builders
+
+[Builder-first authoring](./tool-builder-authoring.md) and its
+[typechecked examples](./tool-builder-authoring.ts) now use real builders: the
+existing ephemeral `createTool` and the primitive-backed `createDurableTool`.
+The earlier parallel contract sketch was removed. The durable replacement is
+currently a bounded subset, used by yo-chat's real flight-booking tool.

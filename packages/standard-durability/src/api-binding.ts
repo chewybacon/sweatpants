@@ -1,4 +1,4 @@
-import type { Api, Operation } from "./contracts.js";
+import type { Api, Dispatcher, Operation } from "./contracts.js";
 import type {
   ApiDefinition,
   InputOf,
@@ -20,10 +20,9 @@ export type ApiRequest<Wire> = {
 export type GuestOperations<D extends OperationDefinitions, Wire> = {
   readonly [K in keyof D]: (input: InputOf<D[K]>) => Operation<OutcomeOf<D[K]>, ApiRequest<Wire>>;
 };
-export interface HostBinding<D extends OperationDefinitions, Y, Wire> extends Api<Signature<D>, Y> {
-  /** Validates dispatch metadata and final domain outcome; persistence is owned separately. */
-  dispatch(request: ApiRequest<Wire>): Operation<Outcome<unknown, unknown>, Y>;
-}
+/** Validates dispatch metadata and final domain outcome; persistence is owned separately. */
+export interface HostBinding<D extends OperationDefinitions, Y, Wire>
+  extends Api<Signature<D>, Y>, Dispatcher<ApiRequest<Wire>, Y, Outcome<unknown, unknown>> {}
 export interface Host<Y, Wire> {
   use<D extends OperationDefinitions>(definition: ApiDefinition<D>): HostBinding<D, Y, Wire>;
 }

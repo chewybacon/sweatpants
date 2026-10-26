@@ -4,6 +4,7 @@ import type {
   Work,
 } from "@sweatpants/standard-durability";
 export type {
+  Handler,
   Outcome,
   Operation as IterableOperation,
   Work,
@@ -37,11 +38,6 @@ export type Computation<F extends RuntimeType, A, E = never, R = never> = (F & {
 export type Turn<T, Request> =
   | { readonly kind: "suspended"; readonly request: Request }
   | { readonly kind: "completed"; readonly value: T };
-
-/** Interpret a guest request using the host's native yielded protocol. */
-export type Handler<Request, Yielded, Reply = unknown> = (
-  request: Request,
-) => IterableOperation<Reply, Yielded>;
 
 /** Structural middleware contract independent of domain arguments and runtime. */
 export type Middleware<Args extends unknown[], Computed> = (

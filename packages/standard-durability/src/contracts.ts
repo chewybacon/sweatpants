@@ -4,6 +4,14 @@ export interface Operation<T, Y> {
 }
 export type Work<T, Y> = () => Operation<T, Y>;
 
+/** Interpret a request using the host's yielded protocol. No persistence is implied. */
+export type Handler<Request, Y, Reply = unknown> = (request: Request) => Operation<Reply, Y>;
+
+/** An object exposing the same request/reply computation contract. */
+export interface Dispatcher<Request, Y, Reply = unknown> {
+  dispatch: Handler<Request, Y, Reply>;
+}
+
 /** A signature describes arguments and the eventual value, without a runtime. */
 export type Operations<Signature, Y> = {
   readonly [K in keyof Signature]: Signature[K] extends (...args: infer Args) => infer Value

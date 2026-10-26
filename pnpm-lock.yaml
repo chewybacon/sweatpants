@@ -1498,6 +1498,12 @@ importers:
       '@sweatpants/model-sampling':
         specifier: workspace:*
         version: link:../model-sampling
+      '@sweatpants/standard-durability':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpants/standard-durability-effection':
+        specifier: workspace:*
+        version: link:../standard-durability-effection
       base64-js:
         specifier: 1.5.1
         version: 1.5.1
