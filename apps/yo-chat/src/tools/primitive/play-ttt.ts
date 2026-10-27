@@ -6,9 +6,8 @@ import {
   PickMoveContextSchema,
 } from "../schemas/play-ttt.ts";
 /** Journal-native tic-tac-toe program and public tool contract. */
-import { createDurableTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { assertJson, type JsonObject } from "@sweatpants/foundation";
-import type { IterableOperation } from "@sweatpants/foundation/computation";
 import type { ProgramElicitResult } from "@sweatpants/durable-execution";
 import { z } from "zod";
 
@@ -43,7 +42,7 @@ export const playTttTool = createDurableTool("play_ttt", {
   })
   .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })
   .samples()
-  .execute(function* (_input, context): IterableOperation<PlayTttResult, JournalRequest> {
+  .execute<PlayTttResult>(function* (_input, context) {
     const coinFlip = yield* context.effect("coin", {});
     const modelSymbol: Player = coinFlip.side === "heads" ? "X" : "O";
     const userSymbol: Player = modelSymbol === "X" ? "O" : "X";
@@ -69,7 +68,7 @@ export const playTttTool = createDurableTool("play_ttt", {
           });
           text = sampled.text;
           try {
-            requested = ModelCellSchema.parse(JSON.parse(text)).cell;
+            requested = ModelCellSchema.parse(sampled.parsed ?? JSON.parse(text)).cell;
             break;
           } catch {
             if (retry === 2) {

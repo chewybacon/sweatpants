@@ -9,7 +9,7 @@ import { localJournalTools } from "../../../apps/yo-chat/src/tools/primitive/ind
 import { tools as retainedTools } from "../../../apps/yo-chat/src/server/tool-definitions.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createPrimitiveChatApp } from "@sweatpants/agent-host/primitive";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";

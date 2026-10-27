@@ -1,9 +1,9 @@
 import type { Middleware } from "@sweatpants/standard-durability";
 import type { EffectionYield } from "@sweatpants/standard-durability-effection";
-import type { ToolEffectSignature } from "@sweatpants/agent-sdk/primitive";
+import type { ToolEffectSignature } from "@sweatpants/agent-sdk";
 import { effection } from "@sweatpants/standard-durability-effection";
-import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
-import { type JournalTool, type JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { createToolEffects } from "@sweatpants/agent-sdk";
+import { type JournalTool, type JournalRequest } from "@sweatpants/agent-sdk";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { call, createScope, ensure, useScope, type Operation } from "effection";
 import { z } from "zod";

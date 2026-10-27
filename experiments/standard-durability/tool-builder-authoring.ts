@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTool } from "../../packages/agent-sdk/src/tool/create.ts";
-import { createDurableTool } from "../../packages/agent-sdk/src/primitive.ts";
+import { createDurableTool } from "../../packages/agent-sdk/src/index.ts";
 
 /** Existing ephemeral builder: execution is owned by the current native runtime scope. */
 export const greeting = createTool("greeting")

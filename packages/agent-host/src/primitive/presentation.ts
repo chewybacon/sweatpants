@@ -7,7 +7,7 @@ import {
   decodeConversationAuthority,
   type ConversationStreamEvent,
 } from "@sweatpants/chat-core";
-import type { JournalTool } from "@sweatpants/agent-sdk/primitive";
+import type { JournalTool } from "@sweatpants/agent-sdk";
 import { resolveTurnDisposition } from "./disposition.ts";
 import type { ChatStore } from "./store.ts";
 import type { ChatRequest, TurnInput } from "./chat.ts";

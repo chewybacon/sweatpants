@@ -1,4 +1,5 @@
-import { createDurableTool, type DurableProgramContextFor } from "@sweatpants/agent-sdk";
+import { type DurableProgramContextFor } from "@sweatpants/agent-sdk/legacy";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { z } from "zod";
 
 const exchanges = {

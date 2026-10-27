@@ -6,7 +6,7 @@ import {
   MCP_PROTOCOL_VERSION,
   type McpHttpHandler,
 } from "@sweatpants/tool-session/mcp";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
 import { z } from "zod";
 import {

@@ -1,33 +1,12 @@
-import { CalculatorParametersSchema } from "./schemas/calculator.ts";
 import { createTool } from "@sweatpants/agent-sdk";
+import { calculator as portableCalculator } from "./primitive/calculator.ts";
 
-export const calculator = createTool("calculator")
-  .description("Evaluate a mathematical expression")
-  .parameters(CalculatorParametersSchema)
-  .execute(function* (params) {
-    try {
-      const sanitized = params.expression.replace(/[^0-9+\-*/().%\s]/g, "");
-      if (sanitized !== params.expression) {
-        return {
-          expression: params.expression,
-          error: "Invalid characters in expression",
-          result: null,
-        };
-      }
-
-      // eslint-disable-next-line no-eval
-      const result = eval(sanitized);
-
-      return {
-        expression: params.expression,
-        result: typeof result === "number" ? result : null,
-        error: null,
-      };
-    } catch (e) {
-      return {
-        expression: params.expression,
-        result: null,
-        error: e instanceof Error ? e.message : "Unknown error",
-      };
-    }
+/** Ordinary placement; the arithmetic body is authored once. */
+export const calculator = createTool(portableCalculator.name)
+  .description(portableCalculator.description)
+  .parameters(portableCalculator.parameters)
+  .execute(function* (input) {
+    return yield* portableCalculator.invokeWith(input, "calculator", function* (request) {
+      throw new Error(`Unexpected calculator capability: ${request.kind}`);
+    });
   });

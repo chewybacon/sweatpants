@@ -1,5 +1,5 @@
 import { CrankError, type ProgramElicitResult } from "@sweatpants/durable-execution";
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { WorkspaceFilesApi } from "@sweatpants/workspace-runtime/api";
 import type { Operation } from "effection";

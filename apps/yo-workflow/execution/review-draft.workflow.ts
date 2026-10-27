@@ -1,6 +1,6 @@
 import { ensure, type Operation } from "effection";
 import { z } from "zod";
-import { createDurableTool } from "@sweatpants/agent-sdk/tool";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import type { ProgramElicitResult } from "@sweatpants/durable-execution";
 
 type Input = { title: string; recipient: string; metadata: null };

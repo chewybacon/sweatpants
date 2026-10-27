@@ -1,7 +1,7 @@
 // @vitest-environment node
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { all, call, run, ensure, suspend } from "effection";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { createMcpApp } from "@sweatpants/agent-host/mcp";
 import { z } from "zod";
 import { expect, it, vi } from "vitest";

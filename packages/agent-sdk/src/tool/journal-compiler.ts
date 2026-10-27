@@ -67,7 +67,7 @@ export interface JournalToolContext<E extends Effects, L extends Elicits, Y = Jo
     prompt: string;
     maxTokens?: number;
     schema?: JsonObject;
-  }): IterableOperation<{ text: string }, Y>;
+  }): IterableOperation<{ text: string; parsed?: Json }, Y>;
   log(level: "debug" | "info" | "warning" | "error", message: string): IterableOperation<void, Y>;
   notify(message: string, progress?: number): IterableOperation<void, Y>;
   effect<K extends keyof E & string>(
@@ -83,25 +83,27 @@ export interface JournalToolContext<E extends Effects, L extends Elicits, Y = Jo
 /** Tool bodies are deterministic JSON-yielding iterators. Native I/O belongs in handlers. */
 export function compileJournalTool<
   P extends StandardSchemaV1,
-  O extends StandardSchemaV1,
+  O extends StandardSchemaV1 | undefined,
   E extends Effects,
   L extends Elicits,
+  N extends string,
+  Result,
 >(definition: {
-  name: string;
+  name: N;
   description: string;
   parameters: P;
-  output?: O;
+  output: O;
   parametersProjections?: SchemaProjectionOptions;
   outputProjections?: SchemaProjectionOptions;
   version: string;
   sampling?: boolean;
   effects: E;
   elicits: L;
-  execute(
+  execute<Y>(
     input: StandardSchemaV1.InferOutput<P>,
-    context: JournalToolContext<E, L>,
-  ): IterableOperation<StandardSchemaV1.InferInput<O>, JournalRequest>;
-}): CompiledJournalTool<P, O, E, L> {
+    context: JournalToolContext<E, L, Y>,
+  ): IterableOperation<Result, Y>;
+}): CompiledJournalTool<P, O, E, L, N, Result> {
   for (const elicit of Object.values(definition.elicits)) {
     if ("documents" in elicit) {
       throw new Error("Journal tool elicitation documents are unsupported");
@@ -132,8 +134,23 @@ export function compileJournalTool<
     elicits: Object.fromEntries(Object.keys(definition.elicits).map((key) => [key, {}])),
     artifacts: artifacts.elicits,
   });
+  function* invokeWith<Y>(
+    argumentsValue: unknown,
+    callId: string,
+    dispatch: Handler<JournalRequest, Y>,
+  ): IterableOperation<JournalToolResult<O, Result>, Y> {
+    const result = yield* definition.execute(
+      validateJournalValue(definition.parameters, argumentsValue),
+      createJournalToolContext(definition, callId, dispatch),
+    );
+    // Validation establishes the conditional schema result; JSON checks the wire boundary.
+    return assertJson(
+      definition.output ? validateJournalValue(definition.output, result) : result,
+    ) as JournalToolResult<O, Result>;
+  }
   return Object.freeze({
     ...definition,
+    execution: "journal",
     artifacts,
     interfaceDigest,
     bindings,
@@ -152,17 +169,11 @@ export function compileJournalTool<
       parseJournalAnswer(elicit.response, rawAnswer);
       return assertJson(rawAnswer);
     },
-    *invoke(argumentsValue: unknown, callId: string): IterableOperation<Json, JournalRequest> {
-      const context = createJournalToolContext(definition, callId, function* (request) {
+    invokeWith,
+    *invoke(argumentsValue: unknown, callId: string) {
+      return yield* invokeWith(argumentsValue, callId, function* (request) {
         return yield request;
       });
-      const result = yield* definition.execute(
-        validateJournalValue(definition.parameters, argumentsValue),
-        context,
-      );
-      return assertJson(
-        definition.output ? validateJournalValue(definition.output, result) : result,
-      );
     },
   });
 }
@@ -182,7 +193,7 @@ export function createJournalToolContext<E extends Effects, L extends Elicits, Y
         prompt: input.prompt,
         maxTokens: input.maxTokens ?? 1024,
         schema: input.schema ?? null,
-      })) as { text: string };
+      })) as { text: string; parsed?: Json };
     },
     *log(level, message) {
       yield* dispatch({ kind: "log", tool: definition.name, callId, level, message });
@@ -274,6 +285,7 @@ export class JournalEffectDeclarationError extends Error {
 
 /** Compiled host contract; independent of the authoring entrypoint. */
 export interface JournalTool {
+  readonly execution: "journal";
   readonly name: string;
   readonly version: string;
   readonly description: string;
@@ -293,14 +305,33 @@ export interface JournalTool {
   invoke(input: unknown, callId: string): IterableOperation<Json, JournalRequest>;
 }
 
+/** The output schema transforms the body result; JSON is checked before delivery. */
+export type JournalToolResult<O, Result> = (O extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<O>
+  : Result) &
+  Json;
+
 export interface CompiledJournalTool<
   P extends StandardSchemaV1,
-  O extends StandardSchemaV1,
+  O extends StandardSchemaV1 | undefined,
   E extends Effects,
   L extends Elicits,
+  N extends string = string,
+  Result = Json,
 > extends JournalTool {
+  readonly name: N;
+  /** Execute using caller-owned capabilities; this method does not imply journal acceptance. */
+  invokeWith<Y>(
+    input: unknown,
+    callId: string,
+    dispatch: Handler<JournalRequest, Y>,
+  ): IterableOperation<JournalToolResult<O, Result>, Y>;
+  invoke(
+    input: unknown,
+    callId: string,
+  ): IterableOperation<JournalToolResult<O, Result>, JournalRequest>;
   readonly parameters: P;
-  readonly output?: O;
+  readonly output: O;
   readonly effects: E;
   readonly elicits: L;
 }

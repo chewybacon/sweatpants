@@ -69,10 +69,7 @@ export function prepareWorkflow(request: CompileRequest): PreparedWorkflow {
   const definitions: (WorkflowEntry & { inline?: Babel.types.FunctionExpression })[] = [];
   const removed: Babel.types.Node[] = [];
   for (const node of ast!.program.body) {
-    if (
-      t.isImportDeclaration(node) &&
-      ["@sweatpants/agent-sdk", "@sweatpants/agent-sdk/tool"].includes(node.source.value)
-    ) {
+    if (t.isImportDeclaration(node) && node.source.value === "@sweatpants/agent-sdk/legacy") {
       if (
         node.specifiers.length !== 1 ||
         !t.isImportSpecifier(node.specifiers[0]) ||

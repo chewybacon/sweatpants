@@ -31,8 +31,7 @@ function* booking() {
         return yield* next({ ...request, maxTokens: Math.min(request.maxTokens, 200) });
       },
     });
-    const context = tool.forTool(bookFlightDefinition, callId);
-    return yield* executeBookFlight(bookFlightDefinition.parameters.parse(input), context);
+    return yield* bookFlightTool.invokeWith(input, callId, tool.dispatch);
   });
 }
 ```

@@ -1,5 +1,5 @@
 import { CalculatorParametersSchema } from "../schemas/calculator.ts";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 export const calculator = createDurableTool("calculator", {
   version: "1",

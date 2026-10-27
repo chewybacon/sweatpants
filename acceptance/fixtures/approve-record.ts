@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 export const approveRecord = createDurableTool("approve_record", { version: "1" })
   .description("Record a request, then ask whether to finish it")

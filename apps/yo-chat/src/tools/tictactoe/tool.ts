@@ -1,300 +1,42 @@
-import {
-  GameMoveSchema,
-  PickMoveResponseSchema,
-  PickMoveContextSchema,
-} from "../schemas/tictactoe.ts";
-/**
- * TicTacToe Tool (MCP Standard Sampling)
- *
- * Canonical-core implementation of the original standard MCP sampling demo.
- * A single tool call plays the whole game. Model moves use plain ctx.sample(),
- * then the tool parses the free-form response and falls back to a random legal
- * move only when the sampled text is unusable.
- */
 import { createTool } from "@sweatpants/agent-sdk";
-import { z } from "zod";
-import {
-  type Board,
-  type Player,
-  EMPTY_BOARD,
-  checkWinner,
-  applyMove,
-  formatBoard,
-} from "./types.ts";
+import { tictactoeTool as portableTictactoe } from "../primitive/tictactoe.ts";
+import { PickMoveContextSchema } from "../schemas/tictactoe.ts";
+export type { TicTacToeResult } from "../primitive/tictactoe.ts";
 
-// =============================================================================
-// SCHEMAS
-// =============================================================================
-
-type GameMove = z.infer<typeof GameMoveSchema>;
-
-type GameClientResult =
-  | {
-      cancelled: true;
-      board: Board;
-      boardDisplay: string;
-    }
-  | {
-      status: "x_wins" | "o_wins" | "draw";
-      winner: Player | null;
-      modelWon: boolean;
-      board: Board;
-      boardDisplay: string;
-      winningLine?: number[];
-    };
-
-function randomEmptyPosition(board: Board): number {
-  const emptyPositions = board
-    .map((cell, i) => (cell === null ? i : null))
-    .filter((i): i is number => i !== null);
-  return emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!;
-}
-
-// =============================================================================
-// TOOL DEFINITION
-// =============================================================================
-
-export const tictactoeTool = createTool("tictactoe")
-  .description(`Play a complete game of tic-tac-toe against the user.
-
-This tool handles the entire game - just call it once and it will:
-1. Randomly assign X or O to you and the user
-2. Take turns until someone wins or draws
-3. Return the final result
-
-You'll pick moves by responding with a cell number. The user will pick their moves interactively.
-
-Board positions:
-0 | 1 | 2
----------
-3 | 4 | 5
----------
-6 | 7 | 8`)
-  .parameters(z.object({}))
-  .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })
+/** Ordinary placement shares the portable game, including its progress reporting. */
+export const tictactoeTool = createTool(portableTictactoe.name)
+  .description(portableTictactoe.description)
+  .parameters(portableTictactoe.parameters)
+  .elicits(portableTictactoe.elicits)
   .samples()
-  .execute(function* (_params, ctx) {
-    const modelPlaysX = Math.random() < 0.5;
-    const modelSymbol = (modelPlaysX ? "X" : "O") as Player;
-    const userSymbol = (modelPlaysX ? "O" : "X") as Player;
-    const modelGoesFirst = modelPlaysX;
-
-    let board: Board = [...EMPTY_BOARD];
-    let currentPlayer: Player = "X";
-    const moveHistory: GameMove[] = [];
-
-    yield* ctx.log("info", `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`);
-
-    let clientResult: GameClientResult;
-
-    while (true) {
-      const isModelTurn = currentPlayer === modelSymbol;
-
-      if (isModelTurn) {
-        // =================================================================
-        // MODEL'S TURN: Plain MCP Sampling (no structured output)
-        // =================================================================
-        yield* ctx.notify("Model is thinking...", 0.5);
-
-        const boardStr = formatBoard(board);
-        const emptyPositions = board
-          .map((cell, i) => (cell === null ? i : null))
-          .filter((i): i is number => i !== null);
-
-        const prompt = `You are playing tic-tac-toe as ${modelSymbol}.
-
-Current board:
-${boardStr}
-
-Empty positions: ${emptyPositions.join(", ")}
-
-Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
-
-        const response = yield* ctx.sample({
-          messages: [{ role: "user", content: prompt }],
-        });
-
-        const text = response.text ?? "";
-        yield* ctx.log("info", `Model response: "${text}"`);
-
-        const match = text.match(/\b([0-8])\b/);
-        let playedCell: number;
-
-        if (match) {
-          const parsed = parseInt(match[1]!, 10);
-          if (emptyPositions.includes(parsed)) {
-            playedCell = parsed;
-            yield* ctx.log("info", `Parsed valid move: ${playedCell}`);
-          } else {
-            yield* ctx.log(
-              "warning",
-              `Model chose occupied cell ${parsed}, falling back to random`,
-            );
-            playedCell = randomEmptyPosition(board);
+  .execute(function* (input, ctx) {
+    return yield* portableTictactoe.invokeWith(input, "tictactoe", function* (request) {
+      switch (request.kind) {
+        case "effect":
+          if (request.key !== "random") {
+            throw new Error(`Unknown game effect: ${request.key}`);
           }
-        } else {
-          yield* ctx.log("warning", `Could not parse move from "${text}", falling back to random`);
-          playedCell = randomEmptyPosition(board);
+          return Math.random();
+        case "elicit": {
+          if (request.key !== "pickMove") {
+            throw new Error(`Unknown game elicitation: ${request.key}`);
+          }
+          const result = yield* ctx.elicit("pickMove", {
+            message: request.message,
+            context: PickMoveContextSchema.parse(request.context),
+          });
+          return result.action === "accept"
+            ? { action: result.action, content: result.content }
+            : { action: result.action };
         }
-
-        board = applyMove(board, playedCell, modelSymbol);
-        yield* ctx.log("info", `Model plays cell ${playedCell}`);
-
-        moveHistory.push({
-          position: playedCell,
-          player: modelSymbol,
-          isModel: true,
-          boardAfter: [...board],
-          moveNumber: moveHistory.length + 1,
-        });
-      } else {
-        // =================================================================
-        // USER'S TURN: Elicitation with exchange accumulation
-        // =================================================================
-        const lastEntry = moveHistory[moveHistory.length - 1];
-        const lastMove = lastEntry
-          ? { position: lastEntry.position, player: lastEntry.player }
-          : undefined;
-
-        const result = yield* ctx.elicit("pickMove", {
-          message:
-            modelGoesFirst && board.filter((cell) => cell !== null).length === 1
-              ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!`
-              : `Your turn! You're playing as ${userSymbol}.`,
-          context: {
-            board,
-            moveHistory,
-            /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-            ...(lastMove ? { lastMove } : {}),
-            modelSymbol,
-            userSymbol,
-          },
-        });
-
-        if (result.action === "decline" || result.action === "cancel") {
-          clientResult = {
-            cancelled: true,
-            board,
-            boardDisplay: formatBoard(board),
-          };
-          break;
-        }
-
-        const userPosition = result.content.position;
-        board = applyMove(board, userPosition, userSymbol);
-        yield* ctx.log("info", `User plays cell ${userPosition}`);
-
-        moveHistory.push({
-          position: userPosition,
-          player: userSymbol,
-          isModel: false,
-          boardAfter: [...board],
-          moveNumber: moveHistory.length + 1,
-        });
+        case "nested-sample":
+          return yield* ctx.sample({ prompt: request.prompt, maxTokens: request.maxTokens });
+        case "progress":
+          yield* ctx.notify(request.message, request.progress);
+          return;
+        case "log":
+          yield* ctx.log(request.level, request.message);
+          return;
       }
-
-      const { status, winningLine } = checkWinner(board);
-      if (status !== "ongoing") {
-        const resultMessage =
-          status === "draw"
-            ? "It's a draw! Good game!"
-            : status === "x_wins"
-              ? modelSymbol === "X"
-                ? "I win! Good game!"
-                : "You win! Well played!"
-              : modelSymbol === "O"
-                ? "I win! Good game!"
-                : "You win! Well played!";
-
-        const lastEntry = moveHistory[moveHistory.length - 1];
-        const lastMove = lastEntry
-          ? { position: lastEntry.position, player: lastEntry.player }
-          : undefined;
-
-        yield* ctx.elicit("pickMove", {
-          message: resultMessage,
-          context: {
-            board,
-            moveHistory,
-            /* CONDITIONAL-SPREAD: Omit absent lastMove from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-            ...(lastMove ? { lastMove } : {}),
-            /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-            ...(winningLine ? { winningLine } : {}),
-            gameOver: true,
-            resultMessage,
-            modelSymbol,
-            userSymbol,
-          },
-        });
-
-        clientResult = {
-          status,
-          winner: status === "draw" ? null : status === "x_wins" ? "X" : "O",
-          modelWon:
-            status !== "draw" &&
-            ((status === "x_wins" && modelSymbol === "X") ||
-              (status === "o_wins" && modelSymbol === "O")),
-          board,
-          boardDisplay: formatBoard(board),
-          /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-          ...(winningLine ? { winningLine } : {}),
-        };
-        break;
-      }
-
-      currentPlayer = currentPlayer === "X" ? "O" : "X";
-    }
-
-    if ("cancelled" in clientResult) {
-      return {
-        success: false,
-        cancelled: true,
-        message: "Game was cancelled by the user.",
-        board: clientResult.board,
-        boardDisplay: clientResult.boardDisplay,
-      };
-    }
-
-    return {
-      success: true,
-      modelSymbol,
-      userSymbol,
-      result:
-        clientResult.status === "draw"
-          ? "draw"
-          : clientResult.modelWon
-            ? "model_wins"
-            : "user_wins",
-      winner: clientResult.winner,
-      board: clientResult.board,
-      boardDisplay: clientResult.boardDisplay,
-      /* CONDITIONAL-SPREAD: Omit absent winningLine from chat requests and authored tool results; explicit undefined is not a portable JSON value. */
-      ...(clientResult.winningLine ? { winningLine: clientResult.winningLine } : {}),
-      message:
-        clientResult.status === "draw"
-          ? "The game ended in a draw!"
-          : clientResult.modelWon
-            ? "I won the game!"
-            : "The user won the game!",
-    };
+    });
   });
-
-export type TicTacToeResult =
-  | {
-      success: true;
-      modelSymbol: Player;
-      userSymbol: Player;
-      result: "model_wins" | "user_wins" | "draw";
-      winner: Player | null;
-      board: Board;
-      boardDisplay: string;
-      winningLine?: number[];
-      message: string;
-    }
-  | {
-      success: false;
-      cancelled: true;
-      message: string;
-      board?: Board;
-      boardDisplay?: string;
-    };

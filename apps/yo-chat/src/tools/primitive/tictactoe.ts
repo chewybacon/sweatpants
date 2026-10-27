@@ -11,7 +11,7 @@ import {
  * then the tool parses the free-form response and falls back to a random legal
  * move only when the sampled text is unusable.
  */
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 import {
   type Board,

@@ -5,7 +5,7 @@ import { startChatActivation } from "./activation.ts";
 import { effectionModelStream, type PrimitiveChatOptions } from "./effection.ts";
 import { z } from "zod";
 import { assertJson, type Json } from "@sweatpants/foundation";
-import { type JournalRequest } from "@sweatpants/agent-sdk/primitive";
+import { type JournalRequest } from "@sweatpants/agent-sdk";
 import { createChatRouter, normalizeChatBasePath } from "../server/chat-router.ts";
 import { acceptedMessages, type TurnInput } from "./chat.ts";
 import { resolveTurnDisposition } from "./disposition.ts";

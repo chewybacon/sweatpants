@@ -4,7 +4,7 @@ import {
   type JournalRequest,
   type JournalTool,
   type ToolEffectSignature,
-} from "@sweatpants/agent-sdk/primitive";
+} from "@sweatpants/agent-sdk";
 import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
 import {

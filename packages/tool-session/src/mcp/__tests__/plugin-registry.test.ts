@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { createDurableTool, createTool } from "@sweatpants/agent-sdk";
+import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { createPluginRegistry, createPluginRegistryFrom } from "../plugin-registry.ts";
 import { makePlugin, type ClientPluginRegistration } from "../plugin.ts";
 

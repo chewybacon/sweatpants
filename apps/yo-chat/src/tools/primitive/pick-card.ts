@@ -6,7 +6,7 @@ import {
   DrawInputSchema,
   DrawOutputSchema,
 } from "../schemas/pick-card.ts";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 export const pickCard = createDurableTool("pick_card", {
   version: "2.0.0",

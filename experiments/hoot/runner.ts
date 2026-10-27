@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { assertJson, sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 import { ask, askParameters } from "../../apps/yo-workflow/src/workflow/tools/ask.ts";

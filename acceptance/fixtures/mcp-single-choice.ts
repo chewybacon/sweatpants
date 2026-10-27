@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 /** Generator replay is pure; the counted external operation is accepted once. */

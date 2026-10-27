@@ -1,4 +1,5 @@
-import { createDurableTool, defineDurableContextExtension } from "@sweatpants/agent-sdk";
+import { defineDurableContextExtension } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { WorkspaceFiles } from "@sweatpants/workspace-runtime/api";
 import { z } from "zod";
 

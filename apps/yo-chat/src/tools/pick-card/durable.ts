@@ -1,13 +1,8 @@
-import { z } from "zod";
-import {
-  PickCardParametersSchema,
-  PickCardResponseSchema,
-  PickCardContextSchema,
-  DrawInputSchema,
-  DrawOutputSchema,
-} from "../schemas/pick-card.ts";
+import { PickCardContextSchema, DrawInputSchema, DrawOutputSchema } from "../schemas/pick-card.ts";
 import { CrankError } from "@sweatpants/durable-execution";
-import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
+import { pickCard as portablePickCard } from "../primitive/pick-card.ts";
+import { defineEffect } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { sha256 } from "@sweatpants/foundation";
 
 /** Host-side card draw contract with Zod-authored Standard Schema validators. */
@@ -24,39 +19,41 @@ export const drawPickCards = defineEffect({
  * Its program identity, retry policy and catalog remain route-specific.
  */
 export const pickCard = createDurableTool("pick_card")
-  .description("Draw random cards and let the user pick one")
+  .description(portablePickCard.description)
   .identity({
     version: "2.0.0",
-    digest: sha256("yo-chat.pick-card@2.0.0:unified-contract-content-elicit-v1"),
+    digest: sha256("yo-chat.pick-card@2.0.0:portable-tool-body-v2"),
   })
-  .parameters(PickCardParametersSchema)
-  .output(z.string())
-  .elicits({ pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } })
+  .parameters(portablePickCard.parameters)
+  .output(portablePickCard.output)
+  .elicits(portablePickCard.elicits)
   .effects({ [drawPickCards.name]: drawPickCards })
   .execute(function* (input, context) {
-    const { cards } = yield* context.effect(drawPickCards, { count: input.count });
-    const prompt = `Pick one of these ${cards.length} cards:`;
-    const result = yield* context.elicit("pickCard", {
-      message: prompt,
-      context: { cards, prompt },
+    return yield* portablePickCard.invokeWith(input, "pick_card", function* (request) {
+      if (request.kind === "effect" && request.key === "draw") {
+        return yield* context.effect(drawPickCards, DrawInputSchema.parse(request.input));
+      }
+      if (request.kind === "elicit" && request.key === "pickCard") {
+        const offered = PickCardContextSchema.parse(request.context);
+        const result = yield* context.elicit("pickCard", {
+          message: request.message,
+          context: offered,
+        });
+        if (
+          result.action === "accept" &&
+          !offered.cards.some(
+            (card) =>
+              card.rank === result.content.picked.rank &&
+              card.suit === result.content.picked.suit &&
+              card.display === result.content.picked.display,
+          )
+        ) {
+          throw new CrankError("schema_validation_failed", "Selected card was not offered");
+        }
+        return result;
+      }
+      throw new Error(`Unsupported retained card capability: ${request.kind}`);
     });
-    if (result.action !== "accept") {
-      return "No card was selected.";
-    }
-    const card = cards.find(
-      (candidate) =>
-        candidate.rank === result.content.picked.rank &&
-        candidate.suit === result.content.picked.suit &&
-        candidate.display === result.content.picked.display,
-    );
-    if (!card) {
-      throw new CrankError("schema_validation_failed", "Selected card was not offered");
-    }
-    return [
-      `Card selection recorded: the user picked ${card.rank} of ${card.suit} (${card.display}).`,
-      "Remember this selected card for later questions in the same conversation.",
-      "Acknowledge the specific selected card to the user now.",
-    ].join(" ");
   });
 
 export {

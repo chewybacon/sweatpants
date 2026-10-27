@@ -1,4 +1,5 @@
-import { completeElicitExchange, createDurableTool } from "@sweatpants/agent-sdk";
+import { completeElicitExchange } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 import { exchangeSchema, projectExchange } from "../exchanges.ts";

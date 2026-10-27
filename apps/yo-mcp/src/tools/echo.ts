@@ -5,7 +5,7 @@
  * Demonstrates the simplest possible MCP tool.
  */
 import { z } from "zod";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 export const echoTool = createDurableTool("echo", { version: "1" })
   .description("Echo back the input message")

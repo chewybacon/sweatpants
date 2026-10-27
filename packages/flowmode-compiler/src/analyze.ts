@@ -29,7 +29,7 @@ export function analyzeWorkflowTools(source: string, id: string): WorkflowToolDe
         continue;
       }
       if (
-        ["@sweatpants/agent-sdk", "@sweatpants/agent-sdk/tool"].includes(node.source.value) &&
+        node.source.value === "@sweatpants/agent-sdk/legacy" &&
         (t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value) ===
           "createDurableTool"
       ) {

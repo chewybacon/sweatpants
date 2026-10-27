@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { call, createContext, createQueue, resource, run, sleep, spawn, suspend } from "effection";
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { inProcess } from "@sweatpants/agent-host/server";
 import {
   DurableProgramCancellation,

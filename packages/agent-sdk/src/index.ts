@@ -67,7 +67,6 @@ export {
   type DurableClientShape,
   type DurableExtensionContext,
   type DurableExtensionMap,
-  type DurableToolDefinition,
   type ExtensionClient,
   type LoweredSchema,
   type PortableSchemaOptions,
@@ -82,12 +81,6 @@ export {
   type InferSchemaInput,
   type ExtractElicitResponseInput,
   type ExtractElicitContextInput,
-  type CreateDurableToolBuilderBase,
-  type CreateDurableToolBuilderReady,
-  type CreateDurableToolBuilderWithDescription,
-  type CreateDurableToolBuilderWithIdentity,
-  type CreateDurableToolBuilderWithParameters,
-  type DurableProgramContextFor,
   type LogLevel,
   type ToolCtx,
   type BaseToolCtx,
@@ -154,3 +147,18 @@ export {
 // =============================================================================
 
 export * from "./tool/documents.ts";
+
+// Portable tool execution and native effect registration.
+export {
+  createJournalToolContext,
+  JournalEffectDeclarationError,
+} from "./tool/journal-compiler.ts";
+export type {
+  JournalRequest,
+  JournalToolContext,
+  JournalTool,
+  CompiledJournalTool,
+} from "./tool/journal-compiler.ts";
+export { createToolEffects, toolEffectValidation } from "./tool/tool-effect-middleware.ts";
+export type { ToolEffectSignature, ToolEffectHandlers } from "./tool/tool-effect-middleware.ts";
+export type { SchemaProjectionOptions } from "./tool/types.ts";

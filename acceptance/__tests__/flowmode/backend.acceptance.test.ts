@@ -148,8 +148,9 @@ it("captures and restores real production checkpoints through scoped middleware 
     if (checkpoint.kind !== "continuation") {
       throw new Error("Expected continuation");
     }
-    // On replacement runs, also consume the checkpoint written by the old evaluator.
-    const baselineFile = new URL("baseline-checkpoint.json", directory);
+    // Reuse prior evaluator checkpoints only for the same pinned program.
+    // Source/import changes alter the digest and must not reuse an incompatible checkpoint.
+    const baselineFile = new URL(`baseline-checkpoint-${program.manifest.digest}.json`, directory);
     const compatibility: ProgramCheckpoint = existsSync(baselineFile)
       ? (JSON.parse(readFileSync(baselineFile, "utf8")) as ProgramCheckpoint)
       : checkpoint;

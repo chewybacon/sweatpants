@@ -1,4 +1,4 @@
-import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
+import { createToolEffects } from "@sweatpants/agent-sdk";
 import { journalHandler } from "./journal-api.ts";
 import type {
   ChatActivationEvents,

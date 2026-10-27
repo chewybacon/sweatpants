@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { run, scoped } from "effection";
 import { z } from "zod";
-import { createTool, createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
+import { createTool, defineEffect } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { ToolInventoryApi, ToolRuntimeApi } from "@sweatpants/tool-runtime";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/durable-handler";

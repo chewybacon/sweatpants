@@ -9,6 +9,9 @@ import {
   type EffectYield,
 } from "@sweatpants/standard-durability-effect";
 import { createConversation } from "../../../experiments/standard-durability/conversation.ts";
+import { createDurableTool, createToolEffects } from "@sweatpants/agent-sdk";
+import { success } from "@sweatpants/foundation/computation";
+import { z } from "zod";
 import type { Composition, Operation, Operations, Work } from "@sweatpants/standard-durability";
 
 interface Host<Y> {
@@ -23,6 +26,58 @@ function gate<T = void>() {
 function scenarios<Y>(name: string, host: Host<Y>) {
   const c = host.composition;
   describe(`standard durability composition: ${name}`, () => {
+    it("runs an inferred compiled tool through caller-owned native capabilities", async () => {
+      const tool = createDurableTool("double", { version: "1" })
+        .description("Double through a portable capability")
+        .parameters(z.object({ value: z.number() }))
+        .effects({
+          double: {
+            version: "1",
+            input: z.number(),
+            output: z.number(),
+            retrySafety: { mode: "repeatable" },
+          },
+        })
+        .execute(function* (input, ctx) {
+          return { value: yield* ctx.effect("double", input.value) };
+        });
+      const trace: string[] = [];
+      const Effects = createToolEffects(c);
+      const handlers = Effects.handlers([tool])({
+        *"double.double"(input) {
+          yield* c.ensure(function* () {
+            trace.push("closed");
+          });
+          yield* host.wait(Promise.resolve());
+          trace.push("handled");
+          return success(input * 2);
+        },
+      });
+      const result = await host.start(() =>
+        Effects.withEffects(
+          [tool],
+          {
+            *effect(request) {
+              return yield* handlers[`${request.tool}.${request.key}`]!(request.input);
+            },
+          },
+          () =>
+            tool.invokeWith({ value: 21 }, "call", function* (request) {
+              if (request.kind !== "effect") {
+                throw new Error("Unexpected capability");
+              }
+              const outcome = yield* Effects.operations.effect(request);
+              if (!outcome.ok) {
+                throw outcome.error;
+              }
+              return outcome.value;
+            }),
+        ),
+      ).result;
+      expect(result).toEqual({ value: 42 });
+      expect(trace).toEqual(["handled", "closed"]);
+    });
+
     it("authors one conversation with inherited middleware, child overrides and owned cleanup", async () => {
       const chat = createConversation(c);
       const trace: string[] = [];

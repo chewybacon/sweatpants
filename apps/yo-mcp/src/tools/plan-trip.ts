@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
 /** Multiple interactions and revision, all within one journal invocation. */

@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
 

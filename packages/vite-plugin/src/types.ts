@@ -2,7 +2,7 @@
  * Types for the framework Vite plugins.
  */
 
-export type DiscoveredToolExecution = "ordinary" | "crank_native";
+export type DiscoveredToolExecution = "ordinary" | "crank_native" | "journal";
 
 /** Import provenance and execution kind of one supported tool builder. */
 export interface ToolBuilderDiscoveryConfig {
@@ -94,6 +94,11 @@ export function resolveToolDiscoveryOptions(
           { module: "@sweatpants/agent-sdk", export: "createTool", execution: "ordinary" as const },
           {
             module: "@sweatpants/agent-sdk",
+            export: "createDurableTool",
+            execution: "journal" as const,
+          },
+          {
+            module: "@sweatpants/agent-sdk/legacy",
             export: "createDurableTool",
             execution: "crank_native" as const,
           },

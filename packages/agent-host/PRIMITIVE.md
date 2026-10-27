@@ -4,7 +4,7 @@
 single Node owner and a fresh SQLite database. The existing host is unchanged.
 The normal React chat client and `makePlugin(tool)` use the existing HTTP protocol.
 
-Author deterministic tools with `@sweatpants/agent-sdk/primitive`:
+Author deterministic tools with `@sweatpants/agent-sdk`:
 
 ```ts
 const approveRecord = createDurableTool("approve_record", { version: "1" })

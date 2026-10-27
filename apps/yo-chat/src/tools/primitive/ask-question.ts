@@ -3,7 +3,7 @@ import {
   AskQuestionContextSchema,
   AskQuestionResponseSchema,
 } from "../schemas/ask-question.ts";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 export const askQuestion = createDurableTool("ask_question", {
   version: "1",

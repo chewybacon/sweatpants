@@ -28,7 +28,7 @@ export type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./types.ts";
  */
 
 /** Closed execution-kind discriminant shared by contract implementations. */
-export type ToolExecutionKind = "ordinary" | "crank_native";
+export type ToolExecutionKind = "ordinary" | "crank_native" | "journal";
 
 /** Execution-neutral public tool metadata and schema contract. */
 export interface ToolContract<

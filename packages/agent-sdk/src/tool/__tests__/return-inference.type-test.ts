@@ -112,3 +112,75 @@ jsonOnly.execute(function* () {
 jsonOnly.execute(function* () {
   return new Date();
 });
+
+import { effection } from "@sweatpants/standard-durability-effection";
+
+// Portable authoring keeps its concrete types through compilation and host binding.
+import { createDurableTool as createPortableTool } from "../primitive-durable-create.ts";
+import { createToolEffects } from "../tool-effect-middleware.ts";
+import type { Operation as PortableOperation } from "@sweatpants/standard-durability";
+import type { JournalRequest } from "../journal-compiler.ts";
+import { success } from "@sweatpants/foundation/computation";
+
+const portable = createPortableTool("portable-choice", { version: "1" })
+  .description("Infer portable capabilities")
+  .parameters(z.object({ count: z.string().transform(Number) }))
+  .effects({
+    double: {
+      version: "1",
+      input: z.object({ count: z.number() }),
+      output: z.string().transform(Number),
+      retrySafety: { mode: "repeatable" },
+    },
+  })
+  .execute(function* (params, ctx) {
+    expectTypeOf(params.count).toEqualTypeOf<number>();
+    const doubled = yield* ctx.effect("double", params);
+    expectTypeOf(doubled).toEqualTypeOf<number>();
+    // @ts-expect-error undeclared effect names are rejected
+    void ctx.effect("missing", params);
+    // @ts-expect-error effect arguments use their declared input type
+    void ctx.effect("double", { count: "2" });
+    // @ts-expect-error sampling is not enabled
+    void ctx.sample;
+    return { doubled };
+  });
+expectTypeOf(portable.name).toEqualTypeOf<"portable-choice">();
+expectTypeOf(portable.invoke({}, "call")).toMatchTypeOf<
+  PortableOperation<{ doubled: number }, JournalRequest>
+>();
+const transformed = createPortableTool("transformed", { version: "1" })
+  .description("Preserve the output schema transform")
+  .parameters(z.object({}))
+  .output(z.string().transform(Number));
+const transformedTool = transformed.execute(function* () {
+  return "42";
+});
+expectTypeOf(transformedTool.invoke({}, "call")).toMatchTypeOf<
+  PortableOperation<number, JournalRequest>
+>();
+// @ts-expect-error the body returns raw schema input, not transformed output
+transformed.execute(function* () {
+  return 42;
+});
+createToolEffects(effection).handlers([portable])({
+  *"portable-choice.double"(input) {
+    expectTypeOf(input.count).toEqualTypeOf<number>();
+    return success(String(input.count * 2));
+  },
+});
+createToolEffects(effection).handlers([portable])({
+  // @ts-expect-error handlers return raw output; transforming happens after acceptance
+  *"portable-choice.double"() {
+    return success(42);
+  },
+});
+// @ts-expect-error every declared effect needs a handler
+createToolEffects(effection).handlers([portable])({});
+
+import { sleep } from "effection";
+// @ts-expect-error portable bodies cannot capture a runtime-specific yielded protocol
+transformed.execute(function* () {
+  yield* sleep(1);
+  return "42";
+});

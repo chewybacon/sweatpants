@@ -643,15 +643,21 @@ inventory. Ordinary DO sessions retain a generator across requests, with a bound
 ten-minute lifetime and explicit failure after compute loss. They do not replay
 ordinary effects after restart.
 
-### Shared local and retained tool schemas
+### Shared local and retained tool execution
 
 Tools keep fluent authoring through `createTool` or `createDurableTool`. The five
 chat plugins import the corresponding `tools/primitive/` tool directly and pass
 it to `makePlugin(tool)`. Vite extracts the browser contract from that definition;
 authors do not declare or project a separate plugin contract.
 
-`src/tools/schemas/` shares ordinary schema objects and Flight/SeatMap types with
-retained ordinary/crank producers. Names, versions, descriptions and interaction
-wiring stay on the fluent definitions. Retained crank identities, catalogs and
-retry policies remain route-specific, including the longer `play_ttt` description.
-MCP's incompatible `pick_card` remains separate.
+All six retained tools delegate to those portable bodies through `invokeWith`.
+Their modules provide native capabilities rather than copies of the tool logic.
+`src/tools/schemas/` supplies the shared schemas and inferred Flight/SeatMap types.
+Flight's mock backend is shared too; each placement keeps its delay ordering.
+
+Portable authoring imports the SDK root. Retained card/game transport adapters
+explicitly import the crank builder from `@sweatpants/agent-sdk/legacy`; their
+implementation digests changed for this cutover. Catalogs, retry policies and the
+longer retained `play_ttt` description remain placement-specific. Ordinary
+tic-tac-toe now forwards the shared body's diagnostic progress notifications.
+MCP's different `pick_card` remains a separate tool.

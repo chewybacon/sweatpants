@@ -1,12 +1,6 @@
 import type { Composition, Operations } from "@sweatpants/standard-durability";
-import {
-  createJournalToolContext,
-  type JournalRequest,
-} from "../../packages/agent-sdk/src/primitive.ts";
-import {
-  bookFlightTool,
-  executeBookFlight,
-} from "../../apps/yo-chat/src/tools/primitive/book-flight.ts";
+import { type JournalRequest } from "../../packages/agent-sdk/src/index.ts";
+import { bookFlightTool } from "../../apps/yo-chat/src/tools/primitive/book-flight.ts";
 
 type Request<K extends JournalRequest["kind"]> = Extract<JournalRequest, { kind: K }>;
 
@@ -48,12 +42,7 @@ export function createToolContext<Y>(composition: Composition<Y>) {
   }
   return {
     Capabilities,
-    forTool<
-      E extends Parameters<typeof createJournalToolContext>[0]["effects"],
-      L extends Parameters<typeof createJournalToolContext>[0]["elicits"],
-    >(definition: { name: string; effects: E; elicits: L }, callId: string) {
-      return createJournalToolContext(definition, callId, dispatch);
-    },
+    dispatch,
   };
 }
 
@@ -67,9 +56,6 @@ export function bookFlightWithCapabilities<Y>(
   const tool = createToolContext(composition);
   return composition.scoped(function* () {
     yield* tool.Capabilities.install(capabilities);
-    return yield* executeBookFlight(
-      bookFlightTool.parameters.parse(input),
-      tool.forTool(bookFlightTool, callId),
-    );
+    return yield* bookFlightTool.invokeWith(input, callId, tool.dispatch);
   });
 }

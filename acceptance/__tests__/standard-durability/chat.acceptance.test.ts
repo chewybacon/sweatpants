@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createDurableTool } from "@sweatpants/agent-sdk/primitive";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { activateChat } from "@sweatpants/agent-host/primitive/activation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

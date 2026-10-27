@@ -1,4 +1,4 @@
-import { createToolEffects } from "@sweatpants/agent-sdk/primitive";
+import { createToolEffects } from "@sweatpants/agent-sdk";
 import type { Composition } from "@sweatpants/standard-durability";
 import type {
   Runtime,

@@ -1,5 +1,6 @@
 import { call, ensure, run, spawn, type Operation } from "effection";
-import { createDurableTool, defineDurableContextExtension } from "@sweatpants/agent-sdk";
+import { defineDurableContextExtension } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { inProcess } from "@sweatpants/agent-host/server";

@@ -55,16 +55,16 @@
         "default": "./dist/transport/worker.js"
       }
     },
-    "./primitive": {
+    "./legacy": {
       "development": {
-        "import": "./src/primitive.ts",
-        "types": "./src/primitive.ts"
+        "import": "./src/legacy.ts",
+        "types": "./src/legacy.ts"
       },
       "import": {
-        "types": "./dist/primitive.d.ts",
-        "default": "./dist/primitive.js"
+        "types": "./dist/legacy.d.ts",
+        "default": "./dist/legacy.js"
       },
-      "default": "./src/primitive.ts"
+      "default": "./src/legacy.ts"
     }
   },
   "scripts": {

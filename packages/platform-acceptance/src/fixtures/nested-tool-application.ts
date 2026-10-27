@@ -1,5 +1,5 @@
 import { createChatApp, inProcess } from "@sweatpants/agent-host/server";
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { ToolExposurePolicyContext } from "@sweatpants/chat-core";
 import {
   createInMemoryBufferStore,

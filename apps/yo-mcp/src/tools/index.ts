@@ -4,7 +4,7 @@
  * Export all available tools for the MCP server.
  * All tools use the primitive journal declarations.
  */
-import type { JournalTool } from "@sweatpants/agent-sdk/primitive";
+import type { JournalTool } from "@sweatpants/agent-sdk";
 
 // Import all tools
 import { echoTool } from "./echo";

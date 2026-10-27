@@ -20,7 +20,7 @@ export {
   type CompleteElicitExchangeOptions,
   type CompleteSampleExchangeOptions,
 } from "./exchange.ts";
-export { createDurableTool } from "./durable-create.ts";
+export { createDurableTool } from "./primitive-durable-create.ts";
 export {
   defineDurableContextExtension,
   type DurableContextExtension,
@@ -33,17 +33,7 @@ export {
   type DurableExtensionMap,
   type ExtensionClient,
 } from "./durable-context-extension.ts";
-export type {
-  CreateDurableToolBuilderBase,
-  CreateDurableToolBuilderReady,
-  CreateDurableToolBuilderWithDescription,
-  CreateDurableToolBuilderWithIdentity,
-  CreateDurableToolBuilderWithParameters,
-  CreateDurableToolOptions,
-  CreateVersionedDurableToolBuilderBase,
-  DurableProgramContextFor,
-  DurableToolDefinition,
-} from "./durable-create.ts";
+
 export {
   defineEffect,
   implementEffect,
