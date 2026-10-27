@@ -2740,6 +2740,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@sweatpan.ts/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -2865,6 +2868,10 @@ importers:
         version: 7.0.2
 
   packages/v2/execution:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
     devDependencies:
       typescript:
         specifier: 'catalog:'

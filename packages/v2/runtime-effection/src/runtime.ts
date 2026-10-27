@@ -56,8 +56,8 @@ export function createRuntime(
         result,
         cancel() {
           return (cancelling ??= (async () => {
-            await task.halt();
-            await result.catch(() => undefined);
+            // Observe result before requesting halt: cleanup can reject both.
+            await Promise.allSettled([result, Promise.resolve().then(() => task.halt())]);
           })());
         },
       };

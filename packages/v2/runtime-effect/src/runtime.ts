@@ -21,10 +21,11 @@ export function createRuntime(
       ),
     using: (acquire, use, release) =>
       effect.scoped(() =>
-        Effect.acquireUseRelease(
-          execute(acquire),
+        Effect.flatMap(
+          Effect.acquireRelease(execute(acquire), (resource) => execute(() => release(resource)), {
+            interruptible: true,
+          }),
           (resource) => execute(() => use(resource)),
-          (resource) => execute(() => release(resource)),
         ),
       ),
     fromPromise: (start) => Effect.promise(start),
@@ -42,8 +43,9 @@ export function createRuntime(
         result,
         cancel() {
           return (cancelling ??= (async () => {
+            const settled = result.catch(() => undefined);
             controller.abort();
-            await result.catch(() => undefined);
+            await settled;
           })());
         },
       };

@@ -3,7 +3,10 @@ import type { Composition, Operation, Work } from "@standard-durability/core";
 export interface RuntimeExecution<T> {
   /** Resolves only after all owned work and cleanup finish. */
   readonly result: Promise<T>;
-  /** Idempotent. Requests cancellation and waits for completion, including cleanup. */
+  /**
+   * Idempotent shutdown barrier: waits for execution and cleanup to settle.
+   * Does not reject for execution/cleanup failure; observe result for the outcome.
+   */
   cancel(): Promise<void>;
 }
 
@@ -15,7 +18,11 @@ export interface Runtime<Yielded> {
   sleep(milliseconds: number): Operation<void, Yielded>;
   /** Starts every child, returns values in input order, owns/cancels all children. */
   all<T>(work: readonly Work<T, Yielded>[]): Operation<readonly T[], Yielded>;
-  /** Release runs once after successful acquisition, including on failure/cancellation. */
+  /**
+   * Acquisition is interruptible. After success, release is registered before use
+   * and runs once on completion, failure or cancellation. Partial acquisition owns
+   * its own cleanup. Native physical lifetime only, not durable cancellation.
+   */
   using<Resource, T>(
     acquire: Work<Resource, Yielded>,
     use: (resource: Resource) => Operation<T, Yielded>,

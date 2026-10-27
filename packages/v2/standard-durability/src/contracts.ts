@@ -59,6 +59,7 @@ export type Operations<Signature, Y> = {
     : never;
 };
 
+/** A layer may delegate, rewrite, or return without calling next. Assembly owns policy. */
 export type Middleware<Signature, Y> = {
   readonly [K in keyof Signature]?: Signature[K] extends (...args: infer Args) => infer Value
     ? (args: Args, next: (...args: Args) => Operation<Value, Y>) => Operation<Value, Y>
@@ -68,7 +69,12 @@ export type Middleware<Signature, Y> = {
 export interface Api<Signature, Y> {
   /** Resolve against the executing scope; obtaining this facade captures no scope. */
   readonly operations: Operations<Signature, Y>;
-  /** Scoped middleware. Default/max surrounds min (terminal driver) middleware. */
+  /**
+   * Scoped middleware. Default/max surrounds min middleware. Earlier max layers
+   * are outermost; later min layers are outermost within min. Child scopes inherit
+   * layers. A short circuit deliberately skips the remainder of the chain.
+   * Calling next in a child resolves its driver without redispatching wrappers.
+   */
   around(
     middleware: Middleware<Signature, Y>,
     options?: { readonly at: "min" | "max" },
@@ -84,7 +90,11 @@ export interface Context<T, Y> {
   set(value: T): Operation<void, Y>;
 }
 
-/** Scoped composition. Native adapters own scheduling and the yielded protocol. */
+/**
+ * Scoped composition. Native adapters own scheduling and the yielded protocol.
+ * Hosts choose policy through assembly; interception applies to API facade calls,
+ * not direct calls to implementation objects. Contexts may hold either deliberately.
+ */
 export interface Composition<Y> {
   createApi<Signature extends object>(
     name: string,

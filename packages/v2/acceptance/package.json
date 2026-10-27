@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",
     "@sweatpan.ts/runtime-effect": "workspace:*",
     "@sweatpan.ts/runtime-effection": "workspace:*",

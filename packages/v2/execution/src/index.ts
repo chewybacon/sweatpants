@@ -1,2 +1,3 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export type { Guest, GuestWork, Turn } from "./contracts.ts";
+export type { Operation, Work, Outcome } from "@standard-durability/core";
+export { createIteratorGuest } from "./iterator-guest.ts";
