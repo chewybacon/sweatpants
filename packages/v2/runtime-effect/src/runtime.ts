@@ -28,6 +28,23 @@ export function createRuntime(
           (resource) => execute(() => use(resource)),
         ),
       ),
+    withSignal: (signal, work) =>
+      effect.scoped(() =>
+        Effect.suspend(() => {
+          if (signal.aborted) {
+            return Effect.die(signal.reason);
+          }
+          const interrupted = Effect.callback<never>((resume) => {
+            const abort = () => resume(Effect.die(signal.reason));
+            signal.addEventListener("abort", abort, { once: true });
+            if (signal.aborted) {
+              abort();
+            }
+            return Effect.sync(() => signal.removeEventListener("abort", abort));
+          });
+          return Effect.raceFirst(execute(work), interrupted);
+        }),
+      ),
     fromPromise: (start) => Effect.promise(start),
     start(work) {
       const controller = new AbortController();

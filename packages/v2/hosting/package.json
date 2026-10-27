@@ -25,7 +25,8 @@
   },
   "dependencies": {
     "@standard-durability/core": "workspace:*",
-    "@sweatpan.ts/durable": "workspace:*"
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

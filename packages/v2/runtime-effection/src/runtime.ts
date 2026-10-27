@@ -1,5 +1,7 @@
 import {
   all,
+  race,
+  action,
   call,
   ensure,
   resource,
@@ -40,6 +42,22 @@ export function createRuntime(
         });
         return yield* use(acquired);
       });
+    },
+    *withSignal(signal, work) {
+      signal.throwIfAborted();
+      return yield* scoped(() =>
+        race([
+          call(work),
+          action<never>((_resolve, reject) => {
+            const abort = () => reject(signal.reason);
+            signal.addEventListener("abort", abort, { once: true });
+            if (signal.aborted) {
+              abort();
+            }
+            return () => signal.removeEventListener("abort", abort);
+          }),
+        ]),
+      );
     },
     *fromPromise(start) {
       const signal = yield* useAbortSignal();

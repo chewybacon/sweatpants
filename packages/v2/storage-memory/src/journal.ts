@@ -1,4 +1,6 @@
 import type {
+  AttemptControl,
+  AttemptState,
   Journal,
   JournalSnapshot,
   Accepted,
@@ -23,6 +25,7 @@ import type { MemoryJournalOptions } from "./contracts.ts";
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
   options: MemoryJournalOptions,
 ): Journal<R, Q, V, E, S, never> & {
+  readonly attemptControl: AttemptControl<Q, V, E, never>;
   readonly attempts: Attempts<Q, V, E, never>;
   readonly interactions: Interactions<Q, V, E, never>;
 } {
@@ -49,6 +52,21 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     return registration;
   }
   const grants = new Map<string, AttemptGrant>();
+  const invalidated = new Map<string, string>();
+  function inspect(grant: AttemptGrant): AttemptState<Q, V, E> {
+    const currentGrant = grants.get(grant.requestId);
+    if (!currentGrant || !sameGrant(currentGrant, grant)) {
+      throw new Error("Stale attempt grant");
+    }
+    const reason = invalidated.get(grant.attemptId);
+    if (reason !== undefined) {
+      return { state: "invalidated", reason };
+    }
+    const prior = state.history.find((entry) => entry.receipt === grant.requestId);
+    return prior
+      ? { state: "accepted", acceptance: { entry: structuredClone(prior), duplicate: true } }
+      : { state: "active" };
+  }
   function current(revision: number) {
     if (revision !== state.revision) {
       throw new Error("Journal revision conflict");
@@ -80,6 +98,20 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     return { entry: structuredClone(entry), duplicate: false };
   };
   return {
+    attemptControl: {
+      *inspect(grant) {
+        return inspect(grant);
+      },
+      *invalidate(grant, reason) {
+        const prior = inspect(grant);
+        if (prior.state !== "active") {
+          return prior;
+        }
+        invalidated.set(grant.attemptId, reason);
+        state = { ...state, revision: state.revision + 1 };
+        return { state: "invalidated", reason };
+      },
+    },
     interactions: {
       *register(requestId) {
         if (state.status !== "running" || state.pending?.id !== requestId) {
@@ -140,6 +172,16 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
           throw new Error("Participant registration excludes executing attempts");
         }
         const previous = grants.get(requestId);
+        if (previous && invalidated.has(previous.attemptId)) {
+          if (replace) {
+            throw new Error("Invalidated attempt cannot be replaced");
+          }
+          return {
+            state: "invalidated",
+            grant: structuredClone(previous),
+            reason: invalidated.get(previous.attemptId)!,
+          };
+        }
         if (replace) {
           if (!previous || !sameGrant(previous, replace)) {
             throw new Error("Attempt replacement conflict");
@@ -156,9 +198,8 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         return { state: "granted", grant: structuredClone(grant) };
       },
       *settle(grant, outcome) {
-        const currentGrant = grants.get(grant.requestId);
-        if (!currentGrant || !sameGrant(currentGrant, grant)) {
-          throw new Error("Stale attempt grant");
+        if (inspect(grant).state === "invalidated") {
+          throw new Error("Attempt authority revoked");
         }
         return yield* accept(grant.requestId, outcome);
       },

@@ -32,8 +32,8 @@ remain below that entry point. Assembly may install middleware and evaluator
 adapters without making their methods the subject's entry point.
 
 Runtime and execution journeys remain transitional evidence for behaviors not yet
-covered through application entry points: native cancellation, acquisition and
-release, scope policy, unstarted disposal and multi-Guest composition. Move those
+covered through application entry points: concurrent typed capability calls, scope
+policy, unstarted disposal and multi-Guest composition. Move those
 assertions outward when hosting/agent entry points can exercise them; do not keep
 the lower-level journey once its replacement establishes the same behavior.
 
@@ -48,3 +48,15 @@ answering and invalidation use the public scoped API. They establish a local wai
 without an execution attempt and the optional composition of external registration
 followed by waiting. Invalidation tests prove reply fencing, not deadline scheduling
 or logical cancellation/unwinding.
+
+Resource lifecycle journeys now enter through `host.operations.run()` with real
+journal acquisition and handler delivery. They cover pending/failed acquisition,
+release registration, asynchronous release, sibling transport failure and cleanup
+failure with inherited context. Each verifies that no authored outcome was
+accepted and that a fresh host observes the occupied attempt. The former runtime
+lifecycle file and overlapping runtime cancellation/resource tests are retired.
+
+Live-attempt notification journeys remain distinct from host shutdown: invalidation
+persists and prevents replacement, while ordinary host shutdown leaves occupancy.
+They cover both subscription races, dropped/failed publication, repeat commands,
+stale grants, accepted-first settlement, and subscription cleanup on success/failure.

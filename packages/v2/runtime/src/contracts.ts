@@ -31,6 +31,12 @@ export interface Runtime<Yielded> {
     use: (resource: Resource) => Operation<T, Yielded>,
     release: (resource: Resource) => Operation<void, Yielded>,
   ): Operation<T, Yielded>;
+  /**
+   * Run in an owned child scope. External abort fails this operation with the signal's
+   * reason and joins native child cleanup; an already-aborted signal never starts work.
+   * This is physical interruption only. Callers own durable cancellation policy.
+   */
+  withSignal<T>(signal: AbortSignal, work: Work<T, Yielded>): Operation<T, Yielded>;
   /** JS integration boundary. Cancellation aborts signal; rejection is a native failure. */
   fromPromise<T>(start: (signal: AbortSignal) => Promise<T>): Operation<T, Yielded>;
   /** The host boundary. Shared workflows themselves remain iterator-based. */

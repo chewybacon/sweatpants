@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
-import { createLatch, createProtocolRig } from "@sweatpan.ts/testing";
+import { createProtocolRig } from "@sweatpan.ts/testing";
 import type { RuntimeExecution } from "@sweatpan.ts/runtime";
 import { createApplication } from "./application.ts";
 import type { ReadOutcome } from "./application.ts";
@@ -144,106 +144,6 @@ forEachRuntime((runtime, createClient) => {
       rig.reply("request", { status: 200, body: "allowed" });
       expect(await second.result).toEqual({ ok: true, value: { body: "allowed" } });
       expect(starts).toBe(2);
-    });
-
-    it("aborts protocol IO and makes cancellation wait for asynchronous cleanup", async () => {
-      const rig = createProtocolRig();
-      const app = createApplication(runtime);
-      const releasing = createLatch<void>();
-      const allowRelease = createLatch<void>();
-      let releases = 0;
-      let settled = false;
-      onTestFinished(() => allowRelease.resolve());
-      const execution = own(
-        runtime.start(function* () {
-          yield* app.install(createClient(rig));
-          return yield* runtime.using(
-            function* () {
-              return "session";
-            },
-            () => app.repository.operations.read("pending"),
-            function* () {
-              releases++;
-              releasing.resolve();
-              yield* runtime.fromPromise(() => allowRelease.promise);
-            },
-          );
-        }),
-      );
-      void execution.result.then(
-        () => {
-          settled = true;
-        },
-        () => {
-          settled = true;
-        },
-      );
-      await rig.waitForRequests(1);
-      const cancelled = execution.cancel();
-      const again = execution.cancel();
-      await releasing.promise;
-      expect(rig.aborted).toEqual(["pending"]);
-      expect(settled).toBe(false);
-      allowRelease.resolve();
-      await Promise.all([cancelled, again]);
-      await expect(execution.result).rejects.toBeDefined();
-      expect(releases).toBe(1);
-    });
-
-    it("propagates transport loss, cancels sibling IO and joins its cleanup", async () => {
-      const rig = createProtocolRig();
-      const app = createApplication(runtime);
-      const released: string[] = [];
-      const execution = own(
-        runtime.start(function* () {
-          yield* app.install(createClient(rig));
-          return yield* runtime.all(
-            ["broken", "sibling"].map(
-              (id) =>
-                function* () {
-                  return yield* runtime.using(
-                    function* () {
-                      return id;
-                    },
-                    () => app.repository.operations.read(id),
-                    function* () {
-                      released.push(id);
-                    },
-                  );
-                },
-            ),
-          );
-        }),
-      );
-      await rig.waitForRequests(2);
-      rig.fail("broken", new Error("Connection lost"));
-      await expect(execution.result).rejects.toBeDefined();
-      expect(rig.aborted).toEqual(["sibling"]);
-      expect(released.sort()).toEqual(["broken", "sibling"]);
-    });
-
-    it("does not release a resource whose protocol acquisition failed", async () => {
-      const rig = createProtocolRig();
-      const app = createApplication(runtime);
-      let releases = 0;
-      const execution = own(
-        runtime.start(function* () {
-          yield* app.install(createClient(rig));
-          return yield* runtime.using(
-            () => app.repository.operations.read("acquire"),
-            function* () {
-              throw new Error("Must not use a failed acquisition");
-            },
-            function* () {
-              releases++;
-            },
-          );
-        }),
-      );
-      await rig.waitForRequests(1);
-      rig.fail("acquire", new Error("Cannot acquire session"));
-      await expect(execution.result).rejects.toBeDefined();
-      expect(releases).toBe(0);
     });
   });
 });

@@ -152,3 +152,40 @@ A platform with one physical alarm per execution can multiplex several logical
 intents onto its earliest wakeup. That bookkeeping belongs in the adapter; each
 logical intent keeps its own immutable ID. These boundaries leave room for
 Cloudflare alarms and an in-process scripted scheduler without leaking their types.
+
+## Invalidating a live attempt
+
+Supply `attemptControl` from the same journal, then call
+`host.operations.invalidateAttempt(grant, reason)`. Acceptance and invalidation
+race at storage's atomic mutation boundary. Acceptance first returns its receipt;
+invalidation first rejects late settlement and explicit replacement. Repetition
+preserves the first reason. A fresh host reports `invalidated` without redelivery.
+The pending workflow remains parked; durable lexical unwinding is not implemented.
+
+For prompt IO shutdown, assemble optional middleware:
+
+```ts
+yield * installAttemptCancellation(runtime, host, journal.attemptControl, notifications);
+```
+
+Install it in both delivery and cancellation-command scopes. Notifications are
+execution-bound and refer to an exact grant; remote adapters authenticate and route
+them. Subscription owns scoped unsubscribe cleanup. The middleware subscribes,
+checks authoritative eligibility once, and runs the handler through
+`runtime.withSignal`. It publishes only after invalidation commits. If publication
+fails, the command can fail after committing; repeating it safely retries notification.
+
+Lost notifications may leave IO running, but the original grant still cannot
+settle. There is no separate read before each settlement. Storage implementations
+must atomically check grant eligibility and append the accepted outcome. Never
+refresh a revoked grant to retry its stale result. Native interruption joins
+physical cleanup and does not synthesize a domain failure.
+
+This does not guarantee a strict token-stream cutoff across separate stores.
+Partial stream batches may race cancellation; journal acceptance is the strict
+boundary. A future strict cutoff requires a shared ordering mechanism.
+
+Both native adapters are exercised through hosting with dropped notifications,
+invalidation before subscription, late outcomes, acceptance winning first, and
+asynchronous physical cleanup. This is in-process protocol evidence, not a
+production pub/sub implementation or distributed-storage benchmark.

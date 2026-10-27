@@ -54,3 +54,13 @@ An executing attempt cannot become a participant registration, or vice versa.
 Invalidation is a reply fence, not a completed workflow cancellation. The pending
 request remains in the running journal and hosting reports its invalidated state.
 All interaction state is process-local, just like attempt state and accepted history.
+
+## Attempt invalidation
+
+`attemptControl.inspect` reads an exact grant's eligibility. `invalidate` atomically
+records the first reason, or observes prior acceptance. `attempts.settle` checks
+that same state inside its mutation; no separate eligibility read is required.
+Invalidated attempts cannot be replaced or settled, and `begin` reports their
+invalidation. This retains the pending request without adding an authored failure.
+`journal.accept` remains a trusted administrative bypass, not a cancellation-safe
+reply endpoint. All of this control state is process-local.

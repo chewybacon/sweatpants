@@ -8,9 +8,9 @@ import {
   type RetrySafety,
 } from "@sweatpan.ts/durable";
 import { createIteratorGuest } from "@sweatpan.ts/execution";
-import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
+import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
-import { createProtocolRig } from "@sweatpan.ts/testing";
+import { createProtocolRig, createNotificationRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -21,13 +21,54 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => execution.cancel());
     return execution;
   }
-  function scenario() {
+  function scenario(liveCancellation = false) {
     const journal = createMemoryJournal<{ reservation: string }, string, string, string>({
       program: "reservation",
       equals: isDeepStrictEqual,
     });
     const peer = createProtocolRig();
     const grants: AttemptGrant[] = [];
+    const notifications = createNotificationRig();
+    let beforeSubscribe: Work<void, Y> | undefined;
+    let beforePublish: Work<void, Y> | undefined;
+    let release: Work<void, Y> | undefined;
+    let afterInspect: Work<void, Y> | undefined;
+    let reads = 0;
+    const control = {
+      *inspect(grant: AttemptGrant) {
+        reads++;
+        const state = yield* journal.attemptControl.inspect(grant);
+        if (afterInspect) {
+          yield* afterInspect();
+        }
+        return state;
+      },
+      invalidate: journal.attemptControl.invalidate,
+    };
+    const transportNotifications = {
+      *subscribe(grant: AttemptGrant) {
+        if (beforeSubscribe) {
+          yield* beforeSubscribe();
+        }
+        const subscription = notifications.subscribe(grant.attemptId);
+        yield* runtime.composition.ensure(function* () {
+          subscription.close();
+        });
+        return subscription.signal;
+      },
+      *publish(grant: AttemptGrant) {
+        if (beforePublish) {
+          yield* beforePublish();
+        }
+        notifications.publish(grant.attemptId);
+      },
+    };
+    function* install(hosting: ReturnType<typeof host>["hosting"]) {
+      if (liveCancellation) {
+        yield* installAttemptCancellation(runtime, hosting, control, transportNotifications);
+      }
+    }
+
     let physicalDisposals = 0;
     function host(attempts: Attempts<string, string, string, Y> = journal.attempts) {
       const recovery = createRecovery(runtime.composition, {
@@ -56,9 +97,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         recovery: recovery.operations,
         journal,
         attempts,
+        attemptControl: control,
         *handle(request: string): Operation<Outcome<string, string>, Y> {
           const grant: AttemptGrant = yield* hosting.delivery.expect();
           grants.push(grant);
+          if (release) {
+            yield* runtime.composition.ensure(release);
+          }
           // Computation is physically disposed before effect execution begins.
           expect(physicalDisposals).toBeGreaterThanOrEqual(grants.length);
           const reply = yield* runtime.fromPromise((signal) =>
@@ -78,6 +123,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     ) {
       const { hosting, recovery } = host(attempts);
       return start(function* () {
+        yield* install(hosting);
         if (gates.beforePark) {
           const gate = gates.beforePark;
           yield* recovery.around({
@@ -107,11 +153,41 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }),
       ]);
     }
-    return { journal, peer, grants, run, wait };
+    function invalidate(grant: AttemptGrant, reason = "deadline") {
+      const { hosting } = host();
+      return start(function* () {
+        yield* install(hosting);
+        return yield* hosting.operations.invalidateAttempt(grant, reason);
+      }).result;
+    }
+    return {
+      journal,
+      peer,
+      grants,
+      run,
+      wait,
+      invalidate,
+      notifications,
+      afterInspect(work: Work<void, Y>) {
+        afterInspect = work;
+      },
+      get reads() {
+        return reads;
+      },
+      beforePublish(work: Work<void, Y>) {
+        beforePublish = work;
+      },
+      beforeSubscribe(work: Work<void, Y>) {
+        beforeSubscribe = work;
+      },
+      release(work: Work<void, Y>) {
+        release = work;
+      },
+    };
   }
   describe(`${runtime.name}: hosted attempt sandwich`, () => {
-    it("denies competing delivery, replaces explicitly and rejects the old late result", async () => {
-      const s = scenario();
+    it("denies competing delivery, replaces explicitly and rejects stale control and late results", async () => {
+      const s = scenario(true);
       const first = s.run("repeatable");
       await s.wait(1, first.result);
       const original = s.grants[0]!;
@@ -122,6 +198,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const replacement = s.grants[1]!;
       expect(replacement.requestId).toBe(original.requestId);
       expect(replacement.attemptId).not.toBe(original.attemptId);
+      await expect(s.invalidate(original)).rejects.toThrow("Stale attempt grant");
+      await expect(s.invalidate({ ...replacement, attemptId: "foreign" })).rejects.toThrow(
+        "Stale attempt grant",
+      );
+      expect(s.peer.aborted).toEqual([]);
       await expect(s.run("repeatable", original).result).rejects.toThrow("replacement conflict");
       s.peer.reply(original.attemptId, { status: 200, body: "stale-reservation" });
       await expect(first.result).rejects.toThrow("Stale attempt grant");
@@ -133,6 +214,155 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect((await start(() => s.journal.read()).result).history).toHaveLength(1);
       expect(await s.run().result).toEqual(completed);
       expect(s.peer.requests).toHaveLength(2);
+    });
+
+    for (const live of [false, true]) {
+      it(`fences late outcomes when cancellation notification is unavailable (middleware: ${live})`, async () => {
+        const s = scenario(live);
+        s.notifications.drop = true;
+        const first = s.run("repeatable");
+        await s.wait(1, first.result);
+        const grant = s.grants[0]!;
+        expect(await s.invalidate(grant)).toEqual({ state: "invalidated", reason: "deadline" });
+        expect(await s.invalidate(grant, "different reason")).toEqual({
+          state: "invalidated",
+          reason: "deadline",
+        });
+        expect(s.peer.aborted).toEqual([]);
+        s.peer.reply(grant.attemptId, { status: 200, body: "too late" });
+        await expect(first.result).rejects.toThrow("Attempt authority revoked");
+        expect(s.reads).toBe(live ? 1 : 0);
+        expect((await start(() => s.journal.read()).result).history).toEqual([]);
+        expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
+        await expect(s.run("repeatable", grant).result).rejects.toThrow("Invalidated attempt");
+        expect(s.peer.requests).toHaveLength(1);
+        expect(s.notifications.subscriptions).toBe(0);
+      });
+    }
+
+    it("retains invalidation after publication failure and retries notification on repeated commands", async () => {
+      const s = scenario(true);
+      let publications = 0;
+      s.beforePublish(function* () {
+        publications++;
+        if (publications === 1) {
+          throw new Error("Notification transport unavailable");
+        }
+      });
+      const first = s.run();
+      await s.wait(1, first.result);
+      const grant = s.grants[0]!;
+      await expect(s.invalidate(grant)).rejects.toThrow("Notification transport unavailable");
+      expect(s.peer.aborted).toEqual([]);
+      expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
+      expect(await s.invalidate(grant, "retry")).toEqual({
+        state: "invalidated",
+        reason: "deadline",
+      });
+      await expect(first.result).rejects.toBeDefined();
+      expect(publications).toBe(2);
+      expect(s.peer.aborted).toEqual([grant.attemptId]);
+      expect(s.notifications.subscriptions).toBe(0);
+      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+    });
+
+    it("interrupts live IO and joins asynchronous cleanup after committed invalidation", async () => {
+      const s = scenario(true);
+      const cleanup = createProtocolRig();
+      s.release(function* () {
+        yield* runtime.fromPromise((signal) =>
+          cleanup.send({ id: "close", token: "release" }, signal),
+        );
+      });
+      const first = s.run();
+      await s.wait(1, first.result);
+      const grant = s.grants[0]!;
+      expect(await s.invalidate(grant)).toEqual({ state: "invalidated", reason: "deadline" });
+      await Promise.race([cleanup.waitForRequests(1), first.result]);
+      expect(s.peer.aborted).toEqual([grant.attemptId]);
+      let finished = false;
+      void first.result.then(
+        () => {
+          finished = true;
+        },
+        () => {
+          finished = true;
+        },
+      );
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      // Duplicate notification cannot interrupt an already-running release.
+      await s.invalidate(grant);
+      expect(cleanup.aborted).toEqual([]);
+      cleanup.reply("close", { status: 200, body: "released" });
+      await expect(first.result).rejects.toBeDefined();
+      expect(s.notifications.subscriptions).toBe(0);
+      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+      expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
+    });
+
+    it("detects invalidation committed before notification subscription without starting the handler", async () => {
+      const s = scenario(true);
+      const gate = createProtocolRig();
+      s.beforeSubscribe(function* () {
+        yield* runtime.fromPromise((signal) =>
+          gate.send({ id: "subscribe", token: "ready" }, signal),
+        );
+      });
+      const first = s.run();
+      await Promise.race([gate.waitForRequests(1), first.result]);
+      const occupied = await s.run().result;
+      if (occupied.state !== "occupied") {
+        throw new Error("Expected occupied attempt");
+      }
+      await s.invalidate(occupied.grant);
+      gate.reply("subscribe", { status: 200, body: "continue" });
+      await expect(first.result).rejects.toThrow("no longer active");
+      expect(s.peer.requests).toEqual([]);
+      expect(s.notifications.subscriptions).toBe(0);
+    });
+
+    it("does not enter the handler when notification arrives after the eligibility read", async () => {
+      const s = scenario(true);
+      const gate = createProtocolRig();
+      s.afterInspect(function* () {
+        yield* runtime.fromPromise((signal) =>
+          gate.send({ id: "inspect", token: "ready" }, signal),
+        );
+      });
+      const first = s.run();
+      await Promise.race([gate.waitForRequests(1), first.result]);
+      const occupied = await s.run().result;
+      if (occupied.state !== "occupied") {
+        throw new Error("Expected occupied attempt");
+      }
+      await s.invalidate(occupied.grant);
+      gate.reply("inspect", { status: 200, body: "continue" });
+      await expect(first.result).rejects.toBeDefined();
+      expect(s.peer.requests).toEqual([]);
+      expect(s.notifications.subscriptions).toBe(0);
+      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+    });
+
+    it("preserves an outcome accepted before invalidation and never publishes a cancellation", async () => {
+      const s = scenario(true);
+      const first = s.run();
+      await s.wait(1, first.result);
+      const grant = s.grants[0]!;
+      s.peer.reply(grant.attemptId, { status: 200, body: "reservation-1" });
+      await first.result;
+      const probe = s.notifications.subscribe(grant.attemptId);
+      try {
+        expect((await s.invalidate(grant)).state).toBe("accepted");
+        expect(probe.signal.aborted).toBe(false);
+        expect(await s.run().result).toEqual({
+          state: "completed",
+          value: { reservation: "reservation-1" },
+        });
+      } finally {
+        probe.close();
+      }
+      expect(s.notifications.subscriptions).toBe(0);
     });
 
     for (const originalSafety of ["unsafe", "repeatable"] as const) {

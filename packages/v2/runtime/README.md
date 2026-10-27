@@ -31,7 +31,7 @@ from JavaScript finally during native interruption is not a portable guarantee.
 Native shutdown handles physical resources; durable workflow cancellation and
 its logical cleanup require a separate execution protocol.
 
-The lifecycle acceptance journeys exercise pending acquisition cancellation,
+The hosted lifecycle acceptance journeys exercise pending acquisition cancellation,
 release registration before use, and failure reporting while another finalizer
 awaits a peer's close reply. Composition journeys cover scoped driver lookup,
 middleware ordering, short-circuiting and typed argument/result rewriting under
@@ -41,3 +41,9 @@ semantics remain unresolved portability boundaries.
 The Effect runtime supplies composition and Scope requirements internally. Other
 native service requirements must be provided by the stack's operations before
 entering this runtime; the HKT retains those requirements and does not erase them.
+
+`withSignal(signal, work)` bounds an externally interruptible child operation.
+Already-aborted signals prevent entry. Otherwise native racing interrupts the
+child and joins its physical cleanup, preserving inherited composition bindings.
+The abort reason is a native failure, not a domain Outcome. Hosting uses this for
+optional live-attempt notification; journal invalidation remains a separate commit.

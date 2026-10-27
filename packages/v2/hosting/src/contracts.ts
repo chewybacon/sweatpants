@@ -1,5 +1,6 @@
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
+  AttemptControl,
   AlarmIntent,
   AttemptGrant,
   RetrySafety,
@@ -14,10 +15,11 @@ import type {
   Invalidation,
 } from "@sweatpan.ts/durable";
 
-/** Completion, an occupied attempt, or a registered participant wait/invalidation. */
+/** Completion, an occupied/invalidated attempt, or a registered participant wait/invalidation. */
 export type HostedResult<R, Q = unknown> =
   | { readonly state: "completed"; readonly value: R }
   | { readonly state: "occupied"; readonly grant: AttemptGrant }
+  | { readonly state: "invalidated"; readonly grant: AttemptGrant; readonly reason: string }
   | (InteractionRegistration & { readonly pending: PendingRequest<Q> });
 
 /** Scoped middleware hooks for delivery, retry policy and the hosting loop. */
@@ -40,6 +42,8 @@ export interface HostingMethods<R, Q, V, E, Y> {
   answer(grant: ResolutionGrant, outcome: Outcome<V, E>): Operation<Acceptance<Q, V, E>, Y>;
   /** Fence a pending reply, or observe the answer that already won. Does not unwind the workflow. */
   invalidate(grant: ResolutionGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
+  /** Revoke an executing attempt, or observe its accepted result. Does not unwind the workflow. */
+  invalidateAttempt(grant: AttemptGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
   /** Return domain Outcome data; thrown transport failures leave the attempt unsettled. */
   handle(request: Q): Operation<Outcome<V, E>, Y>;
   /** Delivery policy; defaults to unsafe and is recorded in the granted attempt. */
@@ -58,6 +62,8 @@ export interface HostingOptions<R, Q, V, E, S, Y> {
   readonly recovery: RecoveryMethods<R, Q, Y, V, E, S>;
   readonly journal: Journal<R, Q, V, E, S, Y>;
   readonly attempts: Attempts<Q, V, E, Y>;
+  /** Optional durable invalidation; must control the same attempts. */
+  readonly attemptControl?: AttemptControl<Q, V, E, Y>;
   /** Required when deliveryMode selects wait; must share this journal's execution. */
   readonly interactions?: Interactions<Q, V, E, Y>;
   readonly handle: Handler<Q, Y, Outcome<V, E>>;
@@ -97,4 +103,16 @@ export interface AlarmReceiver<Y> {
    * Expiry requests scope cancellation; it does not directly unwind a live Guest.
    */
   deliver(id: string): Operation<void, Y>;
+}
+
+/** Optional execution-bound notifications. Loss/delay never grants permission to commit. */
+export interface AttemptNotifications<Y> {
+  /**
+   * Subscribe before checking durable eligibility. The returned signal aborts only
+   * for committed invalidation of this exact grant. Register unsubscribe as scoped
+   * physical cleanup. Remote adapters own routing and authentication.
+   */
+  subscribe(grant: AttemptGrant): Operation<AbortSignal, Y>;
+  /** Best-effort wakeup after invalidation commits; duplicates are harmless. */
+  publish(grant: AttemptGrant): Operation<void, Y>;
 }

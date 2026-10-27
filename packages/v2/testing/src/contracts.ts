@@ -21,3 +21,11 @@ export interface ProtocolRig {
   reply(id: string, reply: ProtocolReply): void;
   fail(id: string, error: Error): void;
 }
+
+/** Scripted lossy notification transport; subscriptions are explicitly owned. */
+export interface NotificationRig {
+  drop: boolean;
+  readonly subscriptions: number;
+  subscribe(key: string): { readonly signal: AbortSignal; close(): void };
+  publish(key: string): void;
+}

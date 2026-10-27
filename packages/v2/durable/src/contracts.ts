@@ -102,7 +102,7 @@ export interface Acceptance<Q, V, E> {
 /** Optional capability for executing effects; external answers need no attempt. */
 export interface Attempts<Q, V, E, Y> {
   /**
-   * Commit a grant before delivery, or report the current occupied attempt.
+   * Commit a grant before delivery, or report the current occupied/invalidated attempt.
    * Replacement compares the explicitly observed grant and requires recorded and
    * current policy to be repeatable. Throws for stale requests, stale replacement
    * or unsafe retry. No timeout implies permission to replace an owner.
@@ -113,11 +113,13 @@ export interface Attempts<Q, V, E, Y> {
     replace?: AttemptGrant,
   ): Operation<
     | { readonly state: "granted"; readonly grant: AttemptGrant }
-    | { readonly state: "occupied"; readonly grant: AttemptGrant },
+    | { readonly state: "occupied"; readonly grant: AttemptGrant }
+    | { readonly state: "invalidated"; readonly grant: AttemptGrant; readonly reason: string },
     Y
   >;
   /**
-   * Accept only a current grant's Outcome. Replaced grants throw even after the
+   * Accept only a current, eligible grant's Outcome. Invalidated grants throw;
+   * eligibility and acceptance must share an atomic boundary. Replaced grants throw even after the
    * winner completes. Identical redelivery by the winner returns its original
    * entry; a conflicting Outcome throws. Completion of this operation acknowledges
    * acceptance, not exactly-once execution by an external service.
@@ -165,4 +167,20 @@ export interface AlarmIntent {
   readonly id: string;
   /** Absolute Unix time in milliseconds, resolved once and retained across replay. */
   readonly dueAt: number;
+}
+
+/** Durable eligibility of an exact attempt; acceptance and invalidation are mutually exclusive. */
+export type AttemptState<Q, V, E> = { readonly state: "active" } | Invalidation<Q, V, E>;
+
+/** Optional control of executing attempts, bound to the same journal as Attempts. */
+export interface AttemptControl<Q, V, E, Y> {
+  /** Read eligibility, rejecting stale/replaced grants. Used once after subscribing, not before each write. */
+  inspect(grant: AttemptGrant): Operation<AttemptState<Q, V, E>, Y>;
+  /**
+   * Atomically revoke an exact grant or return the acceptance that won first.
+   * Repeated invalidation retains its first reason. Subsequent settle and replacement
+   * must reject. No authored failure is recorded and no logical cleanup is implied.
+   * Storage must check eligibility within settle's atomic write, not via a prior read.
+   */
+  invalidate(grant: AttemptGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
 }

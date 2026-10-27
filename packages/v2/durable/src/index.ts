@@ -16,3 +16,4 @@ export type {
   Interactions,
 } from "./contracts.ts";
 export type { AlarmIntent } from "./contracts.ts";
+export type { AttemptControl, AttemptState } from "./contracts.ts";

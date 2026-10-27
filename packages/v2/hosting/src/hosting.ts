@@ -41,7 +41,7 @@ export function createHosting<R, Q, V, E, S, Y>(
           }
           const safety = yield* api.operations.retrySafety(activation.pending.request);
           const started = yield* options.attempts.begin(activation.pending.id, safety, expected);
-          if (started.state === "occupied") {
+          if (started.state !== "granted") {
             return started;
           }
           expected = undefined;
@@ -67,6 +67,12 @@ export function createHosting<R, Q, V, E, S, Y>(
         throw new Error("Participant interaction capability is not installed");
       }
       return yield* options.interactions.invalidate(grant, reason);
+    },
+    *invalidateAttempt(grant, reason) {
+      if (!options.attemptControl) {
+        throw new Error("Attempt control capability is not installed");
+      }
+      return yield* options.attemptControl.invalidate(grant, reason);
     },
     handle: options.handle,
     *retrySafety() {
