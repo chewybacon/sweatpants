@@ -1,6 +1,12 @@
+import { URL as NodeURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { call, ensure, type Operation } from "effection";
-import type { Guest, Outcome, Turn } from "@sweatpants/foundation/computation";
+import {
+  createGuest,
+  type Guest,
+  type Outcome,
+  type Turn,
+} from "@sweatpants/foundation/computation";
 import type { GuestCommand, GuestResponse } from "./guest-protocol.ts";
 
 type NativeYield = Operation<unknown> extends Iterable<infer Y> ? Y : never;
@@ -15,12 +21,13 @@ export function* createWorkerGuest<T, Request, Value, Input>(
   options: WorkerGuestOptions<Input>,
 ): Operation<Guest<T, Request, NativeYield, Value>> {
   const generation = crypto.randomUUID();
-  const worker = new Worker(options.workerUrl, {
+  const workerUrl =
+    typeof options.workerUrl === "string" ? options.workerUrl : new NodeURL(options.workerUrl.href);
+  const worker = new Worker(workerUrl, {
     workerData: { generation, input: options.input },
     execArgv: options.execArgv,
   });
   let sequence = 0;
-  let state: "new" | "advancing" | "suspended" | "completed" | "closed" = "new";
   let failure: Error | undefined;
   let closing: Promise<void> | undefined;
   const pending = new Map<
@@ -73,22 +80,16 @@ export function* createWorkerGuest<T, Request, Value, Input>(
     command: "start" | "resume",
     outcome?: Outcome<Value, unknown>,
   ): Operation<Turn<T, Request>> {
-    if (state !== (command === "start" ? "new" : "suspended")) {
-      throw new Error("Guest advancement is unavailable or already in progress");
-    }
-    state = "advancing";
     const response = yield* call(() => send({ kind: command, outcome }));
     if (response.kind !== "turn") {
       throw new Error(
         response.kind === "error" ? response.error.message : "Worker closed during advancement",
       );
     }
-    state = response.turn.kind;
     return response.turn;
   }
   function close(): Promise<void> {
     return (closing ??= (async () => {
-      state = "closed";
       try {
         if (!failure) {
           const response = await send({ kind: "close" });
@@ -105,11 +106,11 @@ export function* createWorkerGuest<T, Request, Value, Input>(
     })());
   }
   yield* ensure(() => call(close));
-  return {
+  return createGuest({
     start: () => advance("start"),
     resume: (outcome) => advance("resume", outcome),
     *close() {
       yield* call(close);
     },
-  };
+  });
 }

@@ -293,7 +293,7 @@ const checks: readonly RegisteredCheck[] = [
   check("E8a", ["REQ-017"], () => {
     const renamed =
       exists("acceptance/__tests__/application-composition/command-retries.acceptance.test.ts") &&
-      exists("apps/yo-chat/acceptance/book-flight-ephemeral-invariance.acceptance.test.ts");
+      exists("acceptance/__tests__/application-composition/yo-chat-worker.acceptance.test.ts");
     const old =
       exists("apps/yo-chat/acceptance/foreign-stale-elicit.acceptance.test.ts") ||
       exists("apps/yo-chat/acceptance/book-flight-foreign-invariance.acceptance.test.ts");

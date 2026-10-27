@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { inProcess } from "@sweatpants/agent-host/server";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { call, run, spawn } from "effection";
 import { Effect, Fiber } from "effect";
 import { effection, type EffectionYield } from "@sweatpants/standard-durability-effection";
@@ -9,8 +10,11 @@ import {
   type EffectYield,
 } from "@sweatpants/standard-durability-effect";
 import { createConversation } from "../../../experiments/standard-durability/conversation.ts";
-import { createDurableTool, createToolEffects } from "@sweatpants/agent-sdk";
-import { success } from "@sweatpants/foundation/computation";
+import { createDurableTool, createToolEffects, type JournalRequest } from "@sweatpants/agent-sdk";
+import { success, type GuestWork } from "@sweatpants/foundation/computation";
+import { activateJournal } from "@sweatpants/primitive-journal";
+import { SqliteJournal } from "@sweatpants/primitive-journal/sqlite";
+import { createToolGuest } from "@sweatpants/tool-session/execution/tool-guest";
 import { z } from "zod";
 import type { Composition, Operation, Operations, Work } from "@sweatpants/standard-durability";
 
@@ -53,29 +57,208 @@ function scenarios<Y>(name: string, host: Host<Y>) {
           return success(input * 2);
         },
       });
-      const result = await host.start(() =>
-        Effects.withEffects(
-          [tool],
-          {
-            *effect(request) {
-              return yield* handlers[`${request.tool}.${request.key}`]!(request.input);
+      const journal = new SqliteJournal(":memory:", {
+        executionId: "double",
+        program: { id: "double", version: "1", digest: "double-v1" },
+        input: { value: 21 },
+      });
+      try {
+        const result = await host.start(() =>
+          Effects.withEffects(
+            [tool],
+            {
+              *effect(request) {
+                return yield* handlers[`${request.tool}.${request.key}`]!(request.input);
+              },
             },
-          },
-          () =>
-            tool.invokeWith({ value: 21 }, "call", function* (request) {
-              if (request.kind !== "effect") {
-                throw new Error("Unexpected capability");
-              }
-              const outcome = yield* Effects.operations.effect(request);
-              if (!outcome.ok) {
-                throw outcome.error;
-              }
-              return outcome.value;
-            }),
-        ),
-      ).result;
-      expect(result).toEqual({ value: 42 });
+            () =>
+              activateJournal(
+                inProcess().prepare(tool, "double").guest({ value: 21 }, "call"),
+                journal,
+                {
+                  classify: () => "repeatable",
+                  *handler(request) {
+                    if (request.kind !== "effect") {
+                      throw new Error("Unexpected capability");
+                    }
+                    return yield* Effects.operations.effect(request);
+                  },
+                },
+              ),
+          ),
+        ).result;
+        expect(result).toEqual({ state: "completed", value: { value: 42 } });
+      } finally {
+        journal.close();
+      }
       expect(trace).toEqual(["handled", "closed"]);
+    });
+
+    it("preserves an unannotated result through lazy acquisition, suspension and journal replay", async () => {
+      const trace: string[] = [];
+      const tool = createDurableTool("inferred-result", { version: "1" })
+        .description("Infer a result across two correlated operations")
+        .parameters(z.object({ suspend: z.boolean() }))
+        .effects({
+          count: {
+            version: "1",
+            input: z.object({ text: z.string() }),
+            output: z.number(),
+            retrySafety: { mode: "repeatable" },
+          },
+          label: {
+            version: "1",
+            input: z.object({ count: z.number() }),
+            output: z.string(),
+            retrySafety: { mode: "repeatable" },
+          },
+        })
+        .execute(function* ({ suspend }, ctx) {
+          trace.push("body");
+          const count = suspend ? yield* ctx.effect("count", { text: "hello" }) : 5;
+          expectTypeOf(count).toEqualTypeOf<number>();
+          const label = suspend ? yield* ctx.effect("label", { count }) : "five";
+          expectTypeOf(label).toEqualTypeOf<string>();
+          // Type-only probes do not execute a capability.
+          // @ts-expect-error the count declaration does not accept the label operation's input
+          void ctx.effect("count", { count: 5 });
+          // @ts-expect-error replies retain the selected declaration's type
+          const crossed: number = label;
+          void crossed;
+          trace.push("completed");
+          return { count, label };
+        });
+      for (const suspend of [false, true]) {
+        trace.length = 0;
+        const prepared = inProcess().prepare(tool, "typed");
+        const acquire = prepared.guest({ suspend }, "call");
+        expect(trace).toEqual([]);
+        // @ts-expect-error concrete preparation retains the authored input schema
+        void prepared.guest({ suspend: "yes" }, "invalid");
+        // Check conformance without annotating/widening the inferred work itself.
+        acquire satisfies GuestWork<{ count: number; label: string }, JournalRequest, never>;
+        const result = await host.start(function* () {
+          const guest = yield* acquire();
+          expect(trace).toEqual([]);
+          try {
+            let turn = yield* guest.start();
+            if (suspend) {
+              expect(turn.kind).toBe("suspended");
+              expect(trace).toEqual(["body"]);
+              turn = yield* guest.resume(success(5));
+              expect(turn.kind).toBe("suspended");
+              expect(trace).toEqual(["body"]);
+              turn = yield* guest.resume(success("five"));
+            }
+            if (turn.kind !== "completed") {
+              throw new Error("Expected completion");
+            }
+            expectTypeOf(turn.value).toEqualTypeOf<{ count: number; label: string }>();
+            expectTypeOf(turn.value.count).toEqualTypeOf<number>();
+            expectTypeOf(turn.value.label).toEqualTypeOf<string>();
+            // @ts-expect-error the inferred result has no unrelated field
+            void turn.value.missing;
+            return turn.value;
+          } finally {
+            yield* guest.close();
+          }
+        }).result;
+        expect(result).toEqual({ count: 5, label: "five" });
+        expect(trace).toEqual(["body", "completed"]);
+
+        const journal = new SqliteJournal(":memory:", {
+          executionId: "inferred-result",
+          program: { id: "inferred-result", version: "1", digest: "inferred-result-v1" },
+          input: { suspend },
+        });
+        try {
+          let activation = await host.start(() => activateJournal(acquire, journal)).result;
+          if (suspend) {
+            expect(activation.state).toBe("parked");
+            if (activation.state !== "parked") {
+              throw new Error("Expected count suspension");
+            }
+            journal.acceptRequest(activation.request.id, success(5));
+            activation = await host.start(() => activateJournal(acquire, journal)).result;
+            if (activation.state !== "parked") {
+              throw new Error("Expected label suspension");
+            }
+            journal.acceptRequest(activation.request.id, success("five"));
+            activation = await host.start(() => activateJournal(acquire, journal)).result;
+          }
+          if (activation.state !== "completed") {
+            throw new Error("Expected journal completion");
+          }
+          expectTypeOf(activation.value.count).toEqualTypeOf<number>();
+          expectTypeOf(activation.value.label).toEqualTypeOf<string>();
+          // @ts-expect-error activation preserves the concrete authored result
+          void activation.value.missing;
+          expect(activation.value).toEqual(result);
+        } finally {
+          journal.close();
+        }
+      }
+      // Chat admission's completion envelope also retains the concrete success type.
+      await host.start(function* () {
+        const guest = createToolGuest(tool, { suspend: false }, "chat-call");
+        try {
+          const turn = yield* guest.start();
+          if (turn.kind !== "completed" || !turn.value.ok) {
+            throw new Error("Expected successful chat completion");
+          }
+          expectTypeOf(turn.value.value.count).toEqualTypeOf<number>();
+          expectTypeOf(turn.value.value.label).toEqualTypeOf<string>();
+          expect(turn.value.value).toEqual({ count: 5, label: "five" });
+        } finally {
+          yield* guest.close();
+        }
+      }).result;
+    });
+
+    it("preserves raw parameter input and transforms an optional output once through placement", async () => {
+      let inputs = 0;
+      let outputs = 0;
+      const tool = createDurableTool("transformed-placement", { version: "1" })
+        .description("Transform at the authored boundary")
+        .parameters(
+          z.object({
+            value: z.string().transform((raw) => {
+              inputs++;
+              return Number(raw);
+            }),
+          }),
+          { outputProjection: { type: "object", properties: { value: { type: "number" } } } },
+        )
+        .output(
+          z.string().transform((raw) => {
+            outputs++;
+            return Number(raw);
+          }),
+          { outputProjection: { type: "number" } },
+        )
+        .execute(function* ({ value }) {
+          return String(value * 2);
+        });
+      const prepared = inProcess().prepare(tool, "typed");
+      // @ts-expect-error callers supply schema input, not the transformed value
+      void prepared.guest({ value: 21 }, "invalid");
+      const work = prepared.guest({ value: "21" }, "call");
+      expect([inputs, outputs]).toEqual([0, 0]);
+      await host.start(function* () {
+        const guest = yield* work();
+        expect([inputs, outputs]).toEqual([0, 0]);
+        try {
+          const turn = yield* guest.start();
+          if (turn.kind !== "completed") {
+            throw new Error("Expected completion");
+          }
+          expectTypeOf(turn.value).toEqualTypeOf<number>();
+          expect(turn.value).toBe(42);
+          expect([inputs, outputs]).toEqual([1, 1]);
+        } finally {
+          yield* guest.close();
+        }
+      }).result;
     });
 
     it("authors one conversation with inherited middleware, child overrides and owned cleanup", async () => {

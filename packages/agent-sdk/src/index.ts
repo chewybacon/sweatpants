@@ -1,3 +1,4 @@
+export { type ToolDefinition } from "./tool/definition.ts";
 export * from "./schema/roles.ts";
 
 // Content-addressed resources, guidance, readers, and build-time identity generation.
@@ -96,6 +97,7 @@ export {
   type ExtractElicitContextSchema,
   type NormalizedElicitDefinition,
   type NormalizedElicitsMap,
+  type NormalizedSamplesMap,
   type SampleDefinition,
   type SamplesMap,
   type SampleRequest,
@@ -126,7 +128,6 @@ export {
   type SampleExchange,
   type ToolExtension,
   type ToolExtensionMetadata,
-  type ToolDefinition,
   type RuntimeTool,
   type CreateToolBuilderBase,
   type CreateToolBuilderWithDescription,
@@ -151,14 +152,10 @@ export * from "./tool/documents.ts";
 // Portable tool execution and native effect registration.
 export {
   createJournalToolContext,
+  validateToolAnswer,
   JournalEffectDeclarationError,
 } from "./tool/journal-compiler.ts";
-export type {
-  JournalRequest,
-  JournalToolContext,
-  JournalTool,
-  CompiledJournalTool,
-} from "./tool/journal-compiler.ts";
+export type { JournalRequest, JournalToolContext, ToolResult } from "./tool/journal-compiler.ts";
 export { createToolEffects, toolEffectValidation } from "./tool/tool-effect-middleware.ts";
 export type { ToolEffectSignature, ToolEffectHandlers } from "./tool/tool-effect-middleware.ts";
 export type { SchemaProjectionOptions } from "./tool/types.ts";

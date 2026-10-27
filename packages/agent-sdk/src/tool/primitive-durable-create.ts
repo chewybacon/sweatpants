@@ -77,7 +77,7 @@ class DurableToolBuilder<
       input: StandardSchemaV1.InferOutput<P>,
       ctx: Context<E, L, Sampling, Y>,
     ) => Operation<Result, Y>,
-  ) {
+  ): ReturnType<typeof compileJournalTool<P, O, E, L, N, Result>> {
     return compileJournalTool({ ...this.definition, execute: body });
   }
 }

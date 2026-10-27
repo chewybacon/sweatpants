@@ -129,6 +129,17 @@
         "default": "./dist/journal.js"
       },
       "default": "./src/journal.ts"
+    },
+    "./execution": {
+      "development": {
+        "import": "./src/execution.ts",
+        "types": "./src/execution.ts"
+      },
+      "import": {
+        "types": "./dist/execution.d.ts",
+        "default": "./dist/execution.js"
+      },
+      "default": "./src/execution.ts"
     }
   },
   "scripts": {

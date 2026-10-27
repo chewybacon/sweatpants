@@ -89,3 +89,5 @@ export type GuestWork<T, Request, Y, Value = unknown, Error = unknown> = Work<
   Guest<T, Request, Y, Value, Error>,
   Y
 >;
+
+export { createGuest } from "./guest.ts";

@@ -1,9 +1,11 @@
+import { validateToolAnswer } from "@sweatpants/agent-sdk";
+import { toolImplementation } from "@sweatpants/agent-sdk/internal/tool-execution";
 import type { Middleware } from "@sweatpants/standard-durability";
 import type { EffectionYield } from "@sweatpants/standard-durability-effection";
 import type { ToolEffectSignature } from "@sweatpants/agent-sdk";
 import { effection } from "@sweatpants/standard-durability-effection";
 import { createToolEffects } from "@sweatpants/agent-sdk";
-import { type JournalTool, type JournalRequest } from "@sweatpants/agent-sdk";
+import { type ToolDefinition, type JournalRequest } from "@sweatpants/agent-sdk";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { call, createScope, ensure, useScope, type Operation } from "effection";
 import { z } from "zod";
@@ -49,7 +51,7 @@ export interface McpHandlerOptions {
   name: string;
   version: string;
   secret: string;
-  tools: readonly JournalTool[];
+  tools: readonly ToolDefinition[];
   createJournal(
     identity: Identity,
   ): PendingJournal & { close(): void; settle(status: "failed", reason: string): void };
@@ -114,7 +116,7 @@ export function* createMcpHandler(
     }
     invocations.clear();
   });
-  function askFor(tool: JournalTool, occurrence: RequestOccurrence): ToolInvocationAsk {
+  function askFor(tool: ToolDefinition, occurrence: RequestOccurrence): ToolInvocationAsk {
     const request = occurrence.request as JournalRequest;
     if (request.kind === "nested-sample") {
       return {
@@ -278,7 +280,7 @@ export function* createMcpHandler(
         }
         if (ask.kind === "elicit" && resume.kind === "elicit") {
           try {
-            tool.validateAnswer(ask.key, resume.response);
+            validateToolAnswer(tool, ask.key, resume.response);
           } catch {
             throw new HttpError(
               400,
@@ -353,7 +355,9 @@ export function* createMcpHandler(
                   function* () {
                     return yield* activateJournal(
                       function* () {
-                        return createIteratorGuest(() => tool.invoke(args, invocationId));
+                        return createIteratorGuest(() =>
+                          toolImplementation(tool).invoke(args, invocationId),
+                        );
                       },
                       invocation.journal,
                       {

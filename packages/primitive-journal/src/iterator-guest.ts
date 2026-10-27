@@ -1,46 +1,27 @@
-import type { Guest, Outcome, Work } from "@sweatpants/foundation/computation";
+import { createGuest, type Guest, type Work } from "@sweatpants/foundation/computation";
 import { advance } from "./iterator-turn.ts";
 
-/** A fresh synchronous computation cursor; disposal is not logical cancellation. */
+/** A synchronous driver under the shared execution discipline. */
 export function createIteratorGuest<T, Request>(work: Work<T, Request>): Guest<T, Request, never> {
   const iterator = work()[Symbol.iterator]();
-  let state: "new" | "suspended" | "completed" | "closed" = "new";
-  function accept(result: IteratorResult<Request, T>) {
-    state = result.done ? "completed" : "suspended";
-    return result.done
-      ? { kind: "completed" as const, value: result.value }
-      : { kind: "suspended" as const, request: result.value };
-  }
-  return {
+  return createGuest({
     *start() {
-      if (state !== "new") {
-        throw new Error("Guest already started");
-      }
-      const turn = advance(iterator);
-      state = turn.kind;
-      return turn;
+      return advance(iterator);
     },
-    *resume(outcome: Outcome<unknown, unknown>) {
-      if (state !== "suspended") {
-        throw new Error("Guest is not suspended");
-      }
-      if (outcome.ok) {
-        return accept(iterator.next(outcome.value));
-      }
-      if (!iterator.throw) {
+    *resume(outcome) {
+      if (!outcome.ok && !iterator.throw) {
         throw outcome.error;
       }
-      return accept(iterator.throw(outcome.error));
+      const result = outcome.ok ? iterator.next(outcome.value) : iterator.throw!(outcome.error);
+      return result.done
+        ? { kind: "completed", value: result.value }
+        : { kind: "suspended", request: result.value };
     },
     *close() {
-      if (state === "closed") {
-        return;
-      }
-      state = "closed";
       const result = iterator.return?.(undefined);
       if (result && !result.done) {
         throw new Error("Guest finalizers must not yield");
       }
     },
-  };
+  });
 }

@@ -1,5 +1,6 @@
+import { toolFactory } from "@sweatpants/agent-sdk/internal/tool-execution";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { completeElicitExchange, type RuntimeTool } from "@sweatpants/agent-sdk";
+import { completeElicitExchange, type RuntimeTool, type ToolCtx } from "@sweatpants/agent-sdk";
 import type { ChatMessage } from "@sweatpants/chat-contract";
 import { parseJsonObject, requireJsonObject, type JsonObject } from "@sweatpants/foundation";
 import type {
@@ -20,7 +21,7 @@ import type {
 import type { Operation } from "effection";
 import type { WorkerTool, WorkerToolContext } from "./worker-types.ts";
 
-type CanonicalRuntimeContext = Parameters<RuntimeTool>[0];
+type CanonicalRuntimeContext = ToolCtx<any, any>;
 type CanonicalSampleResult =
   | SampleResultBase
   | SampleResultWithParsed<unknown>
@@ -52,7 +53,7 @@ export function createWorkerTool(tool: RuntimeTool): WorkerTool {
     elicitSchemas,
     handler: function* (params: unknown, workerContext: WorkerToolContext) {
       const canonicalContext = createCanonicalWorkerContext(tool, workerContext, elicitSchemas);
-      const invoke = yield* tool(canonicalContext);
+      const invoke = yield* toolFactory(tool)(canonicalContext);
       return yield* invoke(params);
     },
   };

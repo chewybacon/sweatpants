@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     legacy: "src/legacy.ts",
     index: "src/index.ts",
+    "tool/execution": "src/tool/execution.ts",
     "tool/index": "src/tool/index.ts",
     "transport/worker": "src/transport/worker/index.ts",
   },

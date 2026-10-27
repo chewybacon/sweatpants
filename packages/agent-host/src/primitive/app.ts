@@ -1,7 +1,8 @@
+import { validateToolAnswer } from "@sweatpants/agent-sdk";
 import { effection } from "@sweatpants/standard-durability-effection";
 import { runtime } from "@sweatpants/runtime-effection";
 import type { RuntimeExecution } from "@sweatpants/foundation/computation";
-import { startChatActivation } from "./activation.ts";
+import { prepareChatExecution, startChatActivation } from "./activation.ts";
 import { effectionModelStream, type PrimitiveChatOptions } from "./effection.ts";
 import { z } from "zod";
 import { assertJson, type Json } from "@sweatpants/foundation";
@@ -34,6 +35,7 @@ const envelopeSchema = z.strictObject({
   forwardedProps: z.strictObject({}).optional(),
   systemPrompt: z.string().optional(),
   model: z.json().optional(),
+  initialToolChoice: z.enum(["auto", "none", "required"]).optional(),
   userMessage: z.strictObject({ id, role: z.literal("user"), content: z.string() }).optional(),
   command: z.discriminatedUnion("type", [
     z.strictObject({ ...base, type: z.literal("send-message"), messageId: id }),
@@ -83,6 +85,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
     "tools",
     "effects",
     "effectMiddleware",
+    "execution",
     "authorize",
   ]);
   for (const key of Object.keys(options)) {
@@ -90,6 +93,8 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
       throw new Error(`Unsupported primitive host option: ${key}`);
     }
   }
+  const preparedExecution = options.execution?.prepare(options.tools, "tools");
+  prepareChatExecution(options.tools, preparedExecution);
   const store = new ChatStore(options.database, options.program);
   for (const turn of store.turns()) {
     if (
@@ -162,6 +167,7 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
             effection,
             {
               ...options,
+              execution: preparedExecution ? { prepare: () => preparedExecution } : undefined,
               model: {
                 ...options.model,
                 driver: effectionModelStream(options.model.driver),
@@ -405,6 +411,10 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
                 text: envelope.userMessage.content,
                 messages,
                 modelIdentity: options.model.select?.(envelope.model) ?? options.model.identity,
+                // CONDITIONAL-SPREAD: persisted inputs omit an absent choice to preserve journal identity.
+                ...(envelope.initialToolChoice
+                  ? { initialToolChoice: envelope.initialToolChoice }
+                  : {}),
               },
               command.commandId,
               canonical,
@@ -433,7 +443,13 @@ export function createPrimitiveChatApp(options: PrimitiveChatOptions) {
               const tool = options.tools.find((entry) => entry.name === pending.tool)!;
               const answer =
                 command.status === "cancelled" ? { action: "cancel" } : command.payload;
-              const rawAnswer = tool.validateAnswer(pending.key, answer);
+              const rawAnswer = validateToolAnswer(tool, pending.key, answer);
+              // A read can expose the parked request before remote Guest disposal joins.
+              // Finish that activation before accepting an answer that needs a fresh cursor.
+              await owners.get(turn.identity.executionId)?.done;
+              if (resolveTurnDisposition(journal).state !== "parked") {
+                throw new Error("Elicitation is no longer pending");
+              }
               store.answer(
                 turn.identity.executionId,
                 command.commandId,

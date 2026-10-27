@@ -1,3 +1,5 @@
+import type { ToolDefinition } from "./definition.ts";
+import type { Effects } from "./journal-compiler.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
 import type { ToolInteractionBindings } from "./interaction-binding.ts";
@@ -6,7 +8,6 @@ import type {
   NormalizedElicitsMap,
   NormalizedSamplesMap,
   SamplesMap,
-  ToolDefinition,
   ToolExtensionMetadata,
   ToolSchemaArtifacts,
 } from "./types.ts";
@@ -22,9 +23,9 @@ export type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./types.ts";
  * execution function, handler, route, credential, or transport handle —
  * deployment composition, not the contract, selects placement.
  *
- * Ordinary `ToolDefinition` (adds the callable Effection factory) and durable
- * `DurableToolDefinition` (adds the pinned manifest and pure program) both
- * satisfy this contract structurally.
+ * Retained ordinary factories and pinned program definitions satisfy this
+ * contract structurally. Canonical definitions use the metadata projection
+ * overload below without acquiring an engine discriminator.
  */
 
 /** Closed execution-kind discriminant shared by contract implementations. */
@@ -87,7 +88,7 @@ export function computeToolInterfaceDigest(input: {
 
 /**
  * True when a contract value carries an executable ordinary factory (i.e. it
- * is a full `ToolDefinition`, not a metadata-only projection). Substrates
+ * retains its callable factory, not merely a metadata projection). Substrates
  * that run the tool in-process must check this before invoking.
  */
 export function isExecutableToolContract<
@@ -99,7 +100,13 @@ export function isExecutableToolContract<
 >(
   contract: ToolContract<TName, TParams, TResult, TElicits, TSamples>,
 ): contract is ToolContract<TName, TParams, TResult, TElicits, TSamples> &
-  ToolDefinition<TName, TParams, TResult, TElicits, TSamples> {
+  ToolDefinition<
+    StandardSchemaV1<unknown, TParams>,
+    TResult,
+    NormalizedElicitsMap<TElicits>,
+    {},
+    TName
+  > {
   const candidate: unknown = contract;
   return typeof candidate === "function" && contract.execution === "ordinary";
 }
@@ -122,9 +129,20 @@ export function projectToolContract<
   TSamples extends SamplesMap | true | undefined,
 >(
   tool: ToolContract<TName, TParams, TResult, TElicits, TSamples>,
-): ToolContract<TName, TParams, TResult, TElicits, TSamples> {
+): ToolContract<TName, TParams, TResult, TElicits, TSamples>;
+export function projectToolContract<
+  P extends StandardSchemaV1,
+  R,
+  L extends ElicitsMap,
+  E extends Effects,
+  N extends string,
+>(tool: ToolDefinition<P, R, L, E, N>): Omit<ToolDefinition<P, R, L, E, N>, "effects" | "version">;
+export function projectToolContract(
+  tool: AnyToolContract | ToolDefinition<StandardSchemaV1, unknown, ElicitsMap, Effects, string>,
+): unknown {
   return Object.freeze({
-    execution: tool.execution,
+    // CONDITIONAL-SPREAD: only retained metadata carries a native engine selector.
+    ...("execution" in tool ? { execution: tool.execution } : {}),
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
@@ -138,5 +156,5 @@ export function projectToolContract<
     extensions: tool.extensions,
     interfaceDigest: tool.interfaceDigest,
     bindings: tool.bindings,
-  }) as ToolContract<TName, TParams, TResult, TElicits, TSamples>;
+  });
 }

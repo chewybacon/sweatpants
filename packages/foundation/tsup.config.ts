@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     computation: "src/computation.ts",
+    execution: "src/execution.ts",
     journal: "src/journal.ts",
     json: "src/json.ts",
     port: "src/port.ts",

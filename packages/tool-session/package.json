@@ -113,6 +113,27 @@
         "types": "./dist/tool-invocation-execution.d.ts",
         "default": "./dist/invocation-execution.js"
       }
+    },
+    "./placement": {
+      "development": {
+        "import": "./src/execution/tool-placement.ts",
+        "types": "./src/execution/tool-placement.ts"
+      },
+      "import": {
+        "types": "./dist/execution/tool-placement.d.ts",
+        "default": "./dist/execution/tool-placement.js"
+      },
+      "default": "./src/execution/tool-placement.ts"
+    },
+    "./execution/tool-guest": {
+      "development": {
+        "import": "./src/execution/tool-guest.ts",
+        "types": "./src/execution/tool-guest.ts"
+      },
+      "import": {
+        "types": "./dist/execution/tool-guest.d.ts",
+        "default": "./dist/execution/tool-guest.js"
+      }
     }
   },
   "scripts": {

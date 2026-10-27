@@ -7,7 +7,7 @@
  * This is nearly identical to play-ttt's plugin - same UI, different tool logic.
  */
 import { makePlugin } from "@sweatpants/react-chat";
-import { tictactoeTool } from "../primitive/tictactoe.ts";
+import { tictactoeTool } from "./tool.ts";
 import { GameChatView } from "../play-ttt/components/GameChatView.tsx";
 
 // =============================================================================

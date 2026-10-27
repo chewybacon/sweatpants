@@ -1,3 +1,4 @@
+import { execute as executeWork } from "@sweatpants/runtime-effect";
 import { Context as NativeContext, Effect, Scope } from "effect";
 import type {
   Api,
@@ -27,9 +28,7 @@ export class CompositionFrame extends NativeContext.Service<CompositionFrame, Fr
 export type EffectYield = Effect.Effect<unknown, never, CompositionFrame | Scope.Scope>;
 
 export function execute<T>(work: Work<T, EffectYield>) {
-  return Effect.gen(function* () {
-    return yield* work();
-  });
+  return executeWork(work);
 }
 
 function check(frame: Frame) {

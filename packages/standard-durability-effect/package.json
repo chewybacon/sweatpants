@@ -27,6 +27,7 @@
     "format:check": "cd ../.. && oxfmt packages/standard-durability-effect --check"
   },
   "dependencies": {
+    "@sweatpants/runtime-effect": "workspace:*",
     "@sweatpants/standard-durability": "workspace:*"
   },
   "devDependencies": {

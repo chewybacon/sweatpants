@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
@@ -38,7 +39,7 @@ describe("createTool(name) unified builder", () => {
         return { route: `${input.from}-${input.destination}` };
       });
 
-    const invoke = yield* Tool({
+    const invoke = yield* toolFactory(Tool)({
       signal: new AbortController().signal,
       messages: [],
       notify: function* () {},
@@ -69,7 +70,7 @@ describe("createTool(name) unified builder", () => {
         return { echoed: input.text };
       });
 
-    const invoke = yield* Tool({
+    const invoke = yield* toolFactory(Tool)({
       signal: new AbortController().signal,
       messages: [],
       notify: function* () {},

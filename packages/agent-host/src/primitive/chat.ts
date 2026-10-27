@@ -1,9 +1,11 @@
-import type { Middleware, Operations } from "@sweatpants/standard-durability";
+import type { ToolRegistryAdapter } from "@sweatpants/tool-session/placement";
+import type { Handler, Middleware, Operations } from "@sweatpants/standard-durability";
 import {
   JournalEffectDeclarationError,
   type JournalRequest,
-  type JournalTool,
+  type ToolDefinition,
   type ToolEffectSignature,
+  type ToolContract,
 } from "@sweatpants/agent-sdk";
 import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import { success, type Outcome, type IterableOperation } from "@sweatpants/foundation/computation";
@@ -27,6 +29,7 @@ export interface ChatModelStream<Y> {
 }
 
 export interface ChatCapabilities<Y> {
+  execution?: ToolRegistryAdapter<ToolDefinition, Y>;
   /** Runs in array order inside declaration validation; receives canonical input, returns raw output. */
   effectMiddleware?: readonly Middleware<ToolEffectSignature, Y>[];
   model: {
@@ -34,12 +37,12 @@ export interface ChatCapabilities<Y> {
     driver: ChatModelStream<Y>;
     streamOptions?: StreamOptions;
   };
-  tools: readonly JournalTool[];
+  tools: readonly ToolDefinition[];
   effects: Readonly<Record<string, (input: Json) => IterableOperation<Outcome<Json, Json>, Y>>>;
 }
 export type ChatRequest =
   | JournalRequest
-  | { kind: "sample"; iteration: number; context: Json }
+  | { kind: "sample"; iteration: number; context: Json; toolChoice?: "auto" | "none" | "required" }
   | {
       kind: "tool-result";
       iteration: number;
@@ -48,15 +51,22 @@ export type ChatRequest =
       output: Json;
       isError: boolean;
     };
-export type TurnInput = { messageId: string; text: string; messages: Json; modelIdentity: string };
+export type TurnInput = {
+  messageId: string;
+  text: string;
+  messages: Json;
+  modelIdentity: string;
+  initialToolChoice?: "auto" | "none" | "required";
+};
 
-export function* chatWork<Q = never>(
+export function* chatWork<Q = never, Sampling = never>(
   input: TurnInput,
-  tools: readonly JournalTool[],
+  tools: readonly Pick<ToolContract, "name" | "description" | "artifacts">[],
+  invoke: Handler<{ name: string; input: Json; callId: string }, Q, Json>,
   sample?: (
     request: Extract<ChatRequest, { kind: "sample" }>,
-  ) => IterableOperation<ModelResponse, Q>,
-): IterableOperation<Json, ChatRequest | Q> {
+  ) => IterableOperation<ModelResponse, Sampling>,
+): IterableOperation<Json, ChatRequest | Q | Sampling> {
   const messages = input.messages as unknown as ChatMessage[];
   const declarations = tools.map((tool) => ({
     name: tool.name,
@@ -67,6 +77,10 @@ export function* chatWork<Q = never>(
     const request: Extract<ChatRequest, { kind: "sample" }> = {
       kind: "sample",
       iteration,
+      // CONDITIONAL-SPREAD: replay must retain the old request shape when no choice was supplied.
+      ...(iteration === 0 && input.initialToolChoice
+        ? { toolChoice: input.initialToolChoice }
+        : {}),
       context: assertJson({ messages, tools: iteration < 10 ? declarations : [] }),
     };
     let sampled: unknown;
@@ -98,7 +112,7 @@ export function* chatWork<Q = never>(
       let output: Json;
       let isError = false;
       try {
-        output = yield* tool.invoke(call.input, call.id);
+        output = yield* invoke({ name: call.name, input: assertJson(call.input), callId: call.id });
       } catch (error) {
         // Non-finite calculator output remains a visible turn failure.
         if (tool.name === "calculator") {
@@ -144,6 +158,8 @@ export function* handleChatRequest<Y>(
             : (request.context as unknown as ModelContext),
           options: {
             ...options.model.streamOptions,
+            // CONDITIONAL-SPREAD: only an explicit outer choice overrides the host stream option.
+            ...(!nested && request.toolChoice ? { toolChoice: request.toolChoice } : {}),
             // CONDITIONAL-SPREAD: preserve caller token options for outer samples.
             ...(nested ? { maxTokens: request.maxTokens } : {}),
             // CONDITIONAL-SPREAD: preserve caller response format unless the nested sample declares one.

@@ -7,12 +7,12 @@ import {
 } from "@sweatpants/agent-host/primitive";
 import { configureThreadMetadataStore } from "../lib/thread-metadata-store";
 import { createSqliteThreadMetadataStore } from "../lib/sqlite-thread-metadata-store";
-import { localJournalTools } from "../tools/primitive";
-import { localEffects } from "../tools/primitive/effects";
+import { tools } from "./tool-definitions.ts";
+import { toolEffects } from "./tool-effects.ts";
 
-/** Default Node/local/SQLite composition. No worker or old chat execution owner. */
+/** Node/SQLite journal host with per-tool execution placement. */
 export function createLocalYoChatApplication(
-  options: Pick<PrimitiveChatOptions, "database" | "model">,
+  options: Pick<PrimitiveChatOptions, "database" | "model" | "execution">,
 ) {
   mkdirSync(dirname(options.database), { recursive: true });
   const metadata = new BetterSqliteDatabase(`${options.database}.metadata`);
@@ -23,8 +23,8 @@ export function createLocalYoChatApplication(
       ...options,
       basePath: "/api/chat",
       program: { id: "yo-chat-local", version: "2", digest: "yo-chat-local-primitive-v2" },
-      tools: localJournalTools,
-      effects: localEffects,
+      tools,
+      effects: toolEffects,
       authorize: () => true,
     });
   } catch (error) {

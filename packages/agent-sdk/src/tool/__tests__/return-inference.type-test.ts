@@ -1,3 +1,5 @@
+import { toolFactory } from "../execution.ts";
+import { toolImplementation } from "@sweatpants/agent-sdk/internal/tool-execution";
 /** Compile-time contract: inferred results survive branches and delegation. */
 import type { Operation } from "effection";
 import { expectTypeOf } from "vitest";
@@ -36,7 +38,7 @@ const ready = createDurableTool("inferred-ready-choice", { version: "1" })
   });
 
 function* delegate(ctx: ToolCtx, durableCtx: DurableProgramContext) {
-  const call = yield* ordinary(ctx);
+  const call = yield* toolFactory(ordinary)(ctx);
   const result = yield* call({ accept: true });
   expectTypeOf(result).toEqualTypeOf<Choice>();
   if (result.status === "accepted") {
@@ -146,7 +148,7 @@ const portable = createPortableTool("portable-choice", { version: "1" })
     return { doubled };
   });
 expectTypeOf(portable.name).toEqualTypeOf<"portable-choice">();
-expectTypeOf(portable.invoke({}, "call")).toMatchTypeOf<
+expectTypeOf(toolImplementation(portable).invoke({}, "call")).toMatchTypeOf<
   PortableOperation<{ doubled: number }, JournalRequest>
 >();
 const transformed = createPortableTool("transformed", { version: "1" })
@@ -156,7 +158,7 @@ const transformed = createPortableTool("transformed", { version: "1" })
 const transformedTool = transformed.execute(function* () {
   return "42";
 });
-expectTypeOf(transformedTool.invoke({}, "call")).toMatchTypeOf<
+expectTypeOf(toolImplementation(transformedTool).invoke({}, "call")).toMatchTypeOf<
   PortableOperation<number, JournalRequest>
 >();
 // @ts-expect-error the body returns raw schema input, not transformed output

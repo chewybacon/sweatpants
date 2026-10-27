@@ -31,9 +31,8 @@ export function serveWorkerGuest<T, Request, Value, Input>(
       if (command.kind === "close") {
         closed = true;
         try {
-          if (acquiring) {
-            await acquiring;
-          }
+          // Disposal cancels an unfinished acquisition. Waiting for acquisition
+          // first would deadlock when cancellation is what allows it to finish.
           if (guest) {
             await owner.run(() => guest!.close());
           }

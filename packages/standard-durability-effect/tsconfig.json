@@ -14,6 +14,9 @@
   "references": [
     {
       "path": "../standard-durability"
+    },
+    {
+      "path": "../runtime-effect"
     }
   ]
 }

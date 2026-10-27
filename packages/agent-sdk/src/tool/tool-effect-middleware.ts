@@ -1,3 +1,4 @@
+import type { ToolDefinition } from "./definition.ts";
 import type {
   Composition,
   Middleware,
@@ -12,28 +13,34 @@ import {
   JournalEffectDeclarationError,
   validateJournalValue,
   type JournalRequest,
-  type JournalTool,
 } from "./journal-compiler.ts";
 
 type EffectRequest = Extract<JournalRequest, { kind: "effect" }>;
-type DeclaredEffect<T extends JournalTool> = T extends JournalTool
-  ? {
-      [K in keyof T["effects"] & string]: {
-        key: `${T["name"]}.${K}`;
-        definition: T["effects"][K];
-      };
-    }[keyof T["effects"] & string]
-  : never;
+type DeclaredEffect<T extends Pick<ToolDefinition, "name" | "effects">> =
+  T extends Pick<ToolDefinition, "name" | "effects">
+    ? {
+        [K in keyof T["effects"] & string]: {
+          key: `${T["name"]}.${K}`;
+          definition: T["effects"][K];
+        };
+      }[keyof T["effects"] & string]
+    : never;
 
 /** Native handlers receive canonical input and return raw output for journal acceptance. */
-export type ToolEffectHandlers<Tools extends readonly JournalTool[], Y> = {
+export type ToolEffectHandlers<
+  Tools extends readonly Pick<ToolDefinition, "name" | "effects">[],
+  Y,
+> = {
   [E in DeclaredEffect<Tools[number]> as E["key"]]: (
     input: StandardSchemaV1.InferOutput<E["definition"]["input"]>,
   ) => Operation<Outcome<StandardSchemaV1.InferInput<E["definition"]["output"]>, Json>, Y>;
 };
 
 /** Preserve per-tool inference until the validated heterogeneous host boundary. */
-function defineToolEffects<const Tools extends readonly JournalTool[], Y>(
+function defineToolEffects<
+  const Tools extends readonly Pick<ToolDefinition, "name" | "effects">[],
+  Y,
+>(
   tools: Tools,
   handlers: ToolEffectHandlers<NoInfer<Tools>, Y>,
 ): Readonly<Record<string, Handler<Json, Y, Outcome<Json, Json>>>> {
@@ -59,7 +66,7 @@ export interface ToolEffectSignature {
 
 /** Declaration-bound validation, using the compiler's single schema parser. */
 export function toolEffectValidation<Y>(
-  tools: readonly Pick<JournalTool, "name" | "effects">[],
+  tools: readonly Pick<ToolDefinition, "name" | "effects">[],
 ): Middleware<ToolEffectSignature, Y> {
   return {
     *effect([request], next) {
@@ -90,12 +97,14 @@ export function createToolEffects<Y>(composition: Composition<Y>) {
   });
   return {
     operations: Effects.operations,
-    handlers<const Tools extends readonly JournalTool[]>(tools: Tools) {
+    handlers<const Tools extends readonly Pick<ToolDefinition, "name" | "effects">[]>(
+      tools: Tools,
+    ) {
       return (handlers: ToolEffectHandlers<Tools, Y>) =>
         defineToolEffects<Tools, Y>(tools, handlers);
     },
     withEffects<T>(
-      tools: readonly JournalTool[],
+      tools: readonly Pick<ToolDefinition, "name" | "effects">[],
       native: Operations<ToolEffectSignature, Y>,
       work: Work<T, Y>,
       middleware: readonly Middleware<ToolEffectSignature, Y>[] = [],

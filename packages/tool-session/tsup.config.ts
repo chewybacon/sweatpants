@@ -5,6 +5,8 @@ export default defineConfig({
     "invocation-execution": "src/tool-invocation-execution.ts",
     index: "src/index.ts",
     "execution/index": "src/execution/index.ts",
+    "execution/tool-guest": "src/execution/tool-guest.ts",
+    "execution/tool-placement": "src/execution/tool-placement.ts",
     contract: "src/contract.ts",
     "event-log": "src/event-log.ts",
     ephemeral: "src/ephemeral.ts",

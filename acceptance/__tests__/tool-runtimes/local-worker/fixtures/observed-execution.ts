@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { local } from "@sweatpants/tool-runtime-local";
-import type { ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import type { RetainedToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 
 /** Observe the real public driver boundary; no execution or replay is simulated. */
 export function observedExecution(fenced = false) {
@@ -8,7 +8,7 @@ export function observedExecution(fenced = false) {
   const placement = local({
     durableWorker: resolve("__tests__/tool-runtimes/local-worker/fixtures/durable-worker.mjs"),
   });
-  const execution: ToolExecutionAdapter = {
+  const execution: RetainedToolExecutionAdapter = {
     prepare(tools, routeId) {
       const prepared = placement.prepare(tools, routeId);
       return {

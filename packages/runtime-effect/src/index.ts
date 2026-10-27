@@ -8,17 +8,41 @@ export interface EffectRuntime extends RuntimeType {
 export type EffectYield<R = never> = Effect.Effect<unknown, never, R>;
 export type Provide<R> = <T>(work: Effect.Effect<T, never, R>) => Effect.Effect<T>;
 
+/** Run structural work and join generator finalizers on native failure or interruption. */
+export function execute<T, R>(work: Work<T, EffectYield<R>>): Effect.Effect<T, never, R> {
+  return Effect.suspend(() => {
+    const iterator = work()[Symbol.iterator]();
+    let completed = false;
+    return Effect.ensuring(
+      Effect.gen(function* () {
+        const value = yield* { [Symbol.iterator]: () => iterator };
+        completed = true;
+        return value;
+      }),
+      Effect.gen(function* () {
+        if (!completed) {
+          let step = iterator.return?.(undefined as never);
+          while (step && !step.done) {
+            const value = yield* step.value;
+            step = iterator.next(value);
+          }
+        }
+      }),
+    );
+  });
+}
+
 /** Configure native dependencies once at the host boundary. */
 export function createRuntime<R>(provide: Provide<R>): Runtime<EffectYield<R>> {
-  const execute = <T>(work: Work<T, EffectYield<R>>) =>
-    Effect.gen(function* () {
-      return yield* work();
-    });
   return {
     version: 1,
     name: "Effect",
     sleep: (milliseconds) => Effect.sleep(milliseconds),
-    all: (work) => Effect.all(work.map(execute), { concurrency: "unbounded" }),
+    all: (work) =>
+      Effect.all(
+        work.map((child) => execute(child)),
+        { concurrency: "unbounded" },
+      ),
     using: (acquire, use, release) =>
       Effect.acquireUseRelease(
         execute(acquire),

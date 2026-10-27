@@ -1,3 +1,4 @@
+import { inProcess } from "@sweatpants/agent-host/server";
 import { z } from "zod";
 import { createDurableTool } from "@sweatpants/agent-sdk";
 import { activateChat } from "@sweatpants/agent-host/primitive/activation";
@@ -360,6 +361,80 @@ function scenarios<Y>(name: string, host: Host<Y>) {
       }
     });
 
+    it("accepts authored tool failures while acquisition loss aborts without a tool result", async () => {
+      for (const origin of ["authored", "acquisition"] as const) {
+        const journal = new SqliteJournal(":memory:", identity);
+        let samples = 0;
+        let bodyCalls = 0;
+        const tool = createDurableTool("approve_record", { version: "1" })
+          .description("Fail inside authored code")
+          .parameters(z.object({ topic: z.string() }))
+          .execute(function* () {
+            bodyCalls++;
+            throw new Error("Tool unavailable");
+          });
+        const execution =
+          origin === "authored"
+            ? inProcess<Y>()
+            : {
+                prepare() {
+                  return {
+                    guests: new Map([
+                      [
+                        tool.name,
+                        () =>
+                          function* () {
+                            throw new Error("Tool unavailable");
+                          },
+                      ],
+                    ]),
+                  };
+                },
+              };
+        try {
+          const result = host.start(() =>
+            activateChat(
+              c,
+              {
+                tools: [tool],
+                execution,
+                effects: {},
+                model: {
+                  model,
+                  driver: {
+                    *stream() {
+                      return response(samples++ === 0);
+                    },
+                  },
+                },
+              },
+              input,
+              journal,
+            ),
+          ).result;
+          if (origin === "authored") {
+            expect(await result).toMatchObject({ state: "completed" });
+            expect(bodyCalls).toBe(1);
+            expect(journal.read().entries.map((entry) => entry.request)).toContainEqual({
+              kind: "tool-result",
+              iteration: 0,
+              callId: "call-1",
+              tool: tool.name,
+              output: { error: "Tool unavailable" },
+              isError: true,
+            });
+          } else {
+            await expect(result).rejects.toThrow("Tool unavailable");
+            expect(bodyCalls).toBe(0);
+            expect(journal.read().entries).toHaveLength(1);
+            expect(journal.read().entries[0]?.request).toMatchObject({ kind: "sample" });
+          }
+        } finally {
+          journal.close();
+        }
+      }
+    });
+
     it("isolates concurrent production activations and composes multiple tool declarations in order", async () => {
       const directory = await mkdtemp(join(tmpdir(), "effect-activations-"));
       const inherited = c.createContext<string>("activation-owner");
@@ -396,6 +471,7 @@ function scenarios<Y>(name: string, host: Host<Y>) {
             c,
             {
               tools,
+              execution: inProcess(),
               model: {
                 model,
                 driver: {

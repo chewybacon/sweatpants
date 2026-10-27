@@ -10,7 +10,7 @@ import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtim
 import type { ToolInvocationResource } from "@sweatpants/tool-session";
 import { createChatApp, inProcess, installChatTools } from "../index.ts";
 import { local } from "@sweatpants/tool-runtime-local";
-import { routeTools, type ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import { routeTools, type RetainedToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 
 import { agentCore } from "@sweatpants/tool-runtime-agentcore";
 
@@ -63,7 +63,7 @@ function placement(
   label: string,
   calls: string[],
   saved = new Map<string, ToolInvocationResource>(),
-): ToolExecutionAdapter {
+): RetainedToolExecutionAdapter {
   return {
     prepare() {
       return {

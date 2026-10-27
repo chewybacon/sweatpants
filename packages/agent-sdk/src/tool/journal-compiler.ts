@@ -1,3 +1,5 @@
+import type { ToolDefinition } from "./definition.ts";
+import { compileDefinition } from "./execution.ts";
 import { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
@@ -7,11 +9,8 @@ import { assertJson, type Json, type JsonObject } from "@sweatpants/foundation";
 import type { Handler, IterableOperation } from "@sweatpants/foundation/computation";
 import type { RetryMode } from "@sweatpants/foundation/journal";
 import { buildToolSchemaArtifacts } from "./artifacts.ts";
-import { computeToolInterfaceDigest, type ToolSchemaArtifacts } from "./contract.ts";
-import {
-  compileToolInteractionBindings,
-  type ToolInteractionBindings,
-} from "./interaction-binding.ts";
+import { computeToolInterfaceDigest } from "./contract.ts";
+import { compileToolInteractionBindings } from "./interaction-binding.ts";
 
 export type Effects = Record<
   string,
@@ -103,7 +102,10 @@ export function compileJournalTool<
     input: StandardSchemaV1.InferOutput<P>,
     context: JournalToolContext<E, L, Y>,
   ): IterableOperation<Result, Y>;
-}): CompiledJournalTool<P, O, E, L, N, Result> {
+}): ToolDefinition<P, ToolResult<O, Result>, L, E, N> & {
+  readonly version: string;
+  readonly output: O;
+} {
   for (const elicit of Object.values(definition.elicits)) {
     if ("documents" in elicit) {
       throw new Error("Journal tool elicitation documents are unsupported");
@@ -138,7 +140,7 @@ export function compileJournalTool<
     argumentsValue: unknown,
     callId: string,
     dispatch: Handler<JournalRequest, Y>,
-  ): IterableOperation<JournalToolResult<O, Result>, Y> {
+  ): IterableOperation<ToolResult<O, Result>, Y> {
     const result = yield* definition.execute(
       validateJournalValue(definition.parameters, argumentsValue),
       createJournalToolContext(definition, callId, dispatch),
@@ -146,36 +148,40 @@ export function compileJournalTool<
     // Validation establishes the conditional schema result; JSON checks the wire boundary.
     return assertJson(
       definition.output ? validateJournalValue(definition.output, result) : result,
-    ) as JournalToolResult<O, Result>;
+    ) as ToolResult<O, Result>;
   }
-  return Object.freeze({
-    ...definition,
-    execution: "journal",
-    artifacts,
-    interfaceDigest,
-    bindings,
-    samples: {},
-    capabilities: {
-      elicitation: Object.keys(definition.elicits).length > 0,
-      sampling: definition.sampling ?? false,
+  return compileDefinition(
+    {
+      name: definition.name,
+      version: definition.version,
+      description: definition.description,
+      parameters: definition.parameters,
+      output: definition.output,
+      effects: definition.effects,
+      elicits: definition.elicits,
+      artifacts,
+      interfaceDigest,
+      bindings,
+      samples: {},
+      capabilities: {
+        elicitation: Object.keys(definition.elicits).length > 0,
+        sampling: definition.sampling ?? false,
+      },
+      annotations: {},
+      extensions: [],
     },
-    annotations: {},
-    extensions: [],
-    validateAnswer(key: string, rawAnswer: unknown): Json {
-      const elicit = definition.elicits[key];
-      if (!elicit) {
-        throw new Error(`Unknown elicitation: ${key}`);
-      }
-      parseJournalAnswer(elicit.response, rawAnswer);
-      return assertJson(rawAnswer);
+    {
+      invokeWith,
+      *invoke(argumentsValue: unknown, callId: string) {
+        return yield* invokeWith(argumentsValue, callId, function* (request) {
+          return yield request;
+        });
+      },
     },
-    invokeWith,
-    *invoke(argumentsValue: unknown, callId: string) {
-      return yield* invokeWith(argumentsValue, callId, function* (request) {
-        return yield request;
-      });
-    },
-  });
+  ) as ToolDefinition<P, ToolResult<O, Result>, L, E, N> & {
+    readonly version: string;
+    readonly output: O;
+  };
 }
 
 /** Project a request handler into the schema-checked tool authoring context. */
@@ -283,55 +289,22 @@ export class JournalEffectDeclarationError extends Error {
   }
 }
 
-/** Compiled host contract; independent of the authoring entrypoint. */
-export interface JournalTool {
-  readonly execution: "journal";
-  readonly name: string;
-  readonly version: string;
-  readonly description: string;
-  readonly parameters: StandardSchemaV1;
-  readonly output?: StandardSchemaV1;
-  readonly effects: Effects;
-  readonly elicits: Elicits;
-  readonly artifacts: ToolSchemaArtifacts;
-  readonly interfaceDigest: string;
-  readonly bindings: ToolInteractionBindings;
-  readonly samples: {};
-  readonly capabilities: { elicitation: boolean; sampling: boolean };
-  readonly annotations: {};
-  readonly extensions: readonly never[];
-  /** Validate the strict answer envelope and response schema; return raw JSON for acceptance. */
-  validateAnswer(key: string, rawAnswer: unknown): Json;
-  invoke(input: unknown, callId: string): IterableOperation<Json, JournalRequest>;
-}
-
 /** The output schema transforms the body result; JSON is checked before delivery. */
-export type JournalToolResult<O, Result> = (O extends StandardSchemaV1
-  ? StandardSchemaV1.InferOutput<O>
-  : Result) &
-  Json;
+type JsonResult<T> = T extends Json ? T : T & Json;
+export type ToolResult<O, Result> = JsonResult<
+  O extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<O> : Result
+>;
 
-export interface CompiledJournalTool<
-  P extends StandardSchemaV1,
-  O extends StandardSchemaV1 | undefined,
-  E extends Effects,
-  L extends Elicits,
-  N extends string = string,
-  Result = Json,
-> extends JournalTool {
-  readonly name: N;
-  /** Execute using caller-owned capabilities; this method does not imply journal acceptance. */
-  invokeWith<Y>(
-    input: unknown,
-    callId: string,
-    dispatch: Handler<JournalRequest, Y>,
-  ): IterableOperation<JournalToolResult<O, Result>, Y>;
-  invoke(
-    input: unknown,
-    callId: string,
-  ): IterableOperation<JournalToolResult<O, Result>, JournalRequest>;
-  readonly parameters: P;
-  readonly output: O;
-  readonly effects: E;
-  readonly elicits: L;
+/** Validate the selected declaration, retaining the raw answer for journal acceptance. */
+export function validateToolAnswer(
+  tool: { readonly elicits: Elicits },
+  key: string,
+  rawAnswer: unknown,
+): Json {
+  const elicit = tool.elicits[key];
+  if (!elicit) {
+    throw new Error(`Unknown elicitation: ${key}`);
+  }
+  parseJournalAnswer(elicit.response, rawAnswer);
+  return assertJson(rawAnswer);
 }

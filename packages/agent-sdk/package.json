@@ -65,6 +65,16 @@
         "default": "./dist/legacy.js"
       },
       "default": "./src/legacy.ts"
+    },
+    "./internal/tool-execution": {
+      "development": {
+        "import": "./src/tool/execution.ts",
+        "types": "./src/tool/execution.ts"
+      },
+      "import": {
+        "types": "./dist/tool/execution.d.ts",
+        "default": "./dist/tool/execution.js"
+      }
     }
   },
   "scripts": {

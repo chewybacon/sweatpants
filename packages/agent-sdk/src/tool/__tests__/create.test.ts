@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
@@ -20,7 +21,7 @@ describe("createTool builder", () => {
         return { echoed: message };
       });
 
-    const invoke = yield* Echo(baseCtx);
+    const invoke = yield* toolFactory(Echo)(baseCtx);
     expect(yield* invoke({ message: "hello" })).toEqual({ echoed: "hello" });
   });
 
@@ -36,7 +37,7 @@ describe("createTool builder", () => {
         return { count };
       });
 
-    const invoke = yield* Counter(baseCtx);
+    const invoke = yield* toolFactory(Counter)(baseCtx);
     expect(yield* invoke({})).toEqual({ count: 1 });
     expect(yield* invoke({})).toEqual({ count: 2 });
     expect(yield* invoke({})).toEqual({ count: 3 });
@@ -50,7 +51,7 @@ describe("createTool builder", () => {
         throw new Error("Intentional failure");
       });
 
-    const invoke = yield* Failing(baseCtx);
+    const invoke = yield* toolFactory(Failing)(baseCtx);
 
     try {
       yield* invoke({});

@@ -17,11 +17,11 @@ import type {
   WorkflowExecutionState,
 } from "@sweatpants/flowmode-runtime";
 import {
+  createGuest,
   failure,
   success,
   type Outcome,
   type Guest,
-  type GuestWork,
   type Turn,
   type Work,
 } from "@sweatpants/foundation/computation";
@@ -43,7 +43,6 @@ export function* createKernelGuest(
 ): Operation<KernelGuest> {
   let state: WorkflowExecutionState | undefined;
   let boundary: WorkflowBoundary | undefined;
-  let closed = false;
   function turn(next: WorkflowBoundary): NativeTurn {
     boundary = next;
     if (next.kind === "failed") {
@@ -56,37 +55,30 @@ export function* createKernelGuest(
       ? { kind: "completed", value: next.value }
       : { kind: "suspended", request: next.request };
   }
-  const work: GuestWork<Json, ExchangeRequest, EffectionYielded, Json, Json> = function* () {
-    return {
-      *start() {
-        state = yield* start();
-        return turn(state.boundary);
-      },
-      *resume(outcome: Outcome<Json, Json>) {
-        if (!state || boundary?.kind !== "suspended") {
-          throw new Error("kernel_not_suspended");
-        }
-        return turn(
-          yield* state.execution.resume(
-            boundary.suspensionId,
-            outcome.ok
-              ? { kind: "value", value: outcome.value }
-              : { kind: "throw", value: outcome.error },
-          ),
-        );
-      },
-      *close() {
-        if (closed) {
-          return;
-        }
-        if (state) {
-          yield* state.execution.dispose();
-        }
-        closed = true;
-      },
-    };
-  };
-  const guest = yield* work();
+  const guest = createGuest<Json, ExchangeRequest, EffectionYielded, Json, Json>({
+    *start() {
+      state = yield* start();
+      return turn(state.boundary);
+    },
+    *resume(outcome: Outcome<Json, Json>) {
+      if (!state || boundary?.kind !== "suspended") {
+        throw new Error("kernel_not_suspended");
+      }
+      return turn(
+        yield* state.execution.resume(
+          boundary.suspensionId,
+          outcome.ok
+            ? { kind: "value", value: outcome.value }
+            : { kind: "throw", value: outcome.error },
+        ),
+      );
+    },
+    *close() {
+      if (state) {
+        yield* state.execution.dispose();
+      }
+    },
+  });
   return {
     guest,
     *cancel(reason) {

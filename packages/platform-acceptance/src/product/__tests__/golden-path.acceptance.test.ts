@@ -1,3 +1,4 @@
+import { toolFactory } from "@sweatpants/agent-sdk/internal/tool-execution";
 /**
  * Golden-path acceptance suite (REQ-014).
  *
@@ -186,7 +187,7 @@ function createLocalToolRuntime(tools: readonly RuntimeTool[]): ToolRuntime {
         },
       };
       try {
-        const invoke = yield* tool(toolCtx);
+        const invoke = yield* toolFactory(tool)(toolCtx);
         const result = yield* invoke(params);
         return { kind: "completed", ref, result };
       } catch (error) {

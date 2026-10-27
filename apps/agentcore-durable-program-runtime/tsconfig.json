@@ -4,11 +4,5 @@
     "noEmit": true,
     "rootDir": "../.."
   },
-  "include": [
-    "src/**/*.ts",
-    "scripts/**/*.ts",
-    "../yo-chat/src/server/agentcore-durable-programs.ts",
-    "../yo-chat/src/tools/pick-card/**/*.ts",
-    "../yo-chat/src/tools/play-ttt/tool.ts"
-  ]
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
 }

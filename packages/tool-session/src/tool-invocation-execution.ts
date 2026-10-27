@@ -1,3 +1,5 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { NormalizedElicitsMap, NormalizedSamplesMap } from "@sweatpants/agent-sdk";
 /**
  * In-Memory Tool Session Implementation
  *
@@ -81,9 +83,19 @@ export function createToolInvocationExecution<
   TParams,
   TResult extends Json,
   TElicits extends ElicitsMap,
-  TSamples extends SamplesMap | true | undefined = undefined,
+  TSamples extends SamplesMap | true | undefined = SamplesMap | true | undefined,
 >(
-  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>,
+  tool: ToolDefinition<
+    StandardSchemaV1<unknown, TParams>,
+    TResult,
+    NormalizedElicitsMap<TElicits>,
+    {},
+    TName
+  > & {
+    readonly samples: TSamples extends SamplesMap
+      ? NormalizedSamplesMap<TSamples>
+      : Readonly<Record<string, never>>;
+  },
   params: TParams,
   options: ToolSessionOptions = {},
 ): Operation<ToolSession<TResult>> {

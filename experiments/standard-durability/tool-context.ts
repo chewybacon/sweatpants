@@ -1,6 +1,11 @@
+import { inProcess } from "@sweatpants/agent-host/server";
+import { activateJournal, type PendingJournal } from "@sweatpants/primitive-journal";
+import { assertJson } from "@sweatpants/foundation";
+import { success } from "@sweatpants/foundation/computation";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Composition, Operations } from "@sweatpants/standard-durability";
 import { type JournalRequest } from "../../packages/agent-sdk/src/index.ts";
-import { bookFlightTool } from "../../apps/yo-chat/src/tools/primitive/book-flight.ts";
+import { bookFlightTool } from "../../apps/yo-chat/src/tools/book-flight/tool.ts";
 
 type Request<K extends JournalRequest["kind"]> = Extract<JournalRequest, { kind: K }>;
 
@@ -50,12 +55,23 @@ export function createToolContext<Y>(composition: Composition<Y>) {
 export function bookFlightWithCapabilities<Y>(
   composition: Composition<Y>,
   capabilities: Operations<ToolCapabilities, Y>,
-  input: unknown,
+  input: StandardSchemaV1.InferInput<typeof bookFlightTool.parameters>,
   callId: string,
+  journal: PendingJournal,
 ) {
   const tool = createToolContext(composition);
   return composition.scoped(function* () {
     yield* tool.Capabilities.install(capabilities);
-    return yield* bookFlightTool.invokeWith(input, callId, tool.dispatch);
+    return yield* activateJournal(
+      inProcess().prepare(bookFlightTool, "book-flight").guest(input, callId),
+      journal,
+      {
+        classify: (request) =>
+          request.kind === "effect" ? request.retrySafety.mode : "repeatable",
+        *handler(request) {
+          return success(assertJson((yield* tool.dispatch(request)) ?? null));
+        },
+      },
+    );
   });
 }

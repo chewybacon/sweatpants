@@ -464,9 +464,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      yo-chat:
-        specifier: workspace:*
-        version: link:../yo-chat
 
   apps/agentcore-tool-session-tracer:
     dependencies:
@@ -555,9 +552,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      yo-chat:
-        specifier: workspace:*
-        version: link:../yo-chat
 
   apps/lambda-durable-program-runtime:
     dependencies:
@@ -790,24 +784,15 @@ importers:
       '@sweatpants/chat-client':
         specifier: workspace:*
         version: link:../../packages/chat-client
-      '@sweatpants/chat-contract':
-        specifier: workspace:*
-        version: link:../../packages/chat-contract
       '@sweatpants/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
       '@sweatpants/durable-chat-runtime':
         specifier: workspace:*
         version: link:../../packages/durable-chat-runtime
-      '@sweatpants/durable-effects':
-        specifier: workspace:*
-        version: link:../../packages/durable-effects
       '@sweatpants/durable-execution':
         specifier: workspace:*
         version: link:../../packages/durable-execution
-      '@sweatpants/durable-streams':
-        specifier: workspace:*
-        version: link:../../packages/durable-streams
       '@sweatpants/durable-streams-cloudflare':
         specifier: workspace:*
         version: link:../../packages/durable-streams-cloudflare
@@ -823,30 +808,15 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../../packages/model-provider-pi-ai
-      '@sweatpants/model-sampling':
-        specifier: workspace:*
-        version: link:../../packages/model-sampling
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
-      '@sweatpants/storage-d1':
+      '@sweatpants/standard-durability-effection':
         specifier: workspace:*
-        version: link:../../packages/storage-d1
+        version: link:../../packages/standard-durability-effection
       '@sweatpants/storage-sqlite':
         specifier: workspace:*
         version: link:../../packages/storage-sqlite
-      '@sweatpants/stream-bridge':
-        specifier: workspace:*
-        version: link:../../packages/stream-bridge
-      '@sweatpants/tool-runtime':
-        specifier: workspace:*
-        version: link:../../packages/tool-runtime
-      '@sweatpants/tool-runtime-agentcore':
-        specifier: workspace:*
-        version: link:../../packages/tool-runtime-agentcore
-      '@sweatpants/tool-runtime-cloudflare':
-        specifier: workspace:*
-        version: link:../../packages/tool-runtime-cloudflare
       '@sweatpants/tool-runtime-local':
         specifier: workspace:*
         version: link:../../packages/tool-runtime-local
@@ -928,9 +898,6 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
-      redis:
-        specifier: ^4.7.1
-        version: 4.7.1
       shiki:
         specifier: ^3.20.0
         version: 3.21.0
@@ -950,9 +917,6 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
     devDependencies:
-      '@cloudflare/vite-plugin':
-        specifier: 1.62.5
-        version: 1.62.5(@types/node@22.19.5)(vite@7.3.1(@types/node@22.19.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.147.0(@cloudflare/workers-types@5.20261005.1)(@types/node@22.19.5))
       '@cloudflare/workers-types':
         specifier: 5.20261005.1
         version: 5.20261005.1
@@ -2650,6 +2614,9 @@ importers:
 
   packages/standard-durability-effect:
     dependencies:
+      '@sweatpants/runtime-effect':
+        specifier: workspace:*
+        version: link:../runtime-effect
       '@sweatpants/standard-durability':
         specifier: workspace:*
         version: link:../standard-durability
@@ -14838,20 +14805,6 @@ snapshots:
       unenv: 2.0.0-rc.24
     optionalDependencies:
       workerd: 1.20261001.1
-
-  '@cloudflare/vite-plugin@1.62.5(@types/node@22.19.5)(vite@7.3.1(@types/node@22.19.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.147.0(@cloudflare/workers-types@5.20261005.1)(@types/node@22.19.5))':
-    dependencies:
-      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261001.1)
-      miniflare: 5.20261001.0-alpha(@types/node@22.19.5)
-      unenv: 2.0.0-rc.24
-      vite: 7.3.1(@types/node@22.19.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
-      workerd: 1.20261001.1
-      wrangler: 4.147.0(@cloudflare/workers-types@5.20261005.1)(@types/node@22.19.5)
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - '@types/node'
-      - bufferutil
-      - utf-8-validate
 
   '@cloudflare/vite-plugin@1.62.5(@types/node@22.19.5)(vite@8.3.1(@types/node@22.19.5)(esbuild@0.24.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.147.0(@cloudflare/workers-types@5.20261005.1)(@types/node@22.19.5))':
     dependencies:

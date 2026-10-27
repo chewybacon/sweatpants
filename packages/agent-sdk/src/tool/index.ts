@@ -1,3 +1,4 @@
+export { type ToolDefinition } from "./definition.ts";
 export { createTool } from "./create.ts";
 export {
   INTERACTION_BINDING_DOMAIN,
@@ -109,7 +110,6 @@ export type {
   SampleExchange,
   ToolExtension,
   ToolExtensionMetadata,
-  ToolDefinition,
   RuntimeTool,
   CreateToolBuilderBase,
   CreateToolBuilderWithDescription,

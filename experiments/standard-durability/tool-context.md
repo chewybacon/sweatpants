@@ -31,7 +31,17 @@ function* booking() {
         return yield* next({ ...request, maxTokens: Math.min(request.maxTokens, 200) });
       },
     });
-    return yield* bookFlightTool.invokeWith(input, callId, tool.dispatch);
+    return yield* activateJournal(
+      inProcess().prepare(bookFlightTool, "booking").guest(input, callId),
+      journal,
+      {
+        classify: (request) =>
+          request.kind === "effect" ? request.retrySafety.mode : "repeatable",
+        *handler(request) {
+          return success(assertJson((yield* tool.dispatch(request)) ?? null));
+        },
+      },
+    );
   });
 }
 ```
@@ -43,12 +53,8 @@ provides a callable composition that owns a child scope and installs the supplie
 implementations. It can use either composition adapter when those implementations
 use the corresponding yielded protocol.
 
-This is a composition scaffold using the actual tool body, not a replacement for
-the production chat activation. An installed elicitation implementation may wait
-for a reply, but that alone does not persist a pending request or release compute.
-The existing production journal route still owns acceptance, parking and replay.
-Moving the native composition into that route requires a deliberate Guest bridge;
-native effects must never be passed to its synchronous JSON iterator cursor.
-
-Verification: focused TypeScript compilation with development package resolution.
-No execution, tests, landing, or vendor calls were performed in this pass.
+This scaffold uses the same placement/Guest/journal path as concrete invocation.
+The caller supplies and owns the journal. Preparation/acquisition do not advance
+the tool body; the journal owns acceptance and replay. Domain requests remain
+separate from native capability operations. The helper returns the journal
+activation result, including its inferred completion value.

@@ -4,7 +4,7 @@
  * Export all available tools for the MCP server.
  * All tools use the primitive journal declarations.
  */
-import type { JournalTool } from "@sweatpants/agent-sdk";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 
 // Import all tools
 import { echoTool } from "./echo";
@@ -23,7 +23,7 @@ export { planTripTool } from "./plan-trip";
 /**
  * All available tools
  */
-export const allTools: JournalTool[] = [
+export const allTools: ToolDefinition[] = [
   echoTool,
   pickCardTool,
   greetTool,

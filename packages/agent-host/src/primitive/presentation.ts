@@ -7,7 +7,7 @@ import {
   decodeConversationAuthority,
   type ConversationStreamEvent,
 } from "@sweatpants/chat-core";
-import type { JournalTool } from "@sweatpants/agent-sdk";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 import { resolveTurnDisposition } from "./disposition.ts";
 import type { ChatStore } from "./store.ts";
 import type { ChatRequest, TurnInput } from "./chat.ts";
@@ -23,7 +23,7 @@ export interface LiveSample {
 export function reconcileAndProjectChat(
   store: ChatStore,
   conversation: string,
-  tools: readonly JournalTool[],
+  tools: readonly Pick<ToolDefinition, "name" | "artifacts" | "bindings">[],
   live?: LiveSample,
 ) {
   const roots: unknown[] = [];

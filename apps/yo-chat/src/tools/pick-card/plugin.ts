@@ -1,7 +1,7 @@
 import { makePlugin } from "@sweatpants/react-chat";
 
 import { CardPicker } from "./components/CardPicker";
-import { pickCard } from "../primitive/pick-card.ts";
+import { pickCard } from "./durable.ts";
 
 export const pickCardPlugin = makePlugin(pickCard)
   .onElicit({

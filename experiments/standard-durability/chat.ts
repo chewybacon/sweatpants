@@ -1,19 +1,18 @@
 import { createToolEffects } from "@sweatpants/agent-sdk";
 import { journalHandler } from "./journal-api.ts";
-import type {
-  ChatActivationEvents,
-  ChatCapabilities,
-  TurnInput,
+import { createChatGuest } from "../../packages/agent-host/src/primitive/guest.ts";
+import {
+  prepareChatExecution,
+  type ChatActivationEvents,
+  type ChatCapabilities,
+  type TurnInput,
 } from "../../packages/agent-host/src/primitive/activation.ts";
 import {
   chatWork,
   handleChatRequest,
   type ChatRequest,
 } from "../../packages/agent-host/src/primitive/chat.ts";
-import {
-  activateJournal,
-  createIteratorGuest,
-} from "../../packages/primitive-journal/src/index.ts";
+import { activateJournal } from "../../packages/primitive-journal/src/index.ts";
 import { assertJson } from "@sweatpants/foundation";
 import type { PendingJournal } from "@sweatpants/foundation/journal";
 import {
@@ -69,6 +68,10 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
           });
           return yield* work();
         });
+      const execution = prepareChatExecution(
+        capabilities.tools,
+        capabilities.execution?.prepare(capabilities.tools, "tools"),
+      );
       const Effects = createToolEffects(composition);
       return Effects.withEffects(
         capabilities.tools,
@@ -77,19 +80,27 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
             return yield* capabilities.effects[`${request.tool}.${request.key}`]!(request.input);
           },
         },
-        () =>
-          activateJournal(
+        function* () {
+          if (execution.setup) {
+            yield* execution.setup();
+          }
+          return yield* activateJournal(
             function* () {
-              return createIteratorGuest(() =>
-                chatWork(structuredClone(input), capabilities.tools, function* (request) {
-                  const outcome = yield* Model.operations.sample(
-                    decodeModelContext(request.context),
-                  );
-                  if (!outcome.ok) {
-                    throw new Error(outcome.error.message);
-                  }
-                  return outcome.value;
-                }),
+              return createChatGuest(() =>
+                chatWork(
+                  structuredClone(input),
+                  capabilities.tools,
+                  execution.invoke,
+                  function* (request) {
+                    const outcome = yield* Model.operations.sample(
+                      decodeModelContext(request.context),
+                    );
+                    if (!outcome.ok) {
+                      throw new Error(outcome.error.message);
+                    }
+                    return outcome.value;
+                  },
+                ),
               );
             },
             journal,
@@ -144,7 +155,8 @@ export function createScopedChat<Y>(composition: Composition<Y>) {
                 );
               },
             },
-          ),
+          );
+        },
         capabilities.effectMiddleware,
       );
     },

@@ -79,3 +79,5 @@ export type {
   Guest,
   GuestWork,
 } from "./computation.ts";
+
+export { createGuest } from "./guest.ts";
