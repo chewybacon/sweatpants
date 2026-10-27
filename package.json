@@ -20,9 +20,17 @@
     "test": "CI=1 VITEST_MAX_THREADS=1 VITEST_MIN_THREADS=1 VITEST_MAX_FORKS=1 VITEST_MIN_FORKS=1 pnpm -r --workspace-concurrency=1 --if-present run test",
     "test:execution-recovery": "NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/recovery-middleware/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/recovery.mjs && NODE_OPTIONS=--conditions=development node --import tsx experiments/workflow-kernel/executor-recovery/__tests__/host.mjs",
     "dev": "pnpm -r --parallel --if-present run dev",
-    "land": "tsx scripts/land.ts deterministic",
+    "land": "pnpm v2:land",
     "land:live": "tsx scripts/land.ts live",
-    "land:full": "tsx scripts/land.ts full"
+    "land:full": "tsx scripts/land.ts full",
+    "v2:land": "tsx scripts/land.ts v2",
+    "v2:lint": "oxlint --type-aware packages/v2",
+    "v2:format": "oxfmt packages/v2",
+    "v2:format:check": "oxfmt packages/v2 --check",
+    "v2:check": "pnpm --filter './packages/v2/*' --workspace-concurrency=4 --if-present run check",
+    "v2:build": "pnpm --filter './packages/v2/*' --workspace-concurrency=4 --if-present run build",
+    "v2:test": "pnpm --filter @sweatpan.ts/acceptance test",
+    "v2:test:watch": "pnpm --filter @sweatpan.ts/acceptance test:watch"
   },
   "dependencies": {
     "@effectionx/context-api": "catalog:",

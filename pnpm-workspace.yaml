@@ -2,6 +2,7 @@ packages:
   - acceptance
   - scripts
   - packages/*
+  - packages/v2/*
   - apps/*
 
 catalog:

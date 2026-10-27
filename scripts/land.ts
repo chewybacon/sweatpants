@@ -7,8 +7,8 @@ import { verificationEnvironment } from "./verification.ts";
 async function main(): Promise<void> {
   const root = resolve(process.cwd());
   const mode = process.argv[2] ?? "deterministic";
-  if (!new Set(["deterministic", "live", "full"]).has(mode)) {
-    console.error("usage: pnpm land | pnpm land:live | pnpm land:full");
+  if (!new Set(["v2", "deterministic", "live", "full"]).has(mode)) {
+    console.error("usage: pnpm v2:land | pnpm land | pnpm land:live | pnpm land:full");
     process.exit(2);
   }
 
@@ -48,17 +48,30 @@ async function main(): Promise<void> {
 
   function deterministicStages(): Stage[] {
     return [
-      { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
-      { name: "format:repository", command: "pnpm", args: ["format:check"], timeoutMs: 5 * 60_000 },
-      { name: "types", command: "pnpm", args: ["check"], timeoutMs: 15 * 60_000 },
       {
-        name: "test:acceptance",
+        name: "lint",
         command: "pnpm",
-        args: ["--filter", "@sweatpants/acceptance", "test"],
-        // The expanded suite takes ~581s; leave headroom without an unbounded run.
-        // Local primitive app/recovery/history journeys add ~77s of cases plus collection.
-        // Prior 12m run reached 43 passing files; retain a bounded full-suite budget.
-        timeoutMs: 14 * 60_000,
+        args: [mode === "v2" ? "v2:lint" : "lint"],
+        timeoutMs: 5 * 60_000,
+      },
+      {
+        name: "format:repository",
+        command: "pnpm",
+        args: [mode === "v2" ? "v2:format:check" : "format:check"],
+        timeoutMs: 5 * 60_000,
+      },
+      {
+        name: "types",
+        command: "pnpm",
+        args: [mode === "v2" ? "v2:check" : "check"],
+        timeoutMs: 15 * 60_000,
+      },
+      {
+        name: "test:acceptance:v2",
+        command: "pnpm",
+        args: ["v2:test"],
+        // V2 uses protocol-simulated, in-process acceptance journeys.
+        timeoutMs: 5 * 60_000,
         forbidSkips: true,
       },
     ];
@@ -99,7 +112,7 @@ async function main(): Promise<void> {
   const stages = [
     ...(mode === "live" ? [] : deterministicStages()),
 
-    ...(mode === "deterministic" ? [] : liveStages()),
+    ...(mode === "live" || mode === "full" ? liveStages() : []),
   ];
 
   const coverageBaselinePath = join(root, "scripts", "test-coverage-baseline.json");
