@@ -23,6 +23,7 @@ export interface Checkpoint<S> {
 export interface RecoveryPlan<Q, V, E, S> {
   readonly history: readonly Accepted<Q, V, E>[];
   readonly checkpoint?: Checkpoint<S>;
+  readonly cancellation?: RootCancellation<Q>;
 }
 
 /** Live recovered continuation owned by the executing scope. */
@@ -55,13 +56,17 @@ export type JournalSnapshot<R, Q, V, E, S> = {
   readonly revision: number;
   readonly history: readonly Accepted<Q, V, E>[];
   readonly checkpoint?: Checkpoint<S>;
+  readonly cancellation?: RootCancellation<Q>;
 } & (
   | { readonly status: "running"; readonly pending?: PendingRequest<Q> }
   | { readonly status: "completed"; readonly value: R }
+  | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string }
 );
 
 /** Bound to one execution. Mutations are atomic; revisions reject stale activation writes. */
 export interface Journal<R, Q, V, E, S, Y> {
+  /** Optional atomic root cancellation; evaluator support is also required. */
+  readonly cancellation?: CancellationJournal<Q, Y>;
   /** Read current state without acquiring or advancing computation. */
   read(): Operation<JournalSnapshot<R, Q, V, E, S>, Y>;
   /**
@@ -81,7 +86,8 @@ export interface Journal<R, Q, V, E, S, Y> {
 /** A bounded activation leaves either a pending request or a persisted result. */
 export type Activation<R, Q> =
   | { readonly state: "parked"; readonly pending: PendingRequest<Q> }
-  | { readonly state: "completed"; readonly value: R };
+  | { readonly state: "completed"; readonly value: R }
+  | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string };
 
 /** Whether another delivery is permitted after an unresolved attempt. */
 export type RetrySafety = "repeatable" | "unsafe";
@@ -183,4 +189,26 @@ export interface AttemptControl<Q, V, E, Y> {
    * Storage must check eligibility within settle's atomic write, not via a prior read.
    */
   invalidate(grant: AttemptGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
+}
+
+/** Control history anchored before the next accepted outcome; never a fabricated domain failure. */
+export interface RootCancellation<Q> {
+  readonly position: number;
+  readonly requestId: string;
+  readonly request: Q;
+  readonly reason: string;
+  /** Revoked delivery, retained so repeated commands can retry notification. */
+  readonly attempt?: AttemptGrant;
+}
+
+/** Root cancellation at an observed parked request, bound to this journal. */
+export interface CancellationJournal<Q, Y> {
+  /**
+   * Atomically record intent and revoke the pending attempt/interaction. Stale request
+   * IDs reject. Repeating the original ID preserves the first reason, including during
+   * cleanup; it never invalidates cleanup grants. Does not advance authored code.
+   */
+  request(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
+  /** Commit cancelled completion at the expected revision after cleanup has drained. */
+  finish(revision: number, failure?: string): Operation<void, Y>;
 }

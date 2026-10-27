@@ -45,8 +45,9 @@ handle. Disposal must not run logical workflow cancellation.
 activation in a child scope. It reads accepted history, recovers the Guest, and
 atomically records either a pending request (with an optional checkpoint) or the
 completed result. Its return value is `Activation<Result, Request>`. The scope
-joins physical Guest disposal before returning; it does not logically cancel the
-workflow. A persisted completion returns without acquiring an evaluator.
+joins physical Guest disposal before returning. It only delivers logical cancellation
+when that intent is already recorded. A persisted terminal result returns without
+acquiring an evaluator.
 
 The host delivers the pending request and calls `journal.accept(id, outcome)`.
 Acceptance records the outcome without advancing computation. A fresh activation
@@ -83,4 +84,22 @@ and persisted completion without evaluator acquisition.
 
 Only detached in-process journal state and snapshots survive between activations.
 The memory journal does not establish disk persistence, OS-process crash recovery,
-exactly-once external effects, or durable logical cancellation.
+exactly-once external effects, or OS-persistent cancellation.
+
+## Root cancellation control history
+
+A `RootCancellation` records the unanswered request, its ID, the accepted-history
+position and first reason. It is control data, not an accepted domain failure.
+Replay reconstructs the original request, validates it, calls `guest.cancel` there,
+then resumes the accepted cleanup suffix. An evaluator without cancellation support
+rejects reconstruction explicitly. Assembly must select a capable evaluator.
+
+Current checkpoint formats only anchor accepted outcomes. Cancellation recovery
+therefore falls back to replay even with checkpoint middleware installed, and
+activation does not capture checkpoints while unwinding. Supporting checkpointed
+unwinding requires an explicit control-history anchor and evaluator support.
+
+The optional journal cancellation capability atomically records intent and revokes
+the current delivery. Activation drives cleanup through its existing park/complete
+path, committing cancelled completion (including a diagnostic failure string when
+unhandled cleanup fails). Successful completion cannot override cancellation.

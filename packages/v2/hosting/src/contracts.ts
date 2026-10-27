@@ -1,5 +1,6 @@
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
+  RootCancellation,
   AttemptControl,
   AlarmIntent,
   AttemptGrant,
@@ -18,6 +19,7 @@ import type {
 /** Completion, an occupied/invalidated attempt, or a registered participant wait/invalidation. */
 export type HostedResult<R, Q = unknown> =
   | { readonly state: "completed"; readonly value: R }
+  | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string }
   | { readonly state: "occupied"; readonly grant: AttemptGrant }
   | { readonly state: "invalidated"; readonly grant: AttemptGrant; readonly reason: string }
   | (InteractionRegistration & { readonly pending: PendingRequest<Q> });
@@ -36,6 +38,8 @@ export interface HostingMethods<R, Q, V, E, Y> {
    * workflow or record a failure Outcome. An unsettled grant remains occupied.
    */
   run(replace?: AttemptGrant): Operation<HostedResult<R, Q>, Y>;
+  /** Request root cancellation at a parked boundary; run() subsequently drives cleanup. */
+  cancel(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
   /** Choose local participant registration or attempted handler execution; defaults to execute. */
   deliveryMode(request: Q): Operation<"execute" | "wait", Y>;
   /** Record a participant answer without advancing computation; call run to recover afterward. */

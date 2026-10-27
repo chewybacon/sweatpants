@@ -68,8 +68,9 @@ explicit replacement/reconciliation decision as other interrupted delivery.
 
 A user cancelling a booking is a different operation: record cancellation intent,
 run durable workflow cleanup and eventually record a cancelled terminal state.
-That protocol is not implemented here. Do not substitute native runtime shutdown
-for it, or run logical workflow cleanup merely because a server is restarting.
+Root cancellation at an observed parked request is implemented below. Do not
+substitute native runtime shutdown for it, or run logical workflow cleanup merely
+because a server is restarting.
 
 ## Participant interactions
 
@@ -160,7 +161,8 @@ Supply `attemptControl` from the same journal, then call
 race at storage's atomic mutation boundary. Acceptance first returns its receipt;
 invalidation first rejects late settlement and explicit replacement. Repetition
 preserves the first reason. A fresh host reports `invalidated` without redelivery.
-The pending workflow remains parked; durable lexical unwinding is not implemented.
+Attempt invalidation alone leaves the workflow parked. Root cancellation is a
+separate command that also records the evaluator transition.
 
 For prompt IO shutdown, assemble optional middleware:
 
@@ -189,3 +191,25 @@ Both native adapters are exercised through hosting with dropped notifications,
 invalidation before subscription, late outcomes, acceptance winning first, and
 asynchronous physical cleanup. This is in-process protocol evidence, not a
 production pub/sub implementation or distributed-storage benchmark.
+
+## Root cancellation and recoverable cleanup
+
+`host.operations.cancel(pendingRequestId, reason)` requests cancellation at an
+observed unanswered request. The journal atomically records the replay boundary
+and revokes its attempt/participant grant. A stale ID rejects if acceptance won;
+callers must deliberately observe and choose a new boundary rather than silently
+retargeting cancellation. Repeating the original cancellation preserves its first
+reason and never invalidates the new cleanup grants.
+
+`host.operations.run()` then reconstructs and drives authored cleanup through the
+same handler/participant path. Cleanup uses fresh request identities and ordinary
+attempt policy. It can park, dispose and recover; previously accepted cleanup
+outcomes are replayed without redelivery. Terminal results are `cancelled`, with an
+optional diagnostic `failure` string for unhandled cleanup failure. Persisted
+terminal results return without acquiring another evaluator.
+
+Optional live-cancellation middleware also publishes notification after root
+cancellation commits. Losing this notification cannot admit the revoked result.
+The root protocol currently supports iterator replay and nested lexical finally,
+not independent child-task scheduling, deadline alarms or checkpointed unwinding.
+The installed Lua evaluator does not yet expose logical cancellation.

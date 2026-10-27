@@ -28,6 +28,13 @@ export function installAttemptCancellation<R, Q, V, E, Y>(
         return yield* runtime.withSignal(signal, () => next(...args));
       });
     },
+    *cancel(args, next) {
+      const result = yield* next(...args);
+      if (result.attempt) {
+        yield* notifications.publish(result.attempt);
+      }
+      return result;
+    },
     *invalidateAttempt(args, next) {
       const result = yield* next(...args);
       if (result.state === "invalidated") {

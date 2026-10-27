@@ -4,13 +4,15 @@ import type { IteratorGuestState } from "./types.ts";
 
 /**
  * Own an authored iterator independently of the native runner.
- * Only start/resume advance it. Physical resources belong to the acquiring host;
+ * Start/resume and explicit cancel advance it. Physical resources belong to the acquiring host;
  * close discards the iterator without calling return/throw or running its finally.
  */
 export function createIteratorGuest<Result, Request>(
   work: Work<Result, Request>,
 ): Guest<Result, Request, never> {
   let state: IteratorGuestState = "new";
+  let cancellation: string | undefined;
+  let boundary: Turn<Result, Request> | undefined;
   let iterator: Iterator<Request, Result, unknown> | undefined;
 
   function advance(step: () => IteratorResult<Request, Result>): Turn<Result, Request> {
@@ -20,13 +22,25 @@ export function createIteratorGuest<Result, Request>(
       if (next.done) {
         state = "completed";
         iterator = undefined;
-        return { kind: "completed", value: next.value };
+        if (cancellation !== undefined) {
+          state = "cancelled";
+          return (boundary = { kind: "cancelled", reason: cancellation });
+        }
+        return (boundary = { kind: "completed", value: next.value });
       }
       state = "suspended";
-      return { kind: "suspended", request: next.value };
+      return (boundary = { kind: "suspended", request: next.value });
     } catch (error) {
       state = "failed";
       iterator = undefined;
+      if (cancellation !== undefined) {
+        state = "cancelled";
+        return (boundary = {
+          kind: "cancelled",
+          reason: cancellation,
+          failure: error instanceof Error ? error.message : String(error),
+        });
+      }
       throw error;
     }
   }
@@ -56,12 +70,28 @@ export function createIteratorGuest<Result, Request>(
         return current.throw(outcome.error);
       });
     },
+    *cancel(reason) {
+      if (state === "closed" || state === "advancing" || state === "failed") {
+        throw new Error(`Cannot cancel guest while ${state}`);
+      }
+      if (cancellation !== undefined && boundary) {
+        return boundary;
+      }
+      if (state !== "suspended" || !iterator?.return) {
+        throw new Error("Guest cancellation requires a suspended return-capable iterator");
+      }
+      cancellation = reason;
+      const current = iterator;
+      // The return value is ignored: cancellation owns terminal disposition.
+      return advance(() => current.return!());
+    },
     *close() {
       if (state === "advancing") {
         throw new Error("Cannot close guest while advancing");
       }
       state = "closed";
       iterator = undefined;
+      boundary = undefined;
     },
   };
 }

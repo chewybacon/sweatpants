@@ -64,3 +64,13 @@ Invalidated attempts cannot be replaced or settled, and `begin` reports their
 invalidation. This retains the pending request without adding an authored failure.
 `journal.accept` remains a trusted administrative bypass, not a cancellation-safe
 reply endpoint. All of this control state is process-local.
+
+## Root cancellation
+
+`cancellation.request(id, reason)` atomically records the pending request as a
+control-history boundary and revokes its delivery. It removes that pending request;
+cleanup gets a distinct identity even at the same accepted-history position.
+Duplicate cancellation uses the original request ID and cannot revoke cleanup.
+`cancellation.finish` uses revision CAS and requires no unanswered cleanup request.
+The terminal record preserves the first reason and any diagnostic cleanup failure.
+All control state shares the same process-local lifetime as the journal.

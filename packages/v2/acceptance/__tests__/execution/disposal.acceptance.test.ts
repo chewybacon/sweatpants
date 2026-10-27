@@ -194,6 +194,9 @@ forEachRuntime((runtime) => {
                 const value = request.kind === "approval" ? reply.body === "yes" : reply.body;
                 turn = yield* cursor.resume({ ok: true, value });
               }
+              if (turn.kind !== "completed") {
+                throw new Error("Unexpected logical cancellation");
+              }
               return turn.value;
             },
             (cursor) => cursor.close(),

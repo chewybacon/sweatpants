@@ -3,5 +3,6 @@ export type IteratorGuestState =
   | "advancing"
   | "suspended"
   | "completed"
+  | "cancelled"
   | "failed"
   | "closed";

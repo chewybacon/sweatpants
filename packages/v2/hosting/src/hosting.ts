@@ -25,7 +25,7 @@ export function createHosting<R, Q, V, E, S, Y>(
         let expected = replace;
         while (true) {
           const activation = yield* activateJournal(composition, options.recovery, options.journal);
-          if (activation.state === "completed") {
+          if (activation.state !== "parked") {
             return activation;
           }
           const mode = yield* api.operations.deliveryMode(activation.pending.request);
@@ -52,6 +52,12 @@ export function createHosting<R, Q, V, E, S, Y>(
           });
         }
       });
+    },
+    *cancel(requestId, reason) {
+      if (!options.journal.cancellation) {
+        throw new Error("Journal does not support root cancellation");
+      }
+      return yield* options.journal.cancellation.request(requestId, reason);
     },
     *deliveryMode() {
       return "execute";

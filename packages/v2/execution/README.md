@@ -26,7 +26,7 @@ The live Guest/GuestWork contracts are generic in result, request and native yie
 The iterator driver needs no native yield protocol. Its reply values start unknown;
 typed author declarations and domain validation must establish reply correlation.
 This layer does not validate arbitrary wire bytes, accept outcomes durably, or
-implement logical cancellation, replay or checkpoint capture.
+implement durable acceptance, replay or checkpoint capture.
 
 Acceptance journeys in `acceptance/__tests__/execution/disposal.acceptance.test.ts`
 run the same body under Effect and Effection. Scripted peers acknowledge physical
@@ -34,3 +34,19 @@ open/close and reservation requests. They verify lazy acquisition, parked dispos
 native cancellation after suspension, invalidated handles, pre-start disposal and
 normal yielding finally completion with an inferred result. These are in-process
 ownership checks, not crash-recovery or durable cancellation evidence.
+
+## Logical root cancellation
+
+`Guest.cancel` is optional evaluator support; it returns the same `Turn` union as
+start/resume. The iterator implementation requires a suspended return-capable
+iterator and advances `return()` once. Yielded finally requests become normal
+suspended turns. Repeated cancellation preserves the current cleanup boundary;
+resume supplies cleanup outcomes. Completion remains `cancelled` even when an
+authored finally overrides the return value. Unhandled cleanup exceptions produce
+a cancelled turn with a diagnostic failure string, not successful cleanup.
+
+Ordinary `catch` does not receive a synthetic domain error on cancellation. Native
+JavaScript nested-finally semantics apply, including continuation into outer
+finally blocks after an inner failure. This does not yet implement registered
+cleanup stacks, independently scheduled child tasks, or externally targeted nested
+scopes. Physical close continues to discard without logical unwinding.

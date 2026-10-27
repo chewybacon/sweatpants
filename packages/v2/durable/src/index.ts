@@ -17,3 +17,4 @@ export type {
 } from "./contracts.ts";
 export type { AlarmIntent } from "./contracts.ts";
 export type { AttemptControl, AttemptState } from "./contracts.ts";
+export type { RootCancellation, CancellationJournal } from "./contracts.ts";

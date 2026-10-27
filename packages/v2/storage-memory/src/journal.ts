@@ -1,4 +1,6 @@
 import type {
+  CancellationJournal,
+  RootCancellation,
   AttemptControl,
   AttemptState,
   Journal,
@@ -25,6 +27,7 @@ import type { MemoryJournalOptions } from "./contracts.ts";
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
   options: MemoryJournalOptions,
 ): Journal<R, Q, V, E, S, never> & {
+  readonly cancellation: CancellationJournal<Q, never>;
   readonly attemptControl: AttemptControl<Q, V, E, never>;
   readonly attempts: Attempts<Q, V, E, never>;
   readonly interactions: Interactions<Q, V, E, never>;
@@ -98,6 +101,51 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     return { entry: structuredClone(entry), duplicate: false };
   };
   return {
+    cancellation: {
+      *request(requestId, reason) {
+        if (state.cancellation) {
+          if (state.cancellation.requestId !== requestId) {
+            throw new Error("Root cancellation already requested at another boundary");
+          }
+          return structuredClone(state.cancellation);
+        }
+        if (state.status !== "running" || state.pending?.id !== requestId) {
+          throw new Error("Stale or unknown cancellation boundary");
+        }
+        const attempt = grants.get(requestId);
+        const cancellation: RootCancellation<Q> = structuredClone({
+          position: state.history.length,
+          requestId,
+          request: state.pending.request,
+          reason,
+          attempt,
+        });
+        const { pending: _pending, checkpoint: _checkpoint, ...rest } = state;
+        const next = { ...rest, cancellation, revision: state.revision + 1 };
+        if (attempt && !invalidated.has(attempt.attemptId)) {
+          invalidated.set(attempt.attemptId, reason);
+        }
+        const registration = registrations.get(requestId);
+        if (registration?.state === "waiting") {
+          registrations.set(requestId, { state: "invalidated", grant: registration.grant, reason });
+        }
+        state = next;
+        return structuredClone(cancellation);
+      },
+      *finish(revision, failure) {
+        const snapshot = current(revision);
+        if (!snapshot.cancellation || snapshot.pending) {
+          throw new Error("Cancellation completion requires drained cleanup");
+        }
+        state = {
+          ...snapshot,
+          revision: snapshot.revision + 1,
+          status: "cancelled",
+          reason: snapshot.cancellation.reason,
+          failure,
+        };
+      },
+    },
     attemptControl: {
       *inspect(grant) {
         return inspect(grant);
@@ -224,7 +272,7 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         throw new Error("Checkpoint differs from accepted journal position");
       }
       const pending: PendingRequest<Q> = snapshot.pending ?? {
-        id: `${identity}:${snapshot.history.length}`,
+        id: `${identity}:${snapshot.history.length}${snapshot.cancellation ? ":cleanup" : ""}`,
         sequence: snapshot.history.length,
         request,
       };
@@ -241,6 +289,9 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     accept,
     *complete(revision, value) {
       const snapshot = current(revision);
+      if (snapshot.cancellation) {
+        throw new Error("Cannot complete successfully after root cancellation");
+      }
       if (snapshot.pending) {
         throw new Error("Cannot complete with an unanswered request");
       }

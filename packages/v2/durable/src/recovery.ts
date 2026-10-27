@@ -1,7 +1,13 @@
 import type { Api, Composition, Operation, OperationMiddleware } from "@standard-durability/core";
 import type { GuestWork } from "@sweatpan.ts/execution";
 import type { CheckpointAdapter, RestoredGuest } from "@sweatpan.ts/codemode-runtime";
-import type { Accepted, Checkpoint, RecoveryMethods, RecoveryPlan } from "./contracts.ts";
+import type {
+  RootCancellation,
+  Accepted,
+  Checkpoint,
+  RecoveryMethods,
+  RecoveryPlan,
+} from "./contracts.ts";
 
 function validate<Q, V, E, S>(program: string, plan: RecoveryPlan<Q, V, E, S>) {
   const receipts = new Set<string>();
@@ -10,6 +16,14 @@ function validate<Q, V, E, S>(program: string, plan: RecoveryPlan<Q, V, E, S>) {
       throw new Error("Invalid accepted history");
     }
     receipts.add(entry.receipt);
+  }
+  if (
+    plan.cancellation &&
+    (!Number.isSafeInteger(plan.cancellation.position) ||
+      plan.cancellation.position < 0 ||
+      plan.cancellation.position > plan.history.length)
+  ) {
+    throw new Error("Invalid cancellation position");
   }
   const saved = plan.checkpoint;
   if (
@@ -29,9 +43,23 @@ function* replay<R, Q, Y, V, E>(
   history: readonly Accepted<Q, V, E>[],
   position: number,
   matches: (actual: Q, accepted: Q) => boolean,
+  cancellation?: RootCancellation<Q>,
 ): Operation<RestoredGuest<R, Q, Y, V, E>, Y> {
   let turn = initial.turn;
-  for (const entry of history.slice(position)) {
+  for (let index = position; index <= history.length; index++) {
+    if (cancellation?.position === index) {
+      if (turn.kind !== "suspended" || !matches(turn.request, cancellation.request)) {
+        throw new Error("Replay cancellation boundary mismatch");
+      }
+      if (!initial.guest.cancel) {
+        throw new Error("Evaluator does not support logical cancellation");
+      }
+      turn = yield* initial.guest.cancel(cancellation.reason);
+    }
+    const entry = history[index];
+    if (!entry) {
+      break;
+    }
     if (turn.kind !== "suspended" || !matches(turn.request, entry.request)) {
       throw new Error(`Replay request mismatch at ${entry.sequence}`);
     }
@@ -56,7 +84,13 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
       const guest = yield* options.acquire();
       yield* composition.ensure(() => guest.close());
       const turn = yield* guest.start();
-      const restored = yield* replay({ guest, turn }, plan.history, 0, options.matches);
+      const restored = yield* replay(
+        { guest, turn },
+        plan.history,
+        0,
+        options.matches,
+        plan.cancellation,
+      );
       return { ...restored, program: options.program, position: plan.history.length };
     },
     *checkpoint() {
@@ -79,7 +113,7 @@ export function createCheckpointMiddleware<R, Q, Y, V, E, S>(
     *recover([plan], next) {
       validate(program, plan);
       const saved = plan.checkpoint;
-      if (!saved || saved.format !== adapter.format) {
+      if (plan.cancellation || !saved || saved.format !== adapter.format) {
         return yield* next(plan);
       }
       const restored = yield* adapter.restore(saved.state);
