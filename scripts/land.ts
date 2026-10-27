@@ -60,6 +60,9 @@ async function main(): Promise<void> {
         args: [mode === "v2" ? "v2:format:check" : "format:check"],
         timeoutMs: 5 * 60_000,
       },
+      ...(mode === "v2"
+        ? [{ name: "build:v2", command: "pnpm", args: ["v2:build"], timeoutMs: 5 * 60_000 }]
+        : []),
       {
         name: "types",
         command: "pnpm",

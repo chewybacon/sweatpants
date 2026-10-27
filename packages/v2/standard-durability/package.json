@@ -23,6 +23,9 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/standard-durability",
     "format:check": "cd ../../.. && oxfmt packages/v2/standard-durability --check"
   },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

@@ -19,15 +19,21 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json && tsc -p tsconfig.production.json",
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/acceptance",
     "format:check": "cd ../../.. && oxfmt packages/v2/acceptance --check",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest run",
     "test:watch": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest"
   },
   "devDependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/runtime-effect": "workspace:*",
+    "@sweatpan.ts/runtime-effection": "workspace:*",
     "@sweatpan.ts/testing": "workspace:*",
     "@types/node": "catalog:",
+    "effect": "^4.0.6",
+    "effection": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

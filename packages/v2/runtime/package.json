@@ -23,6 +23,9 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/runtime",
     "format:check": "cd ../../.. && oxfmt packages/v2/runtime --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

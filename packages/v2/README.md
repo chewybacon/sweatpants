@@ -2,7 +2,8 @@
 
 This directory groups the new packages while existing `@sweatpants/*` packages
 remain available as references. `v2` is not part of a public package name.
-All packages start private, with empty APIs and no runtime dependencies.
+Packages start private. Portable computation and composition, both native adapters,
+and the runtime acceptance journeys are now implemented; other packages remain scaffolds.
 
 ## Package conventions
 
@@ -51,7 +52,7 @@ reference material in Git history.
 
 ## Root commands
 
-- `pnpm v2:land`: v2 lint, formatting, type checks and acceptance tests.
+- `pnpm v2:land`: v2 lint, formatting, builds, type checks and acceptance tests.
 - `pnpm land`: alias for `v2:land` during reconstruction.
 - `pnpm v2:lint`: lint only packages/v2.
 - `pnpm v2:format` / `pnpm v2:format:check`: format or check packages/v2.
@@ -68,10 +69,14 @@ uses protocol-simulated, in-process test rigs from `@sweatpan.ts/testing`.
 There are no v2 unit tests. See [AGENTS.md](./AGENTS.md) and the
 [acceptance journey conventions](./acceptance/__tests__/README.md).
 
-The runner is configured, but the scaffold contains no behavioral tests yet.
-Empty collection fails deliberately. Root `pnpm land` runs this v2 acceptance
-suite under its own coverage identity (`test:acceptance:v2`); the legacy coverage
-baseline remains separate. The gate will fail until the first real journey exists.
+The runtime acceptance journeys run identical portable workflows under Effect and
+Effection using an in-process scripted protocol peer. Native imports are confined
+to stack assembly; compile-time fixtures verify Computation mappings, retained
+native requirements and rejection of cross-runtime work. These tests cover local
+execution and cleanup, not durable persistence or real process-loss recovery.
+
+Root `pnpm land` runs this suite under its own coverage identity
+(`test:acceptance:v2`); the legacy coverage baseline remains separate.
 
 ## Package inventory
 

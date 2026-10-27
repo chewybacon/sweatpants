@@ -23,7 +23,16 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/runtime-effect",
     "format:check": "cd ../../.. && oxfmt packages/v2/runtime-effect --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@standard-durability/effect": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
+  },
   "devDependencies": {
+    "effect": "^4.0.6",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.6"
   }
 }

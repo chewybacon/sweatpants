@@ -11,6 +11,8 @@ subprocess-based test rigs. Recovery scenarios reconstruct the subject against
 retained in-process state; they must not claim proof of real OS-process crash
 recovery. Platform-specific behavior requires explicit evidence beyond a simulator.
 
-The suite starts empty. `pnpm --filter @sweatpan.ts/acceptance test` intentionally
-fails when no tests are collected. Add real acceptance journeys as capabilities
-are ported; do not add placeholder tests or enable `passWithNoTests`.
+Run `pnpm v2:test`. Empty collection intentionally fails. Add real acceptance
+journeys as capabilities are ported; do not add placeholder tests or enable
+`passWithNoTests`. The runtime journeys exercise shared application code through
+both native adapters and an in-process scripted request/reply peer. Compile-time
+acceptance fixtures additionally verify native mappings and invalid stack assembly.

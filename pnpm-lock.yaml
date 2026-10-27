@@ -2737,12 +2737,30 @@ importers:
 
   packages/v2/acceptance:
     devDependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@sweatpan.ts/runtime-effect':
+        specifier: workspace:*
+        version: link:../runtime-effect
+      '@sweatpan.ts/runtime-effection':
+        specifier: workspace:*
+        version: link:../runtime-effection
       '@sweatpan.ts/testing':
         specifier: workspace:*
         version: link:../testing
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -2949,37 +2967,85 @@ importers:
         version: 7.0.2
 
   packages/v2/runtime:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
     devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/runtime-effect:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@standard-durability/effect':
+        specifier: workspace:*
+        version: link:../standard-durability-effect
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/runtime-effection:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@standard-durability/effection':
+        specifier: workspace:*
+        version: link:../standard-durability-effection
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/standard-durability:
+    dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
     devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/standard-durability-effect:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
     devDependencies:
+      effect:
+        specifier: ^4.0.6
+        version: 4.0.6
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/standard-durability-effection:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
     devDependencies:
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

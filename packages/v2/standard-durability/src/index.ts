@@ -1,2 +1,23 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export type {
+  RuntimeType,
+  Computation,
+  Operation,
+  Work,
+  Outcome,
+  OperationDefinition,
+  AnyOperation,
+  OperationDefinitions,
+  ApiDefinition,
+  InputOf,
+  ProviderInputOf,
+  OutcomeOf,
+  Signature,
+  Handler,
+  Dispatcher,
+  Operations,
+  Middleware,
+  Api,
+  Context,
+  Composition,
+} from "./contracts.ts";
+export { defineOperation, defineApi } from "./definition.ts";

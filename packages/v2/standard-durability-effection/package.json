@@ -23,7 +23,14 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/standard-durability-effection",
     "format:check": "cd ../../.. && oxfmt packages/v2/standard-durability-effection --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*"
+  },
   "devDependencies": {
+    "effection": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "effection": "^4.2.0"
   }
 }
