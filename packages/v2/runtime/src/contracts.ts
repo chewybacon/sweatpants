@@ -1,11 +1,14 @@
 import type { Composition, Operation, Work } from "@standard-durability/core";
 
+/** One native execution and its physical resource lifetime. */
 export interface RuntimeExecution<T> {
   /** Resolves only after all owned work and cleanup finish. */
   readonly result: Promise<T>;
   /**
    * Idempotent shutdown barrier: waits for execution and cleanup to settle.
    * Does not reject for execution/cleanup failure; observe result for the outcome.
+   * This stops local execution. It does not record durable workflow cancellation,
+   * unwind an authored Guest, or prove an external effect did not occur.
    */
   cancel(): Promise<void>;
 }

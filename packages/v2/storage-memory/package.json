@@ -23,6 +23,9 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/storage-memory",
     "format:check": "cd ../../.. && oxfmt packages/v2/storage-memory --check"
   },
+  "dependencies": {
+    "@sweatpan.ts/durable": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

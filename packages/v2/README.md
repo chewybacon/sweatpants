@@ -15,6 +15,11 @@ and the runtime acceptance journeys are now implemented; other packages remain s
   with their implementation.
 - Internal modules import siblings directly, not their own index. Other packages
   use declared package entry points, never internal source paths.
+- Public exports carry JSDoc on their defining declaration (including public
+  contract methods). Describe observable behavior, ownership, cancellation and
+  material failure cases; include an example when it clarifies assembly. Re-export
+  from index.ts without duplicating the documentation. Keep README prose for
+  package orientation and acceptance evidence. Apply this as APIs are added or changed.
 - Public signatures must not leak internal types. Public contracts must not import
   local implementations.
 - Higher-level entry points may re-export lower-level public contracts and portable

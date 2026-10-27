@@ -2752,6 +2752,9 @@ importers:
       '@sweatpan.ts/execution':
         specifier: workspace:*
         version: link:../execution
+      '@sweatpan.ts/hosting':
+        specifier: workspace:*
+        version: link:../hosting
       '@sweatpan.ts/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -2761,6 +2764,9 @@ importers:
       '@sweatpan.ts/runtime-effection':
         specifier: workspace:*
         version: link:../runtime-effection
+      '@sweatpan.ts/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
       '@sweatpan.ts/testing':
         specifier: workspace:*
         version: link:../testing
@@ -2947,6 +2953,13 @@ importers:
         version: 7.0.2
 
   packages/v2/hosting:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -3109,6 +3122,10 @@ importers:
         version: 7.0.2
 
   packages/v2/storage-memory:
+    dependencies:
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
     devDependencies:
       typescript:
         specifier: 'catalog:'
