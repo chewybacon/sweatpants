@@ -4,6 +4,35 @@ Contexts, scopes and middleware are the primary composition mechanisms for
 framework behavior. A stack chooses the behavior it installs. The primitives make
 that composition predictable; they do not prescribe one mandatory policy stack.
 
+## Signatures and handle decoration
+
+`Api<Methods, Y>` describes actual operation-bearing methods. `createApi(name,
+implementation)` can infer them directly; existing explicit value-signature calls
+remain shorthand for `Operations<Signature, Y>`. Lifting is explicit in that
+shorthand, so a Guest method returning `Operation<Turn<...>, Y>` is never lifted
+again. Plain synchronous driver implementations are not supported.
+
+`Around<Args, Returned>` is the shared `(args, next) => Returned` function shape.
+`OperationMiddleware<Methods>` derives it from actual methods; the existing
+`Middleware<Signature, Y>` shorthand derives it from `Operations<Signature, Y>`.
+Both scoped `api.around(layers)` and direct `composeOperation(method, layers)` use
+this shape. The first direct layer is outermost. Composition invokes no method,
+captures no scope and creates no cleanup owner. Bind methods that rely on `this`
+before passing them to direct composition.
+
+Direct wrappers belong to the specific callable they wrap. An acquisition layer
+can decorate its returned Guest without advancing the authored body. Its wrappers
+can read contexts when their operations execute. Resource ownership stays with
+the acquiring scope; changing the exposed close method does not transfer the
+scope's responsibility to release physical resources.
+
+Use portable `Operation<Result, Y>` contracts when middleware must yield host
+operations beyond those inferred from a concrete generator implementation. Direct
+inference preserves that implementation's return type, including narrower native
+or generator types. Automatic argument/result extraction does not preserve
+per-call generic relationships or overloads inside middleware; concrete Guest
+capabilities do not have that limitation. Public method types remain intact.
+
 ## Calls and ownership
 
 An API facade resolves middleware when its operation executes. Capturing the
@@ -57,6 +86,11 @@ The same portable applications run under Effect and Effection:
   order, wrapped raw capability replacement, captured facade behavior, parent
   restoration, fresh-root isolation, nested interception and finalizer lookup.
 - `lifecycle.acceptance.test.ts`: cancellation and failing asynchronous cleanup.
+
+`../acceptance/__tests__/execution/composition.acceptance.test.ts` covers lazy
+acquisition, two independently decorated Guests, scoped resume policy, completion
+and parked disposal, plus inferred API results. Its type fixtures reject incorrect
+resume outcomes, incorrect middleware results and incompatible runtime protocols.
 
 These journeys live in `../acceptance/__tests__/runtime/` and use scripted
 in-process protocol peers. Nullable context semantics, acquisition/use context

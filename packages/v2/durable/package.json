@@ -23,6 +23,11 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/durable",
     "format:check": "cd ../../.. && oxfmt packages/v2/durable --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/codemode-runtime": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

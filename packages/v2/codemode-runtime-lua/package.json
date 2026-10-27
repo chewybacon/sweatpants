@@ -4,7 +4,8 @@
   "private": true,
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "generated"
   ],
   "type": "module",
   "exports": {
@@ -22,6 +23,12 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode-runtime-lua",
     "format:check": "cd ../../.. && oxfmt packages/v2/codemode-runtime-lua --check"
+  },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/codemode-runtime": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

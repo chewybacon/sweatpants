@@ -38,6 +38,7 @@ catalog:
   compression: ^1.8.1
   drizzle-kit: 0.31.10
   drizzle-orm: 0.45.2
+  effect: ^4.0.6
   effection: 4.2.0
   express: ^5.2.1
   jsdom: ^27.0.0

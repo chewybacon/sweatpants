@@ -5,8 +5,8 @@
     "total": 111
   },
   "test:acceptance:v2": {
-    "passed": 46,
+    "passed": 72,
     "skipped": 0,
-    "total": 46
+    "total": 72
   }
 }

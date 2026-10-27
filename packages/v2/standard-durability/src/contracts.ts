@@ -52,23 +52,36 @@ export interface Dispatcher<Request, Y, Reply = unknown> {
   dispatch: Handler<Request, Y, Reply>;
 }
 
-/** A signature describes arguments and the eventual value, without a runtime. */
-export type Operations<Signature, Y> = {
-  readonly [K in keyof Signature]: Signature[K] extends (...args: infer Args) => infer Value
+/** Explicit shorthand: lift a value signature into portable operation methods. */
+export type Operations<Shape, Y> = {
+  readonly [K in keyof Shape]: Shape[K] extends (...args: infer Args) => infer Value
     ? (...args: Args) => Operation<Value, Y>
     : never;
 };
 
-/** A layer may delegate, rewrite, or return without calling next. Assembly owns policy. */
-export type Middleware<Signature, Y> = {
-  readonly [K in keyof Signature]?: Signature[K] extends (...args: infer Args) => infer Value
-    ? (args: Args, next: (...args: Args) => Operation<Value, Y>) => Operation<Value, Y>
+/** Effection-style interception of a callable's complete return type. */
+export type Around<Args extends unknown[], Returned> = (
+  args: Args,
+  next: (...args: Args) => Returned,
+) => Returned;
+
+/**
+ * Derive layers from actual operation methods, without wrapping their return again.
+ * Per-call generic relationships and overloads require specifically typed hooks;
+ * conditional extraction does not preserve them. Concrete capabilities retain types.
+ */
+export type OperationMiddleware<Methods> = {
+  readonly [K in keyof Methods]?: Methods[K] extends (...args: infer Args) => infer Returned
+    ? Around<Args, Returned>
     : never;
 };
 
-export interface Api<Signature, Y> {
+/** A layer may delegate, rewrite, or short-circuit. Assembly owns policy. */
+export type Middleware<Shape, Y> = OperationMiddleware<Operations<Shape, Y>>;
+
+export interface Api<Methods, Y> {
   /** Resolve against the executing scope; obtaining this facade captures no scope. */
-  readonly operations: Operations<Signature, Y>;
+  readonly operations: Methods;
   /**
    * Scoped middleware. Default/max surrounds min middleware. Earlier max layers
    * are outermost; later min layers are outermost within min. Child scopes inherit
@@ -76,11 +89,11 @@ export interface Api<Signature, Y> {
    * Calling next in a child resolves its driver without redispatching wrappers.
    */
   around(
-    middleware: Middleware<Signature, Y>,
+    middleware: OperationMiddleware<Methods>,
     options?: { readonly at: "min" | "max" },
   ): Operation<void, Y>;
   /** One terminal driver per scope; a child can install an override. */
-  install(driver: Operations<Signature, Y>): Operation<void, Y>;
+  install(driver: Methods): Operation<void, Y>;
 }
 
 export interface Context<T, Y> {
@@ -96,10 +109,16 @@ export interface Context<T, Y> {
  * not direct calls to implementation objects. Contexts may hold either deliberately.
  */
 export interface Composition<Y> {
+  /** Infer an operation-bearing implementation directly, including its result types. */
+  createApi<Methods extends { [K in keyof Methods]: (...args: never[]) => Operation<unknown, Y> }>(
+    name: string,
+    defaults: Methods,
+  ): Api<Methods, Y>;
+  /** Explicit value signatures remain a shorthand for operation-bearing methods. */
   createApi<Signature extends object>(
     name: string,
     defaults: Operations<Signature, Y>,
-  ): Api<Signature, Y>;
+  ): Api<Operations<Signature, Y>, Y>;
   createContext<T>(name: string): Context<T, Y>;
   /** A child owner that joins cleanup before returning. Plain yield* adds no scope. */
   scoped<T>(work: Work<T, Y>): Operation<T, Y>;

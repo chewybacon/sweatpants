@@ -1,12 +1,12 @@
 import { executeWork } from "./execute.ts";
 import { Context as NativeContext, Effect, Scope } from "effect";
-import type {
-  Api,
-  Composition,
-  Context,
-  Middleware,
-  Operations,
-  Work,
+import {
+  composeOperation,
+  type Api,
+  type Composition,
+  type Context,
+  type OperationMiddleware,
+  type Work,
 } from "@standard-durability/core";
 
 import type { CompositionScope, EffectYield } from "./contracts.ts";
@@ -114,10 +114,7 @@ export const effect: Composition<EffectYield> = {
         }),
     };
   },
-  createApi<Signature extends object>(
-    name: string,
-    defaults: Operations<Signature, EffectYield>,
-  ): Api<Signature, EffectYield> {
+  createApi<Methods extends object>(name: string, defaults: Methods): Api<Methods, EffectYield> {
     if (Object.values(defaults).some((value) => typeof value !== "function")) {
       throw new TypeError("API declarations must contain only operation methods");
     }
@@ -146,14 +143,14 @@ export const effect: Composition<EffectYield> = {
               ...all.filter((entry) => entry.at === "max"),
               ...all.filter((entry) => entry.at === "min").reverse(),
             ];
-            const invoke = ordered.reduceRight<Invoke>((next, entry) => {
-              const middleware = entry.methods[key];
-              return middleware ? (...input) => middleware(input, next) : next;
-            }, terminal);
+            const invoke = composeOperation(
+              terminal,
+              ordered.map((entry) => entry.methods[key]),
+            );
             return execute(() => invoke(...args));
           }),
       ]),
-    ) as unknown as Operations<Signature, EffectYield>;
+    ) as unknown as Methods;
     function decorate(
       frame: Frame,
       methods: Record<string, Around | undefined>,
@@ -167,7 +164,7 @@ export const effect: Composition<EffectYield> = {
     }
     return {
       operations,
-      around: (middleware: Middleware<Signature, EffectYield>, options) =>
+      around: (middleware: OperationMiddleware<Methods>, options) =>
         Effect.map(CompositionFrame, (frame) => {
           decorate(frame, middleware as Record<string, Around | undefined>, options?.at ?? "max");
         }),

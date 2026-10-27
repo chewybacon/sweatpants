@@ -1,6 +1,6 @@
 import { createContext, ensure, scoped, useScope, type Operation, type Scope } from "effection";
 import { createApi } from "effection/experimental";
-import type { Api, Composition, Context, Operations } from "@standard-durability/core";
+import type { Api, Composition, Context } from "@standard-durability/core";
 
 import type { EffectionYield } from "./contracts.ts";
 
@@ -18,16 +18,11 @@ export const effection: Composition<EffectionYield> = {
       },
     };
   },
-  createApi<Signature extends object>(
-    name: string,
-    defaults: Operations<Signature, EffectionYield>,
-  ): Api<Signature, EffectionYield> {
+  createApi<Methods extends object>(name: string, defaults: Methods): Api<Methods, EffectionYield> {
     if (Object.values(defaults).some((value) => typeof value !== "function")) {
       throw new TypeError("API declarations must contain only operation methods");
     }
-    const binding = createContext<{ scope: Scope; driver: Operations<Signature, EffectionYield> }>(
-      `${name}:driver`,
-    );
+    const binding = createContext<{ scope: Scope; driver: Methods }>(`${name}:driver`);
     // Drivers replace the core, not a middleware layer. Native decoration still
     // surrounds the nearest binding, including inherited min middleware.
     const core = Object.fromEntries(
@@ -36,7 +31,7 @@ export const effection: Composition<EffectionYield> = {
         function* (...args: unknown[]) {
           const target = (yield* binding.get())?.driver ?? defaults;
           return yield* Reflect.apply(
-            target[key as keyof Signature] as (...args: unknown[]) => Operation<unknown>,
+            target[key as keyof Methods] as (...args: unknown[]) => Operation<unknown>,
             target,
             args,
           );
@@ -45,7 +40,7 @@ export const effection: Composition<EffectionYield> = {
     );
     // Dynamic enumeration erases the per-key signature correlation once here.
     const api = createApi(name, core) as unknown as Pick<
-      Api<Signature, EffectionYield>,
+      Api<Methods, EffectionYield>,
       "operations" | "around"
     >;
     return {

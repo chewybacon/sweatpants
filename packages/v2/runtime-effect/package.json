@@ -29,10 +29,10 @@
     "@sweatpan.ts/runtime": "workspace:*"
   },
   "devDependencies": {
-    "effect": "^4.0.6",
+    "effect": "catalog:",
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "effect": "^4.0.6"
+    "effect": "catalog:"
   }
 }

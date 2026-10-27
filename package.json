@@ -50,7 +50,7 @@
     "@sweatpants/standard-durability-effection": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
-    "effect": "^4.0.6",
+    "effect": "catalog:",
     "fallow": "3.19.0",
     "oxc-parser": "^0.123.0",
     "oxfmt": "^0.43.0",

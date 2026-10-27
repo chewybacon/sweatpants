@@ -16,8 +16,11 @@ export type {
   Dispatcher,
   Operations,
   Middleware,
+  Around,
+  OperationMiddleware,
   Api,
   Context,
   Composition,
 } from "./contracts.ts";
 export { defineOperation, defineApi } from "./definition.ts";
+export { composeOperation } from "./operation.ts";
