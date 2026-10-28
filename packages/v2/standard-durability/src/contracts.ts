@@ -1,5 +1,3 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-
 /** An iterable computation with a result and a yielded protocol, independent of a scheduler. */
 export interface Operation<T, Y> {
   [Symbol.iterator](): Iterator<Y, T, unknown>;
@@ -13,44 +11,8 @@ export type Outcome<T, E> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: E };
 
-export interface OperationDefinition<
-  Input extends StandardSchemaV1,
-  Success extends StandardSchemaV1,
-  Failure extends StandardSchemaV1,
-> {
-  readonly input: Input;
-  readonly success: Success;
-  readonly failure: Failure;
-  readonly version: string;
-  readonly retrySafety: "repeatable" | "unsafe";
-}
-export type AnyOperation = OperationDefinition<
-  StandardSchemaV1,
-  StandardSchemaV1,
-  StandardSchemaV1
->;
-export type OperationDefinitions = Readonly<Record<string, AnyOperation>>;
-export interface ApiDefinition<D extends OperationDefinitions> {
-  readonly id: string;
-  readonly operations: D;
-}
-export type InputOf<D extends AnyOperation> = StandardSchemaV1.InferInput<D["input"]>;
-export type ProviderInputOf<D extends AnyOperation> = StandardSchemaV1.InferOutput<D["input"]>;
-export type OutcomeOf<D extends AnyOperation> = Outcome<
-  StandardSchemaV1.InferOutput<D["success"]>,
-  StandardSchemaV1.InferOutput<D["failure"]>
->;
-export type Signature<D extends OperationDefinitions> = {
-  [K in keyof D]: (input: ProviderInputOf<D[K]>) => OutcomeOf<D[K]>;
-};
-
 /** Interpret a request using the host's yielded protocol. No persistence is implied. */
 export type Handler<Request, Y, Reply = unknown> = (request: Request) => Operation<Reply, Y>;
-
-/** An object exposing the same request/reply computation contract. */
-export interface Dispatcher<Request, Y, Reply = unknown> {
-  dispatch: Handler<Request, Y, Reply>;
-}
 
 /** Explicit shorthand: lift a value signature into portable operation methods. */
 export type Operations<Shape, Y> = {

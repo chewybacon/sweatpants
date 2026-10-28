@@ -1,6 +1,5 @@
 import type { Api, Operation, Outcome } from "@standard-durability/core";
-import type { Execution, ScopeBoundary } from "@sweatpan.ts/execution";
-import type { RestoredGuest } from "@sweatpan.ts/codemode-runtime";
+import type { Execution, ScopeBoundary, RestoredGuest } from "@sweatpan.ts/execution";
 
 /** Immutable accepted history supplied by a trusted host; receipts identify accepted entries. */
 export interface Accepted<Q, V, E> {
@@ -66,15 +65,18 @@ export interface ChildLink {
 export type JournalSnapshot<R, Q, V, E, S> = {
   readonly program: string;
   readonly revision: number;
-  /** Active owned call. Parent cannot accept or complete until this child settles. */
-  readonly child?: ChildLink;
-  /** Intent waiting for an owned child to drain; not yet supplied to the evaluator. */
-  readonly cancellationRequested?: RootCancellation<Q>;
   readonly history: readonly Accepted<Q, V, E>[];
   readonly checkpoint?: Checkpoint<S>;
   readonly cancellation?: RootCancellation<Q>;
 } & (
-  | { readonly status: "running"; readonly pending?: PendingRequest<Q> }
+  | {
+      readonly status: "running";
+      readonly pending?: PendingRequest<Q>;
+      /** Active owned call. Parent cannot accept or complete until this child settles. */
+      readonly child?: ChildLink;
+      /** Intent waiting for an owned child to drain; not yet supplied to the evaluator. */
+      readonly cancellationRequested?: RootCancellation<Q>;
+    }
   | { readonly status: "completed"; readonly value: R }
   | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string }
 );

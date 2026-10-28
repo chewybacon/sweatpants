@@ -2829,13 +2829,6 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode-runtime:
-    dependencies:
-      '@standard-durability/core':
-        specifier: workspace:*
-        version: link:../standard-durability
-      '@sweatpan.ts/execution':
-        specifier: workspace:*
-        version: link:../execution
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2846,9 +2839,6 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
-      '@sweatpan.ts/codemode-runtime':
-        specifier: workspace:*
-        version: link:../codemode-runtime
       '@sweatpan.ts/execution':
         specifier: workspace:*
         version: link:../execution
@@ -2901,9 +2891,6 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
-      '@sweatpan.ts/codemode-runtime':
-        specifier: workspace:*
-        version: link:../codemode-runtime
       '@sweatpan.ts/execution':
         specifier: workspace:*
         version: link:../execution

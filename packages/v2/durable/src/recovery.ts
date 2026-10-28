@@ -4,8 +4,9 @@ import {
   type Execution,
   type GuestWork,
   type ScopeBoundary,
+  type CheckpointAdapter,
+  type RestoredGuest,
 } from "@sweatpan.ts/execution";
-import type { CheckpointAdapter, RestoredGuest } from "@sweatpan.ts/codemode-runtime";
 import type {
   Recovery,
   RootCancellation,

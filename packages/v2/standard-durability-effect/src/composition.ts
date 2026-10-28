@@ -17,6 +17,11 @@ class CompositionFrame extends NativeContext.Service<CompositionScope, Frame>()(
   "standard-durability/composition/frame",
 ) {}
 
+/**
+ * Adapt portable work inside the current native scope and composition bindings.
+ * Use effectProgram for a fresh root. Register physical cleanup with composition.ensure
+ * or runtime.using; arbitrary yielding finally blocks are not a portable cleanup guarantee.
+ */
 export function execute<T>(
   work: Work<T, EffectYield>,
 ): Effect.Effect<T, never, CompositionScope | Scope.Scope> {

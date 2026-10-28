@@ -8,7 +8,6 @@ export function createRuntime(
   install: Work<void, EffectYield> = function* () {},
 ): Runtime<EffectYield> {
   return {
-    version: 1,
     name: "Effect",
     composition: effect,
     sleep: (milliseconds) => Effect.sleep(milliseconds),

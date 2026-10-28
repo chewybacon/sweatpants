@@ -17,7 +17,9 @@ export function requestJournalCancellation<R, Q, V, E, S>(
   reason: string,
   attempt?: AttemptGrant,
 ): CancellationTransition<R, Q, V, E, S> {
-  const prior = snapshot.cancellation ?? snapshot.cancellationRequested;
+  const prior =
+    snapshot.cancellation ??
+    (snapshot.status === "running" ? snapshot.cancellationRequested : undefined);
   if (prior) {
     if (prior.requestId !== requestId) {
       throw new Error("Root cancellation already requested at another boundary");

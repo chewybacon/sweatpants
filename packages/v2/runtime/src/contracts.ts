@@ -13,9 +13,8 @@ export interface RuntimeExecution<T> {
   cancel(): Promise<void>;
 }
 
-/** Experimental v1 capability contract, not a published interoperability standard. */
+/** Portable native scheduling and physical resource ownership. */
 export interface Runtime<Yielded> {
-  readonly version: 1;
   readonly name: string;
   readonly composition: Composition<Yielded>;
   sleep(milliseconds: number): Operation<void, Yielded>;

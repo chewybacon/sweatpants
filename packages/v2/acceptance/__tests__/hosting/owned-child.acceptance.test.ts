@@ -238,7 +238,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         "call:1",
         "release",
       ]);
-      expect(snapshot.child).toBeUndefined();
+      expect(snapshot).not.toHaveProperty("child");
       expect(await s.run().result).toEqual({
         state: "completed",
         value: ["approved", "approved again"],
@@ -256,7 +256,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           start(() => s.parent.cancellation.request(link.requestId, "deadline")).result;
         await cancel();
         const blocked = await start(() => s.parent.read()).result;
-        expect(blocked.cancellationRequested?.reason).toBe("deadline");
+        expect(blocked).toMatchObject({
+          status: "running",
+          cancellationRequested: { reason: "deadline" },
+        });
         expect(blocked.cancellation).toBeUndefined();
         expect((await s.run().result).state).toBe("child");
         expect(s.waits.get(link.childId)!.request).toBe("child-close");
@@ -291,7 +294,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await s.run().result).toEqual(expected);
         const snapshot = await start(() => s.parent.read()).result;
         expect(snapshot.history.map((entry) => entry.request)).toEqual(["reserve", "release"]);
-        expect(snapshot.cancellationRequested).toBeUndefined();
+        expect(snapshot).not.toHaveProperty("cancellationRequested");
       });
     }
 

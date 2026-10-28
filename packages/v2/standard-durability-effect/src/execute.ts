@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 import type { Work } from "@standard-durability/core";
 
-/** Run structural work and join generator finalizers on native failure or interruption. */
+/**
+ * Run structural work with best-effort iterator return on native failure/interruption.
+ * A yielded cleanup failure stops this drain; registered native scope finalizers own
+ * supported physical cleanup, rather than arbitrary yielding JavaScript finally blocks.
+ */
 export function executeWork<T, R>(
   work: Work<T, Effect.Effect<unknown, never, R>>,
 ): Effect.Effect<T, never, R> {

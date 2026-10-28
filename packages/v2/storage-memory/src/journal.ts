@@ -191,7 +191,8 @@ function createJournal<R, Q, V, E, S>(
             throw new Error("Child settlement requires terminal result");
           }
           const projected =
-            result.status === "completed" && !state.cancellationRequested
+            result.status === "completed" &&
+            !(state.status === "running" && state.cancellationRequested)
               ? outcome(result.value)
               : undefined;
           const next = structuredClone(settleOwnedChild(state, link, result, projected));
@@ -219,8 +220,14 @@ function createJournal<R, Q, V, E, S>(
         if (!snapshot.cancellation || snapshot.pending) {
           throw new Error("Cancellation completion requires drained cleanup");
         }
+        const {
+          child: _child,
+          cancellationRequested: _requested,
+          pending: _pending,
+          ...settled
+        } = snapshot;
         publish({
-          ...snapshot,
+          ...settled,
           revision: snapshot.revision + 1,
           status: "cancelled",
           reason: snapshot.cancellation.reason,

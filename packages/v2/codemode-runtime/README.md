@@ -1,10 +1,5 @@
-# Evaluator checkpoint capability
+# Codemode evaluator scaffold
 
-CheckpointAdapter is optional capability composition around the shared Guest.
-It captures owned suspended Guests and restores a snapshot to a Guest plus its
-current Turn. Ordinary acquisition remains GuestWork and does not advance code.
-
-The evaluator owns snapshot decoding, source/runtime compatibility and partial
-restore cleanup. The durable host owns accepted history, checkpoint anchoring,
-replay policy and the returned Guest's lifetime. There is no second execution
-interface or mandatory capture method on Guest.
+Reserved for codemode-specific evaluator capabilities. Generic `CheckpointAdapter`
+and `RestoredGuest` contracts live in `@sweatpan.ts/execution` alongside `Guest`.
+This package currently exports no public API.

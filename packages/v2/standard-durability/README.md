@@ -96,3 +96,9 @@ These journeys live in `../acceptance/__tests__/runtime/` and use scripted
 in-process protocol peers. Nullable context semantics, acquisition/use context
 visibility, and live mutation of ancestors with already-running children are not
 established as portable guarantees by this evidence.
+
+## Retained internal prototype
+
+Schema descriptors and the `defineOperation`/`defineApi` helpers are retained
+internally for future authoring work. They are not public exports or a validation
+boundary. The public scoped composition API remains `Composition.createApi`.

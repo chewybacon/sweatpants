@@ -4,16 +4,7 @@ export type {
   Operation,
   Work,
   Outcome,
-  OperationDefinition,
-  AnyOperation,
-  OperationDefinitions,
-  ApiDefinition,
-  InputOf,
-  ProviderInputOf,
-  OutcomeOf,
-  Signature,
   Handler,
-  Dispatcher,
   Operations,
   Middleware,
   Around,
@@ -22,5 +13,4 @@ export type {
   Context,
   Composition,
 } from "./contracts.ts";
-export { defineOperation, defineApi } from "./definition.ts";
 export { composeOperation } from "./operation.ts";

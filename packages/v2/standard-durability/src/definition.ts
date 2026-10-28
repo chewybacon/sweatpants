@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ApiDefinition, OperationDefinition, OperationDefinitions } from "./contracts.ts";
+import type { ApiDefinition, OperationDefinition, OperationDefinitions } from "./types.ts";
 
 /** Immutable metadata, not a runtime binding. Schema implementations remain caller-owned. */
 export function defineOperation<

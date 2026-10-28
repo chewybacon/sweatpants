@@ -20,7 +20,6 @@ export function createRuntime(
   install: () => Operation<void> = function* () {},
 ): Runtime<EffectionYield> {
   return {
-    version: 1,
     name: "Effection",
     composition: effection,
     sleep,
