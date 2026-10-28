@@ -146,6 +146,60 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ]);
       });
     }
+    it("recovers a rejected cleanup boundary without losing cancellation or restoring reply authority", async () => {
+      const s = scenario();
+      const approval = await s.waiting("approval");
+      await start(() => s.journal.cancellation.request(approval.pending.id, "deadline")).result;
+      const before = await start(() => s.journal.read()).result;
+      await expect(
+        s.run({
+          ...s.journal,
+          *park(revision, request, checkpoint, scope) {
+            if (!scope) {
+              throw new Error("Expected scoped cleanup");
+            }
+            const unencodable = { ...scope, attachment: () => undefined };
+            return yield* s.journal.park(revision, request, checkpoint, unencodable);
+          },
+        }),
+      ).rejects.toBeDefined();
+      expect(await start(() => s.journal.read()).result).toEqual(before);
+      await expect(s.answer(approval.grant)).rejects.toThrow("Resolution authority revoked");
+      for (const request of ["child-close", "outer-close", "outer-close-ack", "audit"]) {
+        const cleanup = await s.waiting(request);
+        await s.answer(cleanup.grant);
+      }
+      expect(await s.run()).toEqual({ state: "cancelled", reason: "deadline" });
+      expect(s.bodyTail).toBe(0);
+    });
+
+    it("recovers a rejected completion without repeating accepted cleanup", async () => {
+      const s = scenario();
+      for (const request of [
+        "approval",
+        "child-close",
+        "outer-close",
+        "outer-close-ack",
+        "audit",
+      ]) {
+        const waiting = await s.waiting(request);
+        await s.answer(waiting.grant);
+      }
+      const before = await start(() => s.journal.read()).result;
+      await expect(
+        s.run({
+          ...s.journal,
+          *complete(revision, value) {
+            const unencodable = { ...value, attachment: () => undefined };
+            yield* s.journal.complete(revision, unencodable);
+          },
+        }),
+      ).rejects.toBeDefined();
+      expect(await start(() => s.journal.read()).result).toEqual(before);
+      expect(await s.run()).toEqual({ state: "completed", value: { answer: "yes" } });
+      expect((await start(() => s.journal.read()).result).history).toEqual(before.history);
+    });
+
     it("retains cleanup failures, attempts remaining frames and does not restart cleanup on repeat cancellation", async () => {
       const s = scenario();
       const approval = await s.waiting("approval");

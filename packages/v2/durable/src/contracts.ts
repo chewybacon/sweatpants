@@ -254,3 +254,9 @@ export interface CancellationTransition<R, Q, V, E, S> {
   readonly revoke: boolean;
   readonly childToCancel?: ChildLink;
 }
+
+/** Prepared acceptance; an adapter publishes the snapshot before acknowledging acceptance. */
+export interface AcceptanceTransition<R, Q, V, E, S> {
+  readonly snapshot: JournalSnapshot<R, Q, V, E, S>;
+  readonly acceptance: Acceptance<Q, V, E>;
+}

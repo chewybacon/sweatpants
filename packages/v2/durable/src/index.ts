@@ -23,3 +23,5 @@ export type { Recovery } from "./contracts.ts";
 export type { ChildLink } from "./contracts.ts";
 export type { CancellationTransition } from "./contracts.ts";
 export { requestJournalCancellation, settleOwnedChild } from "./transitions.ts";
+export type { AcceptanceTransition } from "./contracts.ts";
+export { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";

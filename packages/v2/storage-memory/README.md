@@ -81,11 +81,15 @@ All control state shares the same process-local lifetime as the journal.
 and typed child journal. `outcome` is a pure projection from child Result to the
 parent's reply Outcome. Reacquisition checks program/input; assembly must retain
 the same type contract and projection for that program. Heterogeneous child
-contracts are erased only in the adapter's private registry. This does not validate
+contracts are erased only at the adapter's internal record/binding boundary. This does not validate
 serialized data or infer a callable tool API from a program string.
 
+Child acquisition commits a child record, historical parent/request link and reverse
+parent link together. Reacquisition creates a fresh typed handle to that same record;
+no child journal handle or stop/settlement closure is retained in storage.
+
 Child terminal writes prepare and clone both journal transitions before either
-state is published. A throwing projection leaves both unchanged. Attempts,
+state is published. A throwing or unencodable projection leaves both unchanged. Attempts,
 participant registration and administrative acceptance cannot settle an owned
 call. Completion of a cancelled child propagates cancellation to the parent;
 child cleanup failure is retained while the parent drains its own cleanup.
@@ -96,11 +100,12 @@ the stop until its next `park`. That park returns undefined after committing
 cancellation; activation disposes its evaluator and reconstructs cancellation
 before any request delivery. No extra eligibility read is added to effect commits.
 
-The registry, queued stops and projections share the in-memory store's lifetime.
-Reassembly retains these journals; exporting snapshots alone does not preserve or
-restore the tree. A future durable adapter must persist topology/control and
-implement cross-invocation transactions, rather than sequentially writing two
-independent journals. See hosting's evaluator and notification limits.
+Records contain snapshots, attempt/participant authority, queued stops and ownership
+links. Projections live in a separate trusted binding registry keyed by child identity;
+reacquisition retains the original projection. The tree remains process-local and
+there is no public reopen/serialization API. Exporting snapshots alone does not
+preserve authority or topology, and future reopening must explicitly rebind code.
+See hosting's evaluator and notification limits.
 
 Cancellation and parent settlement policy are prepared by the pure durable
 `requestJournalCancellation` and `settleOwnedChild` transitions. The memory adapter
@@ -116,3 +121,35 @@ cancellation transition preserves critical body requests and their owned childre
 no additional storage read or separate mask registry is needed. Replay reconstructs
 the live mask from the pinned program and validates its recorded identity. It does
 not infer acquisition completion from an interrupted host or an elapsed deadline.
+
+## Owned-tree transaction boundary
+
+Acceptance, attempt claims/replacement/revocation, participant registration/replies,
+root cancellation, parking and completion use the same synchronous internal
+transaction executor. Snapshot, authority maps and queued stop intent are staged
+and cloned with the acknowledgement before publication. A failed decision or clone
+leaves those records unchanged. Eligibility and settlement have no intervening
+inspect operation, scheduling boundary or storage round trip.
+
+A queued stop and its first parked boundary publish together; the abandoned body
+request never becomes available for delivery. Cancellation walks the eligible
+descendant chain in one draft and publishes once; it stops at protected cleanup or
+critical boundaries. There is no after-commit stop callback or notification window
+in which a descendant can accept a late reply. Terminal writes locate the parent
+through stored ownership and prepare its transition in that same transaction.
+Projection is skipped when parent cancellation has already won.
+
+Hosted journeys prove encoding-failure rollback, retained occupancy, resubmission
+without provider redelivery, duplicate/conflicting replies after completion, failed
+cleanup parking with retained cancellation authority, and completion retry without
+repeating accepted cleanup. Existing replacement, interaction, cancellation,
+critical-region and owned-child journeys exercise these same paths. A three-level
+hosted tree proves immediate leaf reply fencing and leaf-to-root cleanup through
+reacquired handles. Both throwing and unencodable projections leave parent and
+child records unchanged and allow recovery.
+
+This is one process-local transaction domain for an owned tree, not a public storage
+port, reopenable store or SQLite implementation. The memory executor clones the
+whole tree to stage and publish writes; its cost grows with retained tree history.
+A database adapter should select affected records and append accepted entries,
+not copy the tree. Cross-domain ownership needs a separate protocol.

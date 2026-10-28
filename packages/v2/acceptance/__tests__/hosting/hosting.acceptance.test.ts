@@ -476,6 +476,48 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests).toHaveLength(1);
     });
 
+    it("rolls back an unencodable settlement and accepts resubmission without redelivering the effect", async () => {
+      const s = scenario();
+      const transport: Attempts<string, string, string, Y> = {
+        begin: s.journal.attempts.begin,
+        *settle(grant, outcome) {
+          // A structurally valid Outcome can still contain unencodable extra data.
+          const unencodable = { ...outcome, attachment: () => undefined };
+          return yield* s.journal.attempts.settle(grant, unencodable);
+        },
+      };
+      const first = s.run("unsafe", undefined, transport);
+      await s.wait(1, first.result);
+      const grant = s.grants[0]!;
+      const before = await start(() => s.journal.read()).result;
+      s.peer.reply(grant.attemptId, { status: 200, body: "reservation-1" });
+      await expect(first.result).rejects.toBeDefined();
+      expect(await start(() => s.journal.read()).result).toEqual(before);
+      expect(await start(() => s.journal.attemptControl.inspect(grant)).result).toEqual({
+        state: "active",
+      });
+      expect(await s.run().result).toEqual({ state: "occupied", grant });
+      // Resubmit the same provider result under the original grant; do not execute again.
+      const accepted = await start(() =>
+        s.journal.attempts.settle(grant, { ok: true, value: "reservation-1" }),
+      ).result;
+      expect(accepted.duplicate).toBe(false);
+      expect(await s.run().result).toEqual({
+        state: "completed",
+        value: { reservation: "reservation-1" },
+      });
+      const completed = await start(() => s.journal.read()).result;
+      const duplicate = await start(() =>
+        s.journal.attempts.settle(grant, { ok: true, value: "reservation-1" }),
+      ).result;
+      expect(duplicate).toEqual({ ...accepted, duplicate: true });
+      await expect(
+        start(() => s.journal.attempts.settle(grant, { ok: true, value: "different" })).result,
+      ).rejects.toThrow("Conflicting accepted outcome");
+      expect(await start(() => s.journal.read()).result).toEqual(completed);
+      expect(s.peer.requests).toHaveLength(1);
+    });
+
     it("never executes after a lost grant acknowledgement and leaves the attempt occupied", async () => {
       const s = scenario();
       const transport: Attempts<string, string, string, Y> = {

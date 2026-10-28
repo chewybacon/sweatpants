@@ -31,8 +31,10 @@ export interface MemoryJournal<R, Q, V, E, S = unknown> extends Journal<R, Q, V,
   readonly interactions: Interactions<Q, V, E, never>;
   /**
    * Bind one child to the exact pending call. Reacquisition checks program/input;
-   * callers must use the same type contract for that program. This is trusted local
-   * assembly, not wire validation. Child completion atomically settles the parent.
+   * callers must use the same type contract for that program. Reacquisition returns
+   * a fresh handle to the same stored child and retains its original result projection.
+   * This is trusted local assembly, not wire validation. Child creation and ownership
+   * publish together; child completion atomically settles the parent in the same tree.
    */
   ensureChild<C, CQ, CV, CE, CS = unknown>(
     requestId: string,

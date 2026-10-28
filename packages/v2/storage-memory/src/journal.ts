@@ -1,26 +1,21 @@
 import {
-  requestJournalCancellation,
-  settleOwnedChild,
+  acceptJournalOutcome,
+  settleJournalAttempt,
   type RootCancellation,
-  type ChildLink,
   type AttemptState,
   type Journal,
   type JournalSnapshot,
-  type Accepted,
   type PendingRequest,
   type AttemptGrant,
   type InteractionRegistration,
   type ResolutionGrant,
 } from "@sweatpan.ts/durable";
-import type {
-  MemoryJournalOptions,
-  MemoryJournal,
-  MemoryOwnedChild,
-  MemoryChildOptions,
-} from "./contracts.ts";
+import { createMemoryTree } from "./tree.ts";
+import type { MemoryJournalOptions, MemoryJournal, MemoryChildOptions } from "./contracts.ts";
 
 /**
- * Create one execution's process-local journal, attempt and interaction capabilities.
+ * Create a root journal and its process-local owned-tree transaction domain.
+ * Attempt, interaction and child capabilities share that domain.
  * Mutations commit synchronously in one generator step; returned data is detached.
  * Stored values must support structuredClone. Equality applies to domain requests
  * and Outcomes; grant identity always uses exact field equality.
@@ -31,63 +26,31 @@ import type {
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
   options: MemoryJournalOptions,
 ): MemoryJournal<R, Q, V, E, S> {
-  return createJournal<R, Q, V, E, S>(options).journal;
+  const tree = createMemoryTree(options);
+  return createJournal<R, Q, V, E, S>(options, tree, tree.rootId);
 }
 
 function createJournal<R, Q, V, E, S>(
   options: MemoryJournalOptions,
-  terminal?: (next: JournalSnapshot<R, Q, V, E, S>) => () => void,
-  identity: string = crypto.randomUUID(),
-): { journal: MemoryJournal<R, Q, V, E, S>; stop: (reason: string) => void } {
-  let state: JournalSnapshot<R, Q, V, E, S> = {
-    program: options.program,
-    revision: 0,
-    history: [],
-    status: "running",
-  };
-  // Heterogeneous child contracts are erased only in this private registry.
-  const children = new Map<
-    string,
-    { link: ChildLink; value: unknown; stop: (reason: string) => void }
-  >();
-  let queuedStop: string | undefined;
-  function publish(next: JournalSnapshot<R, Q, V, E, S>) {
-    const commitParent = next.status !== "running" ? terminal?.(next) : undefined;
-    state = next;
-    commitParent?.();
-  }
-  function stop(reason: string) {
-    if (state.status !== "running" || state.cancellation || state.cancellationRequested) {
-      return;
-    }
-    if (state.pending) {
-      requestCancellation(state.pending.id, reason);
-    } else {
-      queuedStop ??= reason;
-    }
+  tree: ReturnType<typeof createMemoryTree>,
+  identity: string,
+): MemoryJournal<R, Q, V, E, S> {
+  const read = () => tree.read<R, Q, V, E, S>(identity);
+  function commit<T>(
+    snapshot: JournalSnapshot<R, Q, V, E, S>,
+    result: T,
+    changes: {
+      grants?: Map<string, AttemptGrant>;
+      invalidated?: Map<string, string>;
+      registrations?: Map<string, InteractionRegistration>;
+      queuedStop?: string;
+    } = {},
+  ): T {
+    return tree.commit(identity, { ...read(), ...changes, snapshot }, result);
   }
   function requestCancellation(requestId: string, reason: string): RootCancellation<Q> {
-    const decision = requestJournalCancellation(state, requestId, reason, grants.get(requestId));
-    // Validate and detach before publishing. No evaluator is called by this adapter.
-    const next = structuredClone(decision.snapshot);
-    const cancellation = structuredClone(decision.cancellation);
-    const attempt = cancellation.attempt;
-    if (decision.revoke) {
-      if (attempt && !invalidated.has(attempt.attemptId)) {
-        invalidated.set(attempt.attemptId, reason);
-      }
-      const registration = registrations.get(requestId);
-      if (registration?.state === "waiting") {
-        registrations.set(requestId, { state: "invalidated", grant: registration.grant, reason });
-      }
-    }
-    state = next;
-    if (decision.childToCancel) {
-      children.get(requestId)!.stop(reason);
-    }
-    return cancellation;
+    return tree.cancel(identity, requestId, reason) as RootCancellation<Q>;
   }
-
   function sameGrant(left: AttemptGrant, right: AttemptGrant) {
     return (
       left.requestId === right.requestId &&
@@ -95,17 +58,16 @@ function createJournal<R, Q, V, E, S>(
       left.retrySafety === right.retrySafety
     );
   }
-  const registrations = new Map<string, InteractionRegistration>();
   function registered(grant: ResolutionGrant) {
+    const { registrations } = read();
     const registration = registrations.get(grant.requestId);
     if (!registration || registration.grant.resolutionId !== grant.resolutionId) {
       throw new Error("Unknown resolution authority");
     }
     return registration;
   }
-  const grants = new Map<string, AttemptGrant>();
-  const invalidated = new Map<string, string>();
   function inspect(grant: AttemptGrant): AttemptState<Q, V, E> {
+    const { snapshot: state, grants, invalidated } = read();
     const currentGrant = grants.get(grant.requestId);
     if (!currentGrant || !sameGrant(currentGrant, grant)) {
       throw new Error("Stale attempt grant");
@@ -120,6 +82,7 @@ function createJournal<R, Q, V, E, S>(
       : { state: "active" };
   }
   function current(revision: number) {
+    const { snapshot: state } = read();
     if (revision !== state.revision) {
       throw new Error("Journal revision conflict");
     }
@@ -129,29 +92,9 @@ function createJournal<R, Q, V, E, S>(
     return state;
   }
   const accept: Journal<R, Q, V, E, S, never>["accept"] = function* (id, outcome) {
-    const prior = state.history.find((entry) => entry.receipt === id);
-    if (prior) {
-      if (!options.equals(prior.outcome, outcome)) {
-        throw new Error("Conflicting accepted outcome");
-      }
-      return { entry: structuredClone(prior), duplicate: true };
-    }
-    if (state.status !== "running" || !state.pending || state.pending.id !== id) {
-      throw new Error("Stale or unknown pending request");
-    }
-    if (state.child) {
-      throw new Error("Owned call can only be accepted by child settlement");
-    }
-    const entry: Accepted<Q, V, E> = structuredClone({
-      sequence: state.pending.sequence,
-      receipt: id,
-      request: state.pending.request,
-      scope: state.pending.scope,
-      outcome,
-    });
-    const { pending: _pending, ...rest } = state;
-    state = { ...rest, revision: state.revision + 1, history: [...state.history, entry] };
-    return { entry: structuredClone(entry), duplicate: false };
+    const { snapshot: state } = read();
+    const decision = acceptJournalOutcome(state, id, outcome, options.equals);
+    return commit(decision.snapshot, decision.acceptance);
   };
   const journal: MemoryJournal<R, Q, V, E, S> = {
     id: identity,
@@ -159,57 +102,15 @@ function createJournal<R, Q, V, E, S>(
       requestId: string,
       definition: MemoryChildOptions<C, V, E>,
     ) {
-      const existing = children.get(requestId);
-      if (existing) {
-        if (
-          existing.link.program !== definition.program ||
-          !options.equals(existing.link.input, definition.input)
-        ) {
-          throw new Error("Owned child definition differs from recorded call");
-        }
-        const stored = existing.value as MemoryOwnedChild<C, CQ, CV, CE, CS>;
-        return { ...stored, link: structuredClone(existing.link) };
-      }
-      if (state.status !== "running" || state.pending?.id !== requestId || state.child) {
-        throw new Error("Stale or unknown child call boundary");
-      }
-      if (grants.has(requestId) || registrations.has(requestId)) {
-        throw new Error("Owned call excludes attempts and participant registration");
-      }
-      const link = structuredClone({
-        parentId: identity,
-        requestId,
-        childId: crypto.randomUUID(),
-        program: definition.program,
-        input: definition.input,
-      });
-      const outcome = definition.outcome;
-      const child = createJournal<C, CQ, CV, CE, CS>(
-        { program: definition.program, equals: options.equals },
-        (result) => {
-          if (result.status === "running") {
-            throw new Error("Child settlement requires terminal result");
-          }
-          const projected =
-            result.status === "completed" &&
-            !(state.status === "running" && state.cancellationRequested)
-              ? outcome(result.value)
-              : undefined;
-          const next = structuredClone(settleOwnedChild(state, link, result, projected));
-          // All projection/validation/cloning finishes before either journal publishes.
-          return () => {
-            state = next;
-          };
-        },
-        link.childId,
-      );
-      const value: MemoryOwnedChild<C, CQ, CV, CE, CS> = {
-        link: structuredClone(link),
-        journal: child.journal,
+      const link = tree.acquire(identity, requestId, definition);
+      return {
+        link,
+        journal: createJournal<C, CQ, CV, CE, CS>(
+          { program: definition.program, equals: options.equals },
+          tree,
+          link.childId,
+        ),
       };
-      children.set(requestId, { link, value, stop: child.stop });
-      state = { ...state, child: link, revision: state.revision + 1 };
-      return { ...value, link: structuredClone(link) };
     },
     cancellation: {
       *request(requestId, reason) {
@@ -226,13 +127,16 @@ function createJournal<R, Q, V, E, S>(
           pending: _pending,
           ...settled
         } = snapshot;
-        publish({
-          ...settled,
-          revision: snapshot.revision + 1,
-          status: "cancelled",
-          reason: snapshot.cancellation.reason,
-          failure: failure ?? snapshot.cancellation.failure,
-        });
+        commit(
+          {
+            ...settled,
+            revision: snapshot.revision + 1,
+            status: "cancelled",
+            reason: snapshot.cancellation.reason,
+            failure: failure ?? snapshot.cancellation.failure,
+          },
+          undefined,
+        );
       },
     },
     attemptControl: {
@@ -240,17 +144,21 @@ function createJournal<R, Q, V, E, S>(
         return inspect(grant);
       },
       *invalidate(grant, reason) {
+        const { snapshot: state, invalidated, queuedStop } = read();
         const prior = inspect(grant);
         if (prior.state !== "active") {
           return prior;
         }
-        invalidated.set(grant.attemptId, reason);
-        state = { ...state, revision: state.revision + 1 };
-        return { state: "invalidated", reason };
+        return commit(
+          { ...state, revision: state.revision + 1 },
+          { state: "invalidated" as const, reason },
+          { invalidated: new Map(invalidated).set(grant.attemptId, reason), queuedStop },
+        );
       },
     },
     interactions: {
       *register(requestId) {
+        const { snapshot: state, grants, registrations, queuedStop } = read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
@@ -268,9 +176,10 @@ function createJournal<R, Q, V, E, S>(
           state: "waiting",
           grant: { requestId, resolutionId: crypto.randomUUID() },
         };
-        registrations.set(requestId, registration);
-        state = { ...state, revision: state.revision + 1 };
-        return structuredClone(registration);
+        return commit({ ...state, revision: state.revision + 1 }, registration, {
+          registrations: new Map(registrations).set(requestId, registration),
+          queuedStop,
+        });
       },
       *answer(grant, outcome) {
         const registration = registered(grant);
@@ -280,6 +189,7 @@ function createJournal<R, Q, V, E, S>(
         return yield* accept(grant.requestId, outcome);
       },
       *invalidate(grant, reason) {
+        const { snapshot: state, registrations, queuedStop } = read();
         const registration = registered(grant);
         if (registration.state === "invalidated") {
           return { state: "invalidated", reason: registration.reason };
@@ -294,17 +204,23 @@ function createJournal<R, Q, V, E, S>(
         if (state.status !== "running" || state.pending?.id !== grant.requestId) {
           throw new Error("Stale or unknown pending request");
         }
-        registrations.set(grant.requestId, {
-          state: "invalidated",
-          grant: registration.grant,
-          reason,
-        });
-        state = { ...state, revision: state.revision + 1 };
-        return { state: "invalidated", reason };
+        return commit(
+          { ...state, revision: state.revision + 1 },
+          { state: "invalidated" as const, reason },
+          {
+            registrations: new Map(registrations).set(grant.requestId, {
+              state: "invalidated",
+              grant: registration.grant,
+              reason,
+            }),
+            queuedStop,
+          },
+        );
       },
     },
     attempts: {
       *begin(requestId, retrySafety, replace) {
+        const { snapshot: state, grants, invalidated, registrations, queuedStop } = read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
@@ -336,18 +252,27 @@ function createJournal<R, Q, V, E, S>(
           return { state: "occupied", grant: structuredClone(previous) };
         }
         const grant: AttemptGrant = { requestId, attemptId: crypto.randomUUID(), retrySafety };
-        grants.set(requestId, grant);
-        state = { ...state, revision: state.revision + 1 };
-        return { state: "granted", grant: structuredClone(grant) };
+        return commit(
+          { ...state, revision: state.revision + 1 },
+          { state: "granted" as const, grant },
+          { grants: new Map(grants).set(requestId, grant), queuedStop },
+        );
       },
       *settle(grant, outcome) {
-        if (inspect(grant).state === "invalidated") {
-          throw new Error("Attempt authority revoked");
-        }
-        return yield* accept(grant.requestId, outcome);
+        const { snapshot: state, grants, invalidated } = read();
+        // Eligibility and acceptance run synchronously with no inspect RPC or yield.
+        const decision = settleJournalAttempt(
+          state,
+          { current: grants.get(grant.requestId), revoked: invalidated.get(grant.attemptId) },
+          grant,
+          outcome,
+          options.equals,
+        );
+        return commit(decision.snapshot, decision.acceptance);
       },
     },
     *read() {
+      const { snapshot: state } = read();
       return structuredClone(state);
     },
     *park(revision, request, checkpoint, scope) {
@@ -383,13 +308,7 @@ function createJournal<R, Q, V, E, S>(
         pending,
         checkpoint: checkpoint ?? snapshot.checkpoint,
       });
-      state = next;
-      if (queuedStop !== undefined && !state.cancellation) {
-        requestCancellation(next.pending.id, queuedStop);
-        queuedStop = undefined;
-        return undefined;
-      }
-      return structuredClone(next.pending);
+      return tree.park(identity, next, next.pending);
     },
     accept,
     *complete(revision, value) {
@@ -407,8 +326,8 @@ function createJournal<R, Q, V, E, S>(
         status: "completed" as const,
         value,
       });
-      publish(next);
+      commit(next, undefined);
     },
   };
-  return { journal, stop };
+  return journal;
 }

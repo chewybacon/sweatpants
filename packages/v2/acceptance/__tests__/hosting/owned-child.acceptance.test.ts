@@ -4,7 +4,11 @@ import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { createRecovery, type ChildLink, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
-import { createMemoryJournal, type MemoryOwnedChild } from "@sweatpan.ts/storage-memory";
+import {
+  createMemoryJournal,
+  type MemoryOwnedChild,
+  type MemoryJournal,
+} from "@sweatpan.ts/storage-memory";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -45,10 +49,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const waits = new Map<string, { grant: ResolutionGrant; request: string }>();
     const links: ChildLink[] = [];
     let rejectProjection = false;
+    let unencodableProjection = false;
     let beforeChild: Work<void, Y> | undefined;
     const projection = (value: { approval: string }): Outcome<string, string> => {
       if (rejectProjection) {
         throw new Error("Projection rejected");
+      }
+      if (unencodableProjection) {
+        const outcome = { ok: true as const, value: value.approval, attachment: () => undefined };
+        return outcome;
       }
       return { ok: true, value: value.approval };
     };
@@ -197,6 +206,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       begin,
       answer,
       finish,
+      set unencodableProjection(value: boolean) {
+        unencodableProjection = value;
+      },
       set rejectProjection(value: boolean) {
         rejectProjection = value;
       },
@@ -387,22 +399,118 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "stop before child starts" });
     });
 
-    it("leaves both journals unchanged when terminal projection fails, then retries settlement through recovery", async () => {
-      const s = scenario();
-      await s.begin();
-      const link = s.links[0]!;
-      const child = s.children.get(link.childId)!;
-      await s.answer(link.childId);
-      await s.run().result;
-      await s.answer(link.childId, "closed");
-      const parentBefore = await start(() => s.parent.read()).result;
-      const childBefore = await start(() => child.journal.read()).result;
-      s.rejectProjection = true;
-      await expect(s.run().result).rejects.toThrow("Projection rejected");
-      expect(await start(() => s.parent.read()).result).toEqual(parentBefore);
-      expect(await start(() => child.journal.read()).result).toEqual(childBefore);
-      s.rejectProjection = false;
-      expect(await s.finish()).toEqual({ state: "completed", value: ["approved"] });
+    for (const failure of ["throw", "encode"]) {
+      it(`leaves both journals unchanged when terminal projection fails (${failure}), then retries settlement through recovery`, async () => {
+        const s = scenario();
+        await s.begin();
+        const link = s.links[0]!;
+        const child = s.children.get(link.childId)!;
+        await s.answer(link.childId);
+        await s.run().result;
+        await s.answer(link.childId, "closed");
+        const parentBefore = await start(() => s.parent.read()).result;
+        const childBefore = await start(() => child.journal.read()).result;
+        s.rejectProjection = failure === "throw";
+        s.unencodableProjection = failure === "encode";
+        await expect(s.run().result).rejects.toBeDefined();
+        expect(await start(() => s.parent.read()).result).toEqual(parentBefore);
+        expect(await start(() => child.journal.read()).result).toEqual(childBefore);
+        s.rejectProjection = false;
+        s.unencodableProjection = false;
+        expect(await s.finish()).toEqual({ state: "completed", value: ["approved"] });
+      });
+    }
+
+    it("fences a three-level owned tree before returning and drains cleanup from leaf to root", async () => {
+      const root = createMemoryJournal<string, string, string, string>({
+        program: "level:0",
+        equals: isDeepStrictEqual,
+      });
+      const journals = new Map<number, MemoryJournal<string, string, string, string>>([[0, root]]);
+      const waits = new Map<number, { request: string; grant: ResolutionGrant }>();
+      function* runLevel(
+        depth: number,
+        journal: MemoryJournal<string, string, string, string>,
+      ): Operation<HostedResult<string, string>, Y> {
+        const recovery = createRecovery(runtime.composition, {
+          name: `recovery:${depth}`,
+          program: `level:${depth}`,
+          matches: isDeepStrictEqual,
+          *acquire() {
+            return createScopedGuest(function* (scope) {
+              yield* scope.ensure(function* () {
+                yield* ask(`close:${depth}`);
+              });
+              return yield* ask(depth < 2 ? "call" : "approval");
+            });
+          },
+        });
+        const host = createHosting(runtime.composition, {
+          name: `host:${depth}`,
+          recovery: recovery.operations,
+          journal,
+          attempts: journal.attempts,
+          interactions: journal.interactions,
+          *handle(): Operation<Outcome<string, string>, Y> {
+            throw new Error("Participant replies only");
+          },
+        });
+        yield* host.around({
+          *deliveryMode() {
+            return "wait";
+          },
+          *child([pending], next) {
+            if (pending.request !== "call") {
+              return yield* next(pending);
+            }
+            const child = yield* journal.ensureChild<string, string, string, string>(pending.id, {
+              program: `level:${depth + 1}`,
+              input: depth + 1,
+              outcome: (value) => ({ ok: true, value }),
+            });
+            journals.set(depth + 1, child.journal);
+            return {
+              id: child.link.childId,
+              *run() {
+                const result = yield* runLevel(depth + 1, child.journal);
+                return result.state === "completed" || result.state === "cancelled";
+              },
+            };
+          },
+        });
+        const result = yield* host.operations.run();
+        if (result.state === "waiting") {
+          waits.set(depth, { request: result.pending.request, grant: result.grant });
+        }
+        return result;
+      }
+      const run = () => start(() => runLevel(0, root)).result;
+      await run();
+      const leaf = journals.get(2)!;
+      const late = waits.get(2)!;
+      const before = await start(() => root.read()).result;
+      if (before.status !== "running" || !before.pending) {
+        throw new Error("Expected owned call");
+      }
+      await start(() => root.cancellation.request(before.pending!.id, "deadline")).result;
+      // No host advancement or abort notification is required to fence the leaf.
+      await expect(
+        start(() => leaf.interactions.answer(late.grant, { ok: true, value: "late" })).result,
+      ).rejects.toThrow("revoked");
+      for (const depth of [2, 1, 0]) {
+        await run();
+        const waiting = waits.get(depth)!;
+        expect(waiting.request).toBe(`close:${depth}`);
+        await start(() =>
+          journals.get(depth)!.interactions.answer(waiting.grant, { ok: true, value: "closed" }),
+        ).result;
+      }
+      expect(await run()).toEqual({ state: "cancelled", reason: "deadline" });
+      for (const journal of journals.values()) {
+        expect((await start(() => journal.read()).result).status).toBe("cancelled");
+      }
+      // A retained older handle observes the same terminal record as reacquired handles.
+      expect((await start(() => leaf.read()).result).status).toBe("cancelled");
     });
 
     it("fences a live child's late settlement when parent cancellation has no abort notification", async () => {
