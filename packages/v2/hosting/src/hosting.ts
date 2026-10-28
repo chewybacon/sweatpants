@@ -28,6 +28,16 @@ export function createHosting<R, Q, V, E, S, Y>(
           if (activation.state !== "parked") {
             return activation;
           }
+          const child = yield* api.operations.child(activation.pending);
+          if (child) {
+            if (expected) {
+              throw new Error("Cannot replace an effect attempt with an owned call");
+            }
+            if (!(yield* child.run())) {
+              return { state: "child", childId: child.id };
+            }
+            continue;
+          }
           const mode = yield* api.operations.deliveryMode(activation.pending.request);
           if (mode === "wait") {
             if (expected) {
@@ -52,6 +62,9 @@ export function createHosting<R, Q, V, E, S, Y>(
           });
         }
       });
+    },
+    *child() {
+      return undefined;
     },
     *cancel(requestId, reason) {
       if (!options.journal.cancellation) {

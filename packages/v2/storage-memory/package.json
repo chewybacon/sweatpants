@@ -24,6 +24,7 @@
     "format:check": "cd ../../.. && oxfmt packages/v2/storage-memory --check"
   },
   "dependencies": {
+    "@standard-durability/core": "workspace:*",
     "@sweatpan.ts/durable": "workspace:*"
   },
   "devDependencies": {

@@ -71,3 +71,86 @@ A captured operations facade is not a captured continuation. Checkpoint adapters
 must receive the raw Guest identity. Scope cleanup calls that raw Guest's `close`
 directly rather than redispatching through an overridable facade; explicit calls
 to `operations.close()` remain interceptable. Guest close must remain idempotent.
+
+## Registered logical scopes
+
+`createScopedGuest(scope => operation)` is an evaluator driver implementing the
+same Guest protocol as the raw iterator driver. The returned Result and domain
+Request types are inferred; its private scope instructions are consumed internally.
+Native Effect/Effection types do not enter author signatures.
+
+```ts
+const guest = createScopedGuest(function* (scope) {
+  const hold = yield* reserve();
+  yield* scope.ensure(function* () {
+    yield* release(hold);
+  });
+  return yield* scope.scoped(function* (child) {
+    yield* child.ensure(function* () {
+      yield* audit();
+    });
+    return { hold, approval: yield* elicit() };
+  });
+});
+```
+
+Scopes are a stack of live frames, with a LIFO cleanup stack on each frame. Body
+results remain provisional while cleanup drains. Nested scopes join before their
+caller resumes. Cleanup can itself run a nested scope. Each suspension reports a
+replay-stable scope/frame identity and whether it is within cleanup. The durable
+layer records and validates that evidence with accepted outcomes and cancellation.
+
+Root cancellation discards suspended body frames and runs registered cleanup. It
+preserves a cleanup iterator already running, including nested work owned by that
+cleanup. Repeated cancellation cannot reset that cursor. Cleanup errors drain the
+remaining frames; cancellation retains diagnostic failures. Without cancellation,
+uncaught failure is thrown after drainage, as with the existing iterator driver;
+a persisted failed terminal journal result is not added here.
+
+Physical `close` drops live frames without invoking logical cleanup. This is not
+native `Composition.ensure`, which must run on host shutdown. Replay reconstructs
+registrations and captured values from the pinned program and accepted outcomes.
+Native resources must be reacquired; callbacks/iterators are never serialized.
+The internal control handles are valid only within their owning evaluator/scope.
+
+Use registered cleanup for this guarantee. Cancellation does not run arbitrary
+JavaScript finally in discarded body iterators. No compiler translation, lexical
+context API, independently cancellable lexical scope, fork group or checkpoint
+format is introduced. Host-level scoped middleware still wraps ordinary execution.
+
+## Critical body regions
+
+`scope.critical(work)` defers logical cancellation until the region exits. It retains
+the inferred result and creates no new cleanup lifetime: `scope.ensure` inside the
+region registers on the existing logical scope.
+
+```ts
+const hold =
+  yield *
+  scope.critical(function* () {
+    const acquired = yield* reserve();
+    yield* scope.ensure(function* () {
+      yield* release(acquired.id);
+    });
+    return acquired;
+  });
+yield * useReservation(hold);
+```
+
+If cancellation arrives while reserve is pending, intent is recorded immediately,
+but the reply remains eligible. Recovery reconstructs the same mask, accepts the
+reservation, registers release, then unwinds before useReservation begins. Nested
+critical regions restore the outer mask; nested lexical scopes retain its protection.
+A child invocation owned by a critical region is joined rather than cancelled by
+its parent's cancellation request. Registered cleanup already has this protection.
+
+The boundary records the outermost critical region identity independently of the
+body/cleanup phase. Replay validates it alongside the scope/frame identity. Protected
+attempts are omitted from logical-cancellation abort notifications. Explicit grant
+invalidation/reconciliation remains a separate administrative capability.
+
+This does not mask native host shutdown: local IO and physical resources can still
+be stopped. An unsafe attempt remains occupied after interruption. A critical region
+waiting for a reply or reconciliation can delay logical cancellation indefinitely;
+no timeout silently grants permission to redeliver it. Critical is not a database
+transaction, a guarantee against process loss, or exactly-once external execution.

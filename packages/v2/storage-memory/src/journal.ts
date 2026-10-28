@@ -1,19 +1,23 @@
-import type {
-  CancellationJournal,
-  RootCancellation,
-  AttemptControl,
-  AttemptState,
-  Journal,
-  JournalSnapshot,
-  Accepted,
-  PendingRequest,
-  Attempts,
-  AttemptGrant,
-  Interactions,
-  InteractionRegistration,
-  ResolutionGrant,
+import {
+  requestJournalCancellation,
+  settleOwnedChild,
+  type RootCancellation,
+  type ChildLink,
+  type AttemptState,
+  type Journal,
+  type JournalSnapshot,
+  type Accepted,
+  type PendingRequest,
+  type AttemptGrant,
+  type InteractionRegistration,
+  type ResolutionGrant,
 } from "@sweatpan.ts/durable";
-import type { MemoryJournalOptions } from "./contracts.ts";
+import type {
+  MemoryJournalOptions,
+  MemoryJournal,
+  MemoryOwnedChild,
+  MemoryChildOptions,
+} from "./contracts.ts";
 
 /**
  * Create one execution's process-local journal, attempt and interaction capabilities.
@@ -26,19 +30,64 @@ import type { MemoryJournalOptions } from "./contracts.ts";
  */
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
   options: MemoryJournalOptions,
-): Journal<R, Q, V, E, S, never> & {
-  readonly cancellation: CancellationJournal<Q, never>;
-  readonly attemptControl: AttemptControl<Q, V, E, never>;
-  readonly attempts: Attempts<Q, V, E, never>;
-  readonly interactions: Interactions<Q, V, E, never>;
-} {
-  const identity = crypto.randomUUID();
+): MemoryJournal<R, Q, V, E, S> {
+  return createJournal<R, Q, V, E, S>(options).journal;
+}
+
+function createJournal<R, Q, V, E, S>(
+  options: MemoryJournalOptions,
+  terminal?: (next: JournalSnapshot<R, Q, V, E, S>) => () => void,
+  identity: string = crypto.randomUUID(),
+): { journal: MemoryJournal<R, Q, V, E, S>; stop: (reason: string) => void } {
   let state: JournalSnapshot<R, Q, V, E, S> = {
     program: options.program,
     revision: 0,
     history: [],
     status: "running",
   };
+  // Heterogeneous child contracts are erased only in this private registry.
+  const children = new Map<
+    string,
+    { link: ChildLink; value: unknown; stop: (reason: string) => void }
+  >();
+  let queuedStop: string | undefined;
+  function publish(next: JournalSnapshot<R, Q, V, E, S>) {
+    const commitParent = next.status !== "running" ? terminal?.(next) : undefined;
+    state = next;
+    commitParent?.();
+  }
+  function stop(reason: string) {
+    if (state.status !== "running" || state.cancellation || state.cancellationRequested) {
+      return;
+    }
+    if (state.pending) {
+      requestCancellation(state.pending.id, reason);
+    } else {
+      queuedStop ??= reason;
+    }
+  }
+  function requestCancellation(requestId: string, reason: string): RootCancellation<Q> {
+    const decision = requestJournalCancellation(state, requestId, reason, grants.get(requestId));
+    // Validate and detach before publishing. No evaluator is called by this adapter.
+    const next = structuredClone(decision.snapshot);
+    const cancellation = structuredClone(decision.cancellation);
+    const attempt = cancellation.attempt;
+    if (decision.revoke) {
+      if (attempt && !invalidated.has(attempt.attemptId)) {
+        invalidated.set(attempt.attemptId, reason);
+      }
+      const registration = registrations.get(requestId);
+      if (registration?.state === "waiting") {
+        registrations.set(requestId, { state: "invalidated", grant: registration.grant, reason });
+      }
+    }
+    state = next;
+    if (decision.childToCancel) {
+      children.get(requestId)!.stop(reason);
+    }
+    return cancellation;
+  }
+
   function sameGrant(left: AttemptGrant, right: AttemptGrant) {
     return (
       left.requestId === right.requestId &&
@@ -90,60 +139,93 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     if (state.status !== "running" || !state.pending || state.pending.id !== id) {
       throw new Error("Stale or unknown pending request");
     }
+    if (state.child) {
+      throw new Error("Owned call can only be accepted by child settlement");
+    }
     const entry: Accepted<Q, V, E> = structuredClone({
       sequence: state.pending.sequence,
       receipt: id,
       request: state.pending.request,
+      scope: state.pending.scope,
       outcome,
     });
     const { pending: _pending, ...rest } = state;
     state = { ...rest, revision: state.revision + 1, history: [...state.history, entry] };
     return { entry: structuredClone(entry), duplicate: false };
   };
-  return {
+  const journal: MemoryJournal<R, Q, V, E, S> = {
+    id: identity,
+    *ensureChild<C, CQ, CV, CE, CS = unknown>(
+      requestId: string,
+      definition: MemoryChildOptions<C, V, E>,
+    ) {
+      const existing = children.get(requestId);
+      if (existing) {
+        if (
+          existing.link.program !== definition.program ||
+          !options.equals(existing.link.input, definition.input)
+        ) {
+          throw new Error("Owned child definition differs from recorded call");
+        }
+        const stored = existing.value as MemoryOwnedChild<C, CQ, CV, CE, CS>;
+        return { ...stored, link: structuredClone(existing.link) };
+      }
+      if (state.status !== "running" || state.pending?.id !== requestId || state.child) {
+        throw new Error("Stale or unknown child call boundary");
+      }
+      if (grants.has(requestId) || registrations.has(requestId)) {
+        throw new Error("Owned call excludes attempts and participant registration");
+      }
+      const link = structuredClone({
+        parentId: identity,
+        requestId,
+        childId: crypto.randomUUID(),
+        program: definition.program,
+        input: definition.input,
+      });
+      const outcome = definition.outcome;
+      const child = createJournal<C, CQ, CV, CE, CS>(
+        { program: definition.program, equals: options.equals },
+        (result) => {
+          if (result.status === "running") {
+            throw new Error("Child settlement requires terminal result");
+          }
+          const projected =
+            result.status === "completed" && !state.cancellationRequested
+              ? outcome(result.value)
+              : undefined;
+          const next = structuredClone(settleOwnedChild(state, link, result, projected));
+          // All projection/validation/cloning finishes before either journal publishes.
+          return () => {
+            state = next;
+          };
+        },
+        link.childId,
+      );
+      const value: MemoryOwnedChild<C, CQ, CV, CE, CS> = {
+        link: structuredClone(link),
+        journal: child.journal,
+      };
+      children.set(requestId, { link, value, stop: child.stop });
+      state = { ...state, child: link, revision: state.revision + 1 };
+      return { ...value, link: structuredClone(link) };
+    },
     cancellation: {
       *request(requestId, reason) {
-        if (state.cancellation) {
-          if (state.cancellation.requestId !== requestId) {
-            throw new Error("Root cancellation already requested at another boundary");
-          }
-          return structuredClone(state.cancellation);
-        }
-        if (state.status !== "running" || state.pending?.id !== requestId) {
-          throw new Error("Stale or unknown cancellation boundary");
-        }
-        const attempt = grants.get(requestId);
-        const cancellation: RootCancellation<Q> = structuredClone({
-          position: state.history.length,
-          requestId,
-          request: state.pending.request,
-          reason,
-          attempt,
-        });
-        const { pending: _pending, checkpoint: _checkpoint, ...rest } = state;
-        const next = { ...rest, cancellation, revision: state.revision + 1 };
-        if (attempt && !invalidated.has(attempt.attemptId)) {
-          invalidated.set(attempt.attemptId, reason);
-        }
-        const registration = registrations.get(requestId);
-        if (registration?.state === "waiting") {
-          registrations.set(requestId, { state: "invalidated", grant: registration.grant, reason });
-        }
-        state = next;
-        return structuredClone(cancellation);
+        return requestCancellation(requestId, reason);
       },
       *finish(revision, failure) {
         const snapshot = current(revision);
         if (!snapshot.cancellation || snapshot.pending) {
           throw new Error("Cancellation completion requires drained cleanup");
         }
-        state = {
+        publish({
           ...snapshot,
           revision: snapshot.revision + 1,
           status: "cancelled",
           reason: snapshot.cancellation.reason,
-          failure,
-        };
+          failure: failure ?? snapshot.cancellation.failure,
+        });
       },
     },
     attemptControl: {
@@ -164,6 +246,9 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
       *register(requestId) {
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
+        }
+        if (state.child) {
+          throw new Error("Owned call excludes participant registration");
         }
         if (grants.has(requestId)) {
           throw new Error("Executing attempt excludes participant registration");
@@ -216,6 +301,9 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
+        if (state.child) {
+          throw new Error("Owned call excludes executing attempts");
+        }
         if (registrations.has(requestId)) {
           throw new Error("Participant registration excludes executing attempts");
         }
@@ -255,9 +343,13 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
     *read() {
       return structuredClone(state);
     },
-    *park(revision, request, checkpoint) {
+    *park(revision, request, checkpoint, scope) {
       const snapshot = current(revision);
-      if (snapshot.pending && !options.equals(snapshot.pending.request, request)) {
+      if (
+        snapshot.pending &&
+        (!options.equals(snapshot.pending.request, request) ||
+          !options.equals(snapshot.pending.scope, scope))
+      ) {
         throw new Error("Pending request differs from recovered request");
       }
       if (
@@ -275,6 +367,7 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         id: `${identity}:${snapshot.history.length}${snapshot.cancellation ? ":cleanup" : ""}`,
         sequence: snapshot.history.length,
         request,
+        scope,
       };
       // Clone before publishing: neither caller mutation nor clone failure can partially commit.
       const next = structuredClone({
@@ -284,6 +377,11 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         checkpoint: checkpoint ?? snapshot.checkpoint,
       });
       state = next;
+      if (queuedStop !== undefined && !state.cancellation) {
+        requestCancellation(next.pending.id, queuedStop);
+        queuedStop = undefined;
+        return undefined;
+      }
       return structuredClone(next.pending);
     },
     accept,
@@ -302,7 +400,8 @@ export function createMemoryJournal<R, Q, V, E, S = unknown>(
         status: "completed" as const,
         value,
       });
-      state = next;
+      publish(next);
     },
   };
+  return { journal, stop };
 }

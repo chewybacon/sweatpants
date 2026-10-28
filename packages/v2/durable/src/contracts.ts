@@ -1,5 +1,5 @@
 import type { Api, Operation, Outcome } from "@standard-durability/core";
-import type { Execution } from "@sweatpan.ts/execution";
+import type { Execution, ScopeBoundary } from "@sweatpan.ts/execution";
 import type { RestoredGuest } from "@sweatpan.ts/codemode-runtime";
 
 /** Immutable accepted history supplied by a trusted host; receipts identify accepted entries. */
@@ -7,6 +7,7 @@ export interface Accepted<Q, V, E> {
   readonly sequence: number;
   readonly receipt: string;
   readonly request: Q;
+  readonly scope?: ScopeBoundary;
   readonly outcome: Outcome<V, E>;
 }
 
@@ -49,12 +50,26 @@ export interface PendingRequest<Q> {
   readonly id: string;
   readonly sequence: number;
   readonly request: Q;
+  readonly scope?: ScopeBoundary;
+}
+
+/** An owned call belongs to one exact parent boundary, including across replay. */
+export interface ChildLink {
+  readonly parentId: string;
+  readonly requestId: string;
+  readonly childId: string;
+  readonly program: string;
+  readonly input: unknown;
 }
 
 /** Detached execution state; revision guards activation writes. */
 export type JournalSnapshot<R, Q, V, E, S> = {
   readonly program: string;
   readonly revision: number;
+  /** Active owned call. Parent cannot accept or complete until this child settles. */
+  readonly child?: ChildLink;
+  /** Intent waiting for an owned child to drain; not yet supplied to the evaluator. */
+  readonly cancellationRequested?: RootCancellation<Q>;
   readonly history: readonly Accepted<Q, V, E>[];
   readonly checkpoint?: Checkpoint<S>;
   readonly cancellation?: RootCancellation<Q>;
@@ -73,8 +88,14 @@ export interface Journal<R, Q, V, E, S, Y> {
   /**
    * Commit a pending request and optional checkpoint at the expected revision.
    * Throws on stale revision, divergent pending request or invalid checkpoint anchor.
+   * Undefined means queued cancellation won at this boundary; reactivate to unwind.
    */
-  park(revision: number, request: Q, checkpoint?: Checkpoint<S>): Operation<PendingRequest<Q>, Y>;
+  park(
+    revision: number,
+    request: Q,
+    checkpoint?: Checkpoint<S>,
+    scope?: ScopeBoundary,
+  ): Operation<PendingRequest<Q> | undefined, Y>;
   /**
    * Trusted external-answer acceptance; identical redelivery returns its original
    * entry and conflicting delivery fails. Not an authenticated grant endpoint.
@@ -197,7 +218,10 @@ export interface RootCancellation<Q> {
   readonly position: number;
   readonly requestId: string;
   readonly request: Q;
+  readonly scope?: ScopeBoundary;
   readonly reason: string;
+  /** Failure from a drained owned child, retained while parent cleanup runs. */
+  readonly failure?: string;
   /** Revoked delivery, retained so repeated commands can retry notification. */
   readonly attempt?: AttemptGrant;
 }
@@ -207,7 +231,9 @@ export interface CancellationJournal<Q, Y> {
   /**
    * Atomically record intent and revoke the pending attempt/interaction. Stale request
    * IDs reject. Repeating the original ID preserves the first reason, including during
-   * cleanup; it never invalidates cleanup grants. Does not advance authored code.
+   * cleanup; it never invalidates cleanup grants. An active owned child retains the
+   * parent boundary as cancellationRequested until child settlement releases it.
+   * Does not advance authored code.
    */
   request(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
   /** Commit cancelled completion at the expected revision after cleanup has drained. */
@@ -217,4 +243,12 @@ export interface CancellationJournal<Q, Y> {
 /** Recovery policy plus its inferred, scoped evaluator API; raw Guests retain checkpoint identity. */
 export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y, V, E, S>, Y> {
   readonly execution: Execution<R, Q, Y, V, E>;
+}
+
+/** Pure cancellation decision; adapters publish the state and authority changes atomically. */
+export interface CancellationTransition<R, Q, V, E, S> {
+  readonly snapshot: JournalSnapshot<R, Q, V, E, S>;
+  readonly cancellation: RootCancellation<Q>;
+  readonly revoke: boolean;
+  readonly childToCancel?: ChildLink;
 }

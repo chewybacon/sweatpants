@@ -74,3 +74,45 @@ Duplicate cancellation uses the original request ID and cannot revoke cleanup.
 `cancellation.finish` uses revision CAS and requires no unanswered cleanup request.
 The terminal record preserves the first reason and any diagnostic cleanup failure.
 All control state shares the same process-local lifetime as the journal.
+
+## Owned children
+
+`ensureChild(requestId, { program, input, outcome })` returns a stable `ChildLink`
+and typed child journal. `outcome` is a pure projection from child Result to the
+parent's reply Outcome. Reacquisition checks program/input; assembly must retain
+the same type contract and projection for that program. Heterogeneous child
+contracts are erased only in the adapter's private registry. This does not validate
+serialized data or infer a callable tool API from a program string.
+
+Child terminal writes prepare and clone both journal transitions before either
+state is published. A throwing projection leaves both unchanged. Attempts,
+participant registration and administrative acceptance cannot settle an owned
+call. Completion of a cancelled child propagates cancellation to the parent;
+child cleanup failure is retained while the parent drains its own cleanup.
+
+With an active child, cancellation records `cancellationRequested` and retains the
+parent request until child settlement. A child with no parked boundary yet queues
+the stop until its next `park`. That park returns undefined after committing
+cancellation; activation disposes its evaluator and reconstructs cancellation
+before any request delivery. No extra eligibility read is added to effect commits.
+
+The registry, queued stops and projections share the in-memory store's lifetime.
+Reassembly retains these journals; exporting snapshots alone does not preserve or
+restore the tree. A future durable adapter must persist topology/control and
+implement cross-invocation transactions, rather than sequentially writing two
+independent journals. See hosting's evaluator and notification limits.
+
+Cancellation and parent settlement policy are prepared by the pure durable
+`requestJournalCancellation` and `settleOwnedChild` transitions. The memory adapter
+owns detached publication and authority maps; it does not advance an evaluator.
+Pending/accepted records retain the evaluator's scope/frame boundary evidence.
+Cancellation preserves a request whose phase is cleanup and omits it from revoked
+attempt notifications. An active cleanup-owned child is joined without cancellation.
+Replay validates frame identity as well as the domain request, so equal request
+payloads cannot silently substitute a different reconstructed scope.
+
+Critical-region identity is also retained in boundary evidence. The same pure
+cancellation transition preserves critical body requests and their owned children;
+no additional storage read or separate mask registry is needed. Replay reconstructs
+the live mask from the pinned program and validates its recorded identity. It does
+not infer acquisition completion from an interrupted host or an elapsed deadline.

@@ -6,6 +6,14 @@ import type { IteratorGuestState } from "./types.ts";
  * Own an authored iterator independently of the native runner.
  * Start/resume and explicit cancel advance it. Physical resources belong to the acquiring host;
  * close discards the iterator without calling return/throw or running its finally.
+ * Cancellation already entered through cancel is idempotent.
+ *
+ * @remarks Arbitrary JavaScript finally is not guaranteed to drain on cancellation.
+ * The first cancel calls iterator.return(); if already suspended inside finally, that
+ * return can skip the rest of the block. The standard iterator API cannot report this
+ * phase. Normal finally behavior on return/exception is unchanged. Use createScopedGuest
+ * with LogicalScope.ensure for registered, recoverable logical cleanup. Host disposal
+ * deliberately does not call return() and therefore does not initiate finally cleanup.
  */
 export function createIteratorGuest<Result, Request>(
   work: Work<Result, Request>,

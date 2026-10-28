@@ -18,11 +18,19 @@ import type {
 
 /** Completion, an occupied/invalidated attempt, or a registered participant wait/invalidation. */
 export type HostedResult<R, Q = unknown> =
+  | { readonly state: "child"; readonly childId: string }
   | { readonly state: "completed"; readonly value: R }
   | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string }
   | { readonly state: "occupied"; readonly grant: AttemptGrant }
   | { readonly state: "invalidated"; readonly grant: AttemptGrant; readonly reason: string }
   | (InteractionRegistration & { readonly pending: PendingRequest<Q> });
+
+/** Drive an owned child through its ordinary host; storage atomically settles its parent call. */
+export interface ChildHosting<Y> {
+  readonly id: string;
+  /** True after terminal settlement; false when child is parked or occupied. */
+  run(): Operation<boolean, Y>;
+}
 
 /** Scoped middleware hooks for delivery, retry policy and the hosting loop. */
 export interface HostingMethods<R, Q, V, E, Y> {
@@ -38,6 +46,8 @@ export interface HostingMethods<R, Q, V, E, Y> {
    * workflow or record a failure Outcome. An unsettled grant remains occupied.
    */
   run(replace?: AttemptGrant): Operation<HostedResult<R, Q>, Y>;
+  /** Optional owned-call routing, before attempt or participant acquisition. Defaults to no child. */
+  child(pending: PendingRequest<Q>): Operation<ChildHosting<Y> | undefined, Y>;
   /** Request root cancellation at a parked boundary; run() subsequently drives cleanup. */
   cancel(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
   /** Choose local participant registration or attempted handler execution; defaults to execute. */

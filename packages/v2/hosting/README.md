@@ -211,5 +211,58 @@ terminal results return without acquiring another evaluator.
 Optional live-cancellation middleware also publishes notification after root
 cancellation commits. Losing this notification cannot admit the revoked result.
 The root protocol currently supports iterator replay and nested lexical finally,
-not independent child-task scheduling, deadline alarms or checkpointed unwinding.
+with sequential owned calls as described below. Fork groups, deadline alarms and
+checkpointed unwinding are not implemented.
 The installed Lua evaluator does not yet expose logical cancellation.
+
+## Sequential owned calls
+
+The scoped `child(pending)` hook runs before attempt/participant acquisition. It
+returns a child ID and a `run` capability backed by the child's ordinary host.
+Return true only after that host reaches terminal settlement. False returns
+`{ state: "child", childId }` from the parent host; ingress routes the next answer
+to the child. No handler attempt represents the parent call.
+
+The memory adapter's `ensureChild` binds a program/input to the exact parent
+request. Repeated activation reuses it. A subsequent call, including another loop
+iteration, has a new request and child identity. Child completion atomically
+accepts the projected result into the parent; parent replay then consumes it.
+Projection is trusted assembly, not a new authored declaration or wire validator.
+
+Parent cancellation retains its pending call and records `cancellationRequested`.
+It requests child cancellation but does not supply cancellation to parent recovery
+until the child terminates. Child cleanup can wait, dispose and recover. Repeated
+cancellation cannot revoke that cleanup's grants. Child settlement removes the
+barrier and publishes the parent's replay cancellation boundary atomically.
+
+The scoped evaluator (`createScopedGuest`) makes registered cleanup explicit.
+Cancellation during normal cleanup retains its pending request and reply authority,
+including executing attempts. Owned-call journeys now use this evaluator. A child
+owned by cleanup is joined without revoking its body merely because the parent
+was cancelled. Independently cancelling such a cleanup child still requires an
+explicit outcome reconciliation policy; settlement rejects instead of inventing a
+domain failure. The raw iterator evaluator retains its JavaScript finally limitation.
+
+Parent cancellation fences live body attempts, but does not yet publish child abort
+notifications through the parent's notification middleware. Losing or omitting those
+notifications cannot admit a revoked result; it can leave physical IO live. Cleanup
+attempts are intentionally retained and should not receive these abort notifications.
+
+The owned-call journeys cover both runtime adapters, disposal/recovery, next-call
+identity, duplicate replies, projection failure atomicity, child-first cancellation,
+cleanup failure, cancellation before the first child boundary, and live late replies.
+They establish process-local storage behavior, not database transactions or a
+complete inferred author-facing child-call builder. No forks or races are added.
+
+## Critical acquisition
+
+The scoped evaluator's `scope.critical` marks body requests whose logical cancellation
+must be deferred. Root cancellation records intent while preserving their grants and
+any owned child call. Delivery and replay continue until the region exits; pending
+cancellation then runs registered cleanup before the caller's body can resume.
+The existing attempt-cancellation middleware publishes only revoked grants, so it
+leaves these critical attempts live. Native host shutdown still aborts local IO.
+
+Hosted journeys cover acquisition followed by cleanup registration, nested regions
+and lexical scopes, repeated cancellation/recovery, accepted domain failure, joining
+an owned child, and native shutdown retaining an occupied unsafe acquisition.

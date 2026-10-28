@@ -1,5 +1,10 @@
 import type { Composition, Operation, OperationMiddleware } from "@standard-durability/core";
-import { createExecution, type Execution, type GuestWork } from "@sweatpan.ts/execution";
+import {
+  createExecution,
+  type Execution,
+  type GuestWork,
+  type ScopeBoundary,
+} from "@sweatpan.ts/execution";
 import type { CheckpointAdapter, RestoredGuest } from "@sweatpan.ts/codemode-runtime";
 import type {
   Recovery,
@@ -39,6 +44,15 @@ function validate<Q, V, E, S>(program: string, plan: RecoveryPlan<Q, V, E, S>) {
   }
 }
 
+function sameScope(actual: ScopeBoundary | undefined, expected: ScopeBoundary | undefined) {
+  return (
+    actual?.scopeId === expected?.scopeId &&
+    actual?.frameId === expected?.frameId &&
+    actual?.phase === expected?.phase &&
+    actual?.critical === expected?.critical
+  );
+}
+
 function* replay<R, Q, Y, V, E>(
   initial: RestoredGuest<R, Q, Y, V, E>,
   operations: Execution<R, Q, Y, V, E>["operations"],
@@ -50,7 +64,11 @@ function* replay<R, Q, Y, V, E>(
   let turn = initial.turn;
   for (let index = position; index <= history.length; index++) {
     if (cancellation?.position === index) {
-      if (turn.kind !== "suspended" || !matches(turn.request, cancellation.request)) {
+      if (
+        turn.kind !== "suspended" ||
+        !matches(turn.request, cancellation.request) ||
+        !sameScope(turn.scope, cancellation.scope)
+      ) {
         throw new Error("Replay cancellation boundary mismatch");
       }
       turn = yield* operations.cancel(cancellation.reason);
@@ -59,7 +77,11 @@ function* replay<R, Q, Y, V, E>(
     if (!entry) {
       break;
     }
-    if (turn.kind !== "suspended" || !matches(turn.request, entry.request)) {
+    if (
+      turn.kind !== "suspended" ||
+      !matches(turn.request, entry.request) ||
+      !sameScope(turn.scope, entry.scope)
+    ) {
       throw new Error(`Replay request mismatch at ${entry.sequence}`);
     }
     turn = yield* operations.resume(entry.outcome);

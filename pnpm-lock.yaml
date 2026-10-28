@@ -3126,6 +3126,9 @@ importers:
 
   packages/v2/storage-memory:
     dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
       '@sweatpan.ts/durable':
         specifier: workspace:*
         version: link:../durable
