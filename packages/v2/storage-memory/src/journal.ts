@@ -10,8 +10,13 @@ import {
   type InteractionRegistration,
   type ResolutionGrant,
 } from "@sweatpan.ts/durable";
-import { createMemoryTree } from "./tree.ts";
-import type { MemoryJournalOptions, MemoryJournal, MemoryChildOptions } from "./contracts.ts";
+import { createMemoryTree, createMemoryTreeData } from "./tree.ts";
+import type {
+  MemoryJournalOptions,
+  MemoryJournal,
+  MemoryChildOptions,
+  MemoryJournalStore,
+} from "./contracts.ts";
 
 /**
  * Create a root journal and its process-local owned-tree transaction domain.
@@ -26,8 +31,26 @@ import type { MemoryJournalOptions, MemoryJournal, MemoryChildOptions } from "./
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
   options: MemoryJournalOptions,
 ): MemoryJournal<R, Q, V, E, S> {
-  const tree = createMemoryTree(options);
-  return createJournal<R, Q, V, E, S>(options, tree, tree.rootId);
+  return createMemoryJournalStore<R, Q, V, E, S>(options).open();
+}
+
+/**
+ * Create retained tree data independently of journal handles and projection bindings.
+ * Each open starts fresh assembly; owned calls are rebound through ensureChild.
+ * All opens share synchronous authority fencing and atomic owned-tree publication.
+ */
+export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
+  options: MemoryJournalOptions,
+): MemoryJournalStore<R, Q, V, E, S> {
+  const assembly = { ...options };
+  const data = createMemoryTreeData(assembly.program);
+  return {
+    id: data.rootId,
+    open() {
+      const tree = createMemoryTree(assembly, data);
+      return createJournal<R, Q, V, E, S>(assembly, tree, data.rootId);
+    },
+  };
 }
 
 function createJournal<R, Q, V, E, S>(

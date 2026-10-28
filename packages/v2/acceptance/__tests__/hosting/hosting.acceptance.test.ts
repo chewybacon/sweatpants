@@ -9,7 +9,7 @@ import {
 } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
-import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
+import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
 import { createProtocolRig, createNotificationRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -22,10 +22,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return execution;
   }
   function scenario(liveCancellation = false) {
-    const journal = createMemoryJournal<{ reservation: string }, string, string, string>({
+    const store = createMemoryJournalStore<{ reservation: string }, string, string, string>({
       program: "reservation",
       equals: isDeepStrictEqual,
     });
+    let journal = store.open();
     const peer = createProtocolRig();
     const grants: AttemptGrant[] = [];
     const notifications = createNotificationRig();
@@ -161,7 +162,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }).result;
     }
     return {
-      journal,
+      get journal() {
+        return journal;
+      },
+      reopen() {
+        journal = store.open();
+      },
       peer,
       grants,
       run,
@@ -195,6 +201,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests).toHaveLength(1);
       const second = s.run("repeatable", original);
       await s.wait(2, second.result);
+      s.reopen();
       const replacement = s.grants[1]!;
       expect(replacement.requestId).toBe(original.requestId);
       expect(replacement.attemptId).not.toBe(original.attemptId);
@@ -228,6 +235,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           state: "invalidated",
           reason: "deadline",
         });
+        s.reopen();
         expect(s.peer.aborted).toEqual([]);
         s.peer.reply(grant.attemptId, { status: 200, body: "too late" });
         await expect(first.result).rejects.toThrow("Attempt authority revoked");
@@ -496,6 +504,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await start(() => s.journal.attemptControl.inspect(grant)).result).toEqual({
         state: "active",
       });
+      s.reopen();
       expect(await s.run().result).toEqual({ state: "occupied", grant });
       // Resubmit the same provider result under the original grant; do not execute again.
       const accepted = await start(() =>
@@ -506,6 +515,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         state: "completed",
         value: { reservation: "reservation-1" },
       });
+      s.reopen();
       const completed = await start(() => s.journal.read()).result;
       const duplicate = await start(() =>
         s.journal.attempts.settle(grant, { ok: true, value: "reservation-1" }),

@@ -1,4 +1,4 @@
-export type { MemoryJournalOptions } from "./contracts.ts";
-export { createMemoryJournal } from "./journal.ts";
+export type { MemoryJournalOptions, MemoryJournalStore } from "./contracts.ts";
+export { createMemoryJournal, createMemoryJournalStore } from "./journal.ts";
 
 export type { MemoryJournal, MemoryChildOptions, MemoryOwnedChild } from "./contracts.ts";

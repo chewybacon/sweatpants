@@ -22,3 +22,9 @@ export interface ChildBinding {
   readonly program: string;
   readonly outcome: (value: unknown) => Outcome<unknown, unknown>;
 }
+
+/** Retained data shared by independently assembled handles. No runtime bindings. */
+export interface MemoryTreeData {
+  readonly rootId: string;
+  records: Map<string, MemoryRecord>;
+}

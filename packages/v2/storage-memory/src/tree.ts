@@ -7,7 +7,7 @@ import {
   type PendingRequest,
 } from "@sweatpan.ts/durable";
 import type { MemoryChildOptions, MemoryJournalOptions } from "./contracts.ts";
-import type { ChildBinding, MemoryRecord } from "./types.ts";
+import type { ChildBinding, MemoryRecord, MemoryTreeData } from "./types.ts";
 import { transactMemory } from "./transaction.ts";
 
 function createRecord(program: string, parent?: ChildLink): MemoryRecord {
@@ -73,21 +73,25 @@ function cancel(records: Map<string, MemoryRecord>, id: string, requestId: strin
   }
 }
 
-/** One process-local transaction domain; no journal handles or stop closures are stored. */
-export function createMemoryTree(options: MemoryJournalOptions) {
+/** Retain only data across assemblies. */
+export function createMemoryTreeData(program: string): MemoryTreeData {
   const rootId = crypto.randomUUID();
-  let records = new Map([[rootId, createRecord(options.program)]]);
+  return { rootId, records: new Map([[rootId, createRecord(program)]]) };
+}
+
+/** Fresh assembly bindings over one shared process-local transaction domain. */
+export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTreeData) {
   const bindings = new Map<string, ChildBinding>();
 
   function transact<T>(decide: (draft: Map<string, MemoryRecord>) => T): T {
     return transactMemory(
       () => {
-        const draft = structuredClone(records);
+        const draft = structuredClone(data.records);
         const result = decide(draft);
         return { state: draft, result };
       },
       (next) => {
-        records = next;
+        data.records = next;
       },
     );
   }
@@ -113,11 +117,11 @@ export function createMemoryTree(options: MemoryJournalOptions) {
   }
 
   return {
-    rootId,
+    rootId: data.rootId,
     // This is the sole heterogeneous record boundary. Typed handles are bound by
     // trusted program assembly, not inferred or validated from stored bytes.
     read<R, Q, V, E, S>(id: string): MemoryRecord<R, Q, V, E, S> {
-      return record(records, id) as MemoryRecord<R, Q, V, E, S>;
+      return record(data.records, id) as MemoryRecord<R, Q, V, E, S>;
     },
     commit<R, Q, V, E, S, T>(id: string, next: MemoryRecord<R, Q, V, E, S>, result: T): T {
       return transact((draft) => {

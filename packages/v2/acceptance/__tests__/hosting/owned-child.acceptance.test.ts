@@ -6,6 +6,7 @@ import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import {
   createMemoryJournal,
+  createMemoryJournalStore,
   type MemoryOwnedChild,
   type MemoryJournal,
 } from "@sweatpan.ts/storage-memory";
@@ -37,10 +38,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     } = {},
   ) {
     const { count = 1, liveApproval = false, call = "body", liveCleanup = false } = options;
-    const parent = createMemoryJournal<string[], string, string, string>({
+    const store = createMemoryJournalStore<string[], string, string, string>({
       program: "parent",
       equals: isDeepStrictEqual,
     });
+    let parent = store.open();
+    let assembly = 0;
+    const projectedAssemblies: number[] = [];
     const peer = createProtocolRig();
     const children = new Map<
       string,
@@ -105,6 +109,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return result.state === "completed" || result.state === "cancelled";
     }
     function run() {
+      const generation = assembly;
       return start(function* () {
         const recovery = createRecovery(runtime.composition, {
           name: "parent-recovery",
@@ -158,12 +163,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               {
                 program: "child",
                 input: pending.request,
-                outcome: projection,
+                outcome(value) {
+                  projectedAssemblies.push(generation);
+                  return projection(value);
+                },
               },
             );
             if (!children.has(child.link.childId)) {
               children.set(child.link.childId, child);
-              links.push(child.link);
+              if (!links.some((link) => link.childId === child.link.childId)) {
+                links.push(child.link);
+              }
             }
             if (beforeChild) {
               yield* beforeChild();
@@ -197,7 +207,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return execution.result;
     }
     return {
-      parent,
+      get parent() {
+        return parent;
+      },
+      projectedAssemblies,
+      reopen() {
+        parent = store.open();
+        assembly++;
+        children.clear();
+        waits.clear();
+      },
       peer,
       links,
       children,
@@ -384,6 +403,61 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
       const after = await start(() => s.parent.read()).result;
       expect(after.history.map((entry) => entry.request)).toEqual(["reserve", "call:0", "release"]);
+    });
+
+    it("reopens participant authority and historical ownership with freshly bound projections", async () => {
+      const s = scenario();
+      await s.begin();
+      const link = s.links[0]!;
+      const approval = s.waits.get(link.childId)!.grant;
+      const previous = s.children.get(link.childId)!.journal;
+      s.reopen();
+      await s.run().result;
+      expect(s.links).toEqual([link]);
+      expect(s.children.get(link.childId)!.journal).not.toBe(previous);
+      expect(s.waits.get(link.childId)!.grant).toEqual(approval);
+      await s.answer(link.childId);
+      await s.run().result;
+      await s.answer(link.childId, "closed");
+      s.reopen();
+      expect(await s.finish()).toEqual({ state: "completed", value: ["approved"] });
+      expect(s.projectedAssemblies).toEqual([2]);
+      s.reopen();
+      const historical = await start(() =>
+        s.parent.ensureChild<{ approval: string }, string, string, string>(link.requestId, {
+          program: link.program,
+          input: link.input,
+          outcome: (value) => ({ ok: true, value: value.approval }),
+        }),
+      ).result;
+      expect(historical.link).toEqual(link);
+      expect((await start(() => historical.journal.read()).result).status).toBe("completed");
+      expect(
+        (
+          await start(() =>
+            historical.journal.interactions.answer(approval, { ok: true, value: "approved" }),
+          ).result
+        ).duplicate,
+      ).toBe(true);
+      expect(await s.run().result).toEqual({ state: "completed", value: ["approved"] });
+    });
+
+    it("reopens queued cancellation before the child's first boundary without delivering its body", async () => {
+      const s = scenario();
+      s.beforeChild = function* () {
+        yield* s.parent.cancellation.request(s.links[0]!.requestId, "deadline");
+        throw new Error("Host stopped before child acquisition");
+      };
+      await expect(s.begin()).rejects.toThrow("Host stopped");
+      const link = s.links[0]!;
+      s.beforeChild = undefined;
+      s.reopen();
+      await s.run().result;
+      expect(s.waits.get(link.childId)!.request).toBe("child-close");
+      await s.answer(link.childId, "closed");
+      s.reopen();
+      expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
+      expect(s.projectedAssemblies).toEqual([]);
     });
 
     it("queues cancellation before a child has its first boundary and never delivers its body request", async () => {

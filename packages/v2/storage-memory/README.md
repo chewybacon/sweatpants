@@ -27,6 +27,42 @@ when its process ends. Revision checks reject stale activation commits but do no
 constitute distributed locking. Callers are trusted: this API does not validate
 wire schemas, authenticate replies, or prove checkpoint contents are correct.
 
+## Reopening retained records
+
+`createMemoryJournalStore<Result, Request, Value, Error, State>(options)` retains
+one owned tree independently of its handles. `store.open()` returns a fresh typed
+root journal with an empty projection registry. `createMemoryJournal(options)`
+remains the convenience form for creating a store and opening it once.
+
+```ts
+const store = createMemoryJournalStore<string, string, string, string>({
+  program: "booking:v1",
+  equals,
+});
+const first = store.open();
+// Dispose the host using first; retain only the store for the next assembly.
+const recovered = store.open();
+// Assemble recovery/hosting with recovered and the same pinned program.
+// Rebind owned calls through recovered.ensureChild(id, { program, input, outcome }).
+```
+
+Each open has independent code bindings over shared authoritative records. Previously
+opened handles remain valid and observe current records; reopening does not revoke
+an attempt, cancel a workflow, or dispose a host. The caller owns host lifetimes.
+Reacquiring an owned call validates its recorded program/input and binds the supplied
+projection in the new assembly. Access starts at the root: there is no arbitrary
+child-ID open that could bypass parent-call rebinding. Within an assembly, the first
+projection for a child remains selected.
+
+Hosted journeys reopen pending participant authority, accepted history, replaced and
+revoked attempts, duplicate receipts, historical child links and queued pre-boundary
+cancellation. Child success uses the newly assembled projection; cancelled results
+skip it. This proves in-process handle/binding reconstruction, not serialization,
+wire validation, disk durability or process-crash recovery. Lua hosting also reopens
+after accepted delivery with a fresh journal handle, evaluator, recovery API and
+host. Its journeys cover replay-only, checkpoint restore and fallback for an
+unsupported checkpoint format, without repeating the accepted external effect.
+
 ## Attempt capability
 
 The returned journal also exposes `attempts`. `begin` commits a current grant for
@@ -102,9 +138,10 @@ before any request delivery. No extra eligibility read is added to effect commit
 
 Records contain snapshots, attempt/participant authority, queued stops and ownership
 links. Projections live in a separate trusted binding registry keyed by child identity;
-reacquisition retains the original projection. The tree remains process-local and
-there is no public reopen/serialization API. Exporting snapshots alone does not
-preserve authority or topology, and future reopening must explicitly rebind code.
+reacquisition retains the original projection within each open assembly. The tree
+remains process-local; reopening retains its records and creates fresh code bindings.
+There is no serialization API. Exporting snapshots alone does not preserve authority
+or topology.
 See hosting's evaluator and notification limits.
 
 Cancellation and parent settlement policy are prepared by the pure durable
@@ -149,7 +186,7 @@ reacquired handles. Both throwing and unencodable projections leave parent and
 child records unchanged and allow recovery.
 
 This is one process-local transaction domain for an owned tree, not a public storage
-port, reopenable store or SQLite implementation. The memory executor clones the
+port, disk-backed store or SQLite implementation. The memory executor clones the
 whole tree to stage and publish writes; its cost grows with retained tree history.
 A database adapter should select affected records and append accepted entries,
 not copy the tree. Cross-domain ownership needs a separate protocol.

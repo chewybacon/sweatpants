@@ -60,3 +60,11 @@ Live-attempt notification journeys remain distinct from host shutdown: invalidat
 persists and prevents replacement, while ordinary host shutdown leaves occupancy.
 They cover both subscription races, dropped/failed publication, repeat commands,
 stale grants, accepted-first settlement, and subscription cleanup on success/failure.
+
+Lua hosting journeys reopen retained journal records after acceptance but before the
+host observes its settlement acknowledgement. Each new assembly creates a fresh
+journal handle, evaluator, recovery API and host. Replay-only, checkpoint restore
+and unsupported-format replay fallback preserve distinct delivery scopes, cleanup
+and exactly one scripted peer request per effect. These replace the earlier
+uninterrupted multi-request journeys. Reopening is in-process evidence, not disk or
+OS-crash durability; supported-format restore errors are not silently replayed.
