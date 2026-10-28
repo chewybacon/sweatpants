@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Outcome } from "@standard-durability/core";
 import { createRecovery } from "@sweatpan.ts/durable";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createProtocolRig } from "@sweatpan.ts/testing";
@@ -16,7 +16,7 @@ forEachRuntime((runtime) => {
     const calls: string[] = [];
     let facadeCloses = 0;
     function acquire(label: string) {
-      const guest = createIteratorGuest(function* () {
+      const guest = createScopedGuest(function* () {
         const value: unknown = yield "read";
         if (typeof value !== "string") {
           throw new Error("Expected reply text");

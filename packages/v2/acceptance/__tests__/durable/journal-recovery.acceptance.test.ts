@@ -19,7 +19,7 @@ import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { isDeepStrictEqual } from "node:util";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -271,7 +271,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             program: "iterator-reservation-v1",
             matches,
             *acquire() {
-              return createIteratorGuest(function* () {
+              return createScopedGuest(function* () {
                 const hold = yield* request("reserve", "booking");
                 const approved = yield* request("approval", { hold });
                 yield* request("cleanup", { hold, count: 41 });

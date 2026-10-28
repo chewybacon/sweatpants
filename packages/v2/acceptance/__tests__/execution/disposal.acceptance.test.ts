@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import type { Operation, Turn } from "@sweatpan.ts/execution";
 import { createLatch, createProtocolRig } from "@sweatpan.ts/testing";
 import type { RuntimeExecution } from "@sweatpan.ts/runtime";
@@ -43,7 +43,7 @@ forEachRuntime((runtime) => {
         let factories = 0;
         let authoredCleanup = 0;
         let pending: Turn<{ approved: boolean }, Request> | undefined;
-        const guest = createIteratorGuest(() => {
+        const guest = createScopedGuest(() => {
           factories++;
           return (function* () {
             const reservation = yield* reserve();
@@ -114,6 +114,7 @@ forEachRuntime((runtime) => {
         expect(pending).toEqual({
           kind: "suspended",
           request: { kind: "approval", reservation: "reservation-1" },
+          scope: { scopeId: "root", frameId: "root/body:-1", phase: "body", critical: undefined },
         });
         let cancellation: Promise<void> | undefined;
         if (stop === "native-cancel") {
@@ -144,7 +145,7 @@ forEachRuntime((runtime) => {
     it("can dispose before first advancement without constructing the authored iterator", async () => {
       const peer = createProtocolRig();
       let created = 0;
-      const guest = createIteratorGuest(() => {
+      const guest = createScopedGuest(() => {
         created++;
         return (function* () {
           return yield* reserve();
@@ -169,7 +170,7 @@ forEachRuntime((runtime) => {
 
     it("advances authored finally only through explicit resume and preserves its inferred result", async () => {
       const peer = createProtocolRig();
-      const guest = createIteratorGuest(function* () {
+      const guest = createScopedGuest(function* () {
         const reservation = yield* reserve();
         try {
           const approved = yield* approve(reservation);

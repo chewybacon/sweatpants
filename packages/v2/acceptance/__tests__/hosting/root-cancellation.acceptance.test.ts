@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { createRecovery, type AttemptGrant } from "@sweatpan.ts/durable";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createNotificationRig, createProtocolRig } from "@sweatpan.ts/testing";
@@ -42,22 +42,21 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         matches: isDeepStrictEqual,
         *acquire() {
           // This is nested lexical cleanup, not yet an independently scheduled child task.
-          return createIteratorGuest(function* () {
+          return createScopedGuest(function* (scope) {
             yield* ask("reserve");
-            try {
-              try {
-                return { approval: yield* ask("approve") };
-              } finally {
+            yield* scope.ensure(function* () {
+              yield* ask("audit");
+            });
+            yield* scope.ensure(function* () {
+              yield* ask("release");
+            });
+            return yield* scope.scoped(function* (child) {
+              yield* child.ensure(function* () {
                 cleanupVisits++;
                 yield* ask("child-close");
-              }
-            } finally {
-              try {
-                yield* ask("release");
-              } finally {
-                yield* ask("audit");
-              }
-            }
+              });
+              return { approval: yield* ask("approve") };
+            });
           });
         },
       });

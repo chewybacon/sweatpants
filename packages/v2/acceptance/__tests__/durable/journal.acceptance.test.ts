@@ -10,7 +10,7 @@ import {
 } from "@sweatpan.ts/durable";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
-import { createIteratorGuest, type Guest } from "@sweatpan.ts/execution";
+import { createScopedGuest, type Guest } from "@sweatpan.ts/execution";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -205,7 +205,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             program: "race",
             matches: isDeepStrictEqual,
             *acquire() {
-              const guest = createIteratorGuest(function* () {
+              const guest = createScopedGuest(function* () {
                 yield "question";
                 return 1;
               });
@@ -255,7 +255,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             program: "anchor",
             matches: isDeepStrictEqual,
             *acquire() {
-              return createIteratorGuest(function* () {
+              return createScopedGuest(function* () {
                 yield { id: "request" };
                 yield { id: "next" };
                 return 1;

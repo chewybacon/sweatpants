@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { createRecovery, type ResolutionGrant } from "@sweatpan.ts/durable";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createProtocolRig } from "@sweatpan.ts/testing";
@@ -41,7 +41,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         program: "approval",
         matches: isDeepStrictEqual,
         *acquire() {
-          const guest = createIteratorGuest(function* () {
+          const guest = createScopedGuest(function* () {
             const ticket = external ? yield* ask({ kind: "register" }) : "local";
             try {
               const approval = yield* ask({ kind: "approve", ticket });

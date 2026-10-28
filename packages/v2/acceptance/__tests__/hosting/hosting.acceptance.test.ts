@@ -7,7 +7,7 @@ import {
   type Attempts,
   type RetrySafety,
 } from "@sweatpan.ts/durable";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createProtocolRig, createNotificationRig } from "@sweatpan.ts/testing";
@@ -76,7 +76,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         program: "reservation",
         matches: isDeepStrictEqual,
         *acquire() {
-          const guest = createIteratorGuest(function* () {
+          const guest = createScopedGuest(function* () {
             const reservation: unknown = yield "reserve";
             if (typeof reservation !== "string") {
               throw new Error("Expected reservation");

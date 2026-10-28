@@ -241,7 +241,8 @@ including executing attempts. Owned-call journeys now use this evaluator. A chil
 owned by cleanup is joined without revoking its body merely because the parent
 was cancelled. Independently cancelling such a cleanup child still requires an
 explicit outcome reconciliation policy; settlement rejects instead of inventing a
-domain failure. The raw iterator evaluator retains its JavaScript finally limitation.
+domain failure. Cancellation-sensitive TypeScript cleanup uses registered ensure
+callbacks; arbitrary finally blocks in abandoned bodies do not run.
 
 Parent cancellation fences live body attempts, but does not yet publish child abort
 notifications through the parent's notification middleware. Losing or omitting those

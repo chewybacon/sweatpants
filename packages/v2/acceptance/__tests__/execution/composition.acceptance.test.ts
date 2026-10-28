@@ -5,7 +5,7 @@ import {
   type OperationMiddleware,
   type Work,
 } from "@standard-durability/core";
-import { createIteratorGuest, type Guest, type GuestWork, type Turn } from "@sweatpan.ts/execution";
+import { createScopedGuest, type Guest, type GuestWork, type Turn } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -33,7 +33,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function prepare<R, Q>(work: Work<R, Q>): GuestWork<R, Q, Y> {
           const acquire: GuestWork<R, Q, Y> = function* () {
             const id = ++acquired;
-            const raw = createIteratorGuest(work);
+            const raw = createScopedGuest(work);
             const guest: Guest<R, Q, Y> = raw;
             // Physical ownership stays with this scope, even if a wrapper replaces close.
             yield* runtime.composition.ensure(function* () {
@@ -99,7 +99,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const one = yield* first.start();
           const two = yield* second.start();
           expectTypeOf(one).toEqualTypeOf<Turn<{ text: string; length: number }, { id: string }>>();
-          expect(one).toEqual({ kind: "suspended", request: { id: "document" } });
+          expect(one).toEqual({
+            kind: "suspended",
+            request: { id: "document" },
+            scope: { scopeId: "root", frameId: "root/body:-1", phase: "body", critical: undefined },
+          });
           expect(two).toEqual(one);
           if (finish === "park") {
             yield* first.close();

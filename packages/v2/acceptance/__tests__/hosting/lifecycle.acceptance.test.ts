@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createRecovery } from "@sweatpan.ts/durable";
-import { createIteratorGuest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       program: "resource-session",
       matches: isDeepStrictEqual,
       *acquire() {
-        return createIteratorGuest(function* () {
+        return createScopedGuest(function* () {
           yield "session";
           return "completed";
         });

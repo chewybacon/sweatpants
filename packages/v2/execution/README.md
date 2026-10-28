@@ -4,7 +4,7 @@ An authored computation yields domain requests. A Guest advances that computatio
 through native operations and returns Turn data. The native runner must execute
 the advancement operation, not delegate directly into the authored iterator.
 
-`createIteratorGuest(work)` is lazy: neither construction nor acquisition invokes
+`createScopedGuest(work)` is lazy: neither construction nor acquisition invokes
 work. `start()` creates and first advances its iterator; `resume(outcome)` advances
 only a suspended iterator. Completion and advancement failure are terminal.
 Commands are checked when their operations execute. Synchronous reentrant
@@ -23,7 +23,7 @@ The iterator body must not acquire physical resources whose only release path is
 its authored finally: disposal deliberately does not execute that code.
 
 The live Guest/GuestWork contracts are generic in result, request and native yield.
-The iterator driver needs no native yield protocol. Its reply values start unknown;
+The TypeScript evaluator needs no native yield protocol. Its reply values start unknown;
 typed author declarations and domain validation must establish reply correlation.
 This layer does not validate arbitrary wire bytes, accept outcomes durably, or
 implement durable acceptance, replay or checkpoint capture.
@@ -38,18 +38,16 @@ ownership checks, not crash-recovery or durable cancellation evidence.
 ## Logical root cancellation
 
 `Guest.cancel` is optional evaluator support; it returns the same `Turn` union as
-start/resume. The iterator implementation requires a suspended return-capable
-iterator and advances `return()` once. Yielded finally requests become normal
-suspended turns. Repeated cancellation preserves the current cleanup boundary;
-resume supplies cleanup outcomes. Completion remains `cancelled` even when an
-authored finally overrides the return value. Unhandled cleanup exceptions produce
-a cancelled turn with a diagnostic failure string, not successful cleanup.
+start/resume. The TypeScript evaluator abandons unprotected body iterators and
+runs registered `scope.ensure` cleanup in reverse order. Cleanup requests become
+suspended turns; resume supplies their outcomes. Repeated cancellation preserves
+cleanup already in progress, and completion remains cancelled after it drains.
+Cleanup failures are retained as diagnostic data while remaining cleanup is attempted.
 
-Ordinary `catch` does not receive a synthetic domain error on cancellation. Native
-JavaScript nested-finally semantics apply, including continuation into outer
-finally blocks after an inner failure. This does not yet implement registered
-cleanup stacks, independently scheduled child tasks, or externally targeted nested
-scopes. Physical close continues to discard without logical unwinding.
+Ordinary catch does not receive a synthetic domain error on cancellation. Arbitrary
+JavaScript finally blocks in abandoned body iterators do not run. Register logical
+obligations with ensure; normal JavaScript finally behavior during ordinary return
+or exception propagation remains supported. Physical close discards without unwinding.
 
 ## Scoped execution drivers
 
@@ -75,7 +73,7 @@ to `operations.close()` remain interceptable. Guest close must remain idempotent
 ## Registered logical scopes
 
 `createScopedGuest(scope => operation)` is an evaluator driver implementing the
-same Guest protocol as the raw iterator driver. The returned Result and domain
+shared Guest protocol used by other evaluators, including Lua. The returned Result and domain
 Request types are inferred; its private scope instructions are consumed internally.
 Native Effect/Effection types do not enter author signatures.
 
@@ -104,7 +102,7 @@ Root cancellation discards suspended body frames and runs registered cleanup. It
 preserves a cleanup iterator already running, including nested work owned by that
 cleanup. Repeated cancellation cannot reset that cursor. Cleanup errors drain the
 remaining frames; cancellation retains diagnostic failures. Without cancellation,
-uncaught failure is thrown after drainage, as with the existing iterator driver;
+uncaught failure is thrown after drainage;
 a persisted failed terminal journal result is not added here.
 
 Physical `close` drops live frames without invoking logical cleanup. This is not
@@ -165,3 +163,44 @@ The evaluator owns snapshot decoding, source/runtime compatibility and partial
 restore cleanup. The durable host owns accepted history, checkpoint anchoring,
 replay policy and the returned Guest's lifetime. There is no second execution
 interface or mandatory capture method on Guest.
+
+## Internal continuation mechanics
+
+The scoped evaluator composes three internal mechanisms; none adds a public API:
+
+- `continuation.ts` steps an iterator with a reply or failure and returns a yield or
+  an exit Outcome. It knows nothing about logical scopes or durable authority.
+- `scope-frame.ts` constructs lazy frames and owns per-frame exit operations:
+  provisional body results, LIFO cleanup selection and ordered failure aggregation.
+  A frame settles only after its registered cleanup has drained.
+- `scope-stack.ts` owns the live frame array, evaluator-local instruction tokens,
+  replay-stable child numbering and boundary identities, and the cleanup/critical
+  protection counts. Continuing exit either selects cleanup or settles into the
+  parent. Discarding the stack never runs logical cleanup.
+
+`scoped-guest.ts` owns the incarnation lifecycle, root cancellation reason and last
+returned boundary. Its advancement loop composes stepping and scope exit until a
+request or terminal result is available. An instruction-handling failure exits the
+current frame just like an iterator failure, so remaining cleanup is still attempted.
+
+These live ownership frames are not a capability graph or durable history. Scoped
+APIs and middleware compose access to capabilities; sharing a capability does not
+make it an owned child. The journal independently decides whether a reply may be
+accepted. A live continuation, frame identity or reconstructed stack grants no
+permission to commit an external result. Replay reconstructs these frames rather
+than serializing their JavaScript iterators or cleanup closures.
+
+Existing hosted logical-scope, critical-region and owned-child journeys exercise
+these mechanisms through both native runtimes, including replay, cleanup failure,
+logical cancellation and physical disposal. The extraction introduces no new
+checkpoint format, continuation-capture API, scheduler or dispatch framework.
+
+## Migrating raw iterator programs
+
+TypeScript programs use createScopedGuest, including programs that ignore its scope
+argument. The former createIteratorGuest evaluator is retired. Move cancellation-sensitive
+finally obligations into scope.ensure; there is no compatibility mode for cancellation
+through iterator.return(). Scoped suspensions also carry frame identity evidence, so
+old raw-iterator histories are not replay-compatible with the new evaluator. Pin a
+new program version when migrating persisted executions; this reconstruction does
+not provide a stored-history migration.

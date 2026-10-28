@@ -17,8 +17,8 @@ export interface Guest<Result, Request, Y, Value = unknown, Error = unknown> {
    *
    * @remarks Cleanup support is evaluator-specific. The scoped driver drains registered
    * {@link LogicalScope.ensure} callbacks and preserves cleanup already in progress.
-   * The raw iterator driver cannot guarantee arbitrary JavaScript finally drainage
-   * when first cancelled while already suspended inside finally.
+   * Cancellation discards unprotected body iterators without running their arbitrary
+   * JavaScript finally blocks; register logical obligations with ensure.
    */
   cancel?(reason: string): Operation<Turn<Result, Request>, Y>;
   /**
