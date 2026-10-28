@@ -11,12 +11,12 @@ import type {
  * Prepare cancellation at an exact boundary. Cleanup and critical regions keep authority;
  * a body-owned child delays parent unwinding. No evaluator or storage is invoked.
  */
-export function requestJournalCancellation<R, Q, V, E, S>(
-  snapshot: JournalSnapshot<R, Q, V, E, S>,
+export function requestJournalCancellation<R, Q, S>(
+  snapshot: JournalSnapshot<R, Q, S>,
   requestId: string,
   reason: string,
   attempt?: AttemptGrant,
-): CancellationTransition<R, Q, V, E, S> {
+): CancellationTransition<R, Q, S> {
   const prior =
     snapshot.cancellation ??
     (snapshot.status === "running" ? snapshot.cancellationRequested : undefined);
@@ -32,7 +32,7 @@ export function requestJournalCancellation<R, Q, V, E, S>(
   const protectedBoundary =
     snapshot.pending.scope?.phase === "cleanup" || snapshot.pending.scope?.critical !== undefined;
   const cancellation: RootCancellation<Q> = {
-    position: snapshot.history.length,
+    position: snapshot.frontier.position,
     requestId,
     request: snapshot.pending.request,
     scope: snapshot.pending.scope,
@@ -62,13 +62,13 @@ export function requestJournalCancellation<R, Q, V, E, S>(
  * result already projected to the parent's Outcome; projection executes outside this transition.
  */
 export function settleOwnedChild<R, Q, V, E, S>(
-  parent: JournalSnapshot<R, Q, V, E, S>,
+  parent: JournalSnapshot<R, Q, S>,
   link: ChildLink,
   result:
     | { readonly status: "completed" }
     | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string },
   outcome?: Outcome<V, E>,
-): JournalSnapshot<R, Q, V, E, S> {
+): JournalSnapshot<R, Q, S> {
   if (
     parent.status !== "running" ||
     parent.child?.childId !== link.childId ||
@@ -88,7 +88,7 @@ export function settleOwnedChild<R, Q, V, E, S>(
       );
     }
     const cancellation = cancellationRequested ?? {
-      position: parent.history.length,
+      position: parent.frontier.position,
       requestId: link.requestId,
       request: pending.request,
       scope: pending.scope,
@@ -110,15 +110,6 @@ export function settleOwnedChild<R, Q, V, E, S>(
   return {
     ...rest,
     revision,
-    history: [
-      ...parent.history,
-      {
-        sequence: pending.sequence,
-        receipt: link.requestId,
-        request: pending.request,
-        scope: pending.scope,
-        outcome,
-      },
-    ],
+    frontier: { position: pending.sequence + 1, receipt: link.requestId },
   };
 }

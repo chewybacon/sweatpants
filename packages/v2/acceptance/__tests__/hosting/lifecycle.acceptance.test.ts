@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
@@ -42,7 +43,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return {
       ...execution,
       async assertRecoverable() {
-        const state = await runtime.start(() => journal.read()).result;
+        const state = await runtime.start(() => readJournal(journal)).result;
         expect(state.status).toBe("running");
         expect(state.history).toEqual([]);
         expect((await runtime.start(() => host.operations.run()).result).state).toBe("occupied");

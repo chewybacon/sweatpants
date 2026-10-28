@@ -15,19 +15,23 @@ ownership are read after the lock is acquired, so cancellation or replacement th
 wins during resolution fences the later settlement. Encoding and the decision do
 not suspend inside the transaction. Errors roll back all affected records.
 
-Schema version 1 stores one encoded execution header (including authority, links
-and queued stops) per execution and separate append-only accepted history rows.
-A transaction lazily decodes each touched execution and its history once, caches
-that decoded view for the decision, then encodes only dirty headers and new history
-entries. It does not rewrite historical payloads or round-trip acknowledgements.
-Child completion and parent acceptance share one SQLite transaction; cancellation
-fences the eligible descendant chain before commit. Ownership across different
-databases is not supported.
+The experimental schema has execution heads, per-request authority rows, and
+append-only accepted history indexed by sequence and receipt. There is no schema
+versioning or backward compatibility; discard databases from older development
+schemas. Current heads contain frontier metadata, not history or growing maps.
+Transactions read only the heads and exact request/receipt rows they need. Duplicate
+acknowledgements do not write. Child completion and parent acceptance share one
+transaction; cancellation fences the active descendant chain before commit.
+Ownership across different databases is not supported.
 
-The schema/format checks are storage-boundary checks, not recursive validation of
-trusted domain values. Unknown versions/formats reject. There is no migration or
-multi-format reader registry yet. Changing writers without support for previous
-stored formats makes those rows unreadable.
+Journal.read returns metadata and a history reader pinned to its accepted frontier.
+History pages run outside write transactions and cannot include later appends.
+Replay reads pages from zero; checkpoint middleware reads an anchor when needed and
+only the suffix. A concurrent mutation makes the eventual activation write stale.
+Receipt uniqueness is enforced by storage; recovery checks sequence continuity and
+request/scope correspondence as entries are consumed. Format checks happen at the
+storage boundary without recursive domain validation. There is no multi-format
+reader registry; changing writers requires an explicit representation decision.
 
 ## Serializer
 
@@ -46,10 +50,14 @@ retained occupancy, duplicate acknowledgement, unsupported format rejection,
 parent/child projection and encoding rollback, queued pre-boundary cancellation,
 protected cleanup/critical scopes, and reopened Lua replay/restore/fallback.
 
-Reads currently use BEGIN IMMEDIATE too. A touched execution's full history is
-loaded, and its authority maps are encoded with its header; historical rows are
-append-only, but reads and header size can still grow with history/attempt count.
-Selective authority queries and read-only transaction modes remain optimizations.
+Authority transactions currently use BEGIN IMMEDIATE, including head reads. History
+range reads do not acquire that write lock. The Node driver is synchronous, while
+JournalBackend permits adapters to suspend on native async database operations.
+No Promise wrapping pretends to make DatabaseSync nonblocking. Future adapters must
+preserve isolation/absence checks and rollback across suspension; whole-tree preload
+is not required by the port. Native database errors propagate without implicit retries.
+
 No claim is made about OS-crash survival, disk faults, cross-process concurrency,
-exactly-once provider IO, or cross-database atomicity. SQLite lock errors propagate;
-the adapter does not automatically retry provider effects.
+exactly-once provider IO, or cross-database atomicity. Retained authority and history
+still consume space; large individual values/checkpoints remain large. No pruning or
+historical branching policy is implied by bounded access.

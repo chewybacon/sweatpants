@@ -1,5 +1,8 @@
 import type { Operation } from "@standard-durability/core";
 import type {
+  Accepted,
+  AcceptedHistory,
+  JournalRecords,
   JournalBackend,
   JournalBindingOptions,
   OwnedJournal,
@@ -9,52 +12,90 @@ import type { ChildBinding } from "./types.ts";
 import { createJournalCommands } from "./journal-commands.ts";
 import { createJournalTree } from "./journal-tree.ts";
 
-function finish<T>(operation: Operation<T, never>): T {
-  const step = operation[Symbol.iterator]().next();
-  if (!step.done) {
-    throw new Error("Journal decision must not suspend");
-  }
-  return step.value;
-}
-
 /** Bind typed journal capabilities to an adapter transaction port with fresh projection bindings. */
 export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
   options: JournalBindingOptions,
   backend: JournalBackend<Y>,
   identity: string,
 ): OwnedJournal<R, Q, V, E, S, Y> {
-  let bindings = new Map<string, ChildBinding>();
+  const bindings = new Map<string, ChildBinding>();
   function bind<Result, Request, Value, Failure, State>(
     id: string,
     program: string,
   ): OwnedJournal<Result, Request, Value, Failure, State, Y> {
-    function* invoke<T>(work: (tree: ReturnType<typeof createJournalTree>) => T): Operation<T, Y> {
-      let staged = bindings;
-      const result = yield* backend.transact((records) => {
-        staged = new Map(bindings);
-        if (records.get(id)?.snapshot.program !== program) {
+    function* invoke<T>(
+      work: (
+        tree: ReturnType<typeof createJournalTree<Y>>,
+        records: JournalRecords<Y>,
+      ) => Operation<T, Y>,
+    ): Operation<T, Y> {
+      const staged = new Map<string, ChildBinding>();
+      const result = yield* backend.transact(function* (records) {
+        if ((yield* records.get(id))?.snapshot.program !== program) {
           throw new Error("Journal program mismatch");
         }
-        return work(createJournalTree(options, records, staged));
+        const tree = createJournalTree(options, records, {
+          get: (key) => staged.get(key) ?? bindings.get(key),
+          has: (key) => staged.has(key) || bindings.has(key),
+          set: (key, binding) => {
+            staged.set(key, binding);
+          },
+        });
+        return yield* work(tree, records);
       });
-      bindings = staged;
+      for (const [key, binding] of staged) {
+        bindings.set(key, binding);
+      }
       return result;
     }
     function* command<T>(
       work: (
-        journal: ReturnType<typeof createJournalCommands<Result, Request, Value, Failure, State>>,
-      ) => Operation<T, never>,
+        journal: ReturnType<
+          typeof createJournalCommands<Result, Request, Value, Failure, State, Y>
+        >,
+      ) => Operation<T, Y>,
     ): Operation<T, Y> {
-      return yield* invoke((tree) =>
-        finish(
-          work(createJournalCommands<Result, Request, Value, Failure, State>(options, tree, id)),
+      return yield* invoke((tree, records) =>
+        work(
+          createJournalCommands<Result, Request, Value, Failure, State, Y>(
+            options,
+            tree,
+            records,
+            id,
+          ),
         ),
       );
     }
     return {
       id,
       *read() {
-        return yield* command((journal) => journal.read());
+        const snapshot = yield* command((journal) => journal.read());
+        const end = Object.freeze({ ...snapshot.frontier });
+        const history: AcceptedHistory<Request, Value, Failure, Y> = {
+          end,
+          *at(sequence) {
+            return (yield* history.read(sequence, 1))[0];
+          },
+          *read(from, limit) {
+            if (
+              !Number.isSafeInteger(from) ||
+              from < 0 ||
+              !Number.isSafeInteger(limit) ||
+              limit < 1
+            ) {
+              throw new Error("Invalid history range");
+            }
+            if (from >= end.position) {
+              return [];
+            }
+            return (yield* backend.history(id, from, end.position, limit)) as readonly Accepted<
+              Request,
+              Value,
+              Failure
+            >[];
+          },
+        };
+        return { ...snapshot, history };
       },
       *park(...args) {
         return yield* command((journal) => journal.park(...args));

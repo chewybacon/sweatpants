@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -113,7 +114,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(parked.pending.request).toEqual({ kind: "approve", ticket: "local" });
     expect(await s.activate()).toEqual(parked);
     expect(s.counts()).toEqual({ deliveries: 0, attempts: 0, closed: 2, logicalCleanup: 0 });
-    expect((await run(() => s.journal.read())).history).toEqual([]);
+    expect((await run(() => readJournal(s.journal))).history).toEqual([]);
     const outcome = { ok: true, value: "yes" } as const;
     const receipt = await run(() => s.host.operations.answer(parked.grant, outcome));
     expect(receipt.entry.request).toEqual(parked.pending.request);
@@ -177,7 +178,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(
           await run(() => s.host.operations.invalidate(parked.grant, "another reason")),
         ).toEqual({ state: "invalidated", reason: "scope expired" });
-        expect((await run(() => s.journal.read())).history).toEqual([]);
+        expect((await run(() => readJournal(s.journal))).history).toEqual([]);
         expect(s.counts().logicalCleanup).toBe(0); // Fencing is not workflow unwinding.
       }
       expect(s.counts().attempts).toBe(0);
@@ -217,7 +218,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       throw new Error("Expected participant wait");
     }
     expect(parked.pending.request).toEqual({ kind: "approve", ticket: "ticket-1" });
-    expect((await run(() => s.journal.read())).history).toHaveLength(1);
+    expect((await run(() => readJournal(s.journal))).history).toHaveLength(1);
     expect(await s.activate()).toEqual(parked);
     await run(() => s.host.operations.answer(parked.grant, { ok: true, value: "approved" }));
     expect(await s.activate()).toEqual({

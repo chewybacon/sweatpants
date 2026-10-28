@@ -163,8 +163,8 @@ not infer acquisition completion from an interrupted host or an elapsed deadline
 
 Acceptance, attempt claims/replacement/revocation, participant registration/replies,
 root cancellation, parking and completion use the same synchronous internal
-transaction executor. Snapshot, authority maps and queued stop intent are staged
-and cloned with the acknowledgement before publication. A failed decision or clone
+transaction executor. Touched heads, per-request authority, accepted appends and queued stop intent are
+staged and cloned with the acknowledgement before publication. A failed decision or clone
 leaves those records unchanged. Eligibility and settlement have no intervening
 inspect operation, scheduling boundary or storage round trip.
 
@@ -190,9 +190,10 @@ shared journal binding owns authority and ownership decisions; this adapter only
 owns retained data and isolated publication. Its legacy Memory\* type names re-export
 the shared contracts for source compatibility.
 
-The memory executor still clones the whole tree to stage and publish writes; its
-cost grows with retained tree history. The SQLite adapter uses the same decisions
-but loads touched executions and appends accepted rows separately. Hosted attempt,
+The memory executor stages only touched records and appends. It no longer clones
+the whole tree. Journal reads return current metadata and a bounded history reader;
+recovery explicitly fetches pages up to the captured frontier. The SQLite adapter
+uses the same decisions with indexed request/receipt reads and accepted ranges. Hosted attempt,
 owned-child and Lua reopening evidence now enters through SQLite. Memory continues
 to serve the other in-process composition and recovery journeys. Cross-domain
 ownership needs a separate protocol.

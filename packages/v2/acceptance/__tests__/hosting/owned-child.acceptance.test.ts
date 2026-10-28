@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -260,7 +261,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         state: "completed",
         value: ["approved", "approved again"],
       });
-      const snapshot = await start(() => s.parent.read()).result;
+      const snapshot = await start(() => readJournal(s.parent)).result;
       expect(snapshot.history.map((entry) => entry.request)).toEqual([
         "reserve",
         "call:0",
@@ -284,7 +285,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const cancel = () =>
           start(() => s.parent.cancellation.request(link.requestId, "deadline")).result;
         await cancel();
-        const blocked = await start(() => s.parent.read()).result;
+        const blocked = await start(() => readJournal(s.parent)).result;
         expect(blocked).toMatchObject({
           status: "running",
           cancellationRequested: { reason: "deadline" },
@@ -321,7 +322,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         };
         expect(await s.finish()).toEqual(expected);
         expect(await s.run().result).toEqual(expected);
-        const snapshot = await start(() => s.parent.read()).result;
+        const snapshot = await start(() => readJournal(s.parent)).result;
         expect(snapshot.history.map((entry) => entry.request)).toEqual(["reserve", "release"]);
         expect(snapshot).not.toHaveProperty("cancellationRequested");
       });
@@ -335,7 +336,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.run().result;
       const cleanup = s.waits.get(link.childId)!;
       expect(cleanup.request).toBe("child-close");
-      const before = await start(() => s.children.get(link.childId)!.journal.read()).result;
+      const before = await start(() => readJournal(s.children.get(link.childId)!.journal)).result;
       expect(before.status === "running" && before.pending?.scope?.phase).toBe("cleanup");
       await start(() => s.parent.cancellation.request(link.requestId, "deadline")).result;
       await s.run().result;
@@ -343,7 +344,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve"]);
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
-      const after = await start(() => s.children.get(link.childId)!.journal.read()).result;
+      const after = await start(() => readJournal(s.children.get(link.childId)!.journal)).result;
       expect(after.history.map((entry) => entry.request)).toEqual(["approval", "child-close"]);
     });
 
@@ -356,7 +357,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.run().result;
       expect(s.waits.get(link.childId)!.grant).toEqual(approval);
       expect(
-        (await start(() => s.children.get(link.childId)!.journal.read()).result).cancellation,
+        (await start(() => readJournal(s.children.get(link.childId)!.journal)).result).cancellation,
       ).toBeUndefined();
       await s.answer(link.childId);
       await s.run().result;
@@ -373,7 +374,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await Promise.race([s.peer.waitForRequests(2), live.result]);
       expect(s.peer.requests[1]!.id).toBe("child-close");
       await start(() => s.parent.cancellation.request(link.requestId, "deadline")).result;
-      const snapshot = await start(() => s.children.get(link.childId)!.journal.read()).result;
+      const snapshot = await start(() => readJournal(s.children.get(link.childId)!.journal)).result;
       expect(snapshot.cancellation?.attempt).toBeUndefined();
       s.peer.reply("child-close", { status: 200, body: "closed" });
       await Promise.race([s.peer.waitForRequests(3), live.result]);
@@ -387,19 +388,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.begin();
       const link = s.links[0]!;
       const approval = s.waits.get(link.childId)!.grant;
-      const before = await start(() => s.parent.read()).result;
+      const before = await start(() => readJournal(s.parent)).result;
       expect(before.status === "running" && before.pending?.scope?.critical).toBeTruthy();
       await start(() => s.parent.cancellation.request(link.requestId, "deadline")).result;
       await s.run().result;
       expect(s.waits.get(link.childId)!.grant).toEqual(approval);
       expect(
-        (await start(() => s.children.get(link.childId)!.journal.read()).result).cancellation,
+        (await start(() => readJournal(s.children.get(link.childId)!.journal)).result).cancellation,
       ).toBeUndefined();
       await s.answer(link.childId);
       await s.run().result;
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
-      const after = await start(() => s.parent.read()).result;
+      const after = await start(() => readJournal(s.parent)).result;
       expect(after.history.map((entry) => entry.request)).toEqual(["reserve", "call:0", "release"]);
     });
 
@@ -429,7 +430,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }),
       ).result;
       expect(historical.link).toEqual(link);
-      expect((await start(() => historical.journal.read()).result).status).toBe("completed");
+      expect((await start(() => readJournal(historical.journal)).result).status).toBe("completed");
       expect(
         (
           await start(() =>
@@ -480,13 +481,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await s.answer(link.childId);
         await s.run().result;
         await s.answer(link.childId, "closed");
-        const parentBefore = await start(() => s.parent.read()).result;
-        const childBefore = await start(() => child.journal.read()).result;
+        const parentBefore = await start(() => readJournal(s.parent)).result;
+        const childBefore = await start(() => readJournal(child.journal)).result;
         s.rejectProjection = failure === "throw";
         s.unencodableProjection = failure === "encode";
         await expect(s.run().result).rejects.toBeDefined();
-        expect(await start(() => s.parent.read()).result).toEqual(parentBefore);
-        expect(await start(() => child.journal.read()).result).toEqual(childBefore);
+        expect(await start(() => readJournal(s.parent)).result).toEqual(parentBefore);
+        expect(await start(() => readJournal(child.journal)).result).toEqual(childBefore);
         s.rejectProjection = false;
         s.unencodableProjection = false;
         s.reopen();
@@ -565,7 +566,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await run();
       const leaf = journals.get(2)!;
       const late = waits.get(2)!;
-      const before = await start(() => root.read()).result;
+      const before = await start(() => readJournal(root)).result;
       if (before.status !== "running" || !before.pending) {
         throw new Error("Expected owned call");
       }
@@ -584,10 +585,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       expect(await run()).toEqual({ state: "cancelled", reason: "deadline" });
       for (const journal of journals.values()) {
-        expect((await start(() => journal.read()).result).status).toBe("cancelled");
+        expect((await start(() => readJournal(journal)).result).status).toBe("cancelled");
       }
       // A retained older handle observes the same terminal record as reacquired handles.
-      expect((await start(() => leaf.read()).result).status).toBe("cancelled");
+      expect((await start(() => readJournal(leaf)).result).status).toBe("cancelled");
     });
 
     it("fences a live child's late settlement when parent cancellation has no abort notification", async () => {

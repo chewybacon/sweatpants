@@ -1,37 +1,42 @@
+import type { Operation } from "@standard-durability/core";
 import { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";
 import type {
-  RootCancellation,
+  Accepted,
   AttemptState,
-  Journal,
   JournalSnapshot,
-  PendingRequest,
   AttemptGrant,
-  InteractionRegistration,
   ResolutionGrant,
   JournalBindingOptions,
+  JournalRecords,
   OwnedJournal,
+  AcceptanceTransition,
+  RootCancellation,
 } from "./contracts.ts";
 import { createJournalTree } from "./journal-tree.ts";
-export function createJournalCommands<R, Q, V, E, S>(
+
+/** Commands load only current state and the request facts needed by their decision. */
+export function createJournalCommands<R, Q, V, E, S, Y>(
   options: JournalBindingOptions,
-  tree: ReturnType<typeof createJournalTree>,
+  tree: ReturnType<typeof createJournalTree<Y>>,
+  records: JournalRecords<Y>,
   identity: string,
-): Omit<OwnedJournal<R, Q, V, E, S>, "ensureChild"> {
-  const read = () => tree.read<R, Q, V, E, S>(identity);
-  function commit<T>(
-    snapshot: JournalSnapshot<R, Q, V, E, S>,
-    result: T,
-    changes: {
-      grants?: Map<string, AttemptGrant>;
-      invalidated?: Map<string, string>;
-      registrations?: Map<string, InteractionRegistration>;
-      queuedStop?: string;
-    } = {},
-  ): T {
-    return tree.commit(identity, { ...read(), ...changes, snapshot }, result);
+): Omit<OwnedJournal<R, Q, V, E, S, Y>, "ensureChild" | "read"> & {
+  read(): Operation<JournalSnapshot<R, Q, S>, Y>;
+} {
+  const read = () => tree.read<R, Q, S>(identity);
+  function* commit<T>(snapshot: JournalSnapshot<R, Q, S>, result: T): Operation<T, Y> {
+    const record = yield* read();
+    return yield* tree.commit(identity, { ...record, snapshot }, result);
   }
-  function requestCancellation(requestId: string, reason: string): RootCancellation<Q> {
-    return tree.cancel(identity, requestId, reason) as RootCancellation<Q>;
+  function* accepted(receipt: string) {
+    return (yield* records.accepted(identity, receipt)) as Accepted<Q, V, E> | undefined;
+  }
+  function* publish(decision: AcceptanceTransition<R, Q, V, E, S>) {
+    if (!decision.acceptance.duplicate) {
+      yield* records.append(identity, decision.acceptance.entry);
+      yield* commit(decision.snapshot, undefined);
+    }
+    return decision.acceptance;
   }
   function sameGrant(left: AttemptGrant, right: AttemptGrant) {
     return (
@@ -40,31 +45,29 @@ export function createJournalCommands<R, Q, V, E, S>(
       left.retrySafety === right.retrySafety
     );
   }
-  function registered(grant: ResolutionGrant) {
-    const { registrations } = read();
-    const registration = registrations.get(grant.requestId);
+  function* registered(grant: ResolutionGrant) {
+    const request = (yield* records.request(identity, grant.requestId)) ?? {};
+    const registration = request.registration;
     if (!registration || registration.grant.resolutionId !== grant.resolutionId) {
       throw new Error("Unknown resolution authority");
     }
-    return registration;
+    return { request, registration };
   }
-  function inspect(grant: AttemptGrant): AttemptState<Q, V, E> {
-    const { snapshot: state, grants, invalidated } = read();
-    const currentGrant = grants.get(grant.requestId);
-    if (!currentGrant || !sameGrant(currentGrant, grant)) {
+  function* inspect(grant: AttemptGrant): Operation<AttemptState<Q, V, E>, Y> {
+    const request = yield* records.request(identity, grant.requestId);
+    if (!request?.grant || !sameGrant(request.grant, grant)) {
       throw new Error("Stale attempt grant");
     }
-    const reason = invalidated.get(grant.attemptId);
-    if (reason !== undefined) {
-      return { state: "invalidated", reason };
+    if (request.revoked !== undefined) {
+      return { state: "invalidated", reason: request.revoked };
     }
-    const prior = state.history.find((entry) => entry.receipt === grant.requestId);
+    const prior = yield* accepted(grant.requestId);
     return prior
       ? { state: "accepted", acceptance: { entry: prior, duplicate: true } }
       : { state: "active" };
   }
-  function current(revision: number) {
-    const { snapshot: state } = read();
+  function* current(revision: number) {
+    const { snapshot: state } = yield* read();
     if (revision !== state.revision) {
       throw new Error("Journal revision conflict");
     }
@@ -73,19 +76,19 @@ export function createJournalCommands<R, Q, V, E, S>(
     }
     return state;
   }
-  const accept: Journal<R, Q, V, E, S, never>["accept"] = function* (id, outcome) {
-    const { snapshot: state } = read();
-    const decision = acceptJournalOutcome(state, id, outcome, options.equals);
-    return commit(decision.snapshot, decision.acceptance);
+  const accept: OwnedJournal<R, Q, V, E, S, Y>["accept"] = function* (id, outcome) {
+    const { snapshot } = yield* read();
+    const prior = yield* accepted(id);
+    return yield* publish(acceptJournalOutcome(snapshot, id, outcome, options.equals, prior));
   };
-  const journal: Omit<OwnedJournal<R, Q, V, E, S>, "ensureChild"> = {
+  return {
     id: identity,
     cancellation: {
       *request(requestId, reason) {
-        return requestCancellation(requestId, reason);
+        return (yield* tree.cancel(identity, requestId, reason)) as RootCancellation<Q>;
       },
       *finish(revision, failure) {
-        const snapshot = current(revision);
+        const snapshot = yield* current(revision);
         if (!snapshot.cancellation || snapshot.pending) {
           throw new Error("Cancellation completion requires drained cleanup");
         }
@@ -95,7 +98,7 @@ export function createJournalCommands<R, Q, V, E, S>(
           pending: _pending,
           ...settled
         } = snapshot;
-        commit(
+        yield* commit(
           {
             ...settled,
             revision: snapshot.revision + 1,
@@ -108,106 +111,93 @@ export function createJournalCommands<R, Q, V, E, S>(
       },
     },
     attemptControl: {
-      *inspect(grant) {
-        return inspect(grant);
-      },
+      inspect,
       *invalidate(grant, reason) {
-        const { snapshot: state, invalidated, queuedStop } = read();
-        const prior = inspect(grant);
+        const prior = yield* inspect(grant);
         if (prior.state !== "active") {
           return prior;
         }
-        return commit(
-          { ...state, revision: state.revision + 1 },
+        const request = (yield* records.request(identity, grant.requestId))!;
+        yield* records.setRequest(identity, grant.requestId, { ...request, revoked: reason });
+        const { snapshot } = yield* read();
+        return yield* commit(
+          { ...snapshot, revision: snapshot.revision + 1 },
           { state: "invalidated" as const, reason },
-          { invalidated: new Map(invalidated).set(grant.attemptId, reason), queuedStop },
         );
       },
     },
     interactions: {
       *register(requestId) {
-        const { snapshot: state, grants, registrations, queuedStop } = read();
+        const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
         if (state.child) {
           throw new Error("Owned call excludes participant registration");
         }
-        if (grants.has(requestId)) {
+        const request = (yield* records.request(identity, requestId)) ?? {};
+        if (request.grant) {
           throw new Error("Executing attempt excludes participant registration");
         }
-        const existing = registrations.get(requestId);
-        if (existing) {
-          return existing;
+        if (request.registration) {
+          return request.registration;
         }
-        const registration: InteractionRegistration = {
-          state: "waiting",
+        const registration = {
+          state: "waiting" as const,
           grant: { requestId, resolutionId: crypto.randomUUID() },
         };
-        return commit({ ...state, revision: state.revision + 1 }, registration, {
-          registrations: new Map(registrations).set(requestId, registration),
-          queuedStop,
-        });
+        yield* records.setRequest(identity, requestId, { ...request, registration });
+        return yield* commit({ ...state, revision: state.revision + 1 }, registration);
       },
       *answer(grant, outcome) {
-        const registration = registered(grant);
+        const { registration } = yield* registered(grant);
         if (registration.state === "invalidated") {
           throw new Error("Resolution authority revoked");
         }
         return yield* accept(grant.requestId, outcome);
       },
       *invalidate(grant, reason) {
-        const { snapshot: state, registrations, queuedStop } = read();
-        const registration = registered(grant);
+        const { request, registration } = yield* registered(grant);
         if (registration.state === "invalidated") {
           return { state: "invalidated", reason: registration.reason };
         }
-        const prior = state.history.find((entry) => entry.receipt === grant.requestId);
+        const prior = yield* accepted(grant.requestId);
         if (prior) {
-          return {
-            state: "accepted",
-            acceptance: { entry: prior, duplicate: true },
-          };
+          return { state: "accepted", acceptance: { entry: prior, duplicate: true } };
         }
+        const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== grant.requestId) {
           throw new Error("Stale or unknown pending request");
         }
-        return commit(
+        yield* records.setRequest(identity, grant.requestId, {
+          ...request,
+          registration: { state: "invalidated", grant: registration.grant, reason },
+        });
+        return yield* commit(
           { ...state, revision: state.revision + 1 },
           { state: "invalidated" as const, reason },
-          {
-            registrations: new Map(registrations).set(grant.requestId, {
-              state: "invalidated",
-              grant: registration.grant,
-              reason,
-            }),
-            queuedStop,
-          },
         );
       },
     },
     attempts: {
       *begin(requestId, retrySafety, replace) {
-        const { snapshot: state, grants, invalidated, registrations, queuedStop } = read();
+        const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
         if (state.child) {
           throw new Error("Owned call excludes executing attempts");
         }
-        if (registrations.has(requestId)) {
+        const request = (yield* records.request(identity, requestId)) ?? {};
+        if (request.registration) {
           throw new Error("Participant registration excludes executing attempts");
         }
-        const previous = grants.get(requestId);
-        if (previous && invalidated.has(previous.attemptId)) {
+        const previous = request.grant;
+        if (previous && request.revoked !== undefined) {
           if (replace) {
             throw new Error("Invalidated attempt cannot be replaced");
           }
-          return {
-            state: "invalidated",
-            grant: previous,
-            reason: invalidated.get(previous.attemptId)!,
-          };
+          return { state: "invalidated", grant: previous, reason: request.revoked };
         }
         if (replace) {
           if (!previous || !sameGrant(previous, replace)) {
@@ -219,32 +209,35 @@ export function createJournalCommands<R, Q, V, E, S>(
         } else if (previous) {
           return { state: "occupied", grant: previous };
         }
-        const grant: AttemptGrant = { requestId, attemptId: crypto.randomUUID(), retrySafety };
-        return commit(
+        const grant = { requestId, attemptId: crypto.randomUUID(), retrySafety };
+        yield* records.setRequest(identity, requestId, { ...request, grant });
+        return yield* commit(
           { ...state, revision: state.revision + 1 },
           { state: "granted" as const, grant },
-          { grants: new Map(grants).set(requestId, grant), queuedStop },
         );
       },
       *settle(grant, outcome) {
-        const { snapshot: state, grants, invalidated } = read();
-        // Eligibility and acceptance run synchronously with no inspect RPC or yield.
-        const decision = settleJournalAttempt(
-          state,
-          { current: grants.get(grant.requestId), revoked: invalidated.get(grant.attemptId) },
-          grant,
-          outcome,
-          options.equals,
+        const { snapshot } = yield* read();
+        const request = yield* records.request(identity, grant.requestId);
+        // All reads and publication share this transaction, including absence checks.
+        const prior = yield* accepted(grant.requestId);
+        return yield* publish(
+          settleJournalAttempt(
+            snapshot,
+            { current: request?.grant, revoked: request?.revoked },
+            grant,
+            outcome,
+            options.equals,
+            prior,
+          ),
         );
-        return commit(decision.snapshot, decision.acceptance);
       },
     },
     *read() {
-      const { snapshot: state } = read();
-      return state;
+      return (yield* read()).snapshot;
     },
     *park(revision, request, checkpoint, scope) {
-      const snapshot = current(revision);
+      const snapshot = yield* current(revision);
       if (
         snapshot.pending &&
         (!options.equals(snapshot.pending.request, request) ||
@@ -255,47 +248,47 @@ export function createJournalCommands<R, Q, V, E, S>(
       if (
         checkpoint &&
         (checkpoint.program !== snapshot.program ||
-          checkpoint.position !== snapshot.history.length ||
-          checkpoint.receipt !==
-            (snapshot.history.length
-              ? snapshot.history[snapshot.history.length - 1]!.receipt
-              : null))
+          checkpoint.position !== snapshot.frontier.position ||
+          checkpoint.receipt !== snapshot.frontier.receipt)
       ) {
         throw new Error("Checkpoint differs from accepted journal position");
       }
-      const pending: PendingRequest<Q> = snapshot.pending ?? {
-        id: `${identity}:${snapshot.history.length}${snapshot.cancellation ? ":cleanup" : ""}`,
-        sequence: snapshot.history.length,
+      const pending = snapshot.pending ?? {
+        id: `${identity}:${snapshot.frontier.position}${snapshot.cancellation ? ":cleanup" : ""}`,
+        sequence: snapshot.frontier.position,
         request,
         scope,
       };
-      // The backend owns isolation and encoding before publication.
-      const next = {
-        ...snapshot,
-        revision: snapshot.revision + 1,
+      return yield* tree.park(
+        identity,
+        {
+          ...snapshot,
+          revision: snapshot.revision + 1,
+          pending,
+          checkpoint: checkpoint ?? snapshot.checkpoint,
+        },
         pending,
-        checkpoint: checkpoint ?? snapshot.checkpoint,
-      };
-      return tree.park(identity, next, next.pending);
+      );
     },
     accept,
     *complete(revision, value) {
-      const snapshot = current(revision);
+      const snapshot = yield* current(revision);
       if (snapshot.cancellation) {
         throw new Error("Cannot complete successfully after root cancellation");
       }
       if (snapshot.pending) {
         throw new Error("Cannot complete with an unanswered request");
       }
-      const next = {
-        program: snapshot.program,
-        revision: snapshot.revision + 1,
-        history: snapshot.history,
-        status: "completed" as const,
-        value,
-      };
-      commit(next, undefined);
+      yield* commit(
+        {
+          program: snapshot.program,
+          revision: snapshot.revision + 1,
+          frontier: snapshot.frontier,
+          status: "completed",
+          value,
+        },
+        undefined,
+      );
     },
   };
-  return journal;
 }

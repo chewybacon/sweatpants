@@ -11,37 +11,45 @@ import type {
   Recovery,
   RootCancellation,
   Accepted,
+  AcceptedHistory,
   Checkpoint,
   RecoveryMethods,
   RecoveryPlan,
 } from "./contracts.ts";
 
-function validate<Q, V, E, S>(program: string, plan: RecoveryPlan<Q, V, E, S>) {
-  const receipts = new Set<string>();
-  for (const [index, entry] of plan.history.entries()) {
-    if (entry.sequence !== index || !entry.receipt || receipts.has(entry.receipt)) {
-      throw new Error("Invalid accepted history");
-    }
-    receipts.add(entry.receipt);
+function* validate<Q, V, E, S, Y>(program: string, plan: RecoveryPlan<Q, V, E, S, Y>) {
+  const end = plan.history.end;
+  if (
+    !Number.isSafeInteger(end.position) ||
+    end.position < 0 ||
+    (end.position === 0 ? end.receipt !== null : !end.receipt)
+  ) {
+    throw new Error("Invalid accepted history frontier");
   }
   if (
     plan.cancellation &&
     (!Number.isSafeInteger(plan.cancellation.position) ||
       plan.cancellation.position < 0 ||
-      plan.cancellation.position > plan.history.length)
+      plan.cancellation.position > end.position)
   ) {
     throw new Error("Invalid cancellation position");
   }
   const saved = plan.checkpoint;
-  if (
-    saved &&
-    (saved.program !== program ||
+  if (saved) {
+    if (
+      saved.program !== program ||
       !Number.isSafeInteger(saved.position) ||
       saved.position < 0 ||
-      saved.position > plan.history.length ||
-      saved.receipt !== (saved.position === 0 ? null : plan.history[saved.position - 1]?.receipt))
-  ) {
-    throw new Error("Checkpoint does not match accepted history");
+      saved.position > end.position ||
+      saved.receipt !==
+        (saved.position === 0
+          ? null
+          : saved.position === end.position
+            ? end.receipt
+            : (yield* plan.history.at(saved.position - 1))?.receipt)
+    ) {
+      throw new Error("Checkpoint does not match accepted history");
+    }
   }
 }
 
@@ -57,13 +65,15 @@ function sameScope(actual: ScopeBoundary | undefined, expected: ScopeBoundary | 
 function* replay<R, Q, Y, V, E>(
   initial: RestoredGuest<R, Q, Y, V, E>,
   operations: Execution<R, Q, Y, V, E>["operations"],
-  history: readonly Accepted<Q, V, E>[],
+  history: AcceptedHistory<Q, V, E, Y>,
   position: number,
   matches: (actual: Q, accepted: Q) => boolean,
   cancellation?: RootCancellation<Q>,
 ): Operation<RestoredGuest<R, Q, Y, V, E>, Y> {
   let turn = initial.turn;
-  for (let index = position; index <= history.length; index++) {
+  let page: readonly Accepted<Q, V, E>[] = [];
+  let offset = 0;
+  for (let index = position; index <= history.end.position; index++) {
     if (cancellation?.position === index) {
       if (
         turn.kind !== "suspended" ||
@@ -74,9 +84,24 @@ function* replay<R, Q, Y, V, E>(
       }
       turn = yield* operations.cancel(cancellation.reason);
     }
-    const entry = history[index];
-    if (!entry) {
+    if (index === history.end.position) {
       break;
+    }
+    if (offset === page.length) {
+      page = yield* history.read(index, 128);
+      if (page.length > Math.min(128, history.end.position - index)) {
+        throw new Error("Invalid accepted history page");
+      }
+      offset = 0;
+    }
+    const entry = page[offset++];
+    if (
+      !entry ||
+      entry.sequence !== index ||
+      !entry.receipt ||
+      (index === history.end.position - 1 && entry.receipt !== history.end.receipt)
+    ) {
+      throw new Error("Invalid accepted history");
     }
     if (
       turn.kind !== "suspended" ||
@@ -103,7 +128,7 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
   const execution = createExecution<R, Q, Y, V, E>(composition, `${options.name}:execution`);
   const api = composition.createApi<RecoveryMethods<R, Q, Y, V, E, S>>(options.name, {
     *recover(plan) {
-      validate(options.program, plan);
+      yield* validate(options.program, plan);
       const guest = yield* options.acquire();
       yield* execution.install(guest);
       const turn = yield* execution.operations.start();
@@ -115,7 +140,7 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
         options.matches,
         plan.cancellation,
       );
-      return { ...restored, program: options.program, position: plan.history.length };
+      return { ...restored, program: options.program, position: plan.history.end.position };
     },
     *checkpoint() {
       return undefined;
@@ -135,11 +160,11 @@ export function createCheckpointMiddleware<R, Q, Y, V, E, S>(options: {
   const { program, adapter, matches } = options;
   return {
     *recover([plan], next) {
-      validate(program, plan);
       const saved = plan.checkpoint;
       if (plan.cancellation || !saved || saved.format !== adapter.format) {
         return yield* next(plan);
       }
+      yield* validate(program, plan);
       const restored = yield* adapter.restore(saved.state);
       yield* options.execution.install(restored.guest);
       const result = yield* replay(
@@ -149,25 +174,24 @@ export function createCheckpointMiddleware<R, Q, Y, V, E, S>(options: {
         saved.position,
         matches,
       );
-      return { ...result, program, position: plan.history.length };
+      return { ...result, program, position: plan.history.end.position };
     },
-    *checkpoint([recovered, history], next) {
-      validate(program, { history });
-      if (recovered.program !== program || recovered.position !== history.length) {
+    *checkpoint([recovered, position], next) {
+      if (recovered.program !== program || recovered.position !== position.position) {
         throw new Error("Checkpoint position differs from accepted history");
       }
       if (recovered.turn.kind !== "suspended") {
-        return yield* next(recovered, history);
+        return yield* next(recovered, position);
       }
       const state = yield* adapter.capture(recovered.guest);
       if (state === undefined) {
-        return yield* next(recovered, history);
+        return yield* next(recovered, position);
       }
       return {
         program,
         format: adapter.format,
-        position: history.length,
-        receipt: history.length ? history[history.length - 1]!.receipt : null,
+        position: position.position,
+        receipt: position.receipt,
         state,
       } satisfies Checkpoint<S>;
     },

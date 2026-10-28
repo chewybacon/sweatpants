@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -54,8 +55,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let starts = 0;
       let resumes = 0;
       let restores = 0;
+      const ranges: { from: number; end: number }[] = [];
       function run(stopAfterFirst = false) {
-        const journal = store.open();
+        const stored = store.open();
+        const journal: typeof stored = {
+          ...stored,
+          *read() {
+            const snapshot = yield* stored.read();
+            return {
+              ...snapshot,
+              history: {
+                ...snapshot.history,
+                *read(from, limit) {
+                  ranges.push({ from, end: snapshot.history.end.position });
+                  return yield* snapshot.history.read(from, limit);
+                },
+              },
+            };
+          },
+        };
         const evaluator = createLuaEvaluator(runtime, {
           source: `
 local hold = workflow.effect("reserve", { binding = "reserve" })
@@ -94,7 +112,7 @@ return { hold = hold, approval = approval }
           *handle(request): Operation<Outcome<string, string>, Y> {
             const grant = yield* host.delivery.expect();
             const snapshot = yield* journal.read();
-            expect(snapshot.history).toHaveLength(grants.length);
+            expect(snapshot.frontier.position).toBe(grants.length);
             expect(snapshot.checkpoint?.position).toBe(checkpoints ? grants.length : undefined);
             if (grants.length) {
               expect(finalized).toEqual([grants[0]!.attemptId]);
@@ -163,7 +181,7 @@ return { hold = hold, approval = approval }
       peer.reply("reserve", { status: 200, body: "hold-9" });
       await expect(first.result).rejects.toThrow("Host stopped after accepted reservation");
       expect(finalized).toEqual([grants[0]!.attemptId]);
-      const inspect = runtime.start(() => store.open().read());
+      const inspect = runtime.start(() => readJournal(store.open()));
       onTestFinished(() => inspect.cancel());
       const saved = await inspect.result;
       expect(saved.history).toHaveLength(1);
@@ -187,6 +205,10 @@ return { hold = hold, approval = approval }
       expect(starts).toBe(mode === "restore" ? 1 : mode === "fallback" ? 2 : 3);
       expect(restores).toBe(mode === "restore" ? 2 : mode === "fallback" ? 1 : 0);
       expect(resumes).toBe(checkpoints ? 2 : 3);
+      expect(ranges).toEqual([
+        { from: 0, end: 1 },
+        { from: checkpoints ? 1 : 0, end: 2 },
+      ]);
       expect(peer.requests.map((request) => request.id)).toEqual(["reserve", "approve"]);
     });
   }

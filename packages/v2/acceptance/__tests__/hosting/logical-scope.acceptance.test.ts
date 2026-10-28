@@ -1,3 +1,4 @@
+import { readJournal, historyFrom } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -136,7 +137,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             ? { state: "cancelled", reason: "deadline" }
             : { state: "completed", value: { answer: "yes" } },
         );
-        const snapshot = await start(() => s.journal.read()).result;
+        const snapshot = await start(() => readJournal(s.journal)).result;
         expect(snapshot.history.map((entry) => entry.request)).toEqual([
           "approval",
           "child-close",
@@ -150,7 +151,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const s = scenario();
       const approval = await s.waiting("approval");
       await start(() => s.journal.cancellation.request(approval.pending.id, "deadline")).result;
-      const before = await start(() => s.journal.read()).result;
+      const before = await start(() => readJournal(s.journal)).result;
       await expect(
         s.run({
           ...s.journal,
@@ -163,7 +164,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         }),
       ).rejects.toBeDefined();
-      expect(await start(() => s.journal.read()).result).toEqual(before);
+      expect(await start(() => readJournal(s.journal)).result).toEqual(before);
       await expect(s.answer(approval.grant)).rejects.toThrow("Resolution authority revoked");
       for (const request of ["child-close", "outer-close", "outer-close-ack", "audit"]) {
         const cleanup = await s.waiting(request);
@@ -185,7 +186,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const waiting = await s.waiting(request);
         await s.answer(waiting.grant);
       }
-      const before = await start(() => s.journal.read()).result;
+      const before = await start(() => readJournal(s.journal)).result;
       await expect(
         s.run({
           ...s.journal,
@@ -195,9 +196,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         }),
       ).rejects.toBeDefined();
-      expect(await start(() => s.journal.read()).result).toEqual(before);
+      expect(await start(() => readJournal(s.journal)).result).toEqual(before);
       expect(await s.run()).toEqual({ state: "completed", value: { answer: "yes" } });
-      expect((await start(() => s.journal.read()).result).history).toEqual(before.history);
+      expect((await start(() => readJournal(s.journal)).result).history).toEqual(before.history);
     });
 
     it("retains cleanup failures, attempts remaining frames and does not restart cleanup on repeat cancellation", async () => {
@@ -232,7 +233,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const audit = await s.waiting("audit");
       await s.answer(audit.grant);
       await expect(s.run()).rejects.toBe("child failed");
-      const snapshot = await start(() => s.journal.read()).result;
+      const snapshot = await start(() => readJournal(s.journal)).result;
       expect(snapshot.history.map((entry) => entry.request)).toEqual([
         "approval",
         "child-close",
@@ -247,19 +248,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const s = scenario();
         const approval = await s.waiting("approval");
         await s.answer(approval.grant);
-        const snapshot = await start(() => s.journal.read()).result;
+        const snapshot = await start(() => readJournal(s.journal)).result;
         const tampered = {
           ...s.journal,
           *read() {
             return {
               ...snapshot,
-              history: snapshot.history.map((entry) => ({
-                ...entry,
-                scope:
-                  changed === "scope"
-                    ? { scopeId: "wrong", frameId: "wrong", phase: "body" as const }
-                    : { ...entry.scope!, critical: "unrecorded-region" },
-              })),
+              history: historyFrom(
+                snapshot.history.map((entry) => ({
+                  ...entry,
+                  scope:
+                    changed === "scope"
+                      ? { scopeId: "wrong", frameId: "wrong", phase: "body" as const }
+                      : { ...entry.scope!, critical: "unrecorded-region" },
+                })),
+                snapshot.frontier,
+              ),
             };
           },
         };

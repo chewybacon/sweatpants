@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -116,7 +117,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const s = scenario();
         const live = s.run();
         await Promise.race([s.peer.waitForRequests(1), live.result]);
-        const snapshot = await start(() => s.journal.read()).result;
+        const snapshot = await start(() => readJournal(s.journal)).result;
         if (snapshot.status !== "running" || !snapshot.pending) {
           throw new Error("Expected acquisition");
         }
@@ -127,7 +128,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const intent = await s.cancel(acquisition.id);
           expect(intent.attempt).toBeUndefined();
           expect(s.peer.aborted).toEqual([]);
-          expect((await start(() => s.journal.read()).result).cancellation?.reason).toBe(
+          expect((await start(() => readJournal(s.journal)).result).cancellation?.reason).toBe(
             "deadline",
           );
         }
@@ -168,7 +169,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await exiting.result).toEqual(expected);
         expect(await s.run().result).toEqual(expected);
         expect(s.notifications.subscriptions).toBe(0);
-        const final = await start(() => s.journal.read()).result;
+        const final = await start(() => readJournal(s.journal)).result;
         expect(final.history.map((entry) => entry.request)).toEqual(
           cancel
             ? ["reserve", "confirm", "seal", "release:hold-7"]
@@ -181,7 +182,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const s = scenario();
       const live = s.run();
       await Promise.race([s.peer.waitForRequests(1), live.result]);
-      const snapshot = await start(() => s.journal.read()).result;
+      const snapshot = await start(() => readJournal(s.journal)).result;
       if (snapshot.status !== "running" || !snapshot.pending) {
         throw new Error("Expected acquisition");
       }
@@ -206,7 +207,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const s = scenario();
       const live = s.run();
       await Promise.race([s.peer.waitForRequests(1), live.result]);
-      const snapshot = await start(() => s.journal.read()).result;
+      const snapshot = await start(() => readJournal(s.journal)).result;
       if (snapshot.status !== "running" || !snapshot.pending) {
         throw new Error("Expected acquisition");
       }
@@ -217,7 +218,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const recovered = await s.run().result;
       expect(recovered.state).toBe("occupied");
       expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve"]);
-      expect((await start(() => s.journal.read()).result).cancellation?.reason).toBe("deadline");
+      expect((await start(() => readJournal(s.journal)).result).cancellation?.reason).toBe(
+        "deadline",
+      );
     });
   });
 });

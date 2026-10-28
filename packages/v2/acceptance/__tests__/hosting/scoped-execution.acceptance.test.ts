@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome } from "@standard-durability/core";
@@ -234,7 +235,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         throw new Error("Expected approval boundary");
       }
       // The nested uppercase layer has exited before the hosted provider request.
-      expect((yield* journal.read()).history.map(({ outcome }) => outcome)).toEqual([
+      expect((yield* readJournal(journal)).history.map(({ outcome }) => outcome)).toEqual([
         { ok: true, value: "a" },
       ]);
       approval.resolve();

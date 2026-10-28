@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -112,7 +113,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         const first = activation.pending;
         expect(first.sequence).toBe(0);
-        const initial = await run(() => journal.read());
+        const initial = await run(() => readJournal(journal));
         expect(initial.history).toEqual([]);
         expect(initial.checkpoint?.position).toBe(checkpoints ? 0 : undefined);
         // An unanswered request survives host replacement with the same delivery identity.
@@ -132,7 +133,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const accepted = await delivery;
         expect(accepted.duplicate).toBe(false);
         expect(commands).toBe(beforeAcceptance); // Acceptance itself does not advance compute.
-        const afterAcceptance = await run(() => journal.read());
+        const afterAcceptance = await run(() => readJournal(journal));
         expect(afterAcceptance.history).toHaveLength(1);
         expect(afterAcceptance.history[0]?.receipt).toBe(accepted.entry.receipt);
         // The accepting host is gone before any resume. A new activation catches up.
@@ -144,7 +145,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(second.sequence).toBe(1);
         expect(second.id).not.toBe(first.id);
         expect(second.request.hold).toBe("hold-9");
-        const atApproval = await run(() => journal.read());
+        const atApproval = await run(() => readJournal(journal));
         expect(atApproval.checkpoint?.position).toBe(checkpoints ? 1 : undefined);
         expect(atApproval.checkpoint?.receipt).toBe(
           checkpoints ? accepted.entry.receipt : undefined,
@@ -157,7 +158,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await expect(
           run(() => journal.accept("foreign-request", { ok: true, value: "wrong" })),
         ).rejects.toThrow("Stale");
-        expect(await run(() => journal.read())).toEqual(atApproval);
+        expect(await run(() => readJournal(journal))).toEqual(atApproval);
         const approval = run(function* () {
           const reply = yield* runtime.fromPromise((signal) =>
             peer.send({ id: "approve", token: second.id }, signal),
@@ -176,7 +177,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const completedCommands = commands;
         expect(await activate()).toEqual(activation);
         expect(commands).toBe(completedCommands); // Stored completion acquires no evaluator.
-        const stored = await run(() => journal.read());
+        const stored = await run(() => readJournal(journal));
         expect(stored.status).toBe("completed");
         expect(stored.history).toHaveLength(2);
         expect(peer.requests.map(({ id }) => id)).toEqual(["reserve", "approve"]);
@@ -232,7 +233,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const winner = await first;
       gates.reply("second", { status: 200, body: "commit" });
       await expect(second).rejects.toThrow("revision conflict");
-      const snapshot = await run(() => journal.read());
+      const snapshot = await run(() => readJournal(journal));
       expect(snapshot.history).toEqual([]);
       expect(snapshot.revision).toBe(1);
       expect(snapshot.status === "running" && snapshot.pending).toEqual(
@@ -284,13 +285,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       const pending = activation.pending;
       const accepted = await run(() => journal.accept(pending.id, { ok: true, value: "answer" }));
-      const snapshot = await run(() => journal.read());
+      const snapshot = await run(() => readJournal(journal));
       await expect(activate(true)).rejects.toThrow("Checkpoint differs");
-      expect(await run(() => journal.read())).toEqual(snapshot);
+      expect(await run(() => readJournal(journal))).toEqual(snapshot);
       accepted.entry.request.id = "mutated";
       pending.request.id = "mutated";
       snapshot.history[0]!.request.id = "mutated";
-      expect((await run(() => journal.read())).history[0]?.request.id).toBe("request");
+      expect((await run(() => readJournal(journal))).history[0]?.request.id).toBe("request");
     });
   });
 });

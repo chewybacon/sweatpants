@@ -7,12 +7,12 @@ import type { AcceptanceTransition, Accepted, AttemptGrant, JournalSnapshot } fr
  * must read, decide and publish atomically, and detach/encode data before publication.
  */
 export function acceptJournalOutcome<R, Q, V, E, S>(
-  snapshot: JournalSnapshot<R, Q, V, E, S>,
+  snapshot: JournalSnapshot<R, Q, S>,
   requestId: string,
   outcome: Outcome<V, E>,
   equals: (left: unknown, right: unknown) => boolean,
+  prior?: Accepted<Q, V, E>,
 ): AcceptanceTransition<R, Q, V, E, S> {
-  const prior = snapshot.history.find((entry) => entry.receipt === requestId);
   if (prior) {
     if (!equals(prior.outcome, outcome)) {
       throw new Error("Conflicting accepted outcome");
@@ -37,7 +37,7 @@ export function acceptJournalOutcome<R, Q, V, E, S>(
     snapshot: {
       ...rest,
       revision: snapshot.revision + 1,
-      history: [...snapshot.history, entry],
+      frontier: { position: entry.sequence + 1, receipt: entry.receipt },
     },
     acceptance: { entry, duplicate: false },
   };
@@ -50,11 +50,12 @@ export function acceptJournalOutcome<R, Q, V, E, S>(
  * a preceding inspect call is neither necessary nor sufficient to authorize settlement.
  */
 export function settleJournalAttempt<R, Q, V, E, S>(
-  snapshot: JournalSnapshot<R, Q, V, E, S>,
+  snapshot: JournalSnapshot<R, Q, S>,
   authority: { readonly current?: AttemptGrant; readonly revoked?: string },
   grant: AttemptGrant,
   outcome: Outcome<V, E>,
   equals: (left: unknown, right: unknown) => boolean,
+  prior?: Accepted<Q, V, E>,
 ): AcceptanceTransition<R, Q, V, E, S> {
   const current = authority.current;
   if (
@@ -68,5 +69,5 @@ export function settleJournalAttempt<R, Q, V, E, S>(
   if (authority.revoked !== undefined) {
     throw new Error("Attempt authority revoked");
   }
-  return acceptJournalOutcome(snapshot, grant.requestId, outcome, equals);
+  return acceptJournalOutcome(snapshot, grant.requestId, outcome, equals, prior);
 }

@@ -1,3 +1,4 @@
+import { readJournal, historyFrom } from "@sweatpan.ts/testing";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -8,12 +9,7 @@ import {
   type Outcome,
   type Operation,
 } from "@standard-durability/core";
-import {
-  createRecovery,
-  createCheckpointMiddleware,
-  activateJournal,
-  type JournalSnapshot,
-} from "@sweatpan.ts/durable";
+import { createRecovery, createCheckpointMiddleware, activateJournal } from "@sweatpan.ts/durable";
 import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { isDeepStrictEqual } from "node:util";
@@ -69,7 +65,6 @@ function decodeResult(value: unknown) {
 }
 type Request = ReturnType<typeof decodeRequest>;
 type Result = ReturnType<typeof decodeResult>;
-type Snapshot = JournalSnapshot<Result, Request, unknown, unknown, unknown>;
 const matches = (left: Request, right: Request) => JSON.stringify(left) === JSON.stringify(right);
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -167,7 +162,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await delivery;
       }
       expect(observed).toEqual(["reserve", "approval"]);
-      const snapshot = await run(() => journal.read());
+      const snapshot = await run(() => readJournal(journal));
       expect(snapshot.history).toHaveLength(2);
       expect(snapshot.checkpoint?.position).toBe(1);
       // The last answer is committed, but no activation has consumed it yet.
@@ -301,7 +296,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ]);
         peer.reply(activation.pending.request.binding, { status: 200, body });
         await delivery;
-        expect((await run(() => journal.read())).checkpoint).toBeUndefined();
+        expect((await run(() => readJournal(journal))).checkpoint).toBeUndefined();
       }
       const completed = await activate();
       if (completed.state !== "completed") {
@@ -341,7 +336,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           };
         }
         // Fault injection belongs at the storage boundary, not inside recovery.
-        const damaged: Snapshot = { ...snapshot, history, checkpoint };
+        const damaged = {
+          ...snapshot,
+          history: historyFrom(history, snapshot.frontier),
+          checkpoint,
+        };
         const journal = {
           ...saved.journal,
           *read() {
@@ -354,10 +353,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return yield* activateJournal(runtime.composition, host.api.operations, journal);
           }),
         ).rejects.toBeDefined();
-        expect(await run(() => saved.journal.read())).toEqual(saved.snapshot);
+        expect(await run(() => readJournal(saved.journal))).toEqual(saved.snapshot);
         expect(host.trace).toEqual([]);
         expect(saved.peer.requests).toHaveLength(2);
-        expect(host.commands()).toBe(fault === "corrupt" || fault === "divergence" ? 1 : 0);
+        expect(host.commands()).toBe(
+          fault === "corrupt" || fault === "divergence" || fault === "history" ? 1 : 0,
+        );
       });
     }
   });

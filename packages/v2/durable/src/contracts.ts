@@ -20,9 +20,22 @@ export interface Checkpoint<S> {
   readonly state: S;
 }
 
+/** Accepted count and the identity of the last accepted entry. */
+export interface JournalPosition {
+  readonly position: number;
+  readonly receipt: string | null;
+}
+
+/** Immutable history prefix. Reads never include entries beyond the captured end. */
+export interface AcceptedHistory<Q, V, E, Y> {
+  readonly end: JournalPosition;
+  at(sequence: number): Operation<Accepted<Q, V, E> | undefined, Y>;
+  read(from: number, limit: number): Operation<readonly Accepted<Q, V, E>[], Y>;
+}
+
 /** Trusted accepted history and an optional acceleration checkpoint. */
-export interface RecoveryPlan<Q, V, E, S> {
-  readonly history: readonly Accepted<Q, V, E>[];
+export interface RecoveryPlan<Q, V, E, S, Y> {
+  readonly history: AcceptedHistory<Q, V, E, Y>;
   readonly checkpoint?: Checkpoint<S>;
   readonly cancellation?: RootCancellation<Q>;
 }
@@ -36,11 +49,11 @@ export interface Recovered<R, Q, Y, V, E> extends RestoredGuest<R, Q, Y, V, E> {
 /** Scoped recovery hooks; reconstruction never invokes a business handler. */
 export interface RecoveryMethods<R, Q, Y, V, E, S> {
   /** Replay accepted Outcomes, or restore through installed checkpoint middleware. */
-  recover(plan: RecoveryPlan<Q, V, E, S>): Operation<Recovered<R, Q, Y, V, E>, Y>;
+  recover(plan: RecoveryPlan<Q, V, E, S, Y>): Operation<Recovered<R, Q, Y, V, E>, Y>;
   /** Capture an owned suspended evaluator; undefined means capture is unavailable. */
   checkpoint(
     recovered: Recovered<R, Q, Y, V, E>,
-    history: readonly Accepted<Q, V, E>[],
+    position: JournalPosition,
   ): Operation<Checkpoint<S> | undefined, Y>;
 }
 
@@ -62,10 +75,10 @@ export interface ChildLink {
 }
 
 /** Detached execution state; revision guards activation writes. */
-export type JournalSnapshot<R, Q, V, E, S> = {
+export type JournalSnapshot<R, Q, S> = {
   readonly program: string;
   readonly revision: number;
-  readonly history: readonly Accepted<Q, V, E>[];
+  readonly frontier: JournalPosition;
   readonly checkpoint?: Checkpoint<S>;
   readonly cancellation?: RootCancellation<Q>;
 } & (
@@ -86,7 +99,10 @@ export interface Journal<R, Q, V, E, S, Y> {
   /** Optional atomic root cancellation; evaluator support is also required. */
   readonly cancellation?: CancellationJournal<Q, Y>;
   /** Read current state without acquiring or advancing computation. */
-  read(): Operation<JournalSnapshot<R, Q, V, E, S>, Y>;
+  read(): Operation<
+    JournalSnapshot<R, Q, S> & { readonly history: AcceptedHistory<Q, V, E, Y> },
+    Y
+  >;
   /**
    * Commit a pending request and optional checkpoint at the expected revision.
    * Throws on stale revision, divergent pending request or invalid checkpoint anchor.
@@ -248,8 +264,8 @@ export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y,
 }
 
 /** Pure cancellation decision; adapters publish the state and authority changes atomically. */
-export interface CancellationTransition<R, Q, V, E, S> {
-  readonly snapshot: JournalSnapshot<R, Q, V, E, S>;
+export interface CancellationTransition<R, Q, S> {
+  readonly snapshot: JournalSnapshot<R, Q, S>;
   readonly cancellation: RootCancellation<Q>;
   readonly revoke: boolean;
   readonly childToCancel?: ChildLink;
@@ -257,7 +273,7 @@ export interface CancellationTransition<R, Q, V, E, S> {
 
 /** Prepared acceptance; an adapter publishes the snapshot before acknowledging acceptance. */
 export interface AcceptanceTransition<R, Q, V, E, S> {
-  readonly snapshot: JournalSnapshot<R, Q, V, E, S>;
+  readonly snapshot: JournalSnapshot<R, Q, S>;
   readonly acceptance: Acceptance<Q, V, E>;
 }
 
@@ -275,7 +291,7 @@ export interface OwnedChildOptions<R, V, E> {
   readonly outcome: (value: R) => Outcome<V, E>;
 }
 
-/** Typed journal capabilities sharing the adapter's synchronous transaction boundary. */
+/** Typed journal capabilities sharing the adapter's atomic transaction boundary. */
 export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journal<
   R,
   Q,
@@ -308,25 +324,48 @@ export interface OwnedChild<R, Q, V, E, S = unknown, Y = never> {
   readonly journal: OwnedJournal<R, Q, V, E, S, Y>;
 }
 
-/** Data only: one member of a colocated owned execution tree. */
-export interface JournalRecord<R = unknown, Q = unknown, V = unknown, E = unknown, S = unknown> {
-  snapshot: JournalSnapshot<R, Q, V, E, S>;
-  grants: Map<string, AttemptGrant>;
-  invalidated: Map<string, string>;
-  registrations: Map<string, InteractionRegistration>;
+/** Current state of one member of a colocated owned execution tree. */
+export interface JournalRecord<R = unknown, Q = unknown, S = unknown> {
+  snapshot: JournalSnapshot<R, Q, S>;
   queuedStop?: string;
-  children: Map<string, ChildLink>;
   parent?: ChildLink;
 }
 
-/** Mutable transaction-local records. get returns an isolated working copy; set marks a write. */
-export interface JournalRecords {
-  get(id: string): JournalRecord | undefined;
-  set(id: string, record: JournalRecord): void;
+/** Retained authority for one request; never grows with unrelated requests. */
+export interface RequestRecord {
+  grant?: AttemptGrant;
+  revoked?: string;
+  registration?: InteractionRegistration;
+  child?: ChildLink;
 }
 
-/** Adapter port: run a non-suspending decision against current records and publish atomically. */
+/** Transaction-local storage access. Reads are detached; writes publish only on commit. */
+export interface JournalRecords<Y> {
+  get(id: string): Operation<JournalRecord | undefined, Y>;
+  set(id: string, record: JournalRecord): Operation<void, Y>;
+  request(id: string, requestId: string): Operation<RequestRecord | undefined, Y>;
+  setRequest(id: string, requestId: string, record: RequestRecord): Operation<void, Y>;
+  accepted(
+    id: string,
+    receipt: string,
+  ): Operation<Accepted<unknown, unknown, unknown> | undefined, Y>;
+  append(id: string, entry: Accepted<unknown, unknown, unknown>): Operation<void, Y>;
+}
+
+/** Adapter port. One serializable ownership domain, including absent records. */
 export interface JournalBackend<Y> {
-  /** Resolve external dependencies before locking; return only after commit. Failures roll back. */
-  transact<T>(decide: (records: JournalRecords) => T): Operation<T, Y>;
+  /**
+   * Invoke work once; only storage operations may suspend inside the transaction.
+   * Resolve external dependencies before locking. Publish after commit; roll back
+   * uncommitted work on failure/disposal and drain cleanup before releasing locks.
+   * No implicit retries. A lost commit acknowledgement requires durable reconciliation.
+   */
+  transact<T>(work: (records: JournalRecords<Y>) => Operation<T, Y>): Operation<T, Y>;
+  /** Immutable accepted rows in [from, end), limited to at most limit entries. No write lock. */
+  history(
+    id: string,
+    from: number,
+    end: number,
+    limit: number,
+  ): Operation<readonly Accepted<unknown, unknown, unknown>[], Y>;
 }

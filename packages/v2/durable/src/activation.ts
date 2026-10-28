@@ -38,7 +38,7 @@ export function activateJournal<R, Q, Y, V, E, S>(
         const recovered = yield* recovery.recover(snapshot);
         if (
           recovered.program !== snapshot.program ||
-          recovered.position !== snapshot.history.length
+          recovered.position !== snapshot.frontier.position
         ) {
           throw new Error("Recovery differs from journal position");
         }
@@ -63,7 +63,7 @@ export function activateJournal<R, Q, Y, V, E, S>(
         }
         const checkpoint = snapshot.cancellation
           ? undefined
-          : yield* recovery.checkpoint(recovered, snapshot.history);
+          : yield* recovery.checkpoint(recovered, snapshot.frontier);
         const pending = yield* journal.park(
           snapshot.revision,
           recovered.turn.request,

@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Work, Operation, Outcome } from "@standard-durability/core";
@@ -310,18 +311,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           await expect(execution.result).rejects.toThrow(
             failure === "encode" ? "Encoding rejected" : "revoked",
           );
-          expect((await start(() => s.journal.read()).result).history).toEqual([]);
+          expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
           expect((await s.run().result).state).toBe(
             failure === "encode" ? "occupied" : "invalidated",
           );
         }
         expect(restoredParent).toBe(true);
-        // Only the settlement child scope is instrumented: one header decode,
-        // one header write and one new accepted row; revocation writes nothing.
+        // Only the settlement child scope is instrumented: head + exact request reads,
+        // one head write and one new accepted row; revocation writes nothing.
         expect(encoded).toBe(failure === "none" ? 2 : failure === "encode" ? 1 : 0);
-        expect(decoded).toBe(1);
+        expect(decoded).toBe(2);
         if (failure === "none") {
-          const saved = await start(() => s.journal.read()).result;
+          const saved = await start(() => readJournal(s.journal)).result;
           expect(saved.history[0]!.outcome).toEqual({
             ok: true,
             value: "reservation-1",
@@ -374,12 +375,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(s.run("repeatable", original).result).rejects.toThrow("replacement conflict");
       s.peer.reply(original.attemptId, { status: 200, body: "stale-reservation" });
       await expect(first.result).rejects.toThrow("Stale attempt grant");
-      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+      expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
       s.peer.reply(replacement.attemptId, { status: 200, body: "reservation-1" });
       const completed = await second.result;
       expectTypeOf(completed).toEqualTypeOf<HostedResult<{ reservation: string }, string>>();
       expect(completed).toEqual({ state: "completed", value: { reservation: "reservation-1" } });
-      expect((await start(() => s.journal.read()).result).history).toHaveLength(1);
+      expect((await start(() => readJournal(s.journal)).result).history).toHaveLength(1);
       expect(await s.run().result).toEqual(completed);
       s.reconnect();
       await expect(
@@ -412,7 +413,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         s.peer.reply(grant.attemptId, { status: 200, body: "too late" });
         await expect(first.result).rejects.toThrow("Attempt authority revoked");
         expect(s.reads).toBe(live ? 1 : 0);
-        expect((await start(() => s.journal.read()).result).history).toEqual([]);
+        expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
         expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
         await expect(s.run("repeatable", grant).result).rejects.toThrow("Invalidated attempt");
         expect(s.peer.requests).toHaveLength(1);
@@ -443,7 +444,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(publications).toBe(2);
       expect(s.peer.aborted).toEqual([grant.attemptId]);
       expect(s.notifications.subscriptions).toBe(0);
-      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+      expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
     });
 
     it("interrupts live IO and joins asynchronous cleanup after committed invalidation", async () => {
@@ -477,7 +478,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       cleanup.reply("close", { status: 200, body: "released" });
       await expect(first.result).rejects.toBeDefined();
       expect(s.notifications.subscriptions).toBe(0);
-      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+      expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
       expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
     });
 
@@ -521,7 +522,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(first.result).rejects.toBeDefined();
       expect(s.peer.requests).toEqual([]);
       expect(s.notifications.subscriptions).toBe(0);
-      expect((await start(() => s.journal.read()).result).history).toEqual([]);
+      expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
     });
 
     it("preserves an outcome accepted before invalidation and never publishes a cancellation", async () => {
@@ -560,7 +561,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(occupied.state).toBe("occupied");
         await expect(s.run(currentSafety, s.grants[0]).result).rejects.toThrow("Unsafe attempt");
         expect(s.peer.requests).toHaveLength(1);
-        expect((await start(() => s.journal.read()).result).history).toEqual([]);
+        expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
       });
     }
 
@@ -573,7 +574,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await first.cancel();
         await expect(first.result).rejects.toBeDefined();
         expect(s.peer.aborted).toEqual([grant.attemptId]);
-        const snapshot = await start(() => s.journal.read()).result;
+        const snapshot = await start(() => readJournal(s.journal)).result;
         expect(snapshot.status).toBe("running");
         expect(snapshot.history).toEqual([]);
         expect(await s.run(safety).result).toEqual({ state: "occupied", grant });
@@ -627,18 +628,31 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           state: "completed",
           value: { reservation: "reservation-1" },
         });
-        expect((await start(() => s.journal.read()).result).history).toHaveLength(1);
+        expect((await start(() => readJournal(s.journal)).result).history).toHaveLength(1);
       });
     }
 
     it("recovers an accepted result after acknowledgement loss without executing again", async () => {
-      const s = scenario();
+      let writes = 0;
+      const s = scenario(false, {
+        *resolve() {
+          return {
+            ...v8Serializer,
+            encode(value) {
+              writes++;
+              return v8Serializer.encode(value);
+            },
+          };
+        },
+      });
       const transport: Attempts<string, string, string, Y> = {
         begin: s.journal.attempts.begin,
         *settle(grant, outcome) {
           const accepted = yield* s.journal.attempts.settle(grant, outcome);
+          writes = 0;
           const duplicate = yield* s.journal.attempts.settle(grant, outcome);
           expect(duplicate).toEqual({ ...accepted, duplicate: true });
+          expect(writes).toBe(0);
           yield* runtime.fromPromise(async () => {
             throw new Error("Acceptance acknowledgement lost");
           });
@@ -669,10 +683,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const first = s.run("unsafe", undefined, transport);
       await s.wait(1, first.result);
       const grant = s.grants[0]!;
-      const before = await start(() => s.journal.read()).result;
+      const before = await start(() => readJournal(s.journal)).result;
       s.peer.reply(grant.attemptId, { status: 200, body: "reservation-1" });
       await expect(first.result).rejects.toBeDefined();
-      expect(await start(() => s.journal.read()).result).toEqual(before);
+      expect(await start(() => readJournal(s.journal)).result).toEqual(before);
       expect(await start(() => s.journal.attemptControl.inspect(grant)).result).toEqual({
         state: "active",
       });
@@ -688,7 +702,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         value: { reservation: "reservation-1" },
       });
       s.reconnect();
-      const completed = await start(() => s.journal.read()).result;
+      const completed = await start(() => readJournal(s.journal)).result;
       const duplicate = await start(() =>
         s.journal.attempts.settle(grant, { ok: true, value: "reservation-1" }),
       ).result;
@@ -696,7 +710,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(
         start(() => s.journal.attempts.settle(grant, { ok: true, value: "different" })).result,
       ).rejects.toThrow("Conflicting accepted outcome");
-      expect(await start(() => s.journal.read()).result).toEqual(completed);
+      expect(await start(() => readJournal(s.journal)).result).toEqual(completed);
       expect(s.peer.requests).toHaveLength(1);
     });
 

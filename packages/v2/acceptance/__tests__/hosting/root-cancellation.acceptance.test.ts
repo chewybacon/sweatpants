@@ -1,3 +1,4 @@
+import { readJournal } from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -196,7 +197,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const finalVisits = s.cleanupVisits;
         expect(await s.run().result).toEqual(expected);
         expect(s.cleanupVisits).toBe(finalVisits);
-        const snapshot = await start(() => s.journal.read()).result;
+        const snapshot = await start(() => readJournal(s.journal)).result;
         expect(snapshot.history.map(({ request }) => request)).toEqual([
           "reserve",
           "child-close",
@@ -257,7 +258,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       await s.answer(approval.grant, { ok: true, value: "approved" });
       await expect(s.cancel(approval.pending.id)).rejects.toThrow("Stale");
-      expect((await start(() => s.journal.read()).result).cancellation).toBeUndefined();
+      expect((await start(() => readJournal(s.journal)).result).cancellation).toBeUndefined();
     });
   });
 });
