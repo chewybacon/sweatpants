@@ -14,7 +14,8 @@ Resolution runs before `BEGIN IMMEDIATE`; it may suspend. Current authority and
 ownership are read after the lock is acquired, so cancellation or replacement that
 wins during resolution fences the later settlement. Encoding and the decision do
 not suspend inside the transaction. Errors roll back all uncommitted records. After
-COMMIT, local binding publication runs synchronously before returning or allowing
+COMMIT, the shared transaction interpreter runs registered local publications
+synchronously before returning or allowing
 another command in the assembly to begin; losing the caller acknowledgement cannot
 replace an already committed projection.
 

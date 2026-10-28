@@ -338,23 +338,40 @@ export interface JournalRecords<Y> {
   append(id: string, entry: Accepted<unknown, unknown, unknown>): Operation<void, Y>;
 }
 
+declare const transactionInstruction: unique symbol;
+/** Opaque local registration consumed by the transaction interpreter, never persisted. */
+export interface TransactionInstruction {
+  readonly [transactionInstruction]: true;
+}
+
+/** One transaction's record access and commit obligations. */
+export interface JournalTransaction<Y> {
+  readonly records: JournalRecords<Y>;
+  /**
+   * Register when advanced. On confirmed commit, publish synchronously in registration
+   * order before releasing ownership or suspending. Rollback discards registrations.
+   * Trusted nonthrowing local bookkeeping only: no asynchronous work or remote effects.
+   * Retained operations cannot register in another or already-closed transaction.
+   */
+  onCommit(publish: () => void): Operation<void, TransactionInstruction>;
+}
+
 /** Adapter port. One serializable ownership domain, including absent records. */
 export interface JournalBackend<Y> {
   /**
    * Invoke work once; only storage operations may suspend inside the transaction.
    * Resolve external dependencies before locking. Publish after commit; roll back
    * uncommitted work on failure/disposal and drain cleanup before releasing locks.
-   * After confirmed commit, invoke publish synchronously, exactly once, before another
-   * transaction in this assembly can begin or any suspension/cancellation point. Never invoke it on
-   * rollback. It is a nonthrowing local publication hook, not an effect or user callback.
+   * After confirmed commit, run registered publications synchronously, exactly once, before another
+   * transaction in this assembly can begin or any suspension/cancellation point. Discard registrations on
+   * rollback. Publications are trusted local bookkeeping, not asynchronous effects.
    * Adapters must protect commit confirmation and publication from interruption, including
    * joining an in-flight commit during disposal. A lost caller acknowledgement does not
    * undo publication. Unknown database commit outcomes require durable reconciliation.
    * No implicit retries.
    */
   transact<T>(
-    work: (records: JournalRecords<Y>) => Operation<T, Y>,
-    publish?: () => void,
+    work: (transaction: JournalTransaction<Y>) => Operation<T, Y | TransactionInstruction>,
   ): Operation<T, Y>;
   /** Immutable accepted rows in [from, end), limited to at most limit entries. No write lock. */
   history(

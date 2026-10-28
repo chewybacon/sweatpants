@@ -1,5 +1,6 @@
 import {
   createJournalBinding,
+  createJournalTransaction,
   createJournalRecord,
   type JournalBackend,
   type JournalRecords,
@@ -62,10 +63,11 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
     return serializer.decode(row.payload as Uint8Array);
   }
   const backend: JournalBackend<Y> = {
-    *transact(work, publish) {
+    *transact(work) {
       const serializer = yield* serialization.resolve();
       db.exec("BEGIN IMMEDIATE");
       let committed = false;
+      const transaction = createJournalTransaction<Y>();
       try {
         const cache = new Map<string, JournalRecord>();
         const requests = new Map<string, RequestRecord | undefined>();
@@ -122,12 +124,13 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             );
           },
         };
-        const result = yield* work(rows);
+        const result = yield* transaction.run(rows, work);
         db.exec("COMMIT");
         committed = true;
-        publish?.();
+        transaction.publish();
         return result;
       } finally {
+        transaction.close();
         if (!committed) {
           db.exec("ROLLBACK");
         }

@@ -35,3 +35,6 @@ export type {
 } from "./contracts.ts";
 export { createJournalBinding } from "./journal-binding.ts";
 export { createJournalRecord } from "./journal-tree.ts";
+
+export type { JournalTransaction, TransactionInstruction } from "./contracts.ts";
+export { createJournalTransaction } from "./transaction.ts";

@@ -157,6 +157,39 @@ domain. The backend commits atomically or rolls back, then publishes local bindi
 synchronously after confirmed commit and before another transaction can intervene.
 A separate inspect call is not authority for a later commit.
 
+Transaction bodies receive `JournalTransaction<Y>`, exposing record access and
+an operation for registering local commit obligations:
+
+```ts
+const result =
+  yield *
+  backend.transact(function* (transaction) {
+    yield* transaction.onCommit(() => publishBindings(staged));
+    return yield* work(transaction.records);
+  });
+```
+
+Registration happens when the operation advances. The interpreter consumes its
+opaque `TransactionInstruction`; only native storage yields reach the scheduler,
+and the body's result remains inferred. Registration operations can be composed
+with existing callable middleware. Constructing an unused operation has no effect;
+foreign or closed transaction registrations reject. Publications run in registration
+order, while rollback discards them.
+
+Adapters use `createJournalTransaction<Y>()` once per transaction. Its `run(records,
+work)` interprets the body; after confirmed database commit, `publish()` runs
+synchronously before any suspension or release. `close()` runs on every exit and
+discards retained registrations. It does not commit, roll back, or release database
+resources. Those physical responsibilities remain with the adapter, including joining
+an asynchronous commit during disposal. Unknown commit outcomes still require
+reconciliation.
+
+Publications are trusted synchronous, nonthrowing local bookkeeping, not remote
+notifications or asynchronous effects. If one throws, later publications do not run;
+the database is already committed and must not be reported as rolled back. The
+interpreter forwards native iterator behavior without adding guarantees for arbitrary
+yielding JavaScript finally blocks or nested database transactions.
+
 This is the single journal implementation for memory and SQLite. `OwnedJournal`
 contains the existing combined capability shape formerly defined by MemoryJournal;
 it is not another authored tool or execution species. `JournalRecord` is an adapter

@@ -77,3 +77,11 @@ rollback after child writes but before parent acceptance encoding, fresh project
 binding, queued cancellation, stale grants and duplicate receipts after reopening.
 These are in-process connection/transaction tests, not subprocess crash or disk-fault
 evidence. No live service or external provider is needed.
+
+Transaction instruction journeys enter through hosting and use the shared production
+interpreter. They cover inferred results, lazy registration, callable middleware,
+commit publication, and rejection of foreign/closed registrations. Existing owned
+publication and async-storage journeys cover delayed acknowledgement, rollback and
+joined physical cleanup on this same path. The prototype bridge and duplicate callback
+mode are retired. The simulated peer does not establish interruption semantics for a
+real asynchronous database COMMIT.

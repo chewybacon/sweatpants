@@ -9,6 +9,7 @@ import type {
   OwnedChildOptions,
 } from "./contracts.ts";
 import type { ChildBinding } from "./types.ts";
+import { stageBindings } from "./bindings.ts";
 import { createJournalCommands } from "./journal-commands.ts";
 import { createJournalTree } from "./journal-tree.ts";
 
@@ -29,28 +30,15 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         records: JournalRecords<Y>,
       ) => Operation<T, Y>,
     ): Operation<T, Y> {
-      const staged = new Map<string, ChildBinding>();
-      const result = yield* backend.transact(
-        function* (records) {
-          if ((yield* records.get(id))?.snapshot.program !== program) {
-            throw new Error("Journal program mismatch");
-          }
-          const tree = createJournalTree(options, records, {
-            get: (key) => staged.get(key) ?? bindings.get(key),
-            has: (key) => staged.has(key) || bindings.has(key),
-            set: (key, binding) => {
-              staged.set(key, binding);
-            },
-          });
-          return yield* work(tree, records);
-        },
-        () => {
-          for (const [key, binding] of staged) {
-            bindings.set(key, binding);
-          }
-        },
-      );
-      return result;
+      return yield* backend.transact(function* (transaction) {
+        const staged = yield* stageBindings(transaction, bindings);
+        const records = transaction.records;
+        if ((yield* records.get(id))?.snapshot.program !== program) {
+          throw new Error("Journal program mismatch");
+        }
+        const tree = createJournalTree(options, records, staged);
+        return yield* work(tree, records);
+      });
     }
     function* command<T>(
       work: (

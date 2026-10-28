@@ -1,6 +1,6 @@
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { Accepted, JournalBackend, JournalRecord, RequestRecord } from "@sweatpan.ts/durable";
-import { createJournalRecord } from "@sweatpan.ts/durable";
+import { createJournalRecord, createJournalTransaction } from "@sweatpan.ts/durable";
 import { createProtocolRig } from "./protocol.ts";
 
 /** Scripted async storage peer. Models one serial transaction domain, not database crash safety. */
@@ -25,71 +25,79 @@ export function createJournalStorageRig<Y>(runtime: Runtime<Y>, program: string)
     }
   }
   const backend: JournalBackend<Y> = {
-    *transact(work, publish) {
-      const result = yield* runtime.using(
-        function* () {
-          if (locked) {
-            throw new Error("Storage transaction occupied");
-          }
-          locked = true;
-          return structuredClone(state);
-        },
-        function* (draft) {
-          const result = yield* work({
-            *get(execution) {
-              yield* io("get");
-              return structuredClone(draft.records.get(execution));
-            },
-            *set(execution, record) {
-              draft.records.set(execution, structuredClone(record));
-              yield* io("set");
-            },
-            *request(execution, request) {
-              yield* io("request");
-              return structuredClone(draft.requests.get(key(execution, request)));
-            },
-            *setRequest(execution, request, record) {
-              draft.requests.set(key(execution, request), structuredClone(record));
-              yield* io("setRequest");
-            },
-            *accepted(execution, receipt) {
-              yield* io("accepted");
-              return structuredClone(
-                draft.history.get(execution)?.find((entry) => entry.receipt === receipt),
-              );
-            },
-            *append(execution, entry) {
-              const history = draft.history.get(execution) ?? [];
-              if (
-                entry.sequence !== history.length ||
-                history.some((prior) => prior.receipt === entry.receipt)
-              ) {
-                throw new Error("Conflicting history");
-              }
-              history.push(structuredClone(entry));
-              draft.history.set(execution, history);
-              yield* io("append");
-            },
-          });
-          const detached = structuredClone(result);
-          yield* io("commit");
-          state = draft;
-          publish?.();
-          events.push("published");
-          return detached;
-        },
-        function* () {
-          try {
-            yield* io("close");
-          } finally {
-            locked = false;
-            events.push("released");
-          }
-        },
-      );
-      // Model a committed transaction whose response is delayed after lock release.
-      yield* io("acknowledge");
-      return result;
+    *transact(work) {
+      const transaction = createJournalTransaction<Y>();
+      try {
+        const result = yield* runtime.using(
+          function* () {
+            if (locked) {
+              throw new Error("Storage transaction occupied");
+            }
+            locked = true;
+            return structuredClone(state);
+          },
+          function* (draft) {
+            const result = yield* transaction.run(
+              {
+                *get(execution) {
+                  yield* io("get");
+                  return structuredClone(draft.records.get(execution));
+                },
+                *set(execution, record) {
+                  draft.records.set(execution, structuredClone(record));
+                  yield* io("set");
+                },
+                *request(execution, request) {
+                  yield* io("request");
+                  return structuredClone(draft.requests.get(key(execution, request)));
+                },
+                *setRequest(execution, request, record) {
+                  draft.requests.set(key(execution, request), structuredClone(record));
+                  yield* io("setRequest");
+                },
+                *accepted(execution, receipt) {
+                  yield* io("accepted");
+                  return structuredClone(
+                    draft.history.get(execution)?.find((entry) => entry.receipt === receipt),
+                  );
+                },
+                *append(execution, entry) {
+                  const history = draft.history.get(execution) ?? [];
+                  if (
+                    entry.sequence !== history.length ||
+                    history.some((prior) => prior.receipt === entry.receipt)
+                  ) {
+                    throw new Error("Conflicting history");
+                  }
+                  history.push(structuredClone(entry));
+                  draft.history.set(execution, history);
+                  yield* io("append");
+                },
+              },
+              work,
+            );
+            const detached = structuredClone(result);
+            yield* io("commit");
+            state = draft;
+            transaction.publish();
+            events.push("published");
+            return detached;
+          },
+          function* () {
+            try {
+              yield* io("close");
+            } finally {
+              locked = false;
+              events.push("released");
+            }
+          },
+        );
+        // Model a committed transaction whose response is delayed after lock release.
+        yield* io("acknowledge");
+        return result;
+      } finally {
+        transaction.close();
+      }
     },
     *history(execution, from, end, limit) {
       yield* io("history");
