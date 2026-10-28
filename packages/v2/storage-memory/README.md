@@ -185,8 +185,14 @@ hosted tree proves immediate leaf reply fencing and leaf-to-root cleanup through
 reacquired handles. Both throwing and unencodable projections leave parent and
 child records unchanged and allow recovery.
 
-This is one process-local transaction domain for an owned tree, not a public storage
-port, disk-backed store or SQLite implementation. The memory executor clones the
-whole tree to stage and publish writes; its cost grows with retained tree history.
-A database adapter should select affected records and append accepted entries,
-not copy the tree. Cross-domain ownership needs a separate protocol.
+Memory now implements the durable package's JournalBackend transaction port. The
+shared journal binding owns authority and ownership decisions; this adapter only
+owns retained data and isolated publication. Its legacy Memory\* type names re-export
+the shared contracts for source compatibility.
+
+The memory executor still clones the whole tree to stage and publish writes; its
+cost grows with retained tree history. The SQLite adapter uses the same decisions
+but loads touched executions and appends accepted rows separately. Hosted attempt,
+owned-child and Lua reopening evidence now enters through SQLite. Memory continues
+to serve the other in-process composition and recovery journeys. Cross-domain
+ownership needs a separate protocol.

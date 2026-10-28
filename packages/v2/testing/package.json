@@ -23,7 +23,14 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/testing",
     "format:check": "cd ../../.. && oxfmt packages/v2/testing --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/storage": "workspace:*",
+    "@sweatpan.ts/storage-sqlite": "workspace:*"
+  },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }

@@ -4,13 +4,8 @@ import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { createRecovery, type ChildLink, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
-import {
-  createMemoryJournal,
-  createMemoryJournalStore,
-  type MemoryOwnedChild,
-  type MemoryJournal,
-} from "@sweatpan.ts/storage-memory";
-import { createProtocolRig } from "@sweatpan.ts/testing";
+import type { OwnedChild, OwnedJournal } from "@sweatpan.ts/durable";
+import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -38,17 +33,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     } = {},
   ) {
     const { count = 1, liveApproval = false, call = "body", liveCleanup = false } = options;
-    const store = createMemoryJournalStore<string[], string, string, string>({
+    const store = createSqliteJournalRig<string[], string, string, string, unknown, Y>({
       program: "parent",
       equals: isDeepStrictEqual,
     });
+    onTestFinished(() => store.close());
     let parent = store.open();
     let assembly = 0;
     const projectedAssemblies: number[] = [];
     const peer = createProtocolRig();
     const children = new Map<
       string,
-      MemoryOwnedChild<{ approval: string }, string, string, string>
+      OwnedChild<{ approval: string }, string, string, string, unknown, Y>
     >();
     const waits = new Map<string, { grant: ResolutionGrant; request: string }>();
     const links: ChildLink[] = [];
@@ -71,7 +67,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       return { approval: yield* ask("approval") };
     }
-    function* runChild(child: MemoryOwnedChild<{ approval: string }, string, string, string>) {
+    function* runChild(
+      child: OwnedChild<{ approval: string }, string, string, string, unknown, Y>,
+    ) {
       const recovery = createRecovery(runtime.composition, {
         name: "child-recovery",
         program: "child",
@@ -212,7 +210,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
       projectedAssemblies,
       reopen() {
-        parent = store.open();
+        parent = store.reopen();
         assembly++;
         children.clear();
         waits.clear();
@@ -237,7 +235,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     };
   }
 
-  describe(`${runtime.name}: sequential owned calls`, () => {
+  describe(`${runtime.name}: SQLite sequential owned calls`, () => {
     it("reacquires the same child after disposal, settles once, and assigns a new child to the next call", async () => {
       const s = scenario({ count: 2 });
       expect((await s.begin()).state).toBe("child");
@@ -491,20 +489,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await start(() => child.journal.read()).result).toEqual(childBefore);
         s.rejectProjection = false;
         s.unencodableProjection = false;
+        s.reopen();
         expect(await s.finish()).toEqual({ state: "completed", value: ["approved"] });
       });
     }
 
     it("fences a three-level owned tree before returning and drains cleanup from leaf to root", async () => {
-      const root = createMemoryJournal<string, string, string, string>({
+      const store = createSqliteJournalRig<string, string, string, string, unknown, Y>({
         program: "level:0",
         equals: isDeepStrictEqual,
       });
-      const journals = new Map<number, MemoryJournal<string, string, string, string>>([[0, root]]);
+      onTestFinished(() => store.close());
+      const root = store.open();
+      const journals = new Map<number, OwnedJournal<string, string, string, string, unknown, Y>>([
+        [0, root],
+      ]);
       const waits = new Map<number, { request: string; grant: ResolutionGrant }>();
       function* runLevel(
         depth: number,
-        journal: MemoryJournal<string, string, string, string>,
+        journal: OwnedJournal<string, string, string, string, unknown, Y>,
       ): Operation<HostedResult<string, string>, Y> {
         const recovery = createRecovery(runtime.composition, {
           name: `recovery:${depth}`,

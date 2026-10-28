@@ -14,10 +14,9 @@ Representation-changing layers must use a distinct format identity. Observationa
 wrappers preserve it. A future reader must explicitly support the recorded format;
 scope inheritance does not make different representations interchangeable.
 
-The first hosted acceptance tracer uses a serialized delivery boundary with the
-memory journal. It proves scoped selection/restoration, middleware wrapping, native
-structured values, one encode/decode per delivery, encoding failure before acceptance,
-and authority fencing after suspended resolution. It does not prove a database
-transaction implementation. Storage should encode changed payloads once and decode
-selected rows once, without reserializing a write acknowledgement or repeatedly
-validating decoded domain data.
+The hosted serializer journeys now use real SQLite journal transactions. They prove
+scoped selection/restoration, middleware wrapping, native structured values, one
+decode per selected payload within a transaction, encoding failure before acceptance,
+and authority fencing after suspended resolution. A competing SQLite connection can
+commit cancellation while resolution is parked; the resumed write then rejects.
+The former serialized-transport tracer has been replaced, not retained in parallel.

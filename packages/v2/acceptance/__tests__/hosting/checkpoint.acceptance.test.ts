@@ -8,9 +8,8 @@ import {
   type AttemptGrant,
 } from "@sweatpan.ts/durable";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
-import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
 import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
-import { createProtocolRig } from "@sweatpan.ts/testing";
+import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -38,13 +37,16 @@ function decodeResult(value: unknown) {
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const mode of ["replay", "restore", "fallback"] as const) {
     const checkpoints = mode !== "replay";
-    it(`${runtime.name}: reopens Lua hosting after acceptance with fresh delivery scopes (${mode})`, async () => {
-      const store = createMemoryJournalStore<
+    it(`${runtime.name}: reopens SQLite Lua hosting after acceptance with fresh delivery scopes (${mode})`, async () => {
+      const store = createSqliteJournalRig<
         ReturnType<typeof decodeResult>,
         ReturnType<typeof decodeRequest>,
         string,
-        string
+        string,
+        unknown,
+        Y
       >({ program: "booking", equals: isDeepStrictEqual });
+      onTestFinished(() => store.close());
       const peer = createProtocolRig();
       const grants: AttemptGrant[] = [];
       const finalized: string[] = [];
@@ -168,6 +170,7 @@ return { hold = hold, approval = approval }
       expect(saved.checkpoint?.position).toBe(checkpoints ? 0 : undefined);
       expect(saved.history[0]!.outcome).toEqual({ ok: true, value: "hold-9" });
       // No evaluator, recovery API, host or journal handle is reused by run().
+      store.reopen();
       const execution = run();
       await Promise.race([peer.waitForRequests(2), execution.result]);
       peer.reply("approve", { status: 200, body: "approved" });

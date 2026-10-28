@@ -153,3 +153,23 @@ They do not read storage, publish state, advance a Guest or execute a handler. T
 read the relevant authority and commit the decision within the same atomic boundary,
 encoding/detaching data before publication. A separate inspect call is not authority
 for a later commit. These helpers are adapter-building APIs, not wire validation.
+
+## Journal binding and backend transactions
+
+`createJournalBinding` binds the existing journal, attempt, interaction, cancellation
+and owned-child capabilities to `JournalBackend`. The port supplies a synchronous
+transaction-local `JournalRecords` view. A backend may resolve dependencies before
+entering the transaction; all eligibility reads, pure projections and updates then
+run without scheduler suspension. The backend publishes atomically or rolls back.
+
+This is the single journal implementation for memory and SQLite. `OwnedJournal`
+contains the existing combined capability shape formerly defined by MemoryJournal;
+it is not another authored tool or execution species. `JournalRecord` is an adapter
+record, not a replacement for the smaller recovery-facing JournalSnapshot. Records
+include authority, historical ownership, reverse links and queued cancellation.
+
+Each open has fresh trusted projection bindings. The binding registry is staged
+inside the transaction decision and published to the assembly only on success.
+Stored data contains no evaluator handles, projections or stop callbacks. Reacquire
+children from the owning root with the pinned program/input before running them.
+Neither a decoded record nor an arbitrary program string validates authored types.

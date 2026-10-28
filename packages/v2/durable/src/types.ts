@@ -1,2 +1,7 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Internal types shared by implementation modules; not part of the public API.
+import type { Outcome } from "@standard-durability/core";
+
+/** Trusted assembly binding, deliberately excluded from cloned records. */
+export interface ChildBinding {
+  readonly program: string;
+  readonly outcome: (value: unknown) => Outcome<unknown, unknown>;
+}

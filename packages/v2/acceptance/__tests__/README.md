@@ -68,3 +68,12 @@ and unsupported-format replay fallback preserve distinct delivery scopes, cleanu
 and exactly one scripted peer request per effect. These replace the earlier
 uninterrupted multi-request journeys. Reopening is in-process evidence, not disk or
 OS-crash durability; supported-format restore errors are not silently replayed.
+
+Attempt, owned-child and Lua checkpoint journeys now use temporary real SQLite
+files through createSqliteJournalRig. Reopen closes the connection and rebuilds the
+store; connect supplies a second independent connection for controlled races.
+The same durable journal binding backs memory and SQLite. Existing journeys cover
+rollback after child writes but before parent acceptance encoding, fresh projection
+binding, queued cancellation, stale grants and duplicate receipts after reopening.
+These are in-process connection/transaction tests, not subprocess crash or disk-fault
+evidence. No live service or external provider is needed.

@@ -1,16 +1,18 @@
+import { requestJournalCancellation, settleOwnedChild } from "./transitions.ts";
 import type { Outcome } from "@standard-durability/core";
-import {
-  requestJournalCancellation,
-  settleOwnedChild,
-  type ChildLink,
-  type JournalSnapshot,
-  type PendingRequest,
-} from "@sweatpan.ts/durable";
-import type { MemoryChildOptions, MemoryJournalOptions } from "./contracts.ts";
-import type { ChildBinding, MemoryRecord, MemoryTreeData } from "./types.ts";
-import { transactMemory } from "./transaction.ts";
+import type {
+  ChildLink,
+  JournalSnapshot,
+  PendingRequest,
+  OwnedChildOptions,
+  JournalBindingOptions,
+  JournalRecord,
+  JournalRecords,
+} from "./contracts.ts";
+import type { ChildBinding } from "./types.ts";
 
-function createRecord(program: string, parent?: ChildLink): MemoryRecord {
+/** Initial empty authority record; adapters store this with the pinned program. */
+export function createJournalRecord(program: string, parent?: ChildLink): JournalRecord {
   return {
     snapshot: { program, revision: 0, history: [], status: "running" },
     grants: new Map(),
@@ -21,7 +23,7 @@ function createRecord(program: string, parent?: ChildLink): MemoryRecord {
   };
 }
 
-function record(records: Map<string, MemoryRecord>, id: string): MemoryRecord {
+function record(records: JournalRecords, id: string): JournalRecord {
   const found = records.get(id);
   if (!found) {
     throw new Error("Unknown execution identity");
@@ -30,8 +32,9 @@ function record(records: Map<string, MemoryRecord>, id: string): MemoryRecord {
 }
 
 /** Prepare the entire eligible descendant chain before publishing any cancellation. */
-function cancel(records: Map<string, MemoryRecord>, id: string, requestId: string, reason: string) {
-  let current = record(records, id);
+function cancel(records: JournalRecords, id: string, requestId: string, reason: string) {
+  let currentId = id;
+  let current = record(records, currentId);
   let boundary = requestId;
   let root: ReturnType<typeof requestJournalCancellation> | undefined;
   while (true) {
@@ -43,6 +46,7 @@ function cancel(records: Map<string, MemoryRecord>, id: string, requestId: strin
     );
     root ??= decision;
     current.snapshot = decision.snapshot;
+    records.set(currentId, current);
     if (decision.revoke) {
       const attempt = decision.cancellation.attempt;
       if (attempt && !current.invalidated.has(attempt.attemptId)) {
@@ -60,43 +64,29 @@ function cancel(records: Map<string, MemoryRecord>, id: string, requestId: strin
     if (!decision.childToCancel) {
       return root.cancellation;
     }
-    current = record(records, decision.childToCancel.childId);
+    currentId = decision.childToCancel.childId;
+    current = record(records, currentId);
     const snapshot = current.snapshot;
     if (snapshot.status !== "running" || snapshot.cancellation || snapshot.cancellationRequested) {
       return root.cancellation;
     }
     if (!snapshot.pending) {
       current.queuedStop ??= reason;
+      records.set(currentId, current);
       return root.cancellation;
     }
     boundary = snapshot.pending.id;
   }
 }
 
-/** Retain only data across assemblies. */
-export function createMemoryTreeData(program: string): MemoryTreeData {
-  const rootId = crypto.randomUUID();
-  return { rootId, records: new Map([[rootId, createRecord(program)]]) };
-}
-
-/** Fresh assembly bindings over one shared process-local transaction domain. */
-export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTreeData) {
-  const bindings = new Map<string, ChildBinding>();
-
-  function transact<T>(decide: (draft: Map<string, MemoryRecord>) => T): T {
-    return transactMemory(
-      () => {
-        const draft = structuredClone(data.records);
-        const result = decide(draft);
-        return { state: draft, result };
-      },
-      (next) => {
-        data.records = next;
-      },
-    );
-  }
-
-  function settle(records: Map<string, MemoryRecord>, next: MemoryRecord) {
+/** Transaction-local ownership decisions; bindings are supplied by the open assembly. */
+export function createJournalTree(
+  options: JournalBindingOptions,
+  records: JournalRecords,
+  bindings: Map<string, ChildBinding>,
+) {
+  const transact = <T>(decide: (draft: JournalRecords) => T): T => decide(records);
+  function settle(records: JournalRecords, next: JournalRecord) {
     const link = next.parent;
     if (!link || next.snapshot.status === "running") {
       return;
@@ -114,19 +104,19 @@ export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTree
       projected = binding.outcome(next.snapshot.value);
     }
     parent.snapshot = settleOwnedChild(parent.snapshot, link, next.snapshot, projected);
+    records.set(link.parentId, parent);
   }
 
   return {
-    rootId: data.rootId,
     // This is the sole heterogeneous record boundary. Typed handles are bound by
     // trusted program assembly, not inferred or validated from stored bytes.
-    read<R, Q, V, E, S>(id: string): MemoryRecord<R, Q, V, E, S> {
-      return record(data.records, id) as MemoryRecord<R, Q, V, E, S>;
+    read<R, Q, V, E, S>(id: string): JournalRecord<R, Q, V, E, S> {
+      return record(records, id) as JournalRecord<R, Q, V, E, S>;
     },
-    commit<R, Q, V, E, S, T>(id: string, next: MemoryRecord<R, Q, V, E, S>, result: T): T {
+    commit<R, Q, V, E, S, T>(id: string, next: JournalRecord<R, Q, V, E, S>, result: T): T {
       return transact((draft) => {
         const previous = record(draft, id);
-        const detached = structuredClone(next);
+        const detached = next;
         draft.set(id, detached);
         if (previous.snapshot.status === "running" && detached.snapshot.status !== "running") {
           settle(draft, detached);
@@ -144,7 +134,8 @@ export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTree
     ) {
       return transact((draft) => {
         const current = record(draft, id);
-        current.snapshot = structuredClone(snapshot);
+        current.snapshot = snapshot;
+        draft.set(id, current);
         if (current.queuedStop !== undefined && !snapshot.cancellation) {
           const reason = current.queuedStop;
           current.queuedStop = undefined;
@@ -157,7 +148,7 @@ export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTree
     acquire<C, V, E>(
       id: string,
       requestId: string,
-      definition: MemoryChildOptions<C, V, E>,
+      definition: OwnedChildOptions<C, V, E>,
     ): ChildLink {
       const outcome = definition.outcome;
       const link = transact((draft) => {
@@ -186,12 +177,13 @@ export function createMemoryTree(options: MemoryJournalOptions, data: MemoryTree
           program: definition.program,
           input: definition.input,
         };
-        draft.set(link.childId, createRecord(link.program, link));
+        draft.set(link.childId, createJournalRecord(link.program, link));
         parent.children.set(requestId, link);
         parent.snapshot = { ...state, child: link, revision: state.revision + 1 };
+        draft.set(id, parent);
         return link;
       });
-      // Binding installation cannot fail; validation/encoding completed before publication.
+      // Bindings are staged alongside the decision and retained only after commit.
       // Reacquisition retains the original trusted projection for this pinned call.
       if (!bindings.has(link.childId)) {
         bindings.set(link.childId, {

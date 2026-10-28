@@ -260,3 +260,73 @@ export interface AcceptanceTransition<R, Q, V, E, S> {
   readonly snapshot: JournalSnapshot<R, Q, V, E, S>;
   readonly acceptance: Acceptance<Q, V, E>;
 }
+
+/** Trusted journal assembly. Equality defines duplicate domain delivery. */
+export interface JournalBindingOptions {
+  readonly program: string;
+  readonly equals: (left: unknown, right: unknown) => boolean;
+}
+
+/** Owned call assembly; program/input are compared on reacquisition. */
+export interface OwnedChildOptions<R, V, E> {
+  readonly program: string;
+  readonly input: unknown;
+  /** Pure terminal projection. Must not perform effects; failures leave both journals unchanged. */
+  readonly outcome: (value: R) => Outcome<V, E>;
+}
+
+/** Typed journal capabilities sharing the adapter's synchronous transaction boundary. */
+export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journal<
+  R,
+  Q,
+  V,
+  E,
+  S,
+  Y
+> {
+  readonly id: string;
+  readonly cancellation: CancellationJournal<Q, Y>;
+  readonly attempts: Attempts<Q, V, E, Y>;
+  readonly attemptControl: AttemptControl<Q, V, E, Y>;
+  readonly interactions: Interactions<Q, V, E, Y>;
+  /**
+   * Bind one child to the exact pending call. Reacquisition checks program/input;
+   * callers must use the same type contract for that program. Reacquisition returns
+   * a fresh handle to the same stored child and retains its original result projection within that open assembly.
+   * This is trusted local assembly, not wire validation. Child creation and ownership
+   * publish together; child completion atomically settles the parent in the same tree.
+   */
+  ensureChild<C, CQ, CV, CE, CS = unknown>(
+    requestId: string,
+    options: OwnedChildOptions<C, V, E>,
+  ): Operation<OwnedChild<C, CQ, CV, CE, CS, Y>, Y>;
+}
+
+/** The child journal is driven with ordinary recovery/hosting, without a handler attempt for the call. */
+export interface OwnedChild<R, Q, V, E, S = unknown, Y = never> {
+  readonly link: ChildLink;
+  readonly journal: OwnedJournal<R, Q, V, E, S, Y>;
+}
+
+/** Data only: one member of a colocated owned execution tree. */
+export interface JournalRecord<R = unknown, Q = unknown, V = unknown, E = unknown, S = unknown> {
+  snapshot: JournalSnapshot<R, Q, V, E, S>;
+  grants: Map<string, AttemptGrant>;
+  invalidated: Map<string, string>;
+  registrations: Map<string, InteractionRegistration>;
+  queuedStop?: string;
+  children: Map<string, ChildLink>;
+  parent?: ChildLink;
+}
+
+/** Mutable transaction-local records. get returns an isolated working copy; set marks a write. */
+export interface JournalRecords {
+  get(id: string): JournalRecord | undefined;
+  set(id: string, record: JournalRecord): void;
+}
+
+/** Adapter port: run a non-suspending decision against current records and publish atomically. */
+export interface JournalBackend<Y> {
+  /** Resolve external dependencies before locking; return only after commit. Failures roll back. */
+  transact<T>(decide: (records: JournalRecords) => T): Operation<T, Y>;
+}

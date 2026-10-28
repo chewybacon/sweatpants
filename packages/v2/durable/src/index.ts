@@ -25,3 +25,14 @@ export type { CancellationTransition } from "./contracts.ts";
 export { requestJournalCancellation, settleOwnedChild } from "./transitions.ts";
 export type { AcceptanceTransition } from "./contracts.ts";
 export { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";
+export type {
+  JournalBindingOptions,
+  OwnedChildOptions,
+  OwnedJournal,
+  OwnedChild,
+  JournalRecord,
+  JournalRecords,
+  JournalBackend,
+} from "./contracts.ts";
+export { createJournalBinding } from "./journal-binding.ts";
+export { createJournalRecord } from "./journal-tree.ts";

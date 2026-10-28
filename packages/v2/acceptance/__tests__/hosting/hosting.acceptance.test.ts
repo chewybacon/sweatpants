@@ -9,8 +9,12 @@ import {
 } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
-import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
-import { createProtocolRig, createNotificationRig, createLatch } from "@sweatpan.ts/testing";
+import {
+  createProtocolRig,
+  createNotificationRig,
+  createLatch,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import type { Serializer } from "@sweatpan.ts/storage";
 import { v8Serializer } from "@sweatpan.ts/storage-sqlite";
 import type { Runtime } from "@sweatpan.ts/runtime";
@@ -23,11 +27,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => execution.cancel());
     return execution;
   }
-  function scenario(liveCancellation = false) {
-    const store = createMemoryJournalStore<{ reservation: string }, string, string, string>({
+  function scenario(
+    liveCancellation = false,
+    serialization?: { resolve(): Operation<Serializer, Y> },
+  ) {
+    const store = createSqliteJournalRig<
+      { reservation: string },
+      string,
+      string,
+      string,
+      unknown,
+      Y
+    >({
       program: "reservation",
       equals: isDeepStrictEqual,
+      serialization,
     });
+    onTestFinished(() => store.close());
     let journal = store.open();
     const peer = createProtocolRig();
     const grants: AttemptGrant[] = [];
@@ -46,7 +62,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         return state;
       },
-      invalidate: journal.attemptControl.invalidate,
+      *invalidate(grant: AttemptGrant, reason: string) {
+        return yield* journal.attemptControl.invalidate(grant, reason);
+      },
     };
     const transportNotifications = {
       *subscribe(grant: AttemptGrant) {
@@ -170,6 +188,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       reopen() {
         journal = store.open();
       },
+      reconnect() {
+        journal = store.reopen();
+      },
+      compete: () => store.connect(),
       peer,
       grants,
       run,
@@ -193,18 +215,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
-  describe(`${runtime.name}: hosted attempt sandwich`, () => {
+  describe(`${runtime.name}: SQLite hosted attempt sandwich`, () => {
     for (const failure of ["none", "encode", "cancel-during-resolution"] as const) {
       it(`composes scoped serialization at hosted delivery (${failure})`, async () => {
-        const s = scenario();
         const resolving = createLatch<void>();
         const continueResolution = createLatch<void>();
         const selected = runtime.composition.createContext<Serializer>("delivery-serializer");
         const serialization = runtime.composition.createApi("delivery-serialization", {
           *resolve(): Operation<Serializer, Y> {
-            return yield* selected.expect();
+            return (yield* selected.get()) ?? v8Serializer;
           },
         });
+        const s = scenario(false, serialization.operations);
         let encoded = 0;
         let decoded = 0;
         let restoredParent = false;
@@ -223,18 +245,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             try {
               return yield* runtime.composition.scoped(function* () {
                 yield* selected.set(childSerializer);
-                const serializer = yield* serialization.operations.resolve();
-                // This is a simulated serialized delivery boundary, not SQLite persistence.
                 const payload = {
                   ...outcome,
                   metadata: new Map([["sequence", 1n]]),
                   bytes: new Uint8Array([1, 2]),
                 };
-                const bytes = serializer.encode(payload);
-                const restored = serializer.decode(bytes);
-                expect(restored).toEqual(payload);
-                // Trusted local transport round trip: one type boundary, no domain revalidation.
-                return yield* s.journal.attempts.settle(grant, restored as Outcome<string, string>);
+                return yield* s.journal.attempts.settle(grant, payload);
               });
             } finally {
               // Plain context lookup in finally; no asynchronous logical cleanup is required.
@@ -248,11 +264,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* selected.set(v8Serializer);
             yield* serialization.around({
               *resolve(args, next) {
+                const serializer = yield* next(...args);
+                if (serializer !== childSerializer) {
+                  return serializer;
+                }
                 if (failure === "cancel-during-resolution") {
                   resolving.resolve();
                   yield* runtime.fromPromise(() => continueResolution.promise);
                 }
-                const serializer = yield* next(...args);
                 return {
                   ...serializer,
                   encode(value) {
@@ -273,7 +292,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         s.peer.reply(grant.attemptId, { status: 200, body: "reservation-1" });
         if (failure === "cancel-during-resolution") {
           await Promise.race([resolving.promise, execution.result]);
-          await s.invalidate(grant);
+          const competitor = s.compete();
+          await start(() => competitor.attemptControl.invalidate(grant, "deadline")).result;
           continueResolution.resolve();
         }
         if (failure === "none") {
@@ -281,7 +301,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             state: "completed",
             value: { reservation: "reservation-1" },
           });
-          s.reopen();
+          s.reconnect();
           expect(await s.run().result).toEqual({
             state: "completed",
             value: { reservation: "reservation-1" },
@@ -296,11 +316,42 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           );
         }
         expect(restoredParent).toBe(true);
-        expect(encoded).toBe(1);
-        expect(decoded).toBe(failure === "encode" ? 0 : 1);
+        // Only the settlement child scope is instrumented: one header decode,
+        // one header write and one new accepted row; revocation writes nothing.
+        expect(encoded).toBe(failure === "none" ? 2 : failure === "encode" ? 1 : 0);
+        expect(decoded).toBe(1);
+        if (failure === "none") {
+          const saved = await start(() => s.journal.read()).result;
+          expect(saved.history[0]!.outcome).toEqual({
+            ok: true,
+            value: "reservation-1",
+            metadata: new Map([["sequence", 1n]]),
+            bytes: new Uint8Array([1, 2]),
+          });
+        }
         expect(s.peer.requests).toHaveLength(1);
       });
     }
+
+    it("rejects an unsupported stored format without delivering another effect", async () => {
+      let incompatible = false;
+      const s = scenario(false, {
+        *resolve() {
+          return incompatible ? { ...v8Serializer, format: "unsupported" } : v8Serializer;
+        },
+      });
+      const first = s.run();
+      await s.wait(1, first.result);
+      incompatible = true;
+      await expect(s.run().result).rejects.toThrow("Unsupported stored serialization format");
+      incompatible = false;
+      s.peer.reply(s.grants[0]!.attemptId, { status: 200, body: "reservation-1" });
+      expect(await first.result).toEqual({
+        state: "completed",
+        value: { reservation: "reservation-1" },
+      });
+      expect(s.peer.requests).toHaveLength(1);
+    });
 
     it("denies competing delivery, replaces explicitly and rejects stale control and late results", async () => {
       const s = scenario(true);
@@ -330,6 +381,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(completed).toEqual({ state: "completed", value: { reservation: "reservation-1" } });
       expect((await start(() => s.journal.read()).result).history).toHaveLength(1);
       expect(await s.run().result).toEqual(completed);
+      s.reconnect();
+      await expect(
+        start(() => s.journal.attempts.settle(original, { ok: true, value: "stale" })).result,
+      ).rejects.toThrow("Stale attempt grant");
+      expect(
+        (
+          await start(() =>
+            s.journal.attempts.settle(replacement, { ok: true, value: "reservation-1" }),
+          ).result
+        ).duplicate,
+      ).toBe(true);
       expect(s.peer.requests).toHaveLength(2);
     });
 
@@ -614,7 +676,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await start(() => s.journal.attemptControl.inspect(grant)).result).toEqual({
         state: "active",
       });
-      s.reopen();
+      s.reconnect();
       expect(await s.run().result).toEqual({ state: "occupied", grant });
       // Resubmit the same provider result under the original grant; do not execute again.
       const accepted = await start(() =>
@@ -625,7 +687,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         state: "completed",
         value: { reservation: "reservation-1" },
       });
-      s.reopen();
+      s.reconnect();
       const completed = await start(() => s.journal.read()).result;
       const duplicate = await start(() =>
         s.journal.attempts.settle(grant, { ok: true, value: "reservation-1" }),

@@ -3,7 +3,7 @@
 This directory groups the new packages while existing `@sweatpants/*` packages
 remain available as references. `v2` is not part of a public package name.
 Packages start private. Portable computation and composition, both native adapters,
-execution, replay/checkpoint recovery, hosting, memory journals and the Lua evaluator
+execution, replay/checkpoint recovery, hosting, memory/Node SQLite journals and the Lua evaluator
 are implemented with acceptance journeys; other packages remain scaffolds.
 
 ## Package conventions

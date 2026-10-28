@@ -3144,6 +3144,12 @@ importers:
 
   packages/v2/storage-sqlite:
     dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
       '@sweatpan.ts/storage':
         specifier: workspace:*
         version: link:../storage
@@ -3156,7 +3162,23 @@ importers:
         version: 7.0.2
 
   packages/v2/testing:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
+      '@sweatpan.ts/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@sweatpan.ts/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
