@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@standard-durability/core": "workspace:*",
+    "@standard-schema/spec": "catalog:",
     "@sweatpan.ts/codemode-runtime-lua": "workspace:*",
     "@sweatpan.ts/durable": "workspace:*",
     "@sweatpan.ts/execution": "workspace:*",

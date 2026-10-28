@@ -2743,6 +2743,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpan.ts/codemode-runtime-lua':
         specifier: workspace:*
         version: link:../codemode-runtime-lua
@@ -3166,6 +3169,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpan.ts/durable':
         specifier: workspace:*
         version: link:../durable
