@@ -10,7 +10,9 @@ import {
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
-import { createProtocolRig, createNotificationRig } from "@sweatpan.ts/testing";
+import { createProtocolRig, createNotificationRig, createLatch } from "@sweatpan.ts/testing";
+import type { Serializer } from "@sweatpan.ts/storage";
+import { v8Serializer } from "@sweatpan.ts/storage-sqlite";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -192,6 +194,114 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     };
   }
   describe(`${runtime.name}: hosted attempt sandwich`, () => {
+    for (const failure of ["none", "encode", "cancel-during-resolution"] as const) {
+      it(`composes scoped serialization at hosted delivery (${failure})`, async () => {
+        const s = scenario();
+        const resolving = createLatch<void>();
+        const continueResolution = createLatch<void>();
+        const selected = runtime.composition.createContext<Serializer>("delivery-serializer");
+        const serialization = runtime.composition.createApi("delivery-serialization", {
+          *resolve(): Operation<Serializer, Y> {
+            return yield* selected.expect();
+          },
+        });
+        let encoded = 0;
+        let decoded = 0;
+        let restoredParent = false;
+        const childSerializer: Serializer = {
+          ...v8Serializer,
+          encode(value) {
+            if (failure === "encode") {
+              throw new Error("Encoding rejected");
+            }
+            return v8Serializer.encode(value);
+          },
+        };
+        const transport: Attempts<string, string, string, Y> = {
+          begin: s.journal.attempts.begin,
+          *settle(grant, outcome) {
+            try {
+              return yield* runtime.composition.scoped(function* () {
+                yield* selected.set(childSerializer);
+                const serializer = yield* serialization.operations.resolve();
+                // This is a simulated serialized delivery boundary, not SQLite persistence.
+                const payload = {
+                  ...outcome,
+                  metadata: new Map([["sequence", 1n]]),
+                  bytes: new Uint8Array([1, 2]),
+                };
+                const bytes = serializer.encode(payload);
+                const restored = serializer.decode(bytes);
+                expect(restored).toEqual(payload);
+                // Trusted local transport round trip: one type boundary, no domain revalidation.
+                return yield* s.journal.attempts.settle(grant, restored as Outcome<string, string>);
+              });
+            } finally {
+              // Plain context lookup in finally; no asynchronous logical cleanup is required.
+              const parent = yield* selected.expect();
+              restoredParent = parent === v8Serializer;
+            }
+          },
+        };
+        const execution = s.run("unsafe", undefined, transport, {
+          *beforeBegin() {
+            yield* selected.set(v8Serializer);
+            yield* serialization.around({
+              *resolve(args, next) {
+                if (failure === "cancel-during-resolution") {
+                  resolving.resolve();
+                  yield* runtime.fromPromise(() => continueResolution.promise);
+                }
+                const serializer = yield* next(...args);
+                return {
+                  ...serializer,
+                  encode(value) {
+                    encoded++;
+                    return serializer.encode(value);
+                  },
+                  decode(bytes) {
+                    decoded++;
+                    return serializer.decode(bytes);
+                  },
+                };
+              },
+            });
+          },
+        });
+        await s.wait(1, execution.result);
+        const grant = s.grants[0]!;
+        s.peer.reply(grant.attemptId, { status: 200, body: "reservation-1" });
+        if (failure === "cancel-during-resolution") {
+          await Promise.race([resolving.promise, execution.result]);
+          await s.invalidate(grant);
+          continueResolution.resolve();
+        }
+        if (failure === "none") {
+          expect(await execution.result).toEqual({
+            state: "completed",
+            value: { reservation: "reservation-1" },
+          });
+          s.reopen();
+          expect(await s.run().result).toEqual({
+            state: "completed",
+            value: { reservation: "reservation-1" },
+          });
+        } else {
+          await expect(execution.result).rejects.toThrow(
+            failure === "encode" ? "Encoding rejected" : "revoked",
+          );
+          expect((await start(() => s.journal.read()).result).history).toEqual([]);
+          expect((await s.run().result).state).toBe(
+            failure === "encode" ? "occupied" : "invalidated",
+          );
+        }
+        expect(restoredParent).toBe(true);
+        expect(encoded).toBe(1);
+        expect(decoded).toBe(failure === "encode" ? 0 : 1);
+        expect(s.peer.requests).toHaveLength(1);
+      });
+    }
+
     it("denies competing delivery, replaces explicitly and rejects stale control and late results", async () => {
       const s = scenario(true);
       const first = s.run("repeatable");

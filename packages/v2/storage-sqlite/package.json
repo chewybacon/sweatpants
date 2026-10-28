@@ -23,7 +23,11 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/storage-sqlite",
     "format:check": "cd ../../.. && oxfmt packages/v2/storage-sqlite --check"
   },
+  "dependencies": {
+    "@sweatpan.ts/storage": "workspace:*"
+  },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }

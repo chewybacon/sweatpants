@@ -2764,9 +2764,15 @@ importers:
       '@sweatpan.ts/runtime-effection':
         specifier: workspace:*
         version: link:../runtime-effection
+      '@sweatpan.ts/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@sweatpan.ts/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
+      '@sweatpan.ts/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
       '@sweatpan.ts/testing':
         specifier: workspace:*
         version: link:../testing
@@ -3137,7 +3143,14 @@ importers:
         version: 7.0.2
 
   packages/v2/storage-sqlite:
+    dependencies:
+      '@sweatpan.ts/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
