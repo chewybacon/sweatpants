@@ -1,4 +1,5 @@
-import type { Operation, Outcome } from "@standard-durability/core";
+import type { Api, Operation, Outcome } from "@standard-durability/core";
+import type { Execution } from "@sweatpan.ts/execution";
 import type { RestoredGuest } from "@sweatpan.ts/codemode-runtime";
 
 /** Immutable accepted history supplied by a trusted host; receipts identify accepted entries. */
@@ -211,4 +212,9 @@ export interface CancellationJournal<Q, Y> {
   request(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
   /** Commit cancelled completion at the expected revision after cleanup has drained. */
   finish(revision: number, failure?: string): Operation<void, Y>;
+}
+
+/** Recovery policy plus its inferred, scoped evaluator API; raw Guests retain checkpoint identity. */
+export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y, V, E, S>, Y> {
+  readonly execution: Execution<R, Q, Y, V, E>;
 }

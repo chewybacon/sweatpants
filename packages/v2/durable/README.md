@@ -103,3 +103,43 @@ The optional journal cancellation capability atomically records intent and revok
 the current delivery. Activation drives cleanup through its existing park/complete
 path, committing cancelled completion (including a diagnostic failure string when
 unhandled cleanup fails). Successful completion cannot override cancellation.
+
+## Execution middleware across recovery strategies
+
+Recovery exposes its inferred execution API as `recovery.execution`. Install layers
+in a surrounding scope; each activation binds its acquired or restored Guest in
+its own scope before replay:
+
+```ts
+yield *
+  recovery.execution.around({
+    *cancel([reason], next) {
+      trace("cancel", reason);
+      return yield* next(reason);
+    },
+  });
+
+yield *
+  recovery.around(
+    createCheckpointMiddleware({
+      program,
+      adapter: evaluator.checkpoints,
+      execution: recovery.execution,
+      matches,
+    }),
+  );
+```
+
+The checkpoint middleware now takes that execution API rather than a composition
+argument. Both strategies use its start/resume/cancel methods; restore already
+supplies a Turn and therefore does not call start again. The shared private replay
+interpreter retains history matching and sequencing. Raw Guest identity is retained
+in Recovered for checkpoint capture and exact-instance disposal.
+
+This changes composition, not the history representation. Root cancellation remains
+anchored in RecoveryPlan, and checkpointed unwinding remains unsupported. Acquisition
+and restoration must execute in an owning scope; journal activation supplies it.
+
+Hosted acceptance journeys verify inherited middleware during fresh and restored
+replay, root-cancellation interception, sibling driver isolation, child overrides,
+and disposal of the original incarnation even when advancement is redirected.

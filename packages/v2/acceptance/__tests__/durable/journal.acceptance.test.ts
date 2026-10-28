@@ -85,7 +85,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             });
             if (checkpoints) {
               yield* recovery.around(
-                createCheckpointMiddleware(runtime.composition, {
+                createCheckpointMiddleware({
+                  execution: recovery.execution,
                   program: "booking:v1",
                   adapter: evaluator.checkpoints,
                   matches: isDeepStrictEqual,

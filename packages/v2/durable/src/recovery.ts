@@ -1,7 +1,8 @@
-import type { Api, Composition, Operation, OperationMiddleware } from "@standard-durability/core";
-import type { GuestWork } from "@sweatpan.ts/execution";
+import type { Composition, Operation, OperationMiddleware } from "@standard-durability/core";
+import { createExecution, type Execution, type GuestWork } from "@sweatpan.ts/execution";
 import type { CheckpointAdapter, RestoredGuest } from "@sweatpan.ts/codemode-runtime";
 import type {
+  Recovery,
   RootCancellation,
   Accepted,
   Checkpoint,
@@ -40,6 +41,7 @@ function validate<Q, V, E, S>(program: string, plan: RecoveryPlan<Q, V, E, S>) {
 
 function* replay<R, Q, Y, V, E>(
   initial: RestoredGuest<R, Q, Y, V, E>,
+  operations: Execution<R, Q, Y, V, E>["operations"],
   history: readonly Accepted<Q, V, E>[],
   position: number,
   matches: (actual: Q, accepted: Q) => boolean,
@@ -51,10 +53,7 @@ function* replay<R, Q, Y, V, E>(
       if (turn.kind !== "suspended" || !matches(turn.request, cancellation.request)) {
         throw new Error("Replay cancellation boundary mismatch");
       }
-      if (!initial.guest.cancel) {
-        throw new Error("Evaluator does not support logical cancellation");
-      }
-      turn = yield* initial.guest.cancel(cancellation.reason);
+      turn = yield* operations.cancel(cancellation.reason);
     }
     const entry = history[index];
     if (!entry) {
@@ -63,7 +62,7 @@ function* replay<R, Q, Y, V, E>(
     if (turn.kind !== "suspended" || !matches(turn.request, entry.request)) {
       throw new Error(`Replay request mismatch at ${entry.sequence}`);
     }
-    turn = yield* initial.guest.resume(entry.outcome);
+    turn = yield* operations.resume(entry.outcome);
   }
   return { guest: initial.guest, turn };
 }
@@ -77,15 +76,17 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
     readonly acquire: GuestWork<R, Q, Y, V, E>;
     readonly matches: (actual: Q, accepted: Q) => boolean;
   },
-): Api<RecoveryMethods<R, Q, Y, V, E, S>, Y> {
-  return composition.createApi<RecoveryMethods<R, Q, Y, V, E, S>>(options.name, {
+): Recovery<R, Q, Y, V, E, S> {
+  const execution = createExecution<R, Q, Y, V, E>(composition, `${options.name}:execution`);
+  const api = composition.createApi<RecoveryMethods<R, Q, Y, V, E, S>>(options.name, {
     *recover(plan) {
       validate(options.program, plan);
       const guest = yield* options.acquire();
-      yield* composition.ensure(() => guest.close());
-      const turn = yield* guest.start();
+      yield* execution.install(guest);
+      const turn = yield* execution.operations.start();
       const restored = yield* replay(
         { guest, turn },
+        execution.operations,
         plan.history,
         0,
         options.matches,
@@ -97,17 +98,17 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
       return undefined;
     },
   });
+  return { ...api, execution };
 }
 
 /** Unsupported formats delegate before acquisition. Errors from a supported restore propagate. */
-export function createCheckpointMiddleware<R, Q, Y, V, E, S>(
-  composition: Composition<Y>,
-  options: {
-    readonly program: string;
-    readonly adapter: CheckpointAdapter<R, Q, Y, V, E, S>;
-    readonly matches: (actual: Q, accepted: Q) => boolean;
-  },
-): OperationMiddleware<RecoveryMethods<R, Q, Y, V, E, S>> {
+export function createCheckpointMiddleware<R, Q, Y, V, E, S>(options: {
+  readonly program: string;
+  readonly adapter: CheckpointAdapter<R, Q, Y, V, E, S>;
+  /** The same scoped API used by fresh recovery; restores install its driver too. */
+  readonly execution: Execution<R, Q, Y, V, E>;
+  readonly matches: (actual: Q, accepted: Q) => boolean;
+}): OperationMiddleware<RecoveryMethods<R, Q, Y, V, E, S>> {
   const { program, adapter, matches } = options;
   return {
     *recover([plan], next) {
@@ -117,8 +118,14 @@ export function createCheckpointMiddleware<R, Q, Y, V, E, S>(
         return yield* next(plan);
       }
       const restored = yield* adapter.restore(saved.state);
-      yield* composition.ensure(() => restored.guest.close());
-      const result = yield* replay(restored, plan.history, saved.position, matches);
+      yield* options.execution.install(restored.guest);
+      const result = yield* replay(
+        restored,
+        options.execution.operations,
+        plan.history,
+        saved.position,
+        matches,
+      );
       return { ...result, program, position: plan.history.length };
     },
     *checkpoint([recovered, history], next) {

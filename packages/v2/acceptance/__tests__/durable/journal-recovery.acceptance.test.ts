@@ -99,7 +99,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         matches,
         acquire: composeOperation(evaluator.acquire, [acquisition]),
       });
-      const acceleration = createCheckpointMiddleware(runtime.composition, {
+      const acceleration = createCheckpointMiddleware({
+        execution: api.execution,
         program,
         matches,
         adapter: evaluator.checkpoints,

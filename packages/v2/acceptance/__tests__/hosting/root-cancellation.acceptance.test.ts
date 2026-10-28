@@ -34,6 +34,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const notifications = createNotificationRig();
     const grants: AttemptGrant[] = [];
     let cleanupVisits = 0;
+    let cancellationCalls = 0;
     function assemble() {
       const recovery = createRecovery(runtime.composition, {
         name: "reservation-recovery",
@@ -76,11 +77,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             : { ok: false, error: reply.body };
         },
       });
-      return host;
+      return { host, recovery };
     }
-    function runHost<T>(call: (host: ReturnType<typeof assemble>) => Operation<T, Y>) {
-      const host = assemble();
+    function runHost<T>(call: (host: ReturnType<typeof assemble>["host"]) => Operation<T, Y>) {
+      const { host, recovery } = assemble();
       return start(function* () {
+        yield* recovery.execution.around({
+          *cancel([reason], next) {
+            cancellationCalls++;
+            const turn = yield* next(reason);
+            // Repeating cancellation must preserve the current cleanup boundary.
+            expect(yield* next("repeated")).toEqual(turn);
+            return turn;
+          },
+        });
         yield* installAttemptCancellation(runtime, host, journal.attemptControl, {
           *subscribe(grant) {
             const subscription = notifications.subscribe(grant.attemptId);
@@ -108,6 +118,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       peer,
       grants,
       notifications,
+      get cancellationCalls() {
+        return cancellationCalls;
+      },
       get cleanupVisits() {
         return cleanupVisits;
       },
@@ -115,7 +128,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       cancel: (id: string, reason = "deadline") =>
         runHost((host) => host.operations.cancel(id, reason)).result,
       answer: (
-        grant: Parameters<ReturnType<typeof assemble>["operations"]["answer"]>[0],
+        grant: Parameters<ReturnType<typeof assemble>["host"]["operations"]["answer"]>[0],
         outcome: Outcome<string, string>,
       ) => runHost((host) => host.operations.answer(grant, outcome)).result,
     };
@@ -180,6 +193,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           failure: failedRelease ? "Release failed" : undefined,
         };
         expect(await resumed.result).toEqual(expected);
+        expect(s.cancellationCalls).toBe(4);
         const finalVisits = s.cleanupVisits;
         expect(await s.run().result).toEqual(expected);
         expect(s.cleanupVisits).toBe(finalVisits);

@@ -48,6 +48,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const grants: AttemptGrant[] = [];
       const finalized: string[] = [];
       let commands = 0;
+      let starts = 0;
+      let resumes = 0;
       const evaluator = createLuaEvaluator(runtime, {
         source: `
 local hold = workflow.effect("reserve", { binding = "reserve" })
@@ -96,9 +98,21 @@ return { hold = hold, approval = approval }
         },
       });
       const execution = runtime.start(function* () {
+        yield* recovery.execution.around({
+          *start(args, next) {
+            starts++;
+            return yield* next(...args);
+          },
+          *resume([outcome], next) {
+            resumes++;
+            expectTypeOf(outcome).toEqualTypeOf<Outcome<unknown, unknown>>();
+            return yield* next(outcome);
+          },
+        });
         if (checkpoints) {
           yield* recovery.around(
-            createCheckpointMiddleware(runtime.composition, {
+            createCheckpointMiddleware({
+              execution: recovery.execution,
               program: "booking",
               adapter: evaluator.checkpoints,
               matches: isDeepStrictEqual,
@@ -137,6 +151,8 @@ return { hold = hold, approval = approval }
       });
       expect(finalized).toEqual(grants.map((grant) => grant.attemptId));
       expect(commands).toBe(checkpoints ? 5 : 6);
+      expect(starts).toBe(checkpoints ? 1 : 3);
+      expect(resumes).toBe(checkpoints ? 2 : 3);
       expect(peer.requests.map((request) => request.id)).toEqual(["reserve", "approve"]);
     });
   }

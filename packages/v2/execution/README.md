@@ -50,3 +50,24 @@ JavaScript nested-finally semantics apply, including continuation into outer
 finally blocks after an inner failure. This does not yet implement registered
 cleanup stacks, independently scheduled child tasks, or externally targeted nested
 scopes. Physical close continues to discard without logical unwinding.
+
+## Scoped execution drivers
+
+`createExecution(composition, name)` exposes the existing Guest methods through
+`operations`, `around` and `install`. There is no second driver contract: install a
+Guest directly. The facade derives its method signatures from Guest and resolves
+the driver in the executing scope. Calling it with no driver fails explicitly.
+The cancellation method is available to middleware even when an installed evaluator
+cannot cancel; the unsupported driver rejects only when cancellation is invoked.
+
+`install(guest)` registers physical disposal of that exact Guest in the current
+scope, then binds its methods. Child scopes inherit middleware and can install a
+different Guest. Middleware may call `next` inside a child override, deliberately
+replace results or short-circuit advancement. Sibling bindings remain isolated.
+One driver may be installed per scope; failed installation still disposes the
+supplied incarnation when that scope exits.
+
+A captured operations facade is not a captured continuation. Checkpoint adapters
+must receive the raw Guest identity. Scope cleanup calls that raw Guest's `close`
+directly rather than redispatching through an overridable facade; explicit calls
+to `operations.close()` remain interceptable. Guest close must remain idempotent.
