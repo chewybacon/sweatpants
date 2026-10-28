@@ -1,3 +1,4 @@
+import type { AcceptanceTransition } from "./types.ts";
 import type { Operation } from "@standard-durability/core";
 import { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";
 import type {
@@ -9,7 +10,6 @@ import type {
   JournalBindingOptions,
   JournalRecords,
   OwnedJournal,
-  AcceptanceTransition,
   RootCancellation,
 } from "./contracts.ts";
 import { createJournalTree } from "./journal-tree.ts";

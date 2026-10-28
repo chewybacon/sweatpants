@@ -25,8 +25,8 @@ export function createJournalStorageRig<Y>(runtime: Runtime<Y>, program: string)
     }
   }
   const backend: JournalBackend<Y> = {
-    transact(work) {
-      return runtime.using(
+    *transact(work, publish) {
+      const result = yield* runtime.using(
         function* () {
           if (locked) {
             throw new Error("Storage transaction occupied");
@@ -74,6 +74,7 @@ export function createJournalStorageRig<Y>(runtime: Runtime<Y>, program: string)
           const detached = structuredClone(result);
           yield* io("commit");
           state = draft;
+          publish?.();
           events.push("published");
           return detached;
         },
@@ -86,6 +87,9 @@ export function createJournalStorageRig<Y>(runtime: Runtime<Y>, program: string)
           }
         },
       );
+      // Model a committed transaction whose response is delayed after lock release.
+      yield* io("acknowledge");
+      return result;
     },
     *history(execution, from, end, limit) {
       yield* io("history");

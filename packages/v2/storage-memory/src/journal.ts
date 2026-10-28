@@ -5,19 +5,21 @@ import {
   type RequestRecord,
   type Accepted,
   type JournalBackend,
+  type JournalBindingOptions,
+  type OwnedJournal,
 } from "@sweatpan.ts/durable";
-import type { MemoryJournalOptions, MemoryJournal, MemoryJournalStore } from "./contracts.ts";
+import type { MemoryJournalStore } from "./contracts.ts";
 
 /** Create a process-local journal and owned tree; all returned data is detached. */
 export function createMemoryJournal<R, Q, V, E, S = unknown>(
-  options: MemoryJournalOptions,
-): MemoryJournal<R, Q, V, E, S> {
+  options: JournalBindingOptions,
+): OwnedJournal<R, Q, V, E, S> {
   return createMemoryJournalStore<R, Q, V, E, S>(options).open();
 }
 
 /** Retain authority independently of handles. Transactions stage only touched records. */
 export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
-  options: MemoryJournalOptions,
+  options: JournalBindingOptions,
 ): MemoryJournalStore<R, Q, V, E, S> {
   const assembly = { ...options };
   const id = crypto.randomUUID();
@@ -27,7 +29,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
   const receipts = new Map<string, Accepted<unknown, unknown, unknown>>();
   const key = (execution: string, request: string) => JSON.stringify([execution, request]);
   const backend: JournalBackend<never> = {
-    *transact(work) {
+    *transact(work, publish) {
       const writes = new Map<string, JournalRecord>();
       const requestWrites = new Map<string, RequestRecord>();
       const appends = new Map<string, Accepted<unknown, unknown, unknown>[]>();
@@ -81,6 +83,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
           receipts.set(key(execution, entry.receipt), entry);
         }
       }
+      publish?.();
       return detached;
     },
     *history(execution, from, end, limit) {

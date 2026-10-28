@@ -30,22 +30,26 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
       ) => Operation<T, Y>,
     ): Operation<T, Y> {
       const staged = new Map<string, ChildBinding>();
-      const result = yield* backend.transact(function* (records) {
-        if ((yield* records.get(id))?.snapshot.program !== program) {
-          throw new Error("Journal program mismatch");
-        }
-        const tree = createJournalTree(options, records, {
-          get: (key) => staged.get(key) ?? bindings.get(key),
-          has: (key) => staged.has(key) || bindings.has(key),
-          set: (key, binding) => {
-            staged.set(key, binding);
-          },
-        });
-        return yield* work(tree, records);
-      });
-      for (const [key, binding] of staged) {
-        bindings.set(key, binding);
-      }
+      const result = yield* backend.transact(
+        function* (records) {
+          if ((yield* records.get(id))?.snapshot.program !== program) {
+            throw new Error("Journal program mismatch");
+          }
+          const tree = createJournalTree(options, records, {
+            get: (key) => staged.get(key) ?? bindings.get(key),
+            has: (key) => staged.has(key) || bindings.has(key),
+            set: (key, binding) => {
+              staged.set(key, binding);
+            },
+          });
+          return yield* work(tree, records);
+        },
+        () => {
+          for (const [key, binding] of staged) {
+            bindings.set(key, binding);
+          }
+        },
+      );
       return result;
     }
     function* command<T>(

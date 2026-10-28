@@ -76,7 +76,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     // A captured empty prefix stays empty even after later commits.
     expect(await start(() => before.history.read(0, 128)).result).toEqual([]);
     expect((await start(() => journal.read()).result).frontier.position).toBe(1);
-    expect(storage.events.at(-1)).toBe("released");
+    expect(storage.events.slice(-2)).toEqual(["released", "acknowledge"]);
   });
   it(`${runtime.name}: cancellation wins while replay awaits a history page and stale recovery cannot publish`, async () => {
     function start<T>(work: Work<T, Y>) {

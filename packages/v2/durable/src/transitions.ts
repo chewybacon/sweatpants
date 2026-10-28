@@ -1,11 +1,6 @@
+import type { CancellationTransition } from "./types.ts";
 import type { Outcome } from "@standard-durability/core";
-import type {
-  AttemptGrant,
-  CancellationTransition,
-  ChildLink,
-  JournalSnapshot,
-  RootCancellation,
-} from "./contracts.ts";
+import type { AttemptGrant, ChildLink, JournalSnapshot, RootCancellation } from "./contracts.ts";
 
 /**
  * Prepare cancellation at an exact boundary. Cleanup and critical regions keep authority;

@@ -62,7 +62,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
     return serializer.decode(row.payload as Uint8Array);
   }
   const backend: JournalBackend<Y> = {
-    *transact(work) {
+    *transact(work, publish) {
       const serializer = yield* serialization.resolve();
       db.exec("BEGIN IMMEDIATE");
       let committed = false;
@@ -125,6 +125,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
         const result = yield* work(rows);
         db.exec("COMMIT");
         committed = true;
+        publish?.();
         return result;
       } finally {
         if (!committed) {

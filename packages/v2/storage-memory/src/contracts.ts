@@ -1,10 +1,5 @@
 import type { OwnedJournal } from "@sweatpan.ts/durable";
-export type {
-  JournalBindingOptions as MemoryJournalOptions,
-  OwnedChildOptions as MemoryChildOptions,
-  OwnedChild as MemoryOwnedChild,
-  OwnedJournal as MemoryJournal,
-} from "@sweatpan.ts/durable";
+
 /** A retained in-memory owned tree, separate from the handles and code bound to it. */
 export interface MemoryJournalStore<R, Q, V, E, S = unknown> {
   readonly id: string;

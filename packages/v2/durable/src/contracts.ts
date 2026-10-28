@@ -263,20 +263,6 @@ export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y,
   readonly execution: Execution<R, Q, Y, V, E>;
 }
 
-/** Pure cancellation decision; adapters publish the state and authority changes atomically. */
-export interface CancellationTransition<R, Q, S> {
-  readonly snapshot: JournalSnapshot<R, Q, S>;
-  readonly cancellation: RootCancellation<Q>;
-  readonly revoke: boolean;
-  readonly childToCancel?: ChildLink;
-}
-
-/** Prepared acceptance; an adapter publishes the snapshot before acknowledging acceptance. */
-export interface AcceptanceTransition<R, Q, V, E, S> {
-  readonly snapshot: JournalSnapshot<R, Q, S>;
-  readonly acceptance: Acceptance<Q, V, E>;
-}
-
 /** Trusted journal assembly. Equality defines duplicate domain delivery. */
 export interface JournalBindingOptions {
   readonly program: string;
@@ -358,9 +344,18 @@ export interface JournalBackend<Y> {
    * Invoke work once; only storage operations may suspend inside the transaction.
    * Resolve external dependencies before locking. Publish after commit; roll back
    * uncommitted work on failure/disposal and drain cleanup before releasing locks.
-   * No implicit retries. A lost commit acknowledgement requires durable reconciliation.
+   * After confirmed commit, invoke publish synchronously, exactly once, before another
+   * transaction in this assembly can begin or any suspension/cancellation point. Never invoke it on
+   * rollback. It is a nonthrowing local publication hook, not an effect or user callback.
+   * Adapters must protect commit confirmation and publication from interruption, including
+   * joining an in-flight commit during disposal. A lost caller acknowledgement does not
+   * undo publication. Unknown database commit outcomes require durable reconciliation.
+   * No implicit retries.
    */
-  transact<T>(work: (records: JournalRecords<Y>) => Operation<T, Y>): Operation<T, Y>;
+  transact<T>(
+    work: (records: JournalRecords<Y>) => Operation<T, Y>,
+    publish?: () => void,
+  ): Operation<T, Y>;
   /** Immutable accepted rows in [from, end), limited to at most limit entries. No write lock. */
   history(
     id: string,

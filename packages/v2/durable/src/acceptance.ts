@@ -1,5 +1,6 @@
+import type { AcceptanceTransition } from "./types.ts";
 import type { Outcome } from "@standard-durability/core";
-import type { AcceptanceTransition, Accepted, AttemptGrant, JournalSnapshot } from "./contracts.ts";
+import type { Accepted, AttemptGrant, JournalSnapshot } from "./contracts.ts";
 
 /**
  * Prepare trusted acceptance without publishing. Duplicate delivery preserves revision

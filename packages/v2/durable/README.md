@@ -144,23 +144,18 @@ Hosted acceptance journeys verify inherited middleware during fresh and restored
 replay, root-cancellation interception, sibling driver isolation, child overrides,
 and disposal of the original incarnation even when advancement is redirected.
 
-## Pure acceptance decisions
-
-`acceptJournalOutcome` prepares trusted acceptance; `settleJournalAttempt` additionally
-checks exact current grant identity and revocation before acknowledging duplicates.
-They do not read storage, publish state, advance a Guest or execute a handler. Their
-`AcceptanceTransition` returns a proposed snapshot and acknowledgement. Adapters must
-read the relevant authority and commit the decision within the same atomic boundary,
-encoding/detaching data before publication. A separate inspect call is not authority
-for a later commit. These helpers are adapter-building APIs, not wire validation.
-
 ## Journal binding and backend transactions
 
-`createJournalBinding` binds the existing journal, attempt, interaction, cancellation
-and owned-child capabilities to `JournalBackend`. The port supplies a synchronous
-transaction-local `JournalRecords` view. A backend may resolve dependencies before
-entering the transaction; all eligibility reads, pure projections and updates then
-run without scheduler suspension. The backend publishes atomically or rolls back.
+`createJournalBinding` owns acceptance, cancellation and owned-child decisions
+internally. Storage adapters implement `JournalBackend`; they do not call individual
+transition helpers or publish transition results themselves.
+
+The port supplies asynchronous-capable transaction-local `JournalRecords` operations.
+Resolve external dependencies before entering the transaction. Only storage operations
+may suspend inside it; eligibility reads and updates share one serializable ownership
+domain. The backend commits atomically or rolls back, then publishes local bindings
+synchronously after confirmed commit and before another transaction can intervene.
+A separate inspect call is not authority for a later commit.
 
 This is the single journal implementation for memory and SQLite. `OwnedJournal`
 contains the existing combined capability shape formerly defined by MemoryJournal;

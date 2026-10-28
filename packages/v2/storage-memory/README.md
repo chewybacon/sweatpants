@@ -144,9 +144,9 @@ There is no serialization API. Exporting snapshots alone does not preserve autho
 or topology.
 See hosting's evaluator and notification limits.
 
-Cancellation and parent settlement policy are prepared by the pure durable
-`requestJournalCancellation` and `settleOwnedChild` transitions. The memory adapter
-owns detached publication and authority maps; it does not advance an evaluator.
+Cancellation and parent settlement policy are internal to the shared durable
+journal binding. The memory adapter owns detached storage publication; it does
+not advance an evaluator.
 Pending/accepted records retain the evaluator's scope/frame boundary evidence.
 Cancellation preserves a request whose phase is cleanup and omits it from revoked
 attempt notifications. An active cleanup-owned child is joined without cancellation.
