@@ -267,3 +267,17 @@ leaves these critical attempts live. Native host shutdown still aborts local IO.
 Hosted journeys cover acquisition followed by cleanup registration, nested regions
 and lexical scopes, repeated cancellation/recovery, accepted domain failure, joining
 an owned child, and native shutdown retaining an occupied unsafe acquisition.
+
+## Shared provider ownership evidence
+
+The scoped-execution acceptance journey runs sibling hosts under a parent-owned
+provider session. One sibling installs an access-restricting middleware layer and
+a nested context/result override; the other keeps using the same provider facade.
+Cancelling the restricted workflow drains its logical release while the sibling's
+physical request remains live. Parent policy is restored after the children exit,
+and only the parent closes the shared session, through an acknowledged peer exchange.
+
+This demonstrates scoped capability composition and resource ownership under both
+Effect and Effection. It does not establish security confinement: trusted TypeScript
+can retain other capabilities. Native host scopes supply these bindings; logical
+Guest frames do not introduce a separate capability-context API.
