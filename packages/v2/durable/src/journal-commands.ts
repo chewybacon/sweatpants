@@ -83,6 +83,29 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   };
   return {
     id: identity,
+    *admit(program, input) {
+      const record = yield* read();
+      const { snapshot } = record;
+      if (program !== snapshot.program) {
+        throw new Error("Admission program mismatch");
+      }
+      if (record.parent) {
+        throw new Error("Owned child input is pinned by its parent");
+      }
+      if (snapshot.admission) {
+        if (!options.equals(snapshot.admission.input, input)) {
+          throw new Error("Conflicting invocation input");
+        }
+        return snapshot.admission.input;
+      }
+      if (snapshot.status !== "running" || snapshot.revision !== 0) {
+        throw new Error("Admission requires an unstarted journal");
+      }
+      return yield* commit(
+        { ...snapshot, admission: { input }, revision: snapshot.revision + 1 },
+        input,
+      );
+    },
     cancellation: {
       *request(requestId, reason) {
         return (yield* tree.cancel(identity, requestId, reason)) as RootCancellation<Q>;
@@ -297,6 +320,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
       yield* commit(
         {
           program: snapshot.program,
+          admission: snapshot.admission,
           revision: snapshot.revision + 1,
           frontier: snapshot.frontier,
           status: "completed",

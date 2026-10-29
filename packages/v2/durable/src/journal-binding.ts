@@ -60,6 +60,9 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
     }
     return {
       id,
+      *admit(program, input) {
+        return yield* command((journal) => journal.admit(program, input));
+      },
       *read() {
         const snapshot = yield* command((journal) => journal.read());
         const end = Object.freeze({ ...snapshot.frontier });

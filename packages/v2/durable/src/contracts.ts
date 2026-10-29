@@ -90,6 +90,8 @@ export type JournalSnapshot<R, Q, S> = {
   readonly program: string;
   readonly revision: number;
   readonly frontier: JournalPosition;
+  /** Normalized root invocation input, pinned before execution; absent for unadmitted journals. */
+  readonly admission?: { readonly input: unknown };
   readonly checkpoint?: Checkpoint<S>;
   readonly cancellation?: RootCancellation<Q>;
 } & (
@@ -304,6 +306,14 @@ export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journa
   Y
 > {
   readonly id: string;
+  /**
+   * Pin normalized root input atomically before execution. Program must match this
+   * journal. Equal resubmissions return the stored value; conflicting input rejects,
+   * including after completion. First admission rejects an already advanced journal
+   * or an owned child (whose input is pinned by ensureChild). No schema runs here.
+   * A successful first admission increments revision without appending history.
+   */
+  admit(program: string, input: unknown): Operation<unknown, Y>;
   readonly cancellation: CancellationJournal<Q, Y>;
   readonly attempts: Attempts<Q, V, E, Y>;
   readonly attemptControl: AttemptControl<Q, V, E, Y>;

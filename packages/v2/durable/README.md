@@ -213,3 +213,17 @@ inside the transaction decision and published to the assembly only on success.
 Stored data contains no evaluator handles, projections or stop callbacks. Reacquire
 children from the owning root with the pinned program/input before running them.
 Neither a decoded record nor an arbitrary program string validates authored types.
+
+## Root invocation admission
+
+Owned journals expose `admit(program, input)` for trusted normalized root input.
+The existing transaction boundary checks program identity and pins input exactly once,
+incrementing revision without adding an accepted effect row. Equal submissions use
+configured domain equality and return the stored value; conflicting input rejects.
+Admission remains visible in snapshots after completion or cancellation. It rejects
+first admission after execution has advanced and rejects owned children, whose input
+is already pinned by `ensureChild`. Journals used directly without input admission
+continue to work; a tool host requires admission before acquiring its body.
+
+Schema validation belongs outside this transaction. `@sweatpan.ts/tools` provides
+`admitTool` for that boundary; recovery consumes stored normalized input directly.

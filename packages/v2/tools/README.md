@@ -17,6 +17,15 @@ const investigate = defineTool("investigate")
   });
 ```
 
+`admitTool(runtime, tool, journal, rawInput)` validates a new root invocation and
+atomically stores the schema's returned value with the journal's pinned program.
+It does not acquire a Guest. Equal normalized resubmissions return the stored value;
+conflicting input or program identity rejects, even after completion. Each new
+submission validates; recovery instead reads `snapshot.admission.input` without
+rerunning the schema. Concurrent validations may both run outside the transaction,
+but only one normalized input can win. First admission must precede execution.
+Owned children continue to pin input through `ensureChild`.
+
 Tool acquisition remains provisional assembly in the acceptance application. No public
 tool execution helper is provided yet. The application composes the scoped iterator, while its host owns admission, fresh grants, effect installation,
 owned-child routing, recovery and physical disposal. Tool declarations do not grant
@@ -35,9 +44,13 @@ supported by this evaluator.
 
 The declaration exposes schemas, identity and typed interaction definitions as data,
 but also retains executable bodies and possibly server handler dependencies. It is
-not a browser-safe bundle projection. Client splitting, root invocation persistence,
+not a browser-safe bundle projection. Client splitting,
 compiler restrictions and checkpointable tool bodies remain future work.
 
 Acceptance journeys invoke tools through granted effects and owned journals on both
 native runtimes, including placement middleware, recording, participant answers,
 reopen/replay and scope cleanup. Source and emitted-declaration consumers check inference.
+
+Root admission journeys cover invalid input without acquisition, duplicate/conflicting
+submissions, transformed input across reopen, and a late validation racing a second
+SQLite connection. These are in-process persistence journeys, not OS-crash evidence.

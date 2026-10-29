@@ -2,8 +2,9 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createEffectCapabilities } from "@sweatpan.ts/hosting";
+import type { OwnedJournal } from "@sweatpan.ts/durable";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { defineTool } from "@sweatpan.ts/tools";
+import { defineTool, admitTool } from "@sweatpan.ts/tools";
 
 // Non-executed consumer checked against source and emitted declarations.
 export function toolInference<Y>(
@@ -54,4 +55,22 @@ export function toolInference<Y>(
       return yield* runtime.fromPromise(async () => 1);
     });
   return { call, wrong, granted };
+}
+
+export function toolAdmissionInference<Y>(
+  runtime: Runtime<Y>,
+  schema: StandardSchemaV1<string, { query: string }>,
+  journal: OwnedJournal<unknown, unknown, unknown, unknown, unknown, Y>,
+) {
+  const tool = defineTool("admission")
+    .parameters(schema)
+    .execute(function* (input) {
+      return input.query;
+    });
+  const admitted: Operation<{ query: string }, Y> = admitTool(runtime, tool, journal, "query");
+  // @ts-expect-error Admission takes caller input, not the normalized output.
+  admitTool(runtime, tool, journal, { query: "query" });
+  // @ts-expect-error The admitted result is schema output, not schema input.
+  const wrong: Operation<string, Y> = admitTool(runtime, tool, journal, "query");
+  return { admitted, wrong };
 }

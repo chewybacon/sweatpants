@@ -222,3 +222,9 @@ Recording cancellation recovery is also exercised with SQLite reopen: an unsettl
 body recording is cancelled, registered cleanup records a Promise result, and another
 reopen after cleanup acceptance replays that value without repeating the callback.
 This covers abandoned per-Guest recording bindings as well as retained nesting guards.
+
+`applications/tool-admission.acceptance.test.ts` starts at public tool admission, then
+runs recorded work and participant elicitation across fresh assemblies. Memory and
+SQLite retain normalized input before initial execution and through completion;
+recovery never revalidates it. A separate two-connection SQLite journey lets an earlier
+submission finish validation late and proves it cannot replace the winning input.
