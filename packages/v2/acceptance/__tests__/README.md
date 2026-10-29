@@ -173,3 +173,19 @@ both policies. An additional interleaving accepts a result, pauses its host, let
 competitor advance and commit cancellation, then resumes the original host: it follows
 accepted history into cleanup and never delivers the cancelled approval. These are
 in-process protocol simulations, not exclusive evaluator leases or remote placement.
+
+## Authored tic-tac-toe application
+
+`applications/tic-tac-toe.acceptance.test.ts` assembles one authored game from a keyed
+recorded coin flip and two typed `defineEffect` declarations. Hosting delivers model
+moves through a protocol peer and routes user moves to durable participant waits.
+Participant ingress uses the effect schema pipeline before committing its answer.
+No game-specific production API or builder is introduced.
+
+Both coin outcomes run through a complete game on Effect and Effection, with normal
+play, SQLite reopen at a player wait, and host interruption after accepting a model
+move but before acknowledgement. Assertions cover final boards/move order, malformed
+and occupied-cell replies, one coin execution, no repeated model delivery, preserved
+participant grants and joined Guest disposal. Coin and model/player choices are scripted;
+this proves local composition/recovery, not model quality, remote transport, UI behavior
+or OS-crash durability. Schema-only effect failures remain unknown until narrowed.
