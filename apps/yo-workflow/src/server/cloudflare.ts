@@ -36,7 +36,13 @@ export class Conversations extends DurableObject<Env> {
       for (const [id, credential] of Object.entries(records)) {
         await credentials.modify(id, async () => credential);
       }
-      const models = createWorkflowModels(credentials);
+      const openaiCredential = Object.hasOwn(records, "openai") ? records["openai"] : undefined;
+      const models = createWorkflowModels(credentials, {
+        openaiBaseUrl:
+          openaiCredential?.type === "api_key"
+            ? openaiCredential.env?.["OPENAI_BASE_URL"]
+            : undefined,
+      });
       return createCloudflareWorkflowApp(
         this.env,
         pi({

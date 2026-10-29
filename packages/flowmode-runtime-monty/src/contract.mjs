@@ -27,3 +27,43 @@ export function validHostReply(value) {
         value.error.message.length <= 12000))
   );
 }
+
+export const playgroundCapabilities = Object.freeze([
+  "ask",
+  "echo",
+  "random",
+  "sample",
+  "decision",
+  "document_create",
+  "document_read",
+  "document_edit",
+  "present_choices",
+  "display_document",
+]);
+export function parsePlaygroundRequest(value) {
+  const name = value?.capability?.replace(/^sandbox\./, "");
+  if (
+    !playgroundCapabilities.includes(name) ||
+    value.capability !== `sandbox.${name}` ||
+    !value.arguments ||
+    typeof value.arguments !== "object" ||
+    Array.isArray(value.arguments) ||
+    JSON.stringify(value.arguments).length > 64000
+  ) {
+    throw Error("Invalid playground capability request");
+  }
+  return { capability: value.capability, arguments: value.arguments };
+}
+export function validPlaygroundReply(value) {
+  if (!value || !Number.isSafeInteger(value.operationId)) {
+    return false;
+  }
+  if (value.error) {
+    return validHostReply(value);
+  }
+  try {
+    return Object.hasOwn(value, "value") && JSON.stringify(value.value).length <= 64000;
+  } catch {
+    return false;
+  }
+}

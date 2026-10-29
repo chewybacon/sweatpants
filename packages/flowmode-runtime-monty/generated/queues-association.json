@@ -1,4 +1,5 @@
 {
+  "source_state": "clean",
   "runtime": {
     "Cargo.lock": "8e5bbb44b0be8eb7acde5e6827654797de87a3beac0ea7263372cbe52bcc0626",
     "Cargo.toml": "c6349892db99ac9eff330d30da416153df364b36ceeb67364d38e6a2f533c9a1",
@@ -205,7 +206,7 @@
     "crates/monty/src/dump_upgrade.rs": "e9aaf9376a3757ae9dbbd422db3876b219ac1c2a18006fc96990201a0ce86657",
     "crates/monty/src/exception_private.rs": "ca8b2513bd912971535c399ce437dc850955966b73f12b70121b8c0a31fa3836",
     "crates/monty/src/expressions.rs": "678c24d70f98e592ec98d3a4f62a5f46c0e04677ae7b643551a11c6315b48431",
-    "crates/monty/src/frozen.rs": "b009a261728740e4d0c6e78020c69e6fb576a7d8bb92e1605f05932ff52053a5",
+    "crates/monty/src/frozen.rs": "132b38cbadf9e19ab5ad58f7b7f64c2dbebb2dd03d8d05168145a06fe2261024",
     "crates/monty/src/fstring.rs": "0593ec5e93b3fd6564df600caa762ce49b423d81b7f8ac7bcba5d889f260c1d6",
     "crates/monty/src/function.rs": "0d76050d789e8a6ec4c53e49a1bdc87206f3301eba4cd4152da36cb118b0404b",
     "crates/monty/src/hash.rs": "1c3cc8cdbfebc4af32ec7e0b91948f316f70fe0732780bca2fd1d1d53d0af13b",
@@ -215,7 +216,7 @@
     "crates/monty/src/heap_data.rs": "229dec7e1d5e5b594b97f37da3c78f6175ed050f81d0268d7c94ef943f4105ad",
     "crates/monty/src/heap_traits.rs": "d1940bfbe2cffa983585b35e86f9ed8c6ae36973f99aeb93a97c76b52aa014d3",
     "crates/monty/src/identity.rs": "0b78c9d10f54cabc569b320954ed95ec5e6cc8327857f2f60a513e9b7eaba646",
-    "crates/monty/src/intern.rs": "5d9460bbde70ef6fbb044c4a17341e5dcc1fa1e5d04b537689ca7d59d3d82092",
+    "crates/monty/src/intern.rs": "2d169a11997f1ebaf1f452c662517335bbda297761ffd6bd48ee0abfc753e0b4",
     "crates/monty/src/intern/compile.rs": "ba06074393f1a1499eff7423b0f6a4e8a6295794f7a23742b38aa3ebc571af62",
     "crates/monty/src/intern/storage.rs": "98443a008b29676175b48f30d834ac5e5353586c1bbe53ada00d8c043ff470fa",
     "crates/monty/src/lib.rs": "d3b4e8d71655a05f876e8b59532fbd56a7e91aef7f85020b9c1ecbe0c613eaf2",
@@ -247,14 +248,14 @@
     "crates/monty/src/modules/json/string_cache.rs": "19b8236d9437f805e01d9ad2ba0b63b188624deed655af0747982412147dc4d3",
     "crates/monty/src/modules/math.rs": "96064b2546d1b421da204a8e4b0e3b9ba72f5ce97d7bdecb1e337bedeb1daf8b",
     "crates/monty/src/modules/math/aggregate.rs": "92f658434d3fb93a8b46111a812ccaeab114d99e65b80e806554633bd0ae8551",
-    "crates/monty/src/modules/mod.rs": "0be101f1d4f59e23d4549e3cc56f7b5b9e4f542649e6ed4f78627b051b0032be",
+    "crates/monty/src/modules/mod.rs": "cd321432f9d08f847da9639c1a21271101ecb21ec4f863516745b9182baa3bb2",
     "crates/monty/src/modules/os.rs": "47f123a3eaa51b64845a6e040a5b7e19644debf560895b5f4a2ce95fce885cb4",
     "crates/monty/src/modules/os_path/mod.rs": "c39270f04be4e414c4210f8f1758e1b30548fb08753043b98687875f3daca31b",
     "crates/monty/src/modules/os_path/posix.rs": "03526a504b219519a7298c6978ae5dd0fe16599646e71e140585eb9d75d0c293",
     "crates/monty/src/modules/pathlib.rs": "cd0b106aa93f744f61bb709279dbdda0c141164a37a1b01a23108fc05d2394c0",
     "crates/monty/src/modules/random.rs": "5f87ec0216c71041ad8b200ccaea87417207d4a83d15793ea2b8d58efcba59aa",
     "crates/monty/src/modules/re.rs": "e1c25862ec041c46fb67cb2738cbdb574aab51e931479f893c2d96d69386ae17",
-    "crates/monty/src/modules/sandbox.rs": "8811ae71985814f7166d8cfc29bb4fc135c8e8852e15072681d890c04e977e59",
+    "crates/monty/src/modules/sandbox.rs": "a2fb6dfa63d5ecfd03f2cf1184a36afbf080a1892ea5b42d4eeee02eceea3ef9",
     "crates/monty/src/modules/sys.rs": "b75621c97080736aee91d2f34cfe3381cd52f0818451803f0e89610cddd3d5cf",
     "crates/monty/src/modules/time.rs": "c5adf0ee2658db1bf9b980a0e0f8715f1a25e4a0f20a395c3b9a0d543d080894",
     "crates/monty/src/modules/tomllib/mod.rs": "cabbe0a533ca4642648f2e5671754edee613641625e780ba802cd29991a2c31c",
@@ -389,37 +390,24 @@
     "tools/coroutines/coordinator1/guarded_checks.py": "4fb4a0e4d854a7f3869456f5fd65b928e3ab553bc073a67df3d025d100c9cde2"
   },
   "build_reports": {
-    "native-final.json": "d72a691e504c936d0a9f38a9a9cc9593fac857700703a78507c8d074bad97da0",
-    "wasm-final.json": "43707a5b17bfce0704cd56041fd902aecb68ac45e7830fddc20d3417271c801f",
-    "component-final.json": "8be3ddbe35e65db0f169f5627785926c05abbec59c7478add0814c1d63703c83",
-    "native-policy7-final.json": "be19f2eb87040fa96ffd75dc94a830c749734e995c51e9cfe97e81ca9826e763",
-    "native-clippy-final.json": "3b11e95bb37b4519efce75d5d3e997d7881e663142564d3990b194dc9650419d"
+    "monty-playground-wasm3.json": "8bcace0efca645268bd5b99f9b1ad5fcd95886c093458fe1fe974766f9f768ed",
+    "monty-playground-component.json": "d79ee04184c285e905275f8e52cb39df18996389432743c4ca61d02ac3794100"
   },
   "artifacts": {
-    "monty.component.core.wasm": "67507cf1db2361ae69b35f8e26240cc50bb71133a2338319bfc80eecb4e34250",
+    "monty.component.core.wasm": "bb44c67d082bfe70f512e5a73ca49d1c31328cf3183ae272a3240bb201edb7f5",
     "monty.component.core4.wasm": "85022c45607e585ab1f7bd648ecd60907ec8ec91d37461a7919c6539714723e8",
     "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc",
     "monty.component.core3.wasm": "f6ca4d98715d3eb51fb58a9cfc6ee558fd2bc7ca8eee48bdea9dda96e6334186",
     "monty.component.core2.wasm": "e764a442d40199804739a8fcf8b06897d9cd21dc8aae33c067fbe9d38eaaf73e"
   },
   "provenance_update": {
-    "reason": "Documentation-only asyncio limitations correction; no runtime source or executable changes and no rebuild.",
-    "previous_association_sha256": "d07466a7fc7ce9bcf296620ada2c8a2c0ff38144519d1f88171b6c2341acd6d1",
-    "original_build_patch_sha256": "5b2964cbbb776307ef523c2e69597d42af56a6849eaa3b37257b6859ce0ebab4",
-    "changed_paths": [
-      "docs/limitations/asyncio.md"
-    ]
+    "original_build_patch_sha256": "22b8a19d1a5f3c9d3a6c15ccfc4bba7c579400e0890bbd94fb5112d451503f5c",
+    "reason": "Rust test formatting only after the build; runtime and build input hashes unchanged."
   },
-  "committed_source": {
-    "commit": "6ab9e345ccfb8ea1733cbb910e935649bacb75ed",
-    "previous_association_sha256": "75d0af072b3e800ee74c1eade470f32fd0e9074b0219b0b571c7a6f71976c419",
-    "reason": "Exact reviewed runtime and build inputs committed without rebuilding; historical dirty build receipts retained."
+  "build_source": {
+    "base_commit": "6ab9e345ccfb8ea1733cbb910e935649bacb75ed",
+    "patch_sha256": "d497bafe993ac041f2d3102019feaf85a65ea41cd950c495a5985728f1c219a4",
+    "source_state": "dirty"
   },
-  "historical_source_state": {
-    "source_state": "dirty",
-    "base_commit": "b3a21cc717fd8c02fcfd123e6438e949889330f1",
-    "patch_sha256": "7ad1a04fe2c13188d93335835e9b6fcb1794dbca3267f6ec3371529718445569"
-  },
-  "source_state": "clean",
-  "source_commit": "6ab9e345ccfb8ea1733cbb910e935649bacb75ed"
+  "source_commit": "8b55321eb405fea158b3864f4ca49945e2eed4a9"
 }

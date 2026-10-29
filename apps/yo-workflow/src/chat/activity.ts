@@ -79,7 +79,10 @@ export function activeWork(part: ReactChatUIPart, path: readonly string[] = []):
 
 /** Workflow failures are successful tool deliveries carrying a diagnostic outcome. */
 export function workflowFailure(part: Extract<ReactChatUIPart, { type: "tool-call" }>) {
-  if (part.state !== "output-available" || (part.name !== "scheme" && part.name !== "lua")) {
+  if (
+    part.state !== "output-available" ||
+    (part.name !== "scheme" && part.name !== "lua" && part.name !== "python")
+  ) {
     return;
   }
   const output = part.output;

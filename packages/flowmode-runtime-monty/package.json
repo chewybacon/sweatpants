@@ -10,7 +10,9 @@
     "./guest": "./src/guest.mjs",
     "./worker": "./src/worker.mjs",
     "./generated/*": "./generated/*",
-    "./contract": "./src/contract.mjs"
+    "./contract": "./src/contract.mjs",
+    "./evaluation": "./src/evaluation.ts",
+    "./checkpoint": "./src/checkpoint.ts"
   },
   "scripts": {
     "build": "node scripts/artifact.mjs",

@@ -30,12 +30,11 @@ Repeated logical cancellation preserves protected cleanup and terminal cancellat
 
 ## Artifacts and source association
 
-The manifest pins every executable and the complete source association to Monty
-commit `6ab9e345ccfb8ea1733cbb910e935649bacb75ed` (currently local/unpushed).
-All recorded runtime and build inputs match that committed source. The association
-retains the original dirty-build receipts and subsequent documentation-only update;
-committing those exact inputs required no rebuild. Vendored bytes allow execution
-without a sibling checkout. The MIT license is retained.
+The manifest pins every executable and the complete source association. The
+Playground capability build is pinned to Monty
+`8b55321eb405fea158b3864f4ca49945e2eed4a9`. The association retains the original build
+patch provenance and verifies the committed runtime and build input hashes.
+Vendored bytes run without a sibling checkout. The MIT license is retained.
 
 `pnpm --filter @sweatpants/flowmode-runtime-monty check` verifies vendored bytes and
 the generated complete-manifest identity. An explicit local import using
@@ -90,3 +89,12 @@ are not workerd CPU preemption. Snapshots must be trusted compatible producer ou
 Run `pnpm --filter yo-workflow execution:demo`, choose Python and Run five reads.
 Fulfill reads in reverse order or restore between replies. Scheme/Lua retain their
 existing paths. No model credentials or external production effects are required.
+
+## Playground evaluation
+
+`createMontyEvaluationDriver` and `MontyEvaluationPort` provide disposable compute
+turns for the conversational Playground. The explicit playground profile accepts
+the installed `sandbox` contract names and bounded JSON replies, using a distinct
+snapshot identity. The default Execution profile still accepts only its read-file
+contract and legacy exchange. The application validates capability schemas and
+journals effects; the interpreter never performs these effects itself.

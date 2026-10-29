@@ -1,8 +1,9 @@
 {
-  "sourceCommit": "6ab9e345ccfb8ea1733cbb910e935649bacb75ed",
-  "associationSha256": "79b6f3cc2869795aad22c8bb909fd69f20e6a842e894f5eabe9f680fd569fe30",
+  "sourceCommit": "8b55321eb405fea158b3864f4ca49945e2eed4a9",
+  "sourceState": "clean",
+  "associationSha256": "8e1b43eaa475084779d052f586d58f5f7536532330afd99932820e7cf937822c",
   "artifacts": {
-    "monty.component.core.wasm": "67507cf1db2361ae69b35f8e26240cc50bb71133a2338319bfc80eecb4e34250",
+    "monty.component.core.wasm": "bb44c67d082bfe70f512e5a73ca49d1c31328cf3183ae272a3240bb201edb7f5",
     "monty.component.core4.wasm": "85022c45607e585ab1f7bd648ecd60907ec8ec91d37461a7919c6539714723e8",
     "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc",
     "monty.component.core3.wasm": "f6ca4d98715d3eb51fb58a9cfc6ee558fd2bc7ca8eee48bdea9dda96e6334186",

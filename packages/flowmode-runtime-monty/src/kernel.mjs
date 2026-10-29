@@ -8,7 +8,14 @@ import {
 import { instantiate } from "../generated/monty.component.js";
 import { createWasiImports } from "./wasi.mjs";
 import { executableManifestDigest } from "../generated/executable-identity.mjs";
-import { parseHostRequest, validHostReply, readFileContract } from "./contract.mjs";
+import {
+  parseHostRequest,
+  validHostReply,
+  readFileContract,
+  parsePlaygroundRequest,
+  validPlaygroundReply,
+  playgroundCapabilities,
+} from "./contract.mjs";
 import { guestLibrary } from "./guest.mjs";
 
 export const montyIdentity = Object.freeze({
@@ -16,15 +23,26 @@ export const montyIdentity = Object.freeze({
   version: canonicalDigest({
     library: guestLibrary,
     executableManifest: executableManifestDigest,
-    adapter: "adapter3",
+    adapter: "adapter4",
     contract: readFileContract,
   }),
   programFormat: "monty-python-source-1",
   snapshotFormat: "monty-dump27-host1",
 });
 
+export const playgroundIdentity = Object.freeze({
+  ...montyIdentity,
+  version: canonicalDigest({
+    base: montyIdentity.version,
+    profile: "playground1",
+    capabilities: playgroundCapabilities,
+  }),
+});
+
 /** One disposable actual Wasm instance; only trusted journal snapshots may be loaded. */
-export function createMontyKernel(loadModule) {
+export function createMontyKernel(loadModule, options = {}) {
+  const playground = options.profile === "playground";
+  const identity = playground ? playgroundIdentity : montyIdentity;
   let worker,
     program,
     current,
@@ -67,8 +85,20 @@ export function createMontyKernel(loadModule) {
         throw Error("Unsupported Monty host call");
       }
       const payload = decode(values, args[0]);
-      const request = functionName === "sandbox.exchange" ? parseHostRequest(payload) : null;
-      const label = request ? `Read ${request.arguments.path}` : payload;
+      const request =
+        functionName === "sandbox.exchange"
+          ? playground
+            ? parsePlaygroundRequest(payload)
+            : parseHostRequest(payload)
+          : null;
+      const label = request
+        ? playground
+          ? request.capability
+          : `Read ${request.arguments.path}`
+        : payload;
+      if (playground && !request) {
+        throw Error("Playground requires a supplied sandbox capability");
+      }
       if (typeof label !== "string" || (!request && label.length > 256)) {
         throw Error("Invalid operation label");
       }
@@ -115,7 +145,7 @@ export function createMontyKernel(loadModule) {
     if (worker || closed) {
       throw Error("Monty kernel already used");
     }
-    assertKernelCompatibility(montyIdentity, next, snapshot);
+    assertKernelCompatibility(identity, next, snapshot);
     if (typeof next.code !== "string") {
       throw Error("Expected Python source");
     }
@@ -147,10 +177,13 @@ export function createMontyKernel(loadModule) {
       const value = reply.value?.action === "accept" ? reply.value.content : reply.value;
       if (
         reply.kind !== "value" ||
-        !validHostReply(value) ||
+        !(playground ? validPlaygroundReply(value) : validHostReply(value)) ||
         !state.operations.some((op) => op.id === value.operationId)
       ) {
         throw Error("Reply must select a currently outstanding operation");
+      }
+      if (playground && !value.error) {
+        encodeValue(value.value);
       }
     },
     *turn(command) {
@@ -178,10 +211,17 @@ export function createMontyKernel(loadModule) {
               callId: operationId,
               outcome: error
                 ? { tag: "error", val: { excType: error.type, message: error.message } }
-                : { tag: "return-value", val: 0 },
+                : {
+                    tag: "return-value",
+                    val: playground ? encodeValue(value).nodes.length - 1 : 0,
+                  },
             },
           ],
-          values: { nodes: error ? [] : [{ tag: "text", val: value }] },
+          values: error
+            ? { nodes: [] }
+            : playground
+              ? encodeValue(value)
+              : { nodes: [{ tag: "text", val: value }] },
         };
       }
       return settleBoundary(dispatch({ tag: "resume-futures", val }));
@@ -200,7 +240,7 @@ export function createMontyKernel(loadModule) {
         state.dump = encodeBytes(event.val);
       }
       return {
-        kernel: montyIdentity,
+        kernel: identity,
         programDigest: program.digest,
         state: structuredClone(state),
       };
@@ -243,7 +283,7 @@ export function createMontyKernel(loadModule) {
   };
   return createWorkflowKernel({
     driver: {
-      identity: montyIdentity,
+      identity,
       *start(next) {
         yield* prepare(next);
         if (typeof next.code !== "string") {
@@ -315,4 +355,40 @@ function decode(values, index) {
     default:
       throw Error(`Unsupported guest result: ${node?.tag}`);
   }
+}
+
+function encodeValue(value) {
+  assertJson(value);
+  const nodes = [];
+  function visit(item, depth = 0) {
+    if (depth > 64 || nodes.length > 16000) {
+      throw Error("Host result exceeds value budget");
+    }
+    let node;
+    if (item === null) {
+      node = { tag: "none" };
+    } else if (typeof item === "string") {
+      node = { tag: "text", val: item };
+    } else if (typeof item === "boolean") {
+      node = { tag: "boolean", val: item };
+    } else if (typeof item === "number") {
+      node = Number.isSafeInteger(item)
+        ? { tag: "integer", val: BigInt(item) }
+        : { tag: "float", val: item };
+    } else if (Array.isArray(item)) {
+      node = { tag: "list-value", val: item.map((x) => visit(x, depth + 1)) };
+    } else {
+      node = {
+        tag: "dict",
+        val: Object.entries(item).map(([key, val]) => ({
+          key: visit(key, depth + 1),
+          value: visit(val, depth + 1),
+        })),
+      };
+    }
+    nodes.push(node);
+    return nodes.length - 1;
+  }
+  visit(value);
+  return { nodes };
 }
