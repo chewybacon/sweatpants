@@ -418,7 +418,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* ctx.install();
           current = ctx;
           return createScopedGuest(function* () {
-            const offered = yield* ctx.record(function* () {
+            const offered = yield* ctx.record({ key: "recorded-operation" }, function* () {
               draws++;
               return { ok: true as const, value: { path: "src/main.ts" } };
             });

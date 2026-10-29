@@ -184,12 +184,15 @@ export interface EffectCapabilities<Y> {
     /** Install this Guest's record binding in its acquisition scope. Scope exit clears it. */
     install(): Operation<void, Y>;
     /**
-     * Supply an inline operation under the ordinary effect attempt. Return Outcome
+     * Supply an inline operation under the ordinary effect attempt. The non-empty key
+     * identifies the operation semantically; sequence distinguishes repeated calls.
+     * Replay compares both. Keys are not global deduplication tokens. Return Outcome
      * data; exceptions are delivery errors. Native asynchronous work and physical
      * cleanup are supported. Nested durable exchanges are not. Replay skips accepted
      * work. This evaluator requires retention; Lua inline execution is not implemented.
      */
     record<Result extends Outcome<unknown, unknown>>(
+      options: { readonly key: string },
       work: () => Operation<Result, Y>,
     ): Operation<Result, CapabilityRequest>;
   };

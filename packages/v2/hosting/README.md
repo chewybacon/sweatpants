@@ -333,7 +333,7 @@ acquisition scope:
 const ctx = effects.grant(definitions, { record: true });
 yield * ctx.install();
 return createScopedGuest(function* () {
-  return yield* ctx.record(function* () {
+  return yield* ctx.record({ key: "read-notes" }, function* () {
     const value = yield* runtime.fromPromise((signal) => readFile(signal));
     return { ok: true as const, value };
   });
@@ -341,7 +341,14 @@ return createScopedGuest(function* () {
 ```
 
 Use Guest retention to keep that scope alive through delivery. Each binding holds only
-one pending operation. Scope exit invalidates it and drops the operation; holding the
+one pending operation. The required non-empty key identifies the operation; an ordered
+sequence distinguishes repeated calls with the same key. Both are persisted in the
+ordinary effect request and compared during replay. A changed key at the same position
+fails before the recorded Outcome is delivered. Keys do not prove code identity or
+provide global deduplication. Retry safety remains existing host policy, defaulting to
+unsafe; repeatability must be explicitly selected by hosting middleware.
+
+Scope exit invalidates it and drops the operation; holding the
 grant does not extend its lifetime. The installed handler consumes the matching binding
 once and delegates to the author's operation. It uses the ordinary effect schema,
 handler, grant, settlement and replay path, without a special Guest execution method.

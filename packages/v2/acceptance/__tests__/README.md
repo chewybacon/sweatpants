@@ -132,7 +132,10 @@ with grant(definitions, { record: true }); no separate record definition is auth
 Operation bodies must return an explicit Outcome; success and authored failure retain their
 inferred types and are returned to the Guest as data. The transport carries that
 Outcome as a successful delivery; a failed transport reply would throw into the Guest.
-Fresh Guest acquisition installs a scope-owned pending-operation binding. Two interruption windows prove
+Fresh Guest acquisition installs a scope-owned pending-operation binding. Record
+requests contain a required semantic key and ordered sequence. Replay rejects a changed
+key at the same position before delivering accepted success or failure; repeated keys
+in a loop consume distinct ordered outcomes without repeating accepted work. Two interruption windows prove
 that accepted successes and failures replay without running work again, while unaccepted unsafe work
 stays occupied. A combined journey records a file offer, invokes a named choice exchange,
 reopens after accepting that choice, then invokes an inferred file-read exchange. Each

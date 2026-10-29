@@ -121,7 +121,9 @@ export function createEffectCapabilities<Y>(
     let installed = false;
     let active = false;
     let executing = false;
-    let pending: { key: number; work: () => Operation<Outcome<unknown, unknown>, Y> } | undefined;
+    let pending:
+      | { key: string; sequence: number; work: () => Operation<Outcome<unknown, unknown>, Y> }
+      | undefined;
     return {
       *install(): Operation<void, Y> {
         if (installed) {
@@ -132,8 +134,13 @@ export function createEffectCapabilities<Y>(
           active = false;
           pending = undefined;
         });
-        yield* install(recordDefinition, function* (key) {
-          if (!active || !pending || pending.key !== key) {
+        yield* install(recordDefinition, function* (invocation) {
+          if (
+            !active ||
+            !pending ||
+            pending.key !== invocation.key ||
+            pending.sequence !== invocation.sequence
+          ) {
             throw new Error("Record invocation is unavailable");
           }
           const work = pending.work;
@@ -153,6 +160,7 @@ export function createEffectCapabilities<Y>(
         active = true;
       },
       *call<Result extends Outcome<unknown, unknown>>(
+        options: { readonly key: string },
         work: () => Operation<Result, Y>,
       ): Operation<Result, CapabilityRequest> {
         if (!active) {
@@ -161,11 +169,17 @@ export function createEffectCapabilities<Y>(
         if (executing || pending) {
           throw new Error("Nested recorded work is not supported");
         }
-        const invocation = { key: slot++, work };
+        if (typeof options.key !== "string" || !options.key.trim()) {
+          throw new Error("Record key must be non-empty");
+        }
+        const invocation = { key: options.key, sequence: slot++, work };
         pending = invocation;
         // Heterogeneous callbacks erase Result only inside this per-Guest binding.
         // The matching invocation's accepted Outcome restores that correlation.
-        const result = (yield* recordDefinition.call(invocation.key)) as Result;
+        const result = (yield* recordDefinition.call({
+          key: invocation.key,
+          sequence: invocation.sequence,
+        })) as Result;
         if (pending === invocation) {
           pending = undefined;
         }

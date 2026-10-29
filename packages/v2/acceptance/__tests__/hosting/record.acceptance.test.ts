@@ -69,7 +69,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 }
                 if (mode === "nested") {
                   return (function* () {
-                    return yield* ctx.record(function* () {
+                    return yield* ctx.record({ key: "recorded-operation" }, function* () {
                       return { ok: true as const, value: 1 };
                     });
                   })();
@@ -81,7 +81,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   ? Promise.reject(new Error("Async callback failed"))
                   : Promise.resolve({ ok: true, value: 6 });
               }) as unknown as () => Operation<Outcome<unknown, unknown>, Y>;
-              return yield* ctx.record(work);
+              return yield* ctx.record({ key: "recorded-operation" }, work);
             });
           },
         });
@@ -151,6 +151,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let grant: import("@sweatpan.ts/durable").AttemptGrant | undefined;
       let savedRecord:
         | ((
+            options: { readonly key: string },
             work: () => Operation<Outcome<unknown, unknown>, Y>,
           ) => Operation<Outcome<unknown, unknown>, CapabilityRequest>)
         | undefined;
@@ -171,7 +172,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             current = ctx;
             savedRecord = ctx.record;
             return createScopedGuest(function* () {
-              const result = yield* ctx.record(function* () {
+              const result = yield* ctx.record({ key: "recorded-operation" }, function* () {
                 calls++;
                 expect(yield* context.expect()).toBe("delivery");
                 expect(yield* host.delivery.expect()).toEqual(grant);
@@ -234,7 +235,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await expect(
           start(() =>
             createScopedGuest(() =>
-              savedRecord!(function* () {
+              savedRecord!({ key: "after-disposal" }, function* () {
                 return { ok: true as const, value: 1 };
               }),
             ).start(),
@@ -282,6 +283,85 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
   }
 
+  it(`${runtime.name}: repeated keys retain distinct ordered outcomes across replay`, async () => {
+    const store = createSqliteJournalRig<number[], CapabilityRequest, unknown, string, unknown, Y>({
+      program: "record-loop",
+      equals: isDeepStrictEqual,
+    });
+    onTestFinished(() => store.close());
+    const peer = createProtocolRig();
+    let calls = 0;
+    const delivered: unknown[] = [];
+    function assemble(pause: boolean, key = "roll-dice") {
+      const journal = store.open();
+      const effects = createEffectCapabilities(runtime, "record-loop");
+      let ctx: ReturnType<typeof acquireContext> | undefined;
+      function acquireContext() {
+        return effects.grant({}, { record: true });
+      }
+      const recovery = createRecovery(runtime.composition, {
+        name: "record-loop",
+        program: "record-loop",
+        matches: isDeepStrictEqual,
+        *acquire() {
+          const current = acquireContext();
+          ctx = current;
+          yield* current.install();
+          return createScopedGuest(function* () {
+            const results: number[] = [];
+            for (let i = 0; i < 3; i++) {
+              const outcome = yield* current.record({ key }, function* () {
+                return { ok: true as const, value: ++calls };
+              });
+              results.push(outcome.value);
+            }
+            return results;
+          });
+        },
+      });
+      const host = createHosting(runtime.composition, {
+        name: "record-loop-host",
+        journal,
+        recovery: recovery.operations,
+        attempts: {
+          begin: journal.attempts.begin,
+          *settle(...args: Parameters<typeof journal.attempts.settle>) {
+            const result = yield* journal.attempts.settle(...args);
+            if (pause) {
+              yield* runtime.fromPromise((signal) =>
+                peer.send({ id: "accepted", token: "pause" }, signal),
+              );
+            }
+            return result;
+          },
+        },
+        *handle(request) {
+          delivered.push(request.input);
+          return yield* ctx!.handle(request);
+        },
+      });
+      return start(function* () {
+        yield* host.around({
+          *child(args, next) {
+            return yield* ctx!.admission.child(args, next);
+          },
+        });
+        yield* installGuestRetention(runtime.composition, host, recovery, journal);
+        return yield* host.operations.run();
+      });
+    }
+    await expect(assemble(false, "  ").result).rejects.toThrow("Record key must be non-empty");
+    expect(calls).toBe(0);
+    expect(delivered).toEqual([]);
+    const first = assemble(true);
+    await Promise.race([peer.waitForRequests(1), first.result]);
+    await first.cancel();
+    store.reopen();
+    await expect(assemble(false).result).resolves.toEqual({ state: "completed", value: [1, 2, 3] });
+    expect(calls).toBe(3);
+    expect(delivered).toEqual([0, 1, 2].map((sequence) => ({ key: "roll-dice", sequence })));
+  });
+
   // Both interruptions happen after the callback ran. Only one has an accepted value.
   for (const failed of [false, true]) {
     for (const accepted of [true, false]) {
@@ -303,7 +383,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let rollCalls = 0;
         let cardCalls = 0;
 
-        function assemble(pause: boolean) {
+        function assemble(pause: boolean, recordKey = "roll-dice") {
           const effects = createEffectCapabilities(runtime, "recording");
           const journal = store.open();
           let granted = false;
@@ -329,13 +409,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               yield* grant.install();
               current = grant;
               return createScopedGuest(function* () {
-                const roll = yield* grant.record(rollDice);
+                const roll = yield* grant.record({ key: recordKey }, rollDice);
                 if (roll.ok) {
                   expectTypeOf(roll.value).toEqualTypeOf<number>();
                 } else {
                   expectTypeOf(roll.error).toEqualTypeOf<{ code: string }>();
                 }
-                const card = yield* grant.record(function* () {
+                const card = yield* grant.record({ key: "pick-card" }, function* () {
                   expect(granted).toBe(true);
                   cardCalls++;
                   return { ok: true as const, value: { suit: "hearts", rank: 7 } };
@@ -404,6 +484,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(events).toEqual(accepted ? ["granted", "roll", "accepted"] : ["granted", "roll"]);
         await first.cancel();
         store.reopen();
+        if (accepted) {
+          await expect(assemble(false, "different-operation").result).rejects.toThrow(
+            "Replay request mismatch at 0",
+          );
+          expect(rollCalls).toBe(1);
+          expect(cardCalls).toBe(0);
+        }
         const result = await assemble(false).result;
         if (accepted) {
           expect(result).toEqual({
