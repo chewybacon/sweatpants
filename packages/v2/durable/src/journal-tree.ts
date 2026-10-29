@@ -4,7 +4,7 @@ import type {
   ChildLink,
   JournalSnapshot,
   PendingRequest,
-  OwnedChildOptions,
+  OwnedChildrenOptions,
   JournalBindingOptions,
   JournalRecord,
   JournalRecords,
@@ -27,22 +27,42 @@ function* record<Y>(records: JournalRecords<Y>, id: string): Operation<JournalRe
   return found;
 }
 
-/** Prepare the entire eligible descendant chain before publishing any cancellation. */
+/** Fence every eligible descendant in the same transaction before publishing cancellation. */
 function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, reason: string) {
-  let currentId = id;
-  let current = yield* record(records, currentId);
-  let boundary = requestId;
+  const pending: { id: string; boundary?: string }[] = [{ id, boundary: requestId }];
   let root: ReturnType<typeof requestJournalCancellation> | undefined;
-  while (true) {
-    // Owned calls exclude attempt/participant authority; their link is already on the head.
+  while (pending.length) {
+    const item = pending.pop()!;
+    const current = yield* record(records, item.id);
+    if (item.boundary === undefined) {
+      const snapshot = current.snapshot;
+      if (
+        snapshot.status !== "running" ||
+        snapshot.cancellation ||
+        snapshot.cancellationRequested
+      ) {
+        continue;
+      }
+      if (!snapshot.pending) {
+        current.queuedStop ??= reason;
+        yield* records.set(item.id, current);
+        continue;
+      }
+      item.boundary = snapshot.pending.id;
+    }
     const request =
-      current.snapshot.status === "running" && current.snapshot.child
+      current.snapshot.status === "running" && current.snapshot.children
         ? undefined
-        : yield* records.request(currentId, boundary);
-    const decision = requestJournalCancellation(current.snapshot, boundary, reason, request?.grant);
+        : yield* records.request(item.id, item.boundary);
+    const decision = requestJournalCancellation(
+      current.snapshot,
+      item.boundary,
+      reason,
+      request?.grant,
+    );
     root ??= decision;
     current.snapshot = decision.snapshot;
-    yield* records.set(currentId, current);
+    yield* records.set(item.id, current);
     if (
       decision.revoke &&
       request &&
@@ -54,24 +74,16 @@ function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, r
       if (request.registration?.state === "waiting") {
         request.registration = { state: "invalidated", grant: request.registration.grant, reason };
       }
-      yield* records.setRequest(currentId, boundary, request);
+      yield* records.setRequest(item.id, item.boundary, request);
     }
-    if (!decision.childToCancel) {
-      return root.cancellation;
+    for (const child of [...(decision.childrenToCancel ?? [])].reverse()) {
+      pending.push({ id: child.childId });
     }
-    currentId = decision.childToCancel.childId;
-    current = yield* record(records, currentId);
-    const snapshot = current.snapshot;
-    if (snapshot.status !== "running" || snapshot.cancellation || snapshot.cancellationRequested) {
-      return root.cancellation;
-    }
-    if (!snapshot.pending) {
-      current.queuedStop ??= reason;
-      yield* records.set(currentId, current);
-      return root.cancellation;
-    }
-    boundary = snapshot.pending.id;
   }
+  if (!root) {
+    throw new Error("Missing cancellation boundary");
+  }
+  return root.cancellation;
 }
 
 /** Transaction-local ownership decisions; bindings are supplied by the open assembly. */
@@ -85,20 +97,62 @@ export function createJournalTree<Y>(
     if (!link || next.snapshot.status === "running") {
       return;
     }
-    const parent = yield* record(records, link.parentId);
-    let projected: Outcome<unknown, unknown> | undefined;
+    let parent = yield* record(records, link.parentId);
     if (
-      next.snapshot.status === "completed" &&
-      !(parent.snapshot.status === "running" && parent.snapshot.cancellationRequested)
+      parent.snapshot.status !== "running" ||
+      !parent.snapshot.children?.some((child) => child.childId === link.childId) ||
+      parent.snapshot.pending?.id !== link.requestId
     ) {
+      throw new Error("Stale child settlement");
+    }
+    if (next.snapshot.status === "cancelled" && !parent.snapshot.cancellationRequested) {
+      const scope = parent.snapshot.pending.scope;
+      if (scope?.phase === "cleanup" || scope?.critical !== undefined) {
+        throw new Error(
+          "An independently cancelled protected child requires explicit outcome reconciliation",
+        );
+      }
+      yield* cancel(records, link.parentId, link.requestId, next.snapshot.reason);
+      parent = yield* record(records, link.parentId);
+    }
+    if (parent.snapshot.status !== "running" || !parent.snapshot.children) {
+      throw new Error("Missing owned group");
+    }
+    const siblings: JournalRecord[] = [];
+    for (const child of parent.snapshot.children) {
+      siblings.push(yield* record(records, child.childId));
+    }
+    if (siblings.some((child) => child.snapshot.status === "running")) {
+      return;
+    }
+    const cancelled = siblings
+      .map((child) => child.snapshot)
+      .filter((child) => child.status === "cancelled");
+    const failure =
+      cancelled
+        .map((child) => child.failure)
+        .filter((value) => value !== undefined)
+        .join("\n") || undefined;
+    const result = cancelled.length
+      ? { status: "cancelled" as const, reason: cancelled[0]!.reason, failure }
+      : { status: "completed" as const };
+    let projected: Outcome<unknown, unknown> | undefined;
+    if (result.status === "completed" && !parent.snapshot.cancellationRequested) {
       const binding = bindings.get(link.childId);
       if (!binding || binding.program !== link.program) {
         throw new Error("Missing owned child result binding");
       }
-      projected = binding.outcome(next.snapshot.value);
+      projected = binding.outcome(
+        siblings.map((child) => {
+          if (child.snapshot.status !== "completed") {
+            throw new Error("Incomplete owned group");
+          }
+          return child.snapshot.value;
+        }),
+      );
     }
-    const pending = parent.snapshot.status === "running" ? parent.snapshot.pending : undefined;
-    parent.snapshot = settleOwnedChild(parent.snapshot, link, next.snapshot, projected);
+    const pending = parent.snapshot.pending;
+    parent.snapshot = settleOwnedChild(parent.snapshot, link, result, projected);
     if (projected && pending) {
       yield* records.append(link.parentId, {
         sequence: pending.sequence,
@@ -145,50 +199,59 @@ export function createJournalTree<Y>(
     *acquire<C, V, E>(
       id: string,
       requestId: string,
-      definition: OwnedChildOptions<C, V, E>,
-    ): Operation<ChildLink, Y> {
-      const outcome = definition.outcome;
+      definition: OwnedChildrenOptions<C, V, E>,
+    ): Operation<readonly ChildLink[], Y> {
+      if (!definition.children.length) {
+        throw new Error("Owned group must not be empty");
+      }
       const parent = yield* record(records, id);
       const request = (yield* records.request(id, requestId)) ?? {};
-      const existing = request.child;
-      let link: ChildLink;
-      if (existing) {
+      let links = request.children;
+      if (links) {
         if (
-          existing.program !== definition.program ||
-          !options.equals(existing.input, definition.input)
+          links.length !== definition.children.length ||
+          links.some((link, index) => {
+            const child = definition.children[index]!;
+            return link.program !== child.program || !options.equals(link.input, child.input);
+          })
         ) {
           throw new Error("Owned child definition differs from recorded call");
         }
-        link = existing;
       } else {
         const state = parent.snapshot;
-        if (state.status !== "running" || state.pending?.id !== requestId || state.child) {
+        if (state.status !== "running" || state.pending?.id !== requestId || state.children) {
           throw new Error("Stale or unknown child call boundary");
         }
         if (request.grant || request.registration) {
           throw new Error("Owned call excludes attempts and participant registration");
         }
-        link = {
+        links = definition.children.map((child) => ({
           parentId: id,
           requestId,
           childId: crypto.randomUUID(),
-          program: definition.program,
-          input: definition.input,
-        };
-        yield* records.set(link.childId, createJournalRecord(link.program, link));
-        yield* records.setRequest(id, requestId, { ...request, child: link });
-        parent.snapshot = { ...state, child: link, revision: state.revision + 1 };
-        yield* records.set(id, parent);
-      }
-      // Bindings are staged alongside the decision and retained only after commit.
-      // Reacquisition retains the original trusted projection for this pinned call.
-      if (!bindings.has(link.childId)) {
-        bindings.set(link.childId, {
-          program: link.program,
-          outcome: outcome as (value: unknown) => Outcome<unknown, unknown>,
+          program: child.program,
+          input: child.input,
+        }));
+        for (const link of links) {
+          yield* records.set(link.childId, createJournalRecord(link.program, link));
+        }
+        yield* records.setRequest(id, requestId, { ...request, children: links });
+        yield* records.set(id, {
+          ...parent,
+          snapshot: { ...state, children: links, revision: state.revision + 1 },
         });
       }
-      return link;
+      for (const link of links) {
+        if (!bindings.has(link.childId)) {
+          bindings.set(link.childId, {
+            program: link.program,
+            outcome: definition.outcome as (
+              values: readonly unknown[],
+            ) => Outcome<unknown, unknown>,
+          });
+        }
+      }
+      return links;
     },
   };
 }

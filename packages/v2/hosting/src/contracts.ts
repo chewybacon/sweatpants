@@ -41,6 +41,9 @@ export interface HostingMethods<R, Q, V, E, Y> {
    * Concurrent activation may throw a
    * journal revision conflict before an attempt can be observed. Callers may retry
    * activation; never infer permission to redeliver an effect from that failure.
+   * Cancellation can also invalidate an observed boundary before participant
+   * registration, causing run() to reject. There is no automatic retry: the caller
+   * must reactivate from the journal to continue pending logical cleanup.
    *
    * Replacement compares the supplied current grant and requires recorded and
    * current policy to be repeatable. Elapsed time does not establish ownership loss.

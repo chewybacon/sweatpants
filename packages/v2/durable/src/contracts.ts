@@ -98,8 +98,8 @@ export type JournalSnapshot<R, Q, S> = {
   | {
       readonly status: "running";
       readonly pending?: PendingRequest<Q>;
-      /** Active owned call. Parent cannot accept or complete until this child settles. */
-      readonly child?: ChildLink;
+      /** Ordered active owned call. Parent waits until every sibling has settled. */
+      readonly children?: readonly ChildLink[];
       /** Intent waiting for an owned child to drain; not yet supplied to the evaluator. */
       readonly cancellationRequested?: RootCancellation<Q>;
     }
@@ -296,6 +296,13 @@ export interface OwnedChildOptions<R, V, E> {
   readonly outcome: (value: R) => Outcome<V, E>;
 }
 
+/** Nonempty ordered owned call group. One pure projection runs after every child completes. */
+export interface OwnedChildrenOptions<C, V, E> {
+  readonly children: readonly { readonly program: string; readonly input: unknown }[];
+  /** Values follow declaration order, regardless of completion order. Must perform no effects. */
+  readonly outcome: (values: readonly C[]) => Outcome<V, E>;
+}
+
 /** Typed journal capabilities sharing the adapter's atomic transaction boundary. */
 export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journal<
   R,
@@ -318,6 +325,18 @@ export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journa
   readonly attempts: Attempts<Q, V, E, Y>;
   readonly attemptControl: AttemptControl<Q, V, E, Y>;
   readonly interactions: Interactions<Q, V, E, Y>;
+  /**
+   * Atomically acquire a nonempty ordered sibling group at one pending boundary.
+   * Reacquisition checks count, order, programs and inputs, retaining the original
+   * projection within this open assembly. A fresh assembly supplies fresh bindings.
+   * Cancellation fences active descendants together and joins every child's logical
+   * cleanup before parent unwind. Completed siblings are retained, never redelivered.
+   * Delivery exceptions remain unsettled attempts; they are not durable child failures.
+   */
+  ensureChildren<C, CQ, CV, CE, CS = unknown>(
+    requestId: string,
+    options: OwnedChildrenOptions<C, V, E>,
+  ): Operation<readonly OwnedChild<C, CQ, CV, CE, CS, Y>[], Y>;
   /**
    * Bind one child to the exact pending call. Reacquisition checks program/input;
    * callers must use the same type contract for that program. Reacquisition returns
@@ -349,7 +368,7 @@ export interface RequestRecord {
   grant?: AttemptGrant;
   revoked?: string;
   registration?: InteractionRegistration;
-  child?: ChildLink;
+  children?: readonly ChildLink[];
 }
 
 /** Transaction-local storage access. Reads are detached; writes publish only on commit. */

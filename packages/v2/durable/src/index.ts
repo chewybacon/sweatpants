@@ -24,6 +24,7 @@ export type { ChildLink } from "./contracts.ts";
 export type {
   JournalBindingOptions,
   OwnedChildOptions,
+  OwnedChildrenOptions,
   OwnedJournal,
   OwnedChild,
   JournalPosition,

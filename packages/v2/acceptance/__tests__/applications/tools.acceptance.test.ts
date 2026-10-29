@@ -279,7 +279,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                       return yield* next(pending);
                     }
                     const snapshot = yield* journal.read();
-                    const existing = snapshot.status === "running" ? snapshot.child : undefined;
+                    const existing =
+                      snapshot.status === "running" ? snapshot.children?.[0] : undefined;
                     let input: Input;
                     if (existing) {
                       input = existing.input as Input;

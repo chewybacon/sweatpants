@@ -716,7 +716,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(before.status).toBe("running");
       expect(before.frontier.position).toBe(0);
       if (before.status === "running") {
-        expect(before.child).toBeUndefined();
+        expect(before.children).toBeUndefined();
         expect(before.pending).toBeDefined();
       }
       // The rejected request remains parked, but unoccupied. Fresh authorized assembly

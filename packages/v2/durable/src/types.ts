@@ -4,7 +4,7 @@ import type { Acceptance, ChildLink, JournalSnapshot, RootCancellation } from ".
 /** Trusted assembly binding, deliberately excluded from cloned records. */
 export interface ChildBinding {
   readonly program: string;
-  readonly outcome: (value: unknown) => Outcome<unknown, unknown>;
+  readonly outcome: (values: readonly unknown[]) => Outcome<unknown, unknown>;
 }
 
 /** Transaction overlay for code bindings; publication does not copy historical bindings. */
@@ -19,7 +19,7 @@ export interface CancellationTransition<R, Q, S> {
   readonly snapshot: JournalSnapshot<R, Q, S>;
   readonly cancellation: RootCancellation<Q>;
   readonly revoke: boolean;
-  readonly childToCancel?: ChildLink;
+  readonly childrenToCancel?: readonly ChildLink[];
 }
 
 /** Prepared acceptance; an adapter publishes the snapshot before acknowledging acceptance. */

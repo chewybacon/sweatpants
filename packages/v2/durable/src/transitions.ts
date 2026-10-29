@@ -39,12 +39,12 @@ export function requestJournalCancellation<R, Q, S>(
   if (protectedBoundary) {
     return { snapshot: { ...rest, cancellation, revision }, cancellation, revoke: false };
   }
-  if (snapshot.child) {
+  if (snapshot.children) {
     return {
       snapshot: { ...rest, cancellationRequested: cancellation, revision },
       cancellation,
       revoke: true,
-      childToCancel: snapshot.child,
+      childrenToCancel: snapshot.children,
     };
   }
   const { pending: _pending, ...ready } = rest;
@@ -66,12 +66,12 @@ export function settleOwnedChild<R, Q, V, E, S>(
 ): JournalSnapshot<R, Q, S> {
   if (
     parent.status !== "running" ||
-    parent.child?.childId !== link.childId ||
+    !parent.children?.some((child) => child.childId === link.childId) ||
     parent.pending?.id !== link.requestId
   ) {
     throw new Error("Stale child settlement");
   }
-  const { child: _child, pending, cancellationRequested, ...rest } = parent;
+  const { children: _children, pending, cancellationRequested, ...rest } = parent;
   const revision = parent.revision + 1;
   if (cancellationRequested || result.status === "cancelled") {
     if (

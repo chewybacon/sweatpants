@@ -48,7 +48,7 @@ export function advanceJournal<R, Q, Y, V, E, S>(
     if (snapshot.status === "completed") {
       return { state: "completed" as const, value: snapshot.value };
     }
-    if (snapshot.child) {
+    if (snapshot.children) {
       if (!snapshot.pending) {
         throw new Error("Owned child requires its parent call boundary");
       }

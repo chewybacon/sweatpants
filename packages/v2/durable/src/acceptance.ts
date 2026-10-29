@@ -23,7 +23,7 @@ export function acceptJournalOutcome<R, Q, V, E, S>(
   if (snapshot.status !== "running" || snapshot.pending?.id !== requestId) {
     throw new Error("Stale or unknown pending request");
   }
-  if (snapshot.child) {
+  if (snapshot.children) {
     throw new Error("Owned call can only be accepted by child settlement");
   }
   const entry: Accepted<Q, V, E> = {

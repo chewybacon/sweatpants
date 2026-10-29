@@ -20,7 +20,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   tree: ReturnType<typeof createJournalTree<Y>>,
   records: JournalRecords<Y>,
   identity: string,
-): Omit<OwnedJournal<R, Q, V, E, S, Y>, "ensureChild" | "read"> & {
+): Omit<OwnedJournal<R, Q, V, E, S, Y>, "ensureChild" | "ensureChildren" | "read"> & {
   read(): Operation<JournalSnapshot<R, Q, S>, Y>;
 } {
   const read = () => tree.read<R, Q, S>(identity);
@@ -116,7 +116,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
           throw new Error("Cancellation completion requires drained cleanup");
         }
         const {
-          child: _child,
+          children: _children,
           cancellationRequested: _requested,
           pending: _pending,
           ...settled
@@ -170,7 +170,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
-        if (state.child) {
+        if (state.children) {
           throw new Error("Owned call excludes participant registration");
         }
         const request = (yield* records.request(identity, requestId)) ?? {};
@@ -223,7 +223,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
         if (state.status !== "running" || state.pending?.id !== requestId) {
           throw new Error("Stale or unknown pending request");
         }
-        if (state.child) {
+        if (state.children) {
           throw new Error("Owned call excludes executing attempts");
         }
         const request = (yield* records.request(identity, requestId)) ?? {};

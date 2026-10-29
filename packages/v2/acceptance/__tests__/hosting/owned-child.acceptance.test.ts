@@ -28,6 +28,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function scenario(
     options: {
       count?: number;
+      mutateProjection?: boolean;
       liveApproval?: boolean;
       call?: "body" | "cleanup" | "critical";
       liveCleanup?: boolean;
@@ -157,17 +158,21 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             if (!pending.request.startsWith("call:")) {
               return yield* next(pending);
             }
+            const definition = {
+              program: "child",
+              input: pending.request,
+              outcome(value: { approval: string }): Outcome<string, string> {
+                projectedAssemblies.push(generation);
+                return projection(value);
+              },
+            };
             const child = yield* parent.ensureChild<{ approval: string }, string, string, string>(
               pending.id,
-              {
-                program: "child",
-                input: pending.request,
-                outcome(value) {
-                  projectedAssemblies.push(generation);
-                  return projection(value);
-                },
-              },
+              definition,
             );
+            if (options.mutateProjection) {
+              definition.outcome = () => ({ ok: true, value: "replaced" });
+            }
             if (!children.has(child.link.childId)) {
               children.set(child.link.childId, child);
               if (!links.some((link) => link.childId === child.link.childId)) {
@@ -605,6 +610,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(live.result).rejects.toThrow("revoked");
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
+    });
+
+    it("pins the original projection when the caller mutates acquisition options", async () => {
+      const s = scenario({ mutateProjection: true });
+      await s.begin();
+      const child = s.links[0]!;
+      await s.answer(child.childId, "original");
+      await s.run().result;
+      await s.answer(child.childId, "closed");
+      expect(await s.finish()).toEqual({ state: "completed", value: ["original"] });
+      expect(s.projectedAssemblies).toEqual([0]);
     });
 
     it("rejects alternate delivery species and a changed program/input for the owned call", async () => {

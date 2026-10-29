@@ -411,3 +411,21 @@ validates again and compares normalized Outcomes: two raw forms producing the sa
 value are duplicates, while conflicting values reject. Response transformations should
 be deterministic and side-effect-free, and their output must be supported by the store's
 serializer. Install this middleware once per answer-ingress chain.
+
+## Reactivation after a cancellation race
+
+Cancellation may commit after a host observes a pending boundary but before it
+registers a participant wait. Registration rejects the stale boundary, and `run()`
+propagates that rejection. When sibling hosts are scheduled together, this may also
+stop their physical tasks; it does not undo durable cancellation or accepted history.
+
+The caller must run the host again from the journal to continue logical cleanup.
+The default hosting loop does not automatically retry this race. Reactivation reads
+current authority and must not directly redeliver an old request or reuse permission
+from the failed activation. This is a recovery responsibility, not a blanket policy
+to retry arbitrary handler or storage errors.
+
+The owned-group acceptance journey forces this ordering through scoped middleware,
+asserts stale registration and late-answer rejection, then explicitly reactivates and
+joins cleanup. Separate nested-group coverage checks descendant fencing and critical
+branch authority across reopen before parent cleanup can run.

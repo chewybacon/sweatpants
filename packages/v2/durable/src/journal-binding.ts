@@ -7,6 +7,7 @@ import type {
   JournalBindingOptions,
   OwnedJournal,
   OwnedChildOptions,
+  OwnedChildrenOptions,
 } from "./contracts.ts";
 import type { ChildBinding } from "./types.ts";
 import { stageBindings } from "./bindings.ts";
@@ -143,8 +144,25 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         requestId: string,
         definition: OwnedChildOptions<C, Value, Failure>,
       ) {
-        const link = yield* invoke((tree) => tree.acquire(id, requestId, definition));
+        const outcome = definition.outcome;
+        const links = yield* invoke((tree) =>
+          tree.acquire(id, requestId, {
+            children: [definition],
+            outcome: (values: readonly C[]) => outcome(values[0]!),
+          }),
+        );
+        const link = links[0]!;
         return { link, journal: bind<C, CQ, CV, CE, CS>(link.childId, link.program) };
+      },
+      *ensureChildren<C, CQ, CV, CE, CS = unknown>(
+        requestId: string,
+        definition: OwnedChildrenOptions<C, Value, Failure>,
+      ) {
+        const links = yield* invoke((tree) => tree.acquire(id, requestId, definition));
+        return links.map((link) => ({
+          link,
+          journal: bind<C, CQ, CV, CE, CS>(link.childId, link.program),
+        }));
       },
     };
   }

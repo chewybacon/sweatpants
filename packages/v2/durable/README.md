@@ -227,3 +227,28 @@ continue to work; a tool host requires admission before acquiring its body.
 
 Schema validation belongs outside this transaction. `@sweatpan.ts/tools` provides
 `admitTool` for that boundary; recovery consumes stored normalized input directly.
+
+## Ordered owned groups
+
+`ensureChildren` atomically binds a nonempty, ordered sibling group to one pending
+parent request. `ensureChild` uses the same path with one child. Reacquisition checks
+count, order, program identities and pinned inputs. The original pure projection is
+retained within an open assembly; reopening requires rebuilding trusted bindings.
+
+Children advance independently through ordinary hosting. Completed siblings stay
+completed across recovery. The final child completion and one projected parent
+acceptance commit together, with results in declaration order. A projection exception
+rolls back that transaction. All ownership records must share one transaction domain.
+
+Parent cancellation fences eligible siblings and descendants atomically, then waits
+for every child's logical cleanup before advancing parent cleanup. Critical and cleanup
+scopes retain their existing protection. Independent child cancellation also requests
+parent cancellation and fences siblings; protected calls require explicit reconciliation.
+Delivery exceptions leave attempts unsettled. An authored failure Outcome is ordinary
+result data unless the author or hosting policy interprets it otherwise.
+
+This first slice exposes homogeneous child journals, not a public heterogeneous
+`ctx.all` authoring API. The acceptance tracer handles an empty authored group locally.
+It uses native `runtime.all` only to schedule child hosts; durable ownership and joining
+belong to the journal. Settlement reads sibling headers, O(group size) per completion;
+it does not hydrate their accepted histories. Large-group optimization is deferred.
