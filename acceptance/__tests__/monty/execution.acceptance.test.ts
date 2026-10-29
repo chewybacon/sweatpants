@@ -10,7 +10,18 @@ import { z } from "zod";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority";
 
 const operations = z.object({
-  operations: z.array(z.object({ id: z.number(), label: z.string() })),
+  operations: z.array(
+    z.object({
+      id: z.number(),
+      label: z.string(),
+      request: z
+        .object({
+          capability: z.literal("sandbox.read_file"),
+          arguments: z.object({ path: z.string() }),
+        })
+        .optional(),
+    }),
+  ),
 });
 const program = { code: demoSource, digest: "acceptance", kernel: montyIdentity };
 
@@ -25,13 +36,22 @@ describe("Python workflow authoring through actual Monty Wasm", () => {
         }
         expect(
           operations.parse(state.boundary.request.input).operations.map((op) => op.label),
-        ).toEqual(["Review draft A", "Review draft B"]);
+        ).toEqual(["Read a.txt", "Read b.txt", "Read c.txt", "Read d.txt", "Read e.txt"]);
+        const first = operations.parse(state.boundary.request.input).operations;
+        expect(new Set(first.map((op) => op.id)).size).toBe(5);
+        expect(first.map((op) => op.request?.arguments.path)).toEqual([
+          "a.txt",
+          "b.txt",
+          "c.txt",
+          "d.txt",
+          "e.txt",
+        ]);
         for (const label of [
-          "Review draft B",
-          "Release draft B",
-          "Review draft A",
-          "Release draft A",
-          "Finish parent cleanup",
+          "Read e.txt",
+          "Read d.txt",
+          "Read c.txt",
+          "Read b.txt",
+          "Read a.txt",
         ]) {
           const snapshot = yield* state.execution.capture();
           const before = JSON.stringify(snapshot);
@@ -55,7 +75,7 @@ describe("Python workflow authoring through actual Monty Wasm", () => {
         }
         expect(state.boundary).toEqual({
           kind: "completed",
-          value: ["Review draft A", "Review draft B"],
+          value: ["Read a.txt", "Read b.txt", "Read c.txt", "Read d.txt", "Read e.txt"],
         });
       } finally {
         yield* kernel.close();
@@ -72,7 +92,7 @@ async def consume(queue):
     await operation("Read queued items")
     return [await queue.get(), await queue.get()]
 
-async def workflow():
+async def main():
     queue = Queue(1)
     return await gather(produce(queue), consume(queue))
 `;
@@ -104,7 +124,9 @@ async def workflow():
   it("journal-authorizes reverse replies and cancellation while child cleanup is pending", async () => {
     const store = createMemoryExecutionStore();
     const saved = new Map();
-    const { createExecutionService } = executionServiceFactory([createMontyStack(loadMontyModule)]);
+    const { createExecutionService } = executionServiceFactory([
+      { ...createMontyStack(loadMontyModule), caller: legacyCleanupSource },
+    ]);
     const service = () =>
       createExecutionService({
         secret: "monty-acceptance-secret".repeat(3),
@@ -175,3 +197,21 @@ async def workflow():
     expect((await service().get(view.id)).status).toBe("cancelled");
   });
 });
+
+const legacyCleanupSource = `async def review(name):
+    try:
+        return await operation("Review " + name)
+    finally:
+        await operation("Release " + name)
+
+async def main():
+    try:
+        async with Scope() as scope:
+            first = scope.spawn(review("draft A"))
+            second = scope.spawn(review("draft B"))
+            a = await join(first)
+            b = await join(second)
+        return [a, b]
+    finally:
+        await operation("Finish parent cleanup")
+`;

@@ -8,6 +8,7 @@ import {
 import { instantiate } from "../generated/monty.component.js";
 import { createWasiImports } from "./wasi.mjs";
 import { executableManifestDigest } from "../generated/executable-identity.mjs";
+import { parseHostRequest, validHostReply, readFileContract } from "./contract.mjs";
 import { guestLibrary } from "./guest.mjs";
 
 export const montyIdentity = Object.freeze({
@@ -15,7 +16,8 @@ export const montyIdentity = Object.freeze({
   version: canonicalDigest({
     library: guestLibrary,
     executableManifest: executableManifestDigest,
-    adapter: "adapter1",
+    adapter: "adapter3",
+    contract: readFileContract,
   }),
   programFormat: "monty-python-source-1",
   snapshotFormat: "monty-dump27-host1",
@@ -57,14 +59,20 @@ export function createMontyKernel(loadModule) {
         throw Error("Too many operations in one turn");
       }
       const { callId, functionName, args, kwargs, values } = event.val;
-      if (functionName !== "exchange" || args.length !== 1 || kwargs.length) {
+      if (
+        !["exchange", "sandbox.exchange"].includes(functionName) ||
+        args.length !== 1 ||
+        kwargs.length
+      ) {
         throw Error("Unsupported Monty host call");
       }
-      const label = decode(values, args[0]);
-      if (typeof label !== "string" || label.length > 256) {
+      const payload = decode(values, args[0]);
+      const request = functionName === "sandbox.exchange" ? parseHostRequest(payload) : null;
+      const label = request ? `Read ${request.arguments.path}` : payload;
+      if (typeof label !== "string" || (!request && label.length > 256)) {
         throw Error("Invalid operation label");
       }
-      state.operations.push({ id: callId, label });
+      state.operations.push(request ? { id: callId, label, request } : { id: callId, label });
       event = dispatch({
         tag: "resume-call",
         val: { callId, outcome: { tag: "pending-future", val: callId }, values: { nodes: [] } },
@@ -135,13 +143,11 @@ export function createMontyKernel(loadModule) {
     });
   }
   const driver = {
-    *validateReply(_request, reply) {
+    validateReply(_request, reply) {
       const value = reply.value?.action === "accept" ? reply.value.content : reply.value;
       if (
         reply.kind !== "value" ||
-        !value ||
-        !Number.isSafeInteger(value.operationId) ||
-        typeof value.value !== "string" ||
+        !validHostReply(value) ||
         !state.operations.some((op) => op.id === value.operationId)
       ) {
         throw Error("Reply must select a currently outstanding operation");
@@ -162,13 +168,20 @@ export function createMontyKernel(loadModule) {
           values: { nodes: [] },
         };
       } else {
-        const { operationId, value } =
+        const { operationId, value, error } =
           command.reply.value?.action === "accept"
             ? command.reply.value.content
             : command.reply.value;
         val = {
-          results: [{ callId: operationId, outcome: { tag: "return-value", val: 0 } }],
-          values: { nodes: [{ tag: "text", val: value }] },
+          results: [
+            {
+              callId: operationId,
+              outcome: error
+                ? { tag: "error", val: { excType: error.type, message: error.message } }
+                : { tag: "return-value", val: 0 },
+            },
+          ],
+          values: { nodes: error ? [] : [{ tag: "text", val: value }] },
         };
       }
       return settleBoundary(dispatch({ tag: "resume-futures", val }));
@@ -242,7 +255,7 @@ export function createMontyKernel(loadModule) {
         }
         const boundary = settleBoundary(
           feed(
-            `from __monty_host__ import host_coroutines\n${next.code}\nworkflow()._native1()`,
+            `from __monty_host__ import host_coroutines\n${next.code}\nmain()._native1()`,
             [{ name: "exchange", value: 0 }],
             [{ tag: "function", val: { name: "exchange" } }],
           ),

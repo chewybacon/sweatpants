@@ -55,7 +55,14 @@ if (
   throw Error("Monty source commit differs");
 }
 if (source) {
-  execFileSync("git", ["-C", resolve(source), "diff", "--quiet", "HEAD"]);
+  if (manifest.sourceState === "dirty") {
+    const patch = execFileSync("git", ["-C", resolve(source), "diff", "--binary", "HEAD"]);
+    if (createHash("sha256").update(patch).digest("hex") !== manifest.sourcePatchSha256) {
+      throw Error("Monty dirty source patch differs");
+    }
+  } else {
+    execFileSync("git", ["-C", resolve(source), "diff", "--quiet", "HEAD"]);
+  }
   for (const [path, expected] of Object.entries({
     ...association.runtime,
     ...association.build_inputs,
@@ -78,10 +85,12 @@ for (const [name, expected] of Object.entries(manifest.artifacts)) {
     await copyFile(from, new URL(name, directory));
   }
 }
-const { guestLibrary, demoSource } = await import("../src/guest.mjs");
+const { guestLibrary, demoSource, cleanupSource, errorSource } = await import("../src/guest.mjs");
 for (const [file, text] of [
   ["workflow.py", guestLibrary],
   ["demo.py", demoSource],
+  ["cleanup.py", cleanupSource],
+  ["error.py", errorSource],
 ]) {
   if ((await readFile(new URL(`../guest/${file}`, import.meta.url), "utf8")) !== text) {
     throw Error(`Regenerate guest strings: ${file}`);
@@ -95,5 +104,5 @@ if (generate) {
   );
 }
 console.log(
-  `Monty artifacts verified: ${manifest.sourceCommit}; manifest SHA-256 ${manifestDigest}`,
+  `Monty artifacts verified: ${manifest.sourceCommit} (${manifest.sourceState ?? "clean"}); manifest SHA-256 ${manifestDigest}`,
 );

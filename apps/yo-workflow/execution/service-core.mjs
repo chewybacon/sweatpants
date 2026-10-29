@@ -1,3 +1,4 @@
+import { fulfillRead } from "./monty.mjs";
 import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { executionDiagnostics } from "./diagnostics.mts";
 import { createWorkflowBindingResolver } from "@sweatpants/flowmode-backend";
@@ -307,7 +308,14 @@ export function executionServiceFactory(stacks) {
           if (language === "monty" && command.prompt) {
             throw Error("Python uses the supplied demo; model authoring is not supported");
           }
-          const authored = command.prompt ? await author?.(command.prompt, language) : stack.caller;
+          if (command.example && !Object.hasOwn(stack.examples ?? {}, command.example)) {
+            throw Error("Unknown supplied example");
+          }
+          const authored = command.prompt
+            ? await author?.(command.prompt, language)
+            : command.example
+              ? stack.examples[command.example]
+              : stack.caller;
           if (typeof authored !== "string" || !authored.trim()) {
             throw Error("Model authoring is unavailable or returned no source");
           }
@@ -460,10 +468,19 @@ export function executionServiceFactory(stacks) {
                       session.language === "monty"
                         ? {
                             action: "accept",
-                            content: {
-                              operationId: command.operationId,
-                              value: command.choice ?? "completed",
-                            },
+                            content: command.error
+                              ? { operationId: command.operationId, error: command.error }
+                              : {
+                                  operationId: command.operationId,
+                                  value:
+                                    command.choice === "fixture"
+                                      ? fulfillRead(
+                                          session.inspection.execution.boundary.request.input.operations.find(
+                                            (op) => op.id === command.operationId,
+                                          ),
+                                        )
+                                      : (command.choice ?? "completed"),
+                                },
                           }
                         : {
                             action: "accept",

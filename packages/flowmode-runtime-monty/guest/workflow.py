@@ -44,8 +44,8 @@ async def join(handle):
     return await handle
 
 
-async def gather(first, second):
-    return await asyncio.gather(_child(first), _child(second))
+async def gather(*continuations):
+    return await asyncio.gather(*continuations)
 
 
 class Queue:

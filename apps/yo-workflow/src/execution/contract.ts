@@ -52,7 +52,20 @@ export const executionViewSchema = z.object({
     })
     .nullable(),
   pending: z.object({ key: z.string(), message: z.string(), pullId: z.string() }).nullable(),
-  operations: z.array(z.object({ id: z.number(), label: z.string() })).default([]),
+  operations: z
+    .array(
+      z.object({
+        id: z.number(),
+        label: z.string(),
+        request: z
+          .object({
+            capability: z.literal("sandbox.read_file"),
+            arguments: z.object({ path: z.string() }),
+          })
+          .optional(),
+      }),
+    )
+    .default([]),
   outbox: z.array(
     z.object({
       announcementId: z.string(),

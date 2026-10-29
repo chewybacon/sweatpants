@@ -1,7 +1,7 @@
 # Monty workflow runtime
 
 Actual Rust Wasm execution through the existing Flowmode kernel and journal-authority backend.
-The Python author writes `async def workflow()` using supplied `operation(label)`, `Scope`, `join(handle)`, `gather(first, second)` and `Queue(capacity)` contracts.
+The Python author writes `async def main()`, imports `asyncio` and `sandbox.read_file`, and awaits ordinary variadic `asyncio.gather`.
 See `guest/demo.py` and acceptance coverage in `acceptance/__tests__/monty/`.
 The library is thin bindings and scope cleanup; Rust owns task scheduling, queues and cancellation.
 
@@ -28,42 +28,65 @@ Frames, local variables, step counts and cleanup stacks are explicitly unavailab
 Disposal resets the worker and drops the JS reference; it is not logical cancellation.
 Repeated logical cancellation preserves protected cleanup and terminal cancellation is sticky.
 
-## Artifacts and local rebuild
+## Artifacts and source association
 
-`generated/manifest.json` pins source commit `b3a21cc717fd8c02fcfd123e6438e949889330f1`, the accepted queues association hash and all five generated artifact hashes.
-The component and wrapper were copied byte-for-byte from that accepted build; `LICENSE-MONTY` retains its MIT license.
-The source commit is currently local and unpushed. No remote-fetch dependency is claimed.
+The manifest pins every executable and the complete source association to Monty
+commit `6ab9e345ccfb8ea1733cbb910e935649bacb75ed` (currently local/unpushed).
+All recorded runtime and build inputs match that committed source. The association
+retains the original dirty-build receipts and subsequent documentation-only update;
+committing those exact inputs required no rebuild. Vendored bytes allow execution
+without a sibling checkout. The MIT license is retained.
 
-Verify vendored bytes:
+`pnpm --filter @sweatpants/flowmode-runtime-monty check` verifies vendored bytes and
+the generated complete-manifest identity. An explicit local import using
+`node packages/flowmode-runtime-monty/scripts/artifact.mjs /path/to/monty` verifies
+HEAD, the recorded dirty patch (or cleanliness for an immutable pin), every source
+input and every artifact hash before copying. It never silently repins.
 
-```sh
-pnpm --filter @sweatpants/flowmode-runtime-monty check
+Build through `tools/coroutines/coordinator1/guarded_checks.py` (`native`, `wasm`,
+`component`): shared lock/target, max two jobs, debug/incremental disabled,
+10 GiB minimum free space and 8 GiB combined cache cap. After deliberate review of
+a repin, `artifact.mjs --generate` updates the static worker-safe manifest digest.
+
+## Python authoring
+
+```python
+import asyncio
+from sandbox import read_file
+
+async def main():
+    paths = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]
+    return await asyncio.gather(*(read_file(path) for path in paths))
 ```
 
-For a local rebuild, use a clean Monty checkout at the pinned commit and its existing guarded build tooling (`tools/coroutines/coordinator1/guarded_checks.py`, shared target/lock, at most two jobs, debug and incremental disabled).
-The accepted receipt records `node crates/monty-js/scripts/build-component.mjs` under the `component` guard action; rebuild through that guard, not an unbounded direct Cargo invocation.
-Then explicitly import the artifacts (refuses a different commit, dirty tracked source or changed artifact hash):
+Imports use Monty's real module/name machinery. The supplied `sandbox` module
+creates lazy, serialized continuations. Awaiting a read emits
+`{capability: "sandbox.read_file", arguments: {path}}`. The host owns authorization,
+fulfillment and persistence. This never opens an OS file. Replies select an issued
+operation ID and contain either a bounded string value or a supported Python
+exception type/message. The Execution demo fulfills only an explicit local fixture
+map; its UI offers each pending read separately. One journal elicitation still
+represents the entire frontier, preserving existing revision/capability authority.
 
-```sh
-node packages/flowmode-runtime-monty/scripts/artifact.mjs /absolute/path/to/pinned-monty-checkout
-```
-
-After a deliberate manifest repin, run `node packages/flowmode-runtime-monty/scripts/artifact.mjs --generate` to regenerate the worker-safe identity module. This verifies artifact and association bytes before generating; normal `build`/`check` reject stale generated identity. The manifest must name exactly the five executable files. No runtime filesystem hashing or Wasm rebuild is needed for identity generation.
-
-A different toolchain may produce different bytes; review and repin those deliberately rather than silently accepting them.
-Regenerate JS guest strings after editing Python contracts: `node packages/flowmode-runtime-monty/scripts/guest.mjs`, then format.
+The platform selects the durable dialect and starts `main` internally; neither
+private entry calls nor injected globals are required in authored source. Native
+`asyncio.gather` is variadic, including starred generator expansion, and adapts
+durable continuations using VM-owned frozen functions. No coroutine state lives
+outside the snapshot. `guest/cleanup.py` demonstrates ordinary `try/finally` and
+`async with` with yielding reads during cancellation. The app's bounded `cleanup`
+example is available via the public start command's `example` field.
 
 ## Bounds
 
-This is a bounded Python authoring slice, not asyncio parity or a TypeScript-to-Python compiler.
-One scope per task; direct-owner joins; two-argument gather over coroutine continuations; positive bounded queues without shutdown/join/task_done/timeouts/deadlock detection.
-`Scope.errors` retains drained child/deferred-cleanup errors as in the accepted library; authors must inspect them if needed.
-Host operation replies are strings; results are JSON-safe supported values, with safe-integer checks.
-The adapter admits at most 256 host calls in a turn and configures 64 MiB guest memory, recursion 200, 1000 suspensions, and runtime duration limits.
-Duration checks depend on host clock progress and do not establish CPU preemption on workerd.
-No arbitrary-await snapshot, decoded-frame, hostile snapshot validation or cross-backend snapshot interchange claim.
+This is a bounded Python subset, not full asyncio parity or a Python compiler for
+TypeScript tools. Gather keywords including `return_exceptions` remain unsupported.
+The internal legacy Scope/Queue bindings remain available for runtime regressions;
+Scope is cancel-on-exit and is not presented as `asyncio.TaskGroup`. Standard Queue
+is not supplied. The adapter admits at most 256 calls per turn, with 64 MiB guest
+memory, recursion 200 and 1000 suspensions. Host replies are bounded strings or
+listed exceptions, and results are supported JSON-safe values. Duration checks
+are not workerd CPU preemption. Snapshots must be trusted compatible producer output.
 
-Local UI: build yo-workflow dependencies, then `pnpm --filter yo-workflow execution:demo` and open `http://127.0.0.1:8110/execution`.
-This initializes separate local D1 state and a persistent local signing key; no model credentials are needed.
-Choose Python, complete B before A, restore, or cancel while a release is waiting. Repeated cancel is available during cleanup.
-Scheme/Lua retain their existing compiled-tool and model-authoring paths.
+Run `pnpm --filter yo-workflow execution:demo`, choose Python and Run five reads.
+Fulfill reads in reverse order or restore between replies. Scheme/Lua retain their
+existing paths. No model credentials or external production effects are required.

@@ -15,7 +15,7 @@ import { KernelCompatibilityError } from "@sweatpants/flowmode-runtime";
 
 const original = fileURLToPath(new URL("../packages/flowmode-runtime-monty/", import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), "monty-compatibility-"));
-const code = 'async def workflow():\n    return await operation("Reply")\n';
+const code = 'async def main():\n    return await operation("Reply")\n';
 const program = { code, digest: "compatibility-acceptance", kernel: montyIdentity };
 const snapshot = await run(function* () {
   const kernel = createMontyKernel(loadMontyModule);

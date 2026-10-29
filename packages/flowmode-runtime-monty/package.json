@@ -9,7 +9,8 @@
     "./program": "./src/program.mjs",
     "./guest": "./src/guest.mjs",
     "./worker": "./src/worker.mjs",
-    "./generated/*": "./generated/*"
+    "./generated/*": "./generated/*",
+    "./contract": "./src/contract.mjs"
   },
   "scripts": {
     "build": "node scripts/artifact.mjs",

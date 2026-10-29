@@ -92,7 +92,7 @@ export function ExecutionInspector() {
           <p className="execution-eyebrow">WORKFLOW LAB</p>
           <h1>Inside the execution.</h1>
           <p className="execution-muted">
-            Explore Scheme and Lua tools, or a Python workflow with concurrent reviews and cleanup.
+            Explore Scheme and Lua tools, or a Python workflow with five concurrent file reads.
             Restore a saved execution in a fresh instance.
           </p>
         </div>
@@ -112,7 +112,7 @@ export function ExecutionInspector() {
         </label>
         <button disabled={busy || !languages.length} onClick={() => void request("start")}>
           {language === "monty"
-            ? "Run concurrent reviews"
+            ? "Run five reads"
             : view
               ? "New confirmation run"
               : "Run confirmation"}
@@ -164,9 +164,9 @@ export function ExecutionInspector() {
       )}
       {language === "monty" && (
         <p className="execution-local">
-          Two reviews run together. Complete either one first, or cancel while a release is waiting.
-          Parent cleanup waits for both children. This demo is authored in Python; compiled
-          TypeScript tools and model authoring are not yet supported.
+          Five reads run together. Fulfill them in any order from the local fixtures, or restore
+          between replies. This demo is authored in Python; compiled TypeScript tools and model
+          authoring are not yet supported.
         </p>
       )}
       {error && (
@@ -189,13 +189,11 @@ export function ExecutionInspector() {
       {!view ? (
         <section className="execution-empty">
           <h2>
-            {language === "monty"
-              ? "Two reviews, one workflow."
-              : "One program. Two kinds of tool."}
+            {language === "monty" ? "Five reads, one workflow." : "One program. Two kinds of tool."}
           </h2>
           <p>
             {language === "monty"
-              ? "Complete the reviews in either order. Cancellation still waits for their cleanup."
+              ? "Fulfill reads in any order from bounded local fixtures. Results retain input order."
               : "Review a draft, finish its cleanup, then queue the approved announcement through the host."}
           </p>
           <ol>
@@ -207,7 +205,7 @@ export function ExecutionInspector() {
             <li>Restore the same boundary in a fresh instance.</li>
             <li>
               {language === "monty"
-                ? "Complete a review or cancel—and follow cleanup."
+                ? "Fulfill reads in any order or cancel the workflow."
                 : "Approve, decline, or cancel—and follow cleanup."}
             </li>
           </ol>
@@ -287,7 +285,7 @@ export function ExecutionInspector() {
                         <button
                           key={op.id}
                           disabled={busy}
-                          onClick={() => void request("reply", "completed", false, op.id)}
+                          onClick={() => void request("reply", "fixture", false, op.id)}
                         >
                           {op.label}
                         </button>
