@@ -23,6 +23,13 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/tools",
     "format:check": "cd ../../.. && oxfmt packages/v2/tools --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@standard-schema/spec": "catalog:",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/hosting": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

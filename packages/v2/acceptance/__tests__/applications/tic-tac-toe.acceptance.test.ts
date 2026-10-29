@@ -90,10 +90,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
 
         // The authored application uses only record and the granted typed effects.
         function* playTtt(ctx: ReturnType<typeof acquireContext>) {
-          const coin = yield* ctx.record({ key: "play-ttt-symbol-coin-flip" }, function* () {
-            coinCalls++;
-            return { ok: true as const, value: heads ? ("heads" as const) : ("tails" as const) };
-          });
+          const coin = yield* ctx.record(
+            function* () {
+              coinCalls++;
+              return { ok: true as const, value: heads ? ("heads" as const) : ("tails" as const) };
+            },
+            { key: "play-ttt-symbol-coin-flip" },
+          );
           const modelSymbol: Player = coin.value === "heads" ? "X" : "O";
           let board: Cell[] = Array<Cell>(9).fill(null);
           let player: Player = "X";

@@ -40,6 +40,7 @@
     "@sweatpan.ts/storage-memory": "workspace:*",
     "@sweatpan.ts/storage-sqlite": "workspace:*",
     "@sweatpan.ts/testing": "workspace:*",
+    "@sweatpan.ts/tools": "workspace:*",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "effection": "catalog:",

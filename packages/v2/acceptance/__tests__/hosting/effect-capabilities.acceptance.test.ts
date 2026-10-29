@@ -418,10 +418,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* ctx.install();
           current = ctx;
           return createScopedGuest(function* () {
-            const offered = yield* ctx.record({ key: "recorded-operation" }, function* () {
-              draws++;
-              return { ok: true as const, value: { path: "src/main.ts" } };
-            });
+            const offered = yield* ctx.record(
+              function* () {
+                draws++;
+                return { ok: true as const, value: { path: "src/main.ts" } };
+              },
+              { key: "recorded-operation" },
+            );
             const selected = yield* ctx.capabilities.choose(offered.value.path);
             if (!selected.ok) {
               throw new Error("Unexpected choice failure");

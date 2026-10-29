@@ -112,7 +112,7 @@ export function declaredExchangeInference<Y>(
   // @ts-expect-error Each definition retains its own response correlation.
   const wrong: Operation<number, CapabilityRequest> = ctx.capabilities.chooseMarket("Market?");
   // @ts-expect-error Local work must be explicitly enabled by assembly.
-  ctx.record({ key: "recorded-operation" }, () => 6);
+  ctx.record(() => 6, { key: "recorded-operation" });
   return { a, b, wrong, transformedResult };
 }
 
@@ -120,38 +120,43 @@ export function recordedInference<Y>(runtime: Runtime<Y>) {
   const effects = createEffectCapabilities(runtime, "record-types");
   const ctx = effects.grant({}, { record: true });
   const roll: Operation<{ ok: true; value: number }, CapabilityRequest> = ctx.record(
-    { key: "recorded-operation" },
     function* () {
       yield* runtime.sleep(1);
       return { ok: true as const, value: 6 };
     },
+    { key: "recorded-operation" },
   );
   const decision: Operation<Outcome<number, "empty">, CapabilityRequest> = ctx.record(
-    { key: "recorded-operation" },
     function* () {
       if (Math.random() > 0.5) {
         return { ok: false as const, error: "empty" as const };
       }
       return { ok: true as const, value: 6 };
     },
+    { key: "recorded-operation" },
   );
-  // @ts-expect-error A semantic key is required for recorded operations.
   ctx.record(function* () {
     return { ok: true as const, value: 1 };
   });
   // @ts-expect-error Bare values are not operations.
-  ctx.record({ key: "recorded-operation" }, () => 6);
-  // @ts-expect-error Operation results must be Outcomes.
-  ctx.record({ key: "recorded-operation" }, function* () {
-    return 6;
-  });
+  ctx.record(() => 6, { key: "recorded-operation" });
+  ctx.record(
+    // @ts-expect-error Operation results must be Outcomes.
+    function* () {
+      return 6;
+    },
+    { key: "recorded-operation" },
+  );
   // @ts-expect-error Work must be deferred.
-  ctx.record({ key: "recorded-operation" }, { ok: true, value: 6 });
+  ctx.record({ ok: true, value: 6 }, { key: "recorded-operation" });
   // @ts-expect-error Promise functions must be lifted into the native operation.
-  ctx.record({ key: "recorded-operation" }, async () => ({ ok: true as const, value: 6 }));
-  const empty = ctx.record({ key: "recorded-operation" }, function* () {
-    return { ok: true as const, value: undefined };
-  });
+  ctx.record(async () => ({ ok: true as const, value: 6 }), { key: "recorded-operation" });
+  const empty = ctx.record(
+    function* () {
+      return { ok: true as const, value: undefined };
+    },
+    { key: "recorded-operation" },
+  );
   return { roll, decision, empty };
 }
 
@@ -178,20 +183,20 @@ export function nativeDefaultInference(
 
 export function recordNativeInference(runtime: Runtime<"host">) {
   const ctx = createEffectCapabilities(runtime, "inline-native").grant({}, { record: true });
-  // @ts-expect-error Inline work must use the installing runtime's native protocol.
-  ctx.record({ key: "recorded-operation" }, function* (): Operation<
-    Outcome<number, never>,
-    "other"
-  > {
-    yield "other";
-    return { ok: true, value: 1 };
-  });
+  ctx.record(
+    // @ts-expect-error Inline work must use the installing runtime's native protocol.
+    function* (): Operation<Outcome<number, never>, "other"> {
+      yield "other";
+      return { ok: true, value: 1 };
+    },
+    { key: "recorded-operation" },
+  );
   // @ts-expect-error The inferred recorded result remains numeric.
   const wrong: Operation<Outcome<string, never>, CapabilityRequest> = ctx.record(
-    { key: "recorded-operation" },
     function* () {
       return { ok: true as const, value: 1 };
     },
+    { key: "recorded-operation" },
   );
   return wrong;
 }

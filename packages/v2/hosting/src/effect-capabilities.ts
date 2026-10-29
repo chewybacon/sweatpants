@@ -162,19 +162,24 @@ export function createEffectCapabilities<Y>(
         active = true;
       },
       *call<Result extends Outcome<unknown, unknown>>(
-        options: { readonly key: string },
         work: () => Operation<Result, Y>,
+        options: { readonly key?: string } = {},
       ): Operation<Result, CapabilityRequest> {
         if (!active) {
           throw new Error("Record binding is not live");
         }
-        if (executing || pending) {
+        if (executing) {
           throw new Error("Nested recorded work is not supported");
         }
-        if (typeof options.key !== "string" || !options.key.trim()) {
+        const key = options.key === undefined ? "$position" : options.key;
+        if (typeof key !== "string" || !key.trim()) {
           throw new Error("Record key must be non-empty");
         }
-        const invocation = { key: options.key, sequence: slot++, work };
+        const invocation = { key, sequence: slot++, work };
+        // A fresh boundary supersedes the previous callback. Logical cancellation
+        // can abandon its iterator without resuming it, then enter recorded cleanup.
+        // Only executing work is nesting; stale deliveries still fail key/sequence
+        // matching above. This binding belongs to one sequential Guest incarnation.
         pending = invocation;
         // Heterogeneous callbacks erase Result only inside this per-Guest binding.
         // The matching invocation's accepted Outcome restores that correlation.

@@ -200,3 +200,25 @@ not execute handlers or reparse request context. Tic-tac-toe now uses this middl
 instead of installing a temporary answer handler. Structured authored failures compile
 through the returned ingress view while the transport error remains string; they skip
 response parsing and survive storage, duplicate submission, and replay.
+
+`applications/tools.acceptance.test.ts` uses public `defineTool` from
+`@sweatpan.ts/tools`, with provisional acquisition assembly kept in the journey. The inferred body composes typed capabilities, typed
+elicits and the existing per-Guest recording grant. Both runtimes exercise direct and
+middleware-wrapped acquisition through ordinary owned-child hosting. SQLite reopen at
+participant waiting and after answer acceptance preserves normalized child input,
+recorded values and handler outcomes. Counts establish one recorded execution, one
+external read, one input transformation, one terminal projection and joined Guest
+lifetimes. Registered `ctx.scope` cleanup runs on completion and stays dormant on
+parking/disposal. Remote placement/transport, client code splitting and checkpoint
+restoration of inline work remain outside this evidence.
+
+The tool application additionally exercises recorded Promise factories through
+`ctx.await(start, { record: { key } })`, lowering directly to the existing recording
+grant and host runtime. Accepted values are not recomputed on replay. A rejected
+Promise leaves its attempt unsettled and is not redelivered on reopen. Unrecorded
+Promise execution and its separate evaluator lifecycle adapter are deferred.
+
+Recording cancellation recovery is also exercised with SQLite reopen: an unsettled
+body recording is cancelled, registered cleanup records a Promise result, and another
+reopen after cleanup acceptance replays that value without repeating the callback.
+This covers abandoned per-Guest recording bindings as well as retained nesting guards.

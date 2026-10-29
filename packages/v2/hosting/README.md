@@ -333,18 +333,24 @@ acquisition scope:
 const ctx = effects.grant(definitions, { record: true });
 yield * ctx.install();
 return createScopedGuest(function* () {
-  return yield* ctx.record({ key: "read-notes" }, function* () {
-    const value = yield* runtime.fromPromise((signal) => readFile(signal));
-    return { ok: true as const, value };
-  });
+  return yield* ctx.record(
+    function* () {
+      const value = yield* runtime.fromPromise((signal) => readFile(signal));
+      return { ok: true as const, value };
+    },
+    { key: "read-notes" },
+  );
 });
 ```
 
 Use Guest retention to keep that scope alive through delivery. Each binding holds only
-one pending operation. The required non-empty key identifies the operation; an ordered
-sequence distinguishes repeated calls with the same key. Both are persisted in the
-ordinary effect request and compared during replay. A changed key at the same position
-fails before the recorded Outcome is delivered. Keys do not prove code identity or
+one pending operation. Work is the first argument; trailing options are optional:
+`ctx.record(work)` uses positional identity, while `ctx.record(work, { key: "read-notes" })`
+adds a semantic key. The default key is `$position`; an ordered Guest-wide sequence
+and the journal's logical scope boundary distinguish calls during replay. Explicit keys
+must be non-empty. A changed explicit key at the same position fails before the recorded
+Outcome is delivered. Positional identity does not detect swapping two unkeyed operations
+at the same positions; it is not a code-compatibility guarantee. Keys do not prove code identity or
 provide global deduplication. Retry safety remains existing host policy, defaulting to
 unsafe; repeatability must be explicitly selected by hosting middleware.
 

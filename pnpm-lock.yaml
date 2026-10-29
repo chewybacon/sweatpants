@@ -2782,6 +2782,9 @@ importers:
       '@sweatpan.ts/testing':
         specifier: workspace:*
         version: link:../testing
+      '@sweatpan.ts/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
@@ -3206,6 +3209,22 @@ importers:
         version: 7.0.2
 
   packages/v2/tools:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@sweatpan.ts/hosting':
+        specifier: workspace:*
+        version: link:../hosting
     devDependencies:
       typescript:
         specifier: 'catalog:'

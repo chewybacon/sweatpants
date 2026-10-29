@@ -7,7 +7,7 @@ import type {
   Operations,
   Outcome,
 } from "@standard-durability/core";
-import type { Guest, GuestWork, Turn } from "@sweatpan.ts/execution";
+import { type Guest, type GuestWork, type Turn } from "@sweatpan.ts/execution";
 import type { EffectYield } from "@sweatpan.ts/runtime-effect";
 import type { EffectionYield } from "@sweatpan.ts/runtime-effection";
 
