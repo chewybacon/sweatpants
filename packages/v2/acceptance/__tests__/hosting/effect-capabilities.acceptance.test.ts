@@ -663,6 +663,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             journal.attempts.settle(...args),
         },
         interactions: {
+          request: journal.interactions.request,
           *register(...args) {
             entered.participant++;
             return yield* journal.interactions.register(...args);

@@ -127,6 +127,21 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
       },
     },
     interactions: {
+      *request(grant) {
+        const { registration } = yield* registered(grant);
+        if (registration.state === "invalidated") {
+          throw new Error("Resolution authority revoked");
+        }
+        const prior = yield* accepted(grant.requestId);
+        if (prior) {
+          return prior.request;
+        }
+        const { snapshot } = yield* read();
+        if (snapshot.status !== "running" || snapshot.pending?.id !== grant.requestId) {
+          throw new Error("Stale or unknown pending request");
+        }
+        return snapshot.pending.request;
+      },
       *register(requestId) {
         const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== requestId) {

@@ -202,6 +202,12 @@ export type Invalidation<Q, V, E> =
 
 /** Durable participant registration and resolution without an executing handler attempt. */
 export interface Interactions<Q, V, E, Y> {
+  /**
+   * Resolve the stored request for this exact resolution grant, including accepted
+   * redeliveries. Unknown/revoked grants reject. This read does not reserve authority;
+   * answer must recheck it atomically after any external validation.
+   */
+  request(grant: ResolutionGrant): Operation<Q, Y>;
   /** Register a pending request once, or return its existing registration/invalidation. */
   register(requestId: string): Operation<InteractionRegistration, Y>;
   /** Accept with current authority; identical redelivery is acknowledged, revoked authority rejects. */

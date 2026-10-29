@@ -11,3 +11,7 @@ export { createEffectCapabilities } from "./effect-capabilities.ts";
 export type { EffectCapabilities, EffectGrant } from "./contracts.ts";
 
 export { installGuestRetention } from "./retention.ts";
+
+export { installEffectAnswers } from "./answers.ts";
+
+export type { EffectAnswers } from "./contracts.ts";

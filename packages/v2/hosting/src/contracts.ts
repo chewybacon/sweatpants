@@ -56,7 +56,11 @@ export interface HostingMethods<R, Q, V, E, Y> {
   cancel(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
   /** Choose local participant registration or attempted handler execution; defaults to execute. */
   deliveryMode(request: Q): Operation<"execute" | "wait", Y>;
-  /** Record a participant answer without advancing computation; call run to recover afterward. */
+  /**
+   * Record a participant answer without advancing computation. Effect-answer middleware
+   * accepts a raw authored Outcome and validates it against the grant's stored request;
+   * the generic driver accepts prepared transport Outcomes. Call run to recover afterward.
+   */
   answer(grant: ResolutionGrant, outcome: Outcome<V, E>): Operation<Acceptance<Q, V, E>, Y>;
   /** Fence a pending reply, or observe the answer that already won. Does not unwind the workflow. */
   invalidate(grant: ResolutionGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
@@ -66,6 +70,19 @@ export interface HostingMethods<R, Q, V, E, Y> {
   handle(request: Q): Operation<Outcome<V, E>, Y>;
   /** Delivery policy; defaults to unsafe and is recorded in the granted attempt. */
   retrySafety(request: Q): Operation<RetrySafety, Y>;
+}
+
+/** Raw participant-answer view, usable in the scope where effect-answer middleware is installed. */
+export interface EffectAnswers<E, Y> {
+  /**
+   * Submit an authored Outcome, including structured failures. Success is normalized
+   * by the selected effect schema; the journal retains its transport error type E.
+   * Use only within the installation scope (or its descendants).
+   */
+  answer(
+    grant: ResolutionGrant,
+    outcome: Outcome<unknown, unknown>,
+  ): Operation<Acceptance<CapabilityRequest, unknown, E>, Y>;
 }
 
 /** Public hosting API and its scoped delivery identity. */
@@ -147,6 +164,16 @@ export type EffectGrant<D extends Record<string, EffectDefinition>, Y> = {
       next: (pending: P) => Operation<R, Y>,
     ): Operation<R, Y>;
   };
+  /**
+   * Validate/transform an already received authored Outcome using the granted request's
+   * response schema, without executing a handler or parsing request context again.
+   * Failures bypass the success schema. Dynamic ingress accepts unknown payloads;
+   * the selected definition restores the response contract at runtime.
+   */
+  respond(
+    request: CapabilityRequest,
+    outcome: Outcome<unknown, unknown>,
+  ): Operation<Outcome<unknown, unknown>, Y>;
   /** Deliver a granted request; authored Outcome is carried as a successful reply value. */
   handle(request: CapabilityRequest): Operation<Outcome<unknown, string>, Y>;
 };

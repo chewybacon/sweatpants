@@ -115,6 +115,9 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         },
       },
       interactions: {
+        *request(...args) {
+          return yield* command((journal) => journal.interactions.request(...args));
+        },
         *register(...args) {
           return yield* command((journal) => journal.interactions.register(...args));
         },

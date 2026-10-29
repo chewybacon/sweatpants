@@ -9,6 +9,7 @@ import {
   createEffectCapabilities,
   createHosting,
   installGuestRetention,
+  installEffectAnswers,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
@@ -221,14 +222,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               raw: string,
             ) {
               return start(function* () {
-                // Participant ingress uses the same effect schema/handler pipeline,
-                // then commits the normalized authored Outcome under its resolution grant.
-                yield* effects.install(pickUserMove, function* () {
-                  return { ok: true as const, value: raw };
+                const answers = yield* installEffectAnswers(
+                  host,
+                  effects.grant({ pickUserMove }),
+                  journal.interactions,
+                );
+                const acceptance = yield* answers.answer(wait.grant, {
+                  ok: true,
+                  value: raw,
                 });
-                const ctx = effects.grant({ pickUserMove });
-                const outcome = yield* ctx.handle(wait.pending.request);
-                const acceptance = yield* host.operations.answer(wait.grant, outcome);
                 answered++;
                 return acceptance;
               }).result;

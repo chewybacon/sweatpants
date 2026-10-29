@@ -189,3 +189,14 @@ and occupied-cell replies, one coin execution, no repeated model delivery, prese
 participant grants and joined Guest disposal. Coin and model/player choices are scripted;
 this proves local composition/recovery, not model quality, remote transport, UI behavior
 or OS-crash durability. Schema-only effect failures remain unknown until narrowed.
+
+Effect-answer ingress is covered by `hosting/answers.acceptance.test.ts` on both native
+runtimes. Strict parsing rejects coercion; transforming schemas persist their returned
+value. Forged grants and ungranted effects reject before schema execution. A controlled
+async validation race proves final settlement rejects revoked authority. Reopened and
+terminal duplicate submissions resolve their original stored request; conflicting
+normalized answers reject. Replay does not rerun response schemas, and ingress does
+not execute handlers or reparse request context. Tic-tac-toe now uses this middleware
+instead of installing a temporary answer handler. Structured authored failures compile
+through the returned ingress view while the transport error remains string; they skip
+response parsing and survive storage, duplicate submission, and replay.

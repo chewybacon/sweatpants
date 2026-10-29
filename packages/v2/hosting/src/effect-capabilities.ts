@@ -37,6 +37,7 @@ export function createEffectCapabilities<Y>(
       definition: object;
       api: Api<EffectMethods<unknown, unknown, unknown, Y>, Y>;
       handle(input: unknown): Operation<Outcome<unknown, string>, Y>;
+      respond(outcome: Outcome<unknown, unknown>): Operation<Outcome<unknown, unknown>, Y>;
     }
   >();
 
@@ -73,12 +74,13 @@ export function createEffectCapabilities<Y>(
       *handle(input: unknown): Operation<Outcome<unknown, string>, Y> {
         const normalized = yield* parse(definition.context, input);
         const outcome = yield* api.operations.handle(normalized);
+        return { ok: true, value: yield* prepared.respond(outcome) };
+      },
+      *respond(outcome: Outcome<unknown, unknown>): Operation<Outcome<unknown, unknown>, Y> {
         assertOutcome(outcome);
-        const value =
-          outcome.ok && definition.response
-            ? { ok: true as const, value: yield* parse(definition.response, outcome.value) }
-            : outcome;
-        return { ok: true, value };
+        return outcome.ok && definition.response
+          ? { ok: true, value: yield* parse(definition.response, outcome.value) }
+          : outcome;
       },
     };
     definitions.set(definition.id, prepared);
@@ -201,16 +203,16 @@ export function createEffectCapabilities<Y>(
     selected: D,
     local?: { record: true },
   ) {
-    const permitted = new Map<string, (input: unknown) => Operation<Outcome<unknown, string>, Y>>();
+    const permitted = new Map<string, ReturnType<typeof prepare>>();
     const facade: Record<string, unknown> = {};
     for (const [alias, effect] of Object.entries(selected)) {
       const registered = prepare(effect);
-      permitted.set(effect.id, registered.handle);
+      permitted.set(effect.id, registered);
       facade[alias] = effect.call;
     }
     const recorded = local?.record ? bindRecordedWork() : undefined;
     if (recorded) {
-      permitted.set(recordDefinition.id, prepare(recordDefinition).handle);
+      permitted.set(recordDefinition.id, prepare(recordDefinition));
     }
     function resolve(request: CapabilityRequest) {
       const handler = permitted.get(request.effect);
@@ -232,8 +234,14 @@ export function createEffectCapabilities<Y>(
           return yield* next(pending);
         },
       },
+      *respond(
+        request: CapabilityRequest,
+        outcome: Outcome<unknown, unknown>,
+      ): Operation<Outcome<unknown, unknown>, Y> {
+        return yield* resolve(request).respond(outcome);
+      },
       *handle(request: CapabilityRequest): Operation<Outcome<unknown, string>, Y> {
-        return yield* resolve(request)(request.input);
+        return yield* resolve(request).handle(request.input);
       },
     };
   }

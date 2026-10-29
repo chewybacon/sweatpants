@@ -372,3 +372,36 @@ This local lifetime check supplies no journal lease or exclusive evaluator owner
 Initial checkpoint suffix reconciliation belongs to `recover` middleware; `advance`
 middleware covers fresh replay and subsequent live advancement. Execution middleware
 surrounds resume/cancel in both paths.
+
+## Participant answer ingress
+
+Install effect-aware answer middleware in the ingress scope:
+
+```ts
+const answers = yield * installEffectAnswers(host, grantedEffects, journal.interactions);
+yield * answers.answer(resolutionGrant, { ok: true, value: rawAnswer });
+// Structured authored failures do not become transport failures:
+// yield* answers.answer(resolutionGrant, { ok: false, error: { code: "declined" } });
+```
+
+Use the returned answer view within its installation scope or descendants. It accepts
+raw authored Outcomes while preserving the journal's transport error type.
+
+The resolution grant selects the stored request; callers do not supply a separate
+effect key or schema. The granted effect's response schema validates the successful
+raw value and its returned value becomes the accepted authored Outcome. A strict
+numeric schema rejects strings; a transforming schema may convert them. The framework
+adds no coercion. Authored failure Outcomes bypass the success schema, as they do in
+handler delivery. Schema failures leave the exchange unanswered.
+
+No handler executes and request context is not reparsed on this path. Generic journal
+acceptance still takes prepared transport Outcomes. Middleware supplies that envelope
+and delegates; final acceptance rechecks resolution authority atomically after schema
+validation. The earlier request lookup is not a lease. Intentional middleware bypass
+remains trusted assembly policy, not a remote authentication mechanism.
+
+Replay consumes accepted values without rerunning schemas. A repeated live submission
+validates again and compares normalized Outcomes: two raw forms producing the same
+value are duplicates, while conflicting values reject. Response transformations should
+be deterministic and side-effect-free, and their output must be supported by the store's
+serializer. Install this middleware once per answer-ingress chain.
