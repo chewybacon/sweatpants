@@ -1,0 +1,26 @@
+{
+  "name": "@sweatpants/flowmode-runtime-monty",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/kernel.mjs",
+    "./node": "./src/node.mjs",
+    "./program": "./src/program.mjs",
+    "./guest": "./src/guest.mjs",
+    "./worker": "./src/worker.mjs",
+    "./generated/*": "./generated/*"
+  },
+  "scripts": {
+    "build": "node scripts/artifact.mjs",
+    "check": "node scripts/artifact.mjs",
+    "lint": "cd ../.. && oxlint packages/flowmode-runtime-monty/src packages/flowmode-runtime-monty/scripts",
+    "format:check": "cd ../.. && oxfmt packages/flowmode-runtime-monty/src packages/flowmode-runtime-monty/scripts --check"
+  },
+  "dependencies": {
+    "@sweatpants/flowmode-backend": "workspace:*",
+    "@sweatpants/flowmode-runtime": "workspace:*",
+    "@sweatpants/foundation": "workspace:*",
+    "effection": "catalog:"
+  }
+}

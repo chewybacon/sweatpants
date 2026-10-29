@@ -52,6 +52,7 @@ export const executionViewSchema = z.object({
     })
     .nullable(),
   pending: z.object({ key: z.string(), message: z.string(), pullId: z.string() }).nullable(),
+  operations: z.array(z.object({ id: z.number(), label: z.string() })).default([]),
   outbox: z.array(
     z.object({
       announcementId: z.string(),

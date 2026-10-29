@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "b3a21cc717fd8c02fcfd123e6438e949889330f1",
+  "associationSha256": "544a5eef1cacec899655ab28d353805c17944d24fb23cf5de9b7704c591d21e5",
+  "artifacts": {
+    "monty.component.core.wasm": "23715a800fb317117bc405aa3262eea626b637b362c47e00c46341a4abc82032",
+    "monty.component.core4.wasm": "85022c45607e585ab1f7bd648ecd60907ec8ec91d37461a7919c6539714723e8",
+    "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc",
+    "monty.component.core3.wasm": "f6ca4d98715d3eb51fb58a9cfc6ee558fd2bc7ca8eee48bdea9dda96e6334186",
+    "monty.component.core2.wasm": "e764a442d40199804739a8fcf8b06897d9cd21dc8aae33c067fbe9d38eaaf73e"
+  }
+}
