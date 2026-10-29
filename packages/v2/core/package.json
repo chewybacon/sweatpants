@@ -23,6 +23,10 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/core",
     "format:check": "cd ../../.. && oxfmt packages/v2/core --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@standard-schema/spec": "catalog:"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

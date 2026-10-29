@@ -19,12 +19,23 @@ export function createExecution<R, Q, Y, V = unknown, E = unknown>(
     cancel: missing,
     close: missing,
   });
+  const binding = composition.createContext<{ guest: Guest<R, Q, Y, V, E>; active: boolean }>(
+    `${name}:owner`,
+  );
   return {
+    *isInstalled(guest) {
+      const current = yield* binding.get();
+      return current?.guest === guest && current.active;
+    },
     operations: api.operations,
     around: api.around,
     *install(guest) {
       // Own the acquired resource even if driver installation fails.
-      yield* composition.ensure(() => guest.close());
+      const owner = { guest, active: true };
+      yield* composition.ensure(function* () {
+        owner.active = false;
+        yield* guest.close();
+      });
       yield* api.install({
         start: () => guest.start(),
         resume: (outcome) => guest.resume(outcome),
@@ -34,8 +45,12 @@ export function createExecution<R, Q, Y, V = unknown, E = unknown>(
           }
           return yield* guest.cancel(reason);
         },
-        close: () => guest.close(),
+        *close() {
+          owner.active = false;
+          yield* guest.close();
+        },
       });
+      yield* binding.set(owner);
     },
   };
 }

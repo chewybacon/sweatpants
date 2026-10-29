@@ -1,5 +1,7 @@
+import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
+  Activation,
   RootCancellation,
   AttemptControl,
   AlarmIntent,
@@ -46,6 +48,8 @@ export interface HostingMethods<R, Q, V, E, Y> {
    * workflow or record a failure Outcome. An unsettled grant remains occupied.
    */
   run(replace?: AttemptGrant): Operation<HostedResult<R, Q>, Y>;
+  /** Advance to a durable boundary. Defaults to recovery in a disposable scope. */
+  activate(): Operation<Activation<R, Q>, Y>;
   /** Optional owned-call routing, before attempt or participant acquisition. Defaults to no child. */
   child(pending: PendingRequest<Q>): Operation<ChildHosting<Y> | undefined, Y>;
   /** Request root cancellation at a parked boundary; run() subsequently drives cleanup. */
@@ -129,4 +133,64 @@ export interface AttemptNotifications<Y> {
   subscribe(grant: AttemptGrant): Operation<AbortSignal, Y>;
   /** Best-effort wakeup after invalidation commits; duplicates are harmless. */
   publish(grant: AttemptGrant): Operation<void, Y>;
+}
+
+/** Selected callable effects and their host admission/delivery boundary. */
+export type EffectGrant<D extends Record<string, EffectDefinition>, Y> = {
+  /** Selected aliases retain each definition's exact callable signature. */
+  readonly capabilities: { readonly [K in keyof D]: D[K]["call"] };
+  /** Install as outer child middleware, before routing; it admits without executing or parsing. */
+  readonly admission: {
+    /** Check membership before routing or delivery authority; performs no schema parsing. */
+    child<P extends { readonly request: CapabilityRequest }, R>(
+      args: [P],
+      next: (pending: P) => Operation<R, Y>,
+    ): Operation<R, Y>;
+  };
+  /** Deliver a granted request; authored Outcome is carried as a successful reply value. */
+  handle(request: CapabilityRequest): Operation<Outcome<unknown, string>, Y>;
+};
+
+/** Host-owned assembly; definitions themselves retain no installed runtime state. */
+export interface EffectCapabilities<Y> {
+  /** Install a compatible default in the current scope. */
+  install<C, R, I, O, E>(
+    definition: EffectDefinition<C, R, I, O, E> & {
+      readonly implementation: (context: C) => Operation<Outcome<O, E>, Y>;
+    },
+  ): Operation<void, Y>;
+  /** Install a scoped replacement preserving the definition's success/error contract. */
+  install<C, R, I, O, E>(
+    definition: EffectDefinition<C, R, I, O, E>,
+    handler: (context: NoInfer<C>) => Operation<Outcome<NoInfer<O>, NoInfer<E>>, Y>,
+  ): Operation<void, Y>;
+  /** Access scoped handler middleware over normalized context and raw success values. */
+  api<C, R, I, O, E>(
+    definition: EffectDefinition<C, R, I, O, E>,
+  ): Api<
+    {
+      /** Return authored success/failure data; exceptions remain delivery errors. */
+      handle(context: C): Operation<Outcome<O, E>, Y>;
+    },
+    Y
+  >;
+  /** Select callable definitions. Installation alone does not grant access. */
+  grant<const D extends Record<string, EffectDefinition>>(selected: D): EffectGrant<D, Y>;
+  /** Enable local recording for one Guest; reacquisition must reconstruct a fresh grant. */
+  grant<const D extends Record<string, EffectDefinition>>(
+    selected: D,
+    local: { record: true },
+  ): EffectGrant<D, Y> & {
+    /** Install this Guest's record binding in its acquisition scope. Scope exit clears it. */
+    install(): Operation<void, Y>;
+    /**
+     * Supply an inline operation under the ordinary effect attempt. Return Outcome
+     * data; exceptions are delivery errors. Native asynchronous work and physical
+     * cleanup are supported. Nested durable exchanges are not. Replay skips accepted
+     * work. This evaluator requires retention; Lua inline execution is not implemented.
+     */
+    record<Result extends Outcome<unknown, unknown>>(
+      work: () => Operation<Result, Y>,
+    ): Operation<Result, CapabilityRequest>;
+  };
 }

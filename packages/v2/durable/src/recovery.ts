@@ -1,4 +1,4 @@
-import type { Composition, Operation, OperationMiddleware } from "@standard-durability/core";
+import type { Api, Composition, Operation, OperationMiddleware } from "@standard-durability/core";
 import {
   createExecution,
   type Execution,
@@ -69,12 +69,13 @@ function* replay<R, Q, Y, V, E>(
   position: number,
   matches: (actual: Q, accepted: Q) => boolean,
   cancellation?: RootCancellation<Q>,
-): Operation<RestoredGuest<R, Q, Y, V, E>, Y> {
+  cancellationApplied = false,
+): Operation<RestoredGuest<R, Q, Y, V, E> & { cancellationApplied: boolean }, Y> {
   let turn = initial.turn;
   let page: readonly Accepted<Q, V, E>[] = [];
   let offset = 0;
   for (let index = position; index <= history.end.position; index++) {
-    if (cancellation?.position === index) {
+    if (!cancellationApplied && cancellation?.position === index) {
       if (
         turn.kind !== "suspended" ||
         !matches(turn.request, cancellation.request) ||
@@ -83,6 +84,7 @@ function* replay<R, Q, Y, V, E>(
         throw new Error("Replay cancellation boundary mismatch");
       }
       turn = yield* operations.cancel(cancellation.reason);
+      cancellationApplied = true;
     }
     if (index === history.end.position) {
       break;
@@ -112,7 +114,7 @@ function* replay<R, Q, Y, V, E>(
     }
     turn = yield* operations.resume(entry.outcome);
   }
-  return { guest: initial.guest, turn };
+  return { guest: initial.guest, turn, cancellationApplied };
 }
 
 /** Replay is the default. No handler is called during reconstruction. Scope owns disposal. */
@@ -125,22 +127,55 @@ export function createRecovery<R, Q, Y, V, E, S = unknown>(
     readonly matches: (actual: Q, accepted: Q) => boolean;
   },
 ): Recovery<R, Q, Y, V, E, S> {
+  // Logical cancellation is applied once per live incarnation, not once per activation.
+  const cancelled = new WeakSet<object>();
   const execution = createExecution<R, Q, Y, V, E>(composition, `${options.name}:execution`);
-  const api = composition.createApi<RecoveryMethods<R, Q, Y, V, E, S>>(options.name, {
+  const api: Api<RecoveryMethods<R, Q, Y, V, E, S>, Y> = composition.createApi<
+    RecoveryMethods<R, Q, Y, V, E, S>
+  >(options.name, {
     *recover(plan) {
       yield* validate(options.program, plan);
       const guest = yield* options.acquire();
       yield* execution.install(guest);
       const turn = yield* execution.operations.start();
-      const restored = yield* replay(
-        { guest, turn },
+      return yield* api.operations.advance(
+        { guest, turn, program: options.program, position: 0, receipt: null },
+        plan,
+      );
+    },
+    *advance(current, plan) {
+      yield* validate(options.program, plan);
+      const position = current.position;
+      if (
+        current.program !== options.program ||
+        !Number.isSafeInteger(position) ||
+        position < 0 ||
+        position > plan.history.end.position
+      ) {
+        throw new Error("Live Guest differs from accepted history");
+      }
+      const receipt = position === 0 ? null : (yield* plan.history.at(position - 1))?.receipt;
+      if (current.receipt !== receipt) {
+        throw new Error("Live Guest differs from accepted history");
+      }
+      const advanced = yield* replay(
+        current,
         execution.operations,
         plan.history,
-        0,
+        position,
         options.matches,
         plan.cancellation,
+        cancelled.has(current.guest),
       );
-      return { ...restored, program: options.program, position: plan.history.end.position };
+      if (advanced.cancellationApplied) {
+        cancelled.add(advanced.guest);
+      }
+      return {
+        guest: advanced.guest,
+        turn: advanced.turn,
+        program: options.program,
+        ...plan.history.end,
+      };
     },
     *checkpoint() {
       return undefined;
@@ -174,7 +209,7 @@ export function createCheckpointMiddleware<R, Q, Y, V, E, S>(options: {
         saved.position,
         matches,
       );
-      return { ...result, program, position: plan.history.end.position };
+      return { ...result, program, ...plan.history.end };
     },
     *checkpoint([recovered, position], next) {
       if (recovered.program !== program || recovered.position !== position.position) {

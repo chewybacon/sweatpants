@@ -1,18 +1,13 @@
+import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Work } from "@standard-durability/core";
 import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createHosting } from "@sweatpan.ts/hosting";
+import { createHosting, createEffectCapabilities } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import {
-  createEffectCapabilitiesRig,
-  defineEffect,
-  createProtocolRig,
-  createSqliteJournalRig,
-  type CapabilityRequest,
-} from "@sweatpan.ts/testing";
+import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string, T> {
@@ -49,7 +44,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let projections = 0;
 
     function assemble() {
-      const effects = createEffectCapabilitiesRig(runtime, "callback-effects");
+      const effects = createEffectCapabilities(runtime, "callback-effects");
       const notify = defineEffect(
         { key: "notify", context: textSchema((text) => text) },
         function* (input) {

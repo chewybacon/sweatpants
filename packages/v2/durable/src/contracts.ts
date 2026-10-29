@@ -43,6 +43,8 @@ export interface RecoveryPlan<Q, V, E, S, Y> {
 /** Live recovered continuation owned by the executing scope. */
 export interface Recovered<R, Q, Y, V, E> extends RestoredGuest<R, Q, Y, V, E> {
   readonly program: string;
+  /** Receipt anchoring the accepted prefix already consumed by this Guest. */
+  readonly receipt: string | null;
   readonly position: number;
 }
 
@@ -50,6 +52,15 @@ export interface Recovered<R, Q, Y, V, E> extends RestoredGuest<R, Q, Y, V, E> {
 export interface RecoveryMethods<R, Q, Y, V, E, S> {
   /** Replay accepted Outcomes, or restore through installed checkpoint middleware. */
   recover(plan: RecoveryPlan<Q, V, E, S, Y>): Operation<Recovered<R, Q, Y, V, E>, Y>;
+  /**
+   * Reconcile a live continuation with accepted history and cancellation control.
+   * Its execution driver and owning scope must still be live. Does not acquire,
+   * restore, deliver work or select a Guest lifetime policy.
+   */
+  advance(
+    current: Recovered<R, Q, Y, V, E>,
+    plan: RecoveryPlan<Q, V, E, S, Y>,
+  ): Operation<Recovered<R, Q, Y, V, E>, Y>;
   /** Capture an owned suspended evaluator; undefined means capture is unavailable. */
   checkpoint(
     recovered: Recovered<R, Q, Y, V, E>,

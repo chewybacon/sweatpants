@@ -3,7 +3,7 @@
 This directory groups the new packages while existing `@sweatpants/*` packages
 remain available as references. `v2` is not part of a public package name.
 Packages start private. Portable computation and composition, both native adapters,
-execution, replay/checkpoint recovery, hosting, memory/Node SQLite journals and the Lua evaluator
+effect declarations, execution, replay/checkpoint recovery, hosting, memory/Node SQLite journals and the Lua evaluator
 are implemented with acceptance journeys; other packages remain scaffolds.
 
 ## Package conventions
@@ -26,6 +26,10 @@ are implemented with acceptance journeys; other packages remain scaffolds.
 - Higher-level entry points may re-export lower-level public contracts and portable
   helpers. Concrete adapters remain explicit choices; a facade must not load every
   runtime, database or evaluator.
+
+Core owns framework exchange declarations (defineEffect); hosting owns scoped effect
+installation, grants and delivery. Core imports no runtime, journal or storage implementation.
+Testing owns protocol peers and fixtures, not production authoring.
 
 Unsuffixed capability packages own portable contracts and helpers. Implementation
 suffixes identify native runtimes, platforms, languages and storage backends.

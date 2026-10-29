@@ -5,13 +5,36 @@ journal activation with an effect handler. Call `host.operations.run()` in a nat
 runtime scope. The result is inferred completion, an occupied attempt, or a registered
 participant wait/invalidation.
 
-The execution order is:
+The default execution order is:
 
 1. Activate from accepted history, park a request and dispose the computation Guest.
 2. Commit an attempt grant before invoking the handler.
 3. Set `host.delivery` in the handler's child scope and call `host.operations.handle`.
 4. Accept the returned Outcome through the grant and receive an acceptance receipt.
 5. Activate again using only accepted history.
+
+Install retention as scoped hosting middleware:
+
+```ts
+yield * installGuestRetention(runtime.composition, host, recovery, journal);
+```
+
+Without that installation, activation disposes before delivery. The middleware owns
+one continuation per run and supplies a scoped activation driver. Each activation
+still reads current journal state, verifies the live accepted-prefix receipt, and
+advances through accepted history using the same execution middleware. Local handler
+output or a settlement receipt alone never advances the Guest. Recorded cancellation
+is reconciled before subsequent work and applied once per live incarnation.
+Checkpoint/replay middleware selects initial acquisition; subsequent reconciliation
+uses the live continuation without another checkpoint restore. No lifetime flag is
+passed to activation or recovery. Install with the same journal and recovery assembly
+as the host. Other middleware may deliberately replace or bypass this policy.
+
+Completion, a participant wait, an outstanding child, an occupied/invalidated attempt,
+physical shutdown or failure exits the host run and joins Guest cleanup. Retention
+holds native resources longer; it is not exclusive execution ownership. Concurrent
+activation writes still use revision fencing. The host loop and settlement authority
+are shared by both policies. This does not yet add evaluator-owned record execution.
 
 The delivery context supplies `requestId`, `attemptId` and recorded `retrySafety`.
 Use the stable request ID as an external idempotency key where the receiver supports
@@ -281,3 +304,64 @@ This demonstrates scoped capability composition and resource ownership under bot
 Effect and Effection. It does not establish security confinement: trusted TypeScript
 can retain other capabilities. Native host scopes supply these bindings; logical
 Guest frames do not introduce a separate capability-context API.
+
+## Defined effect capabilities
+
+Import `defineEffect` from `@sweatpan.ts/core` and `createEffectCapabilities` from this
+package. `createEffectCapabilities(runtime, name)` creates host-owned scoped APIs:
+
+- `install(definition, handler?)` installs a compatible default or replacement in scope.
+- `api(definition)` exposes middleware over normalized context and raw successful values.
+- `grant({ alias: definition })` selects typed callable capabilities and host admission.
+
+Wire `ctx.handle` into `createHosting`, and install `host.around(ctx.admission)` before
+routing middleware. Admission checks membership before delivery authority, not before
+journal parking. It is deliberately composable policy, not a security sandbox.
+Duplicate keys with different definition objects are rejected within one assembly.
+
+Handlers return explicit `Outcome` data. The capability adapter validates context and
+successful response values once at delivery, then carries the authored Outcome inside
+a successful transport reply. Guest code can inspect both authored success and failure;
+exceptions leave the attempt unsettled. Replay does not repeat delivery or validation.
+
+`record` is sugar over an ordinary internal `defineEffect` declaration. Its implementation
+is supplied per invocation rather than statically by assembly. Enable it with
+`grant(definitions, { record: true })`, and install the fresh grant in each Guest's
+acquisition scope:
+
+```ts
+const ctx = effects.grant(definitions, { record: true });
+yield * ctx.install();
+return createScopedGuest(function* () {
+  return yield* ctx.record(function* () {
+    const value = yield* runtime.fromPromise((signal) => readFile(signal));
+    return { ok: true as const, value };
+  });
+});
+```
+
+Use Guest retention to keep that scope alive through delivery. Each binding holds only
+one pending operation. Scope exit invalidates it and drops the operation; holding the
+grant does not extend its lifetime. The installed handler consumes the matching binding
+once and delegates to the author's operation. It uses the ordinary effect schema,
+handler, grant, settlement and replay path, without a special Guest execution method.
+Native operations can use delivery contexts and register physical cleanup. Exceptions
+leave delivery unsettled; authored success and failure are explicit Outcome data.
+Nested durable operations are unsupported. Accepted history resumes `record` without
+executing its operation; replay reconstructs only the current invocation binding.
+
+Checkpoint-only restoration of native closures and Lua inline execution are not
+implemented. Untyped Promise callbacks are rejected as non-operations; observing their
+rejection cannot cancel work they already started. Lift asynchronous work through the
+runtime's operations instead.
+
+The existing generic hosting loop, journal authority and Guest protocol are unchanged.
+
+Retention checks the exact Guest's visible execution binding before reuse. If scoped
+activation or recovery middleware disposed that binding, the next activation recovers
+again. Each run has its own cache, including overlapping runs through one installer.
+This local lifetime check supplies no journal lease or exclusive evaluator ownership.
+
+Initial checkpoint suffix reconciliation belongs to `recover` middleware; `advance`
+middleware covers fresh replay and subsequent live advancement. Execution middleware
+surrounds resume/cancel in both paths.

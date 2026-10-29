@@ -3,7 +3,7 @@ import { activateJournal, type AttemptGrant } from "@sweatpan.ts/durable";
 import type { Hosting, HostingMethods, HostingOptions } from "./contracts.ts";
 
 /**
- * Build scoped dispatch: activate/dispose, then register a participant wait or
+ * Build scoped dispatch: activate with selected Guest lifetime, then register a participant wait or
  * commit an execution grant, handle, accept and reactivate.
  * Only accepted Outcomes advance the computation. Middleware composes the returned
  * API; delivery identity is available through its context rather than handler arguments.
@@ -24,7 +24,7 @@ export function createHosting<R, Q, V, E, S, Y>(
       return composition.scoped(function* () {
         let expected = replace;
         while (true) {
-          const activation = yield* activateJournal(composition, options.recovery, options.journal);
+          const activation = yield* api.operations.activate();
           if (activation.state !== "parked") {
             return activation;
           }
@@ -62,6 +62,9 @@ export function createHosting<R, Q, V, E, S, Y>(
           });
         }
       });
+    },
+    activate() {
+      return activateJournal(composition, options.recovery, options.journal);
     },
     *child() {
       return undefined;

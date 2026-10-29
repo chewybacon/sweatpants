@@ -1,2 +1,2 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export { defineEffect } from "./effect-definition.ts";
+export type { CapabilityRequest, EffectDefinition } from "./contracts.ts";

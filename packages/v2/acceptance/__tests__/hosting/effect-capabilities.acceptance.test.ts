@@ -1,3 +1,4 @@
+import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { isDeepStrictEqual } from "node:util";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -5,14 +6,12 @@ import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createRecovery, type Attempts } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createHosting } from "@sweatpan.ts/hosting";
 import {
-  createEffectCapabilitiesRig,
-  defineEffect,
-  createProtocolRig,
-  createSqliteJournalRig,
-  type CapabilityRequest,
-} from "@sweatpan.ts/testing";
+  createHosting,
+  installGuestRetention,
+  createEffectCapabilities,
+} from "@sweatpan.ts/hosting";
+import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 // Real Standard Schema transformations, kept local to the acceptance application.
@@ -54,7 +53,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: module-level definitions keep implementations and middleware in host scopes`, async () => {
     const peer = createProtocolRig();
     function assemble(label?: string) {
-      const effects = createEffectCapabilitiesRig(runtime, "shared-host");
+      const effects = createEffectCapabilities(runtime, "shared-host");
       const ctx = effects.grant({ path: sharedPath, read: sharedRead });
       const store = createSqliteJournalRig<
         { text: string },
@@ -123,117 +122,135 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(assemble().result).rejects.toThrow("Effect handler is not installed");
   });
 
-  it(`${runtime.name}: granted library-style and custom effects share scoped dispatch and replay accepted transformed values`, async () => {
-    const effects = createEffectCapabilitiesRig(runtime, "research-effects");
-    let parses = 0;
-    let lookups = 0;
-    let elicitCalls = 0;
-    let outputParses = 0;
-    let middlewareCalls = 0;
-    const lookup = defineEffect(
-      {
-        key: "company.lookup",
-        context: textSchema((text) => {
-          parses++;
-          return { domain: text.toLowerCase() };
+  for (const lifetime of ["recover", "retain"] as const) {
+    it(`${runtime.name} ${lifetime}: granted library-style and custom effects share scoped dispatch and replay accepted transformed values`, async () => {
+      const effects = createEffectCapabilities(runtime, "research-effects");
+      let acquisitions = 0;
+      let disposals = 0;
+      let parses = 0;
+      let lookups = 0;
+      let elicitCalls = 0;
+      let outputParses = 0;
+      let middlewareCalls = 0;
+      const lookup = defineEffect(
+        {
+          key: "company.lookup",
+          context: textSchema((text) => {
+            parses++;
+            return { domain: text.toLowerCase() };
+          }),
+        },
+        function* ({ domain }) {
+          lookups++;
+          return { ok: true, value: { name: "Acme", domain } };
+        },
+      );
+      const elicit = defineEffect({
+        key: "elicit.market",
+        context: textSchema((text) => text),
+        response: textSchema((market) => {
+          outputParses++;
+          return { market };
         }),
-      },
-      function* ({ domain }) {
-        lookups++;
-        return { ok: true, value: { name: "Acme", domain } };
-      },
-    );
-    const elicit = defineEffect({
-      key: "elicit.market",
-      context: textSchema((text) => text),
-      response: textSchema((market) => {
-        outputParses++;
-        return { market };
-      }),
-    });
-    const store = createSqliteJournalRig<
-      { name: string; market: string },
-      CapabilityRequest,
-      unknown,
-      string
-    >({ program: "research", equals: isDeepStrictEqual });
-    onTestFinished(() => store.close());
-    const acknowledgement = createProtocolRig();
+      });
+      const store = createSqliteJournalRig<
+        { name: string; market: string },
+        CapabilityRequest,
+        unknown,
+        string
+      >({ program: "research", equals: isDeepStrictEqual });
+      onTestFinished(() => store.close());
+      const acknowledgement = createProtocolRig();
 
-    function assemble(delay: boolean) {
-      const journal = store.open();
-      const grant = effects.grant({ lookup, elicit });
-      const recovery = createRecovery(runtime.composition, {
-        name: "research-recovery",
-        program: "research",
-        matches: isDeepStrictEqual,
-        *acquire() {
-          return createScopedGuest(function* () {
-            const company = yield* grant.capabilities.lookup("ACME.EXAMPLE");
-            if (!company.ok) {
-              throw new Error("Unexpected lookup failure");
-            }
-            expectTypeOf(company.value).toEqualTypeOf<{ name: string; domain: string }>();
-            const answer = yield* grant.capabilities.elicit("Which market?");
-            if (!answer.ok) {
-              throw new Error("Unexpected answer failure");
-            }
-            expectTypeOf(answer.value).toEqualTypeOf<{ market: string }>();
-            return { name: company.value.name, market: answer.value.market };
+      function assemble(delay: boolean) {
+        const journal = store.open();
+        const grant = effects.grant({ lookup, elicit });
+        const recovery = createRecovery(runtime.composition, {
+          name: "research-recovery",
+          program: "research",
+          matches: isDeepStrictEqual,
+          *acquire() {
+            acquisitions++;
+            yield* runtime.composition.ensure(function* () {
+              disposals++;
+            });
+            return createScopedGuest(function* () {
+              const company = yield* grant.capabilities.lookup("ACME.EXAMPLE");
+              if (!company.ok) {
+                throw new Error("Unexpected lookup failure");
+              }
+              expectTypeOf(company.value).toEqualTypeOf<{ name: string; domain: string }>();
+              const answer = yield* grant.capabilities.elicit("Which market?");
+              if (!answer.ok) {
+                throw new Error("Unexpected answer failure");
+              }
+              expectTypeOf(answer.value).toEqualTypeOf<{ market: string }>();
+              return { name: company.value.name, market: answer.value.market };
+            });
+          },
+        });
+        const host = createHosting(runtime.composition, {
+          name: "research-host",
+          journal,
+          recovery: recovery.operations,
+          attempts: {
+            begin: (...args) => journal.attempts.begin(...args),
+            *settle(
+              ...args: Parameters<Attempts<CapabilityRequest, unknown, string, Y>["settle"]>
+            ) {
+              const result = yield* journal.attempts.settle(...args);
+              if (delay) {
+                yield* runtime.fromPromise((signal) =>
+                  acknowledgement.send({ id: "accepted", token: "lookup" }, signal),
+                );
+              }
+              return result;
+            },
+          },
+          *handle(request) {
+            expect(acquisitions - disposals).toBe(lifetime === "retain" ? 1 : 0);
+            return yield* grant.handle(request);
+          },
+        });
+        return start(function* () {
+          yield* host.around(grant.admission);
+          if (lifetime === "retain") {
+            yield* installGuestRetention(runtime.composition, host, recovery, journal);
+          }
+          yield* effects.install(lookup);
+          yield* effects.install(elicit, function* () {
+            elicitCalls++;
+            return { ok: true, value: "Europe" };
           });
-        },
-      });
-      const host = createHosting(runtime.composition, {
-        name: "research-host",
-        journal,
-        recovery: recovery.operations,
-        attempts: {
-          begin: (...args) => journal.attempts.begin(...args),
-          *settle(...args: Parameters<Attempts<CapabilityRequest, unknown, string, Y>["settle"]>) {
-            const result = yield* journal.attempts.settle(...args);
-            if (delay) {
-              yield* runtime.fromPromise((signal) =>
-                acknowledgement.send({ id: "accepted", token: "lookup" }, signal),
-              );
-            }
-            return result;
-          },
-        },
-        handle: grant.handle,
-      });
-      return start(function* () {
-        yield* host.around(grant.admission);
-        yield* effects.install(lookup);
-        yield* effects.install(elicit, function* () {
-          elicitCalls++;
-          return { ok: true, value: "Europe" };
+          yield* effects.api(lookup).around({
+            *handle([input], next) {
+              middlewareCalls++;
+              expectTypeOf(input).toEqualTypeOf<{ domain: string }>();
+              return yield* next(input);
+            },
+          });
+          return yield* host.operations.run();
         });
-        yield* effects.api(lookup).around({
-          *handle([input], next) {
-            middlewareCalls++;
-            expectTypeOf(input).toEqualTypeOf<{ domain: string }>();
-            return yield* next(input);
-          },
-        });
-        return yield* host.operations.run();
+      }
+      const interrupted = assemble(true);
+      await Promise.race([acknowledgement.waitForRequests(1), interrupted.result]);
+      await interrupted.cancel();
+      store.reopen();
+      await expect(assemble(false).result).resolves.toEqual({
+        state: "completed",
+        value: { name: "Acme", market: "Europe" },
       });
-    }
-    const interrupted = assemble(true);
-    await Promise.race([acknowledgement.waitForRequests(1), interrupted.result]);
-    await interrupted.cancel();
-    store.reopen();
-    await expect(assemble(false).result).resolves.toEqual({
-      state: "completed",
-      value: { name: "Acme", market: "Europe" },
+      expect(acquisitions).toBe(lifetime === "retain" ? 2 : 3);
+      expect(disposals).toBe(acquisitions);
+      expect({ parses, lookups, elicitCalls, outputParses, middlewareCalls }).toEqual({
+        parses: 1,
+        lookups: 1,
+        elicitCalls: 1,
+        outputParses: 1,
+        middlewareCalls: 1,
+      });
     });
-    expect({ parses, lookups, elicitCalls, outputParses, middlewareCalls }).toEqual({
-      parses: 1,
-      lookups: 1,
-      elicitCalls: 1,
-      outputParses: 1,
-      middlewareCalls: 1,
-    });
-  });
+  }
 
   it(`${runtime.name}: declared exchanges rebind on recovery without revalidating accepted answers`, async () => {
     const peer = createProtocolRig();
@@ -253,7 +270,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
 
     function assemble(delay: boolean) {
       // Fresh definitions and schemas as well as a fresh database connection on recovery.
-      const effects = createEffectCapabilitiesRig(runtime, "declared-exchanges");
+      const effects = createEffectCapabilities(runtime, "declared-exchanges");
       const market = textSchema((text) => {
         validations++;
         return { market: text.toUpperCase() };
@@ -368,7 +385,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let reads = 0;
 
     function assemble(delay: boolean) {
-      const effects = createEffectCapabilitiesRig(runtime, "file-exchanges");
+      const effects = createEffectCapabilities(runtime, "file-exchanges");
       const choose = defineEffect({
         key: "chooseFile",
         context: textSchema((path) => ({ paths: [path] })),
@@ -398,9 +415,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         matches: isDeepStrictEqual,
         *acquire() {
           const ctx = acquireContext();
+          yield* ctx.install();
           current = ctx;
           return createScopedGuest(function* () {
-            const offered = yield* ctx.record(() => {
+            const offered = yield* ctx.record(function* () {
               draws++;
               return { ok: true as const, value: { path: "src/main.ts" } };
             });
@@ -459,6 +477,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           );
           return { ok: true as const, value: reply.body };
         });
+        yield* installGuestRetention(runtime.composition, host, recovery, journal);
         return yield* host.operations.run();
       });
     }
@@ -502,7 +521,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let outputParses = 0;
       let settlements = 0;
       function assemble(pause: boolean) {
-        const effects = createEffectCapabilitiesRig(runtime, "named-outcome");
+        const effects = createEffectCapabilities(runtime, "named-outcome");
         const lookup = defineEffect(
           {
             key: "lookup",
@@ -600,7 +619,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
 
   for (const mode of ["execute", "wait", "child"] as const) {
     it(`${runtime.name}: admission denies an ungranted ${mode} route before delivery authority`, async () => {
-      const effects = createEffectCapabilitiesRig(runtime, "denied-effects");
+      const effects = createEffectCapabilities(runtime, "denied-effects");
       let calls = 0;
       const secret = defineEffect(
         { key: "private.lookup", context: textSchema((text) => text) },

@@ -1,18 +1,15 @@
+import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
+import { createEffectCapabilities } from "@sweatpan.ts/hosting";
 // Non-executed authoring tracers, checked against source and emitted declarations.
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import {
-  createEffectCapabilitiesRig,
-  defineEffect,
-  type CapabilityRequest,
-} from "@sweatpan.ts/testing";
 
 export function effectInference<Y>(
   runtime: Runtime<Y>,
   schema: StandardSchemaV1<string, { domain: string }>,
 ) {
-  const effects = createEffectCapabilitiesRig(runtime, "types");
+  const effects = createEffectCapabilities(runtime, "types");
   const lookup = defineEffect({ key: "lookup", context: schema }, function* ({ domain }) {
     if (!domain) {
       return { ok: false, error: { code: "missing" as const } };
@@ -62,7 +59,7 @@ export function declaredExchangeInference<Y>(
   market: StandardSchemaV1<string, { market: string }>,
   count: StandardSchemaV1<string, number>,
 ) {
-  const effects = createEffectCapabilitiesRig(runtime, "declaration-types");
+  const effects = createEffectCapabilities(runtime, "declaration-types");
   const transformed = defineEffect(
     { key: "transformed", context, response: market },
     function* ({ message }) {
@@ -120,55 +117,32 @@ export function declaredExchangeInference<Y>(
 }
 
 export function recordedInference<Y>(runtime: Runtime<Y>) {
-  const effects = createEffectCapabilitiesRig(runtime, "record-types");
+  const effects = createEffectCapabilities(runtime, "record-types");
   const ctx = effects.grant({}, { record: true });
-  const roll: Operation<{ ok: true; value: number }, CapabilityRequest> = ctx.record(() => ({
-    ok: true,
-    value: 6,
-  }));
-  const decision: Operation<Outcome<number, "empty">, CapabilityRequest> = ctx.record(() => {
-    if (Math.random() > 0.5) {
-      return { ok: false, error: "empty" as const };
-    }
-    return { ok: true, value: 6 };
+  const roll: Operation<{ ok: true; value: number }, CapabilityRequest> = ctx.record(function* () {
+    yield* runtime.sleep(1);
+    return { ok: true as const, value: 6 };
   });
-  // @ts-expect-error Callback result determines the success type.
-  const wrong: Operation<Outcome<string, never>, CapabilityRequest> = ctx.record(() => ({
-    ok: true,
-    value: 6,
-  }));
-  // @ts-expect-error Bare values are not authored outcomes.
+  const decision: Operation<Outcome<number, "empty">, CapabilityRequest> = ctx.record(function* () {
+    if (Math.random() > 0.5) {
+      return { ok: false as const, error: "empty" as const };
+    }
+    return { ok: true as const, value: 6 };
+  });
+  // @ts-expect-error Bare values are not operations.
   ctx.record(() => 6);
-  // @ts-expect-error Void is not an authored outcome.
-  ctx.record(() => {});
+  // @ts-expect-error Operation results must be Outcomes.
+  ctx.record(function* () {
+    return 6;
+  });
   // @ts-expect-error Work must be deferred.
   ctx.record({ ok: true, value: 6 });
-  // @ts-expect-error Async outcomes are not synchronous.
+  // @ts-expect-error Promise functions must be lifted into the native operation.
   ctx.record(async () => ({ ok: true as const, value: 6 }));
-  const widened: Operation<unknown, CapabilityRequest> = ctx.record(() =>
-    // @ts-expect-error Contextual widening cannot admit async work.
-    Promise.resolve({ ok: true as const, value: 6 }),
-  );
-  ctx.record(() =>
-    // @ts-expect-error Every return path must be synchronous.
-    Math.random() > 0.5
-      ? { ok: true as const, value: 6 }
-      : Promise.resolve({ ok: true as const, value: 6 }),
-  );
-  // @ts-expect-error Even an Outcome-shaped callable thenable is asynchronous.
-  ctx.record(() => ({
-    ok: true as const,
-    value: 6,
-    // eslint-disable-next-line unicorn/no-thenable -- Deliberate negative type fixture.
-    then(resolve: (value: number) => void) {
-      resolve(6);
-    },
-  }));
-  const empty: Operation<Outcome<void, never>, CapabilityRequest> = ctx.record(() => ({
-    ok: true,
-    value: undefined,
-  }));
-  return { roll, decision, wrong, widened, empty };
+  const empty = ctx.record(function* () {
+    return { ok: true as const, value: undefined };
+  });
+  return { roll, decision, empty };
 }
 
 export function nativeDefaultInference(
@@ -182,7 +156,7 @@ export function nativeDefaultInference(
     yield "foreign";
     return { ok: true, value: "value" };
   });
-  const effects = createEffectCapabilitiesRig(runtime, "native-default");
+  const effects = createEffectCapabilities(runtime, "native-default");
   // @ts-expect-error Moving a definition must not erase its default's native protocol.
   effects.install(definition);
   // This host can provide a compatible replacement for the same exchange contract.
@@ -190,4 +164,18 @@ export function nativeDefaultInference(
     return { ok: true, value: "replacement" };
   });
   return definition;
+}
+
+export function recordNativeInference(runtime: Runtime<"host">) {
+  const ctx = createEffectCapabilities(runtime, "inline-native").grant({}, { record: true });
+  // @ts-expect-error Inline work must use the installing runtime's native protocol.
+  ctx.record(function* (): Operation<Outcome<number, never>, "other"> {
+    yield "other";
+    return { ok: true, value: 1 };
+  });
+  // @ts-expect-error The inferred recorded result remains numeric.
+  const wrong: Operation<Outcome<string, never>, CapabilityRequest> = ctx.record(function* () {
+    return { ok: true as const, value: 1 };
+  });
+  return wrong;
 }

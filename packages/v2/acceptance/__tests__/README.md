@@ -63,7 +63,11 @@ stale grants, accepted-first settlement, and subscription cleanup on success/fai
 
 Lua hosting journeys reopen retained journal records after acceptance but before the
 host observes its settlement acknowledgement. Each new assembly creates a fresh
-journal handle, evaluator, recovery API and host. Replay-only, checkpoint restore
+journal handle, evaluator, recovery API, effect definitions, installations, grants and host.
+Lua submits named effect keys/input through a boundary decoder into the same admission
+and delivery path as TypeScript. It consumes a transformed success and an authored
+failure as Outcome data. Context parsing and handler middleware run once per delivery;
+the success schema runs only for success. Replay-only, checkpoint restore
 and unsupported-format replay fallback preserve distinct delivery scopes, cleanup
 and exactly one scripted peer request per effect. These replace the earlier
 uninterrupted multi-request journeys. Reopening is in-process evidence, not disk or
@@ -86,8 +90,8 @@ joined physical cleanup on this same path. The prototype bridge and duplicate ca
 mode are retired. The simulated peer does not establish interruption semantics for a
 real asynchronous database COMMIT.
 
-The effect-capabilities journeys are an authoring prototype in testing, not a public
-production effect API. The standalone defineEffect factory constructs immutable
+The effect-capabilities journeys use defineEffect from core and createEffectCapabilities
+from hosting through their public package entry points. The standalone factory constructs immutable
 runtime-independent declarations; host assemblies own installation, middleware and
 grants. The same module-level definitions (one declared response, one inferred default)
 run under both runtimes. Concurrent host scopes install distinct implementations and
@@ -112,7 +116,7 @@ Outcome reply convention. Exceptions are never converted into authored failures.
 
 Concrete declarations now cover both elicitation schemas through ordinary installation
 and middleware. The earlier dynamic-schema defineElicitation constructor and its special
-types/slot map are retired from this prototype. This suite no longer claims arbitrary
+types/slot map are retired. This suite no longer claims arbitrary
 per-call schema support. Fresh assemblies rebind named definitions and recover accepted
 answers without repeating delivery or validation. Granted aliases preserve callable
 inference independently of definition identity. Grant admission is installed as outer child middleware, before routing. Denied
@@ -125,10 +129,10 @@ are trusted assembly, not remote credentials.
 
 Recorded work is available directly as ctx.record when assembly explicitly enables it
 with grant(definitions, { record: true }); no separate record definition is authored.
-Callbacks must return an explicit Outcome; success and authored failure retain their
+Operation bodies must return an explicit Outcome; success and authored failure retain their
 inferred types and are returned to the Guest as data. The transport carries that
 Outcome as a successful delivery; a failed transport reply would throw into the Guest.
-Fresh Guest acquisition reconstructs callback slots. Two interruption windows prove
+Fresh Guest acquisition installs a scope-owned pending-operation binding. Two interruption windows prove
 that accepted successes and failures replay without running work again, while unaccepted unsafe work
 stays occupied. A combined journey records a file offer, invokes a named choice exchange,
 reopens after accepting that choice, then invokes an inferred file-read exchange. Each
@@ -143,13 +147,26 @@ normalization and parent projection each happen once. Routing/projection is stil
 trusted assembly policy; there is no reusable callback authoring or authorization adapter.
 The parent is host assembly, not a third authored Guest.
 
-Local recording supports synchronous Outcome-returning callbacks only. Type fixtures
-reject bare values, void, Promise and callable-thenable results. Thrown exceptions,
-bare values and fulfilled or rejected Promises from untyped callbacks fail before
-settlement on both runtimes; after
-SQLite reopen their unsafe attempts remain occupied and the callbacks are not repeated.
-Rejection observation does not cancel async work already started by an untyped callback.
-Native-operation execution, remote closures, stronger source-site identity and checkpoint-only callback restoration remain
-design work. Named declarations remove dynamic validator-slot reconstruction, but do not
-prove evaluator checkpoint restoration of granted callable references. These journeys
+Local recording uses native generator operations through the same installed effect
+pipeline as named handlers. The asynchronous journeys prove delivery-context access,
+protocol-driven physical cleanup on cancellation, rejected revoked settlement, replay
+without repeated execution, and binding invalidation when acquisition scope closes.
+Type fixtures preserve result/error inference and reject incompatible native yields,
+bare values and Promise functions. Untyped non-operations, malformed Outcomes and
+nested recording fail before settlement; unsafe interrupted attempts remain occupied.
+
+Remote closures, stronger source-site identity and checkpoint-only closure restoration
+remain design work. Named declarations do not prove checkpoint restoration of granted
+callable references. These journeys
 establish in-process SQLite reopen, not OS-crash durability or exactly-once external work.
+
+Retained/recovered Guest lifetime matrices exercise existing hosting authority,
+cancellation, named-effect and Lua checkpoint journeys on both runtimes. Named-effect
+reopen counts distinguish a retained live scope from repeated acquisition and require
+all acquired scopes to be disposed. Lua counts distinguish checkpoint restoration from
+continuing an already retained evaluator. Stale settlement, occupied attempts, prompt
+invalidation, host shutdown and logical cleanup use the same existing journeys under
+both policies. An additional interleaving accepts a result, pauses its host, lets a
+competitor advance and commit cancellation, then resumes the original host: it follows
+accepted history into cleanup and never delivers the cancelled approval. These are
+in-process protocol simulations, not exclusive evaluator leases or remote placement.

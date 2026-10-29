@@ -51,6 +51,11 @@ export interface Execution<R, Q, Y, V = unknown, E = unknown> extends Omit<
    * even if middleware redirects calls. It does not dispatch through the facade.
    */
   install(guest: Guest<R, Q, Y, V, E>): Operation<void, Y>;
+  /** Whether this exact Guest is the visible installed driver and has not been closed.
+   * Scope exit invalidates the binding before physical disposal begins. This is a
+   * local lifetime check, not an authority lease or a guarantee against concurrent use.
+   */
+  isInstalled(guest: Guest<R, Q, Y, V, E>): Operation<boolean, Y>;
 }
 
 /** Replay-stable identity of the logical frame owning a suspension. */

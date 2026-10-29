@@ -18,6 +18,18 @@ need a checkpoint. Snapshots contain evaluator state, while the recovery envelop
 binds it to a program identity, accepted position and receipt. Unknown Guest
 implementations remain replay-capable without implementing capture or restore.
 
+`activateJournal` is the one-shot API that owns a disposable scope. Its shared
+`advanceJournal` primitive attempts one boundary publication in the caller's scope;
+undefined means queued cancellation requires another advancement. It has no cache or
+lifetime policy. Hosting middleware can own a longer scope around this same primitive.
+
+`recover(plan)` retains its single-argument contract. `advance(current, plan)` reconciles
+a live continuation with an anchored accepted prefix and cancellation control through
+the same execution API. Fresh recovery uses that operation too. Its scope and execution
+driver must still be live. Cancellation bookkeeping is local to the incarnation; no
+journal fields or serialized continuations are added. Checkpoint middleware continues
+to select initial recovery and has no retention-specific branch.
+
 ## Ownership and trust
 
 Plans are supplied by a trusted host with immutable accepted history. Receipt

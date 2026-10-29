@@ -43,8 +43,8 @@ export function defineEffect(
   implementation?: EffectImplementation<never, unknown, unknown>,
 ): EffectDefinition {
   const { key, context, response } = declaration;
-  if (!key.trim() || key === "$record") {
-    throw new Error("Empty or reserved effect key");
+  if (!key.trim()) {
+    throw new Error("Empty effect key");
   }
   return Object.freeze({
     id: key,

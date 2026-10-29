@@ -1,16 +1,17 @@
+import { type CapabilityRequest } from "@sweatpan.ts/core";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
-import type { Outcome, Work } from "@standard-durability/core";
+import type { Outcome, Work, Operation } from "@standard-durability/core";
 import { createRecovery, type Attempts } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createHosting } from "@sweatpan.ts/hosting";
-import type { Runtime } from "@sweatpan.ts/runtime";
 import {
-  createEffectCapabilitiesRig,
-  createProtocolRig,
-  createSqliteJournalRig,
-  type CapabilityRequest,
-} from "@sweatpan.ts/testing";
+  createHosting,
+  createEffectCapabilities,
+  installGuestRetention,
+  type Hosting,
+} from "@sweatpan.ts/hosting";
+import type { Runtime } from "@sweatpan.ts/runtime";
+import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -21,7 +22,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return execution;
   }
 
-  for (const mode of ["fulfilled", "rejected", "throws", "bare"] as const) {
+  for (const mode of [
+    "fulfilled",
+    "rejected",
+    "throws",
+    "bare",
+    "bare-result",
+    "nested",
+  ] as const) {
     it(`${runtime.name}: rejects an erased ${mode} callback result before recording a result`, async () => {
       const store = createSqliteJournalRig<unknown, CapabilityRequest, unknown, string, unknown, Y>(
         {
@@ -33,7 +41,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let calls = 0;
       let settlements = 0;
       function assemble() {
-        const effects = createEffectCapabilitiesRig(runtime, "invalid-record");
+        const effects = createEffectCapabilities(runtime, "invalid-record");
         const journal = store.open();
         let current: ReturnType<typeof acquireContext> | undefined;
         function acquireContext() {
@@ -45,6 +53,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           matches: isDeepStrictEqual,
           *acquire() {
             const ctx = acquireContext();
+            yield* ctx.install();
             current = ctx;
             return createScopedGuest(function* () {
               // Models a JS/untyped boundary where the callback result was erased.
@@ -53,13 +62,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 if (mode === "throws") {
                   throw new Error("Delivery failed");
                 }
+                if (mode === "bare-result") {
+                  return (function* () {
+                    return 6;
+                  })();
+                }
+                if (mode === "nested") {
+                  return (function* () {
+                    return yield* ctx.record(function* () {
+                      return { ok: true as const, value: 1 };
+                    });
+                  })();
+                }
                 if (mode === "bare") {
                   return 6;
                 }
                 return mode === "rejected"
                   ? Promise.reject(new Error("Async callback failed"))
                   : Promise.resolve({ ok: true, value: 6 });
-              }) as unknown as () => Outcome<unknown, unknown>;
+              }) as unknown as () => Operation<Outcome<unknown, unknown>, Y>;
               return yield* ctx.record(work);
             });
           },
@@ -91,15 +112,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               return yield* current.admission.child([pending], next);
             },
           });
+          yield* installGuestRetention(runtime.composition, host, recovery, journal);
           return yield* host.operations.run();
         });
       }
       await expect(assemble().result).rejects.toThrow(
         mode === "throws"
           ? "Delivery failed"
-          : mode === "bare"
+          : mode === "bare-result"
             ? "Effect work must return an Outcome"
-            : "Recorded work must return a synchronous value",
+            : mode === "nested"
+              ? "Nested recorded work is not supported"
+              : "Recorded work must return an Operation",
       );
       expect(settlements).toBe(0);
       const snapshot = await start(() => store.open().read()).result;
@@ -107,6 +131,154 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       store.reopen();
       expect((await assemble().result).state).toBe("occupied");
       expect(calls).toBe(1);
+    });
+  }
+
+  for (const finish of ["complete", "cancel", "revoke", "dispose"] as const) {
+    it(`${runtime.name}: inline operation ${finish} uses scoped delivery and native cleanup`, async () => {
+      const store = createSqliteJournalRig<unknown, CapabilityRequest, unknown, string, unknown, Y>(
+        {
+          program: "async-record",
+          equals: isDeepStrictEqual,
+        },
+      );
+      onTestFinished(() => store.close());
+      const peer = createProtocolRig();
+      const context = runtime.composition.createContext<string>("inline-context");
+      let calls = 0;
+      let continued = 0;
+      let released = 0;
+      let grant: import("@sweatpan.ts/durable").AttemptGrant | undefined;
+      let savedRecord:
+        | ((
+            work: () => Operation<Outcome<unknown, unknown>, Y>,
+          ) => Operation<Outcome<unknown, unknown>, CapabilityRequest>)
+        | undefined;
+      function assemble() {
+        const journal = store.open();
+        const effects = createEffectCapabilities(runtime, "async-record");
+        let current: ReturnType<typeof acquireContext> | undefined;
+        function acquireContext() {
+          return effects.grant({}, { record: true });
+        }
+        const recovery = createRecovery(runtime.composition, {
+          name: "async-record",
+          program: "async-record",
+          matches: isDeepStrictEqual,
+          *acquire() {
+            const ctx = acquireContext();
+            yield* ctx.install();
+            current = ctx;
+            savedRecord = ctx.record;
+            return createScopedGuest(function* () {
+              const result = yield* ctx.record(function* () {
+                calls++;
+                expect(yield* context.expect()).toBe("delivery");
+                expect(yield* host.delivery.expect()).toEqual(grant);
+                yield* runtime.composition.ensure(function* () {
+                  yield* runtime.fromPromise((signal) =>
+                    peer.send({ id: "release", token: "close" }, signal),
+                  );
+                  released++;
+                });
+                const response = yield* runtime.fromPromise((signal) =>
+                  peer.send({ id: "work", token: "read" }, signal),
+                );
+                return { ok: true as const, value: response.body };
+              });
+              expectTypeOf(result.value).toEqualTypeOf<string>();
+              continued++;
+              return result;
+            });
+          },
+        });
+        const host: Hosting<unknown, CapabilityRequest, unknown, unknown, Y> = createHosting(
+          runtime.composition,
+          {
+            name: "async-host",
+            recovery: recovery.operations,
+            journal,
+            attempts: {
+              *begin(...args: Parameters<typeof journal.attempts.begin>) {
+                const result = yield* journal.attempts.begin(...args);
+                if (result.state === "granted") {
+                  grant = result.grant;
+                }
+                return result;
+              },
+              settle: journal.attempts.settle,
+            },
+            *handle(request) {
+              return yield* current!.handle(request);
+            },
+          },
+        );
+        return start(function* () {
+          yield* context.set("delivery");
+          yield* host.around({
+            *child(args, next) {
+              return yield* current!.admission.child(args, next);
+            },
+          });
+          if (finish !== "dispose") {
+            yield* installGuestRetention(runtime.composition, host, recovery, journal);
+          }
+          return yield* host.operations.run();
+        });
+      }
+      const first = assemble();
+      if (finish === "dispose") {
+        await expect(first.result).rejects.toThrow("Effect handler is not installed");
+        expect(calls).toBe(0);
+        // Holding the old grant does not keep its implementation live after disposal.
+        await expect(
+          start(() =>
+            createScopedGuest(() =>
+              savedRecord!(function* () {
+                return { ok: true as const, value: 1 };
+              }),
+            ).start(),
+          ).result,
+        ).rejects.toThrow("Record binding is not live");
+        return;
+      }
+      await Promise.race([peer.waitForRequests(1), first.result]);
+      expect(continued).toBe(0);
+      let stopping: Promise<void> | undefined;
+      if (finish === "cancel") {
+        stopping = first.cancel();
+      } else {
+        if (finish === "revoke") {
+          await start(() => store.open().attemptControl.invalidate(grant!, "external stop")).result;
+        }
+        peer.reply("work", { status: 200, body: "recorded text" });
+      }
+      await peer.waitForRequests(2);
+      expect(continued).toBe(0);
+      peer.reply("release", { status: 200, body: "closed" });
+      if (stopping) {
+        await stopping;
+      }
+      if (finish === "complete") {
+        await expect(first.result).resolves.toEqual({
+          state: "completed",
+          value: { ok: true, value: "recorded text" },
+        });
+        store.reopen();
+        await expect(assemble().result).resolves.toEqual({
+          state: "completed",
+          value: { ok: true, value: "recorded text" },
+        });
+      } else {
+        await expect(first.result).rejects.toThrow();
+        expect(continued).toBe(0);
+        store.reopen();
+        expect((await assemble().result).state).toBe(
+          finish === "cancel" ? "occupied" : "invalidated",
+        );
+      }
+      expect(calls).toBe(1);
+      expect(released).toBe(1);
     });
   }
 
@@ -132,14 +304,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let cardCalls = 0;
 
         function assemble(pause: boolean) {
-          const effects = createEffectCapabilitiesRig(runtime, "recording");
+          const effects = createEffectCapabilities(runtime, "recording");
           const journal = store.open();
           let granted = false;
           let current: ReturnType<typeof acquireGrant> | undefined;
           function acquireGrant() {
             return effects.grant({}, { record: true });
           }
-          function rollDice() {
+          function* rollDice() {
             // A deterministic changing source proves whether the callback was repeated.
             expect(granted).toBe(true);
             events.push("roll");
@@ -154,6 +326,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             matches: isDeepStrictEqual,
             *acquire() {
               const grant = acquireGrant();
+              yield* grant.install();
               current = grant;
               return createScopedGuest(function* () {
                 const roll = yield* grant.record(rollDice);
@@ -162,7 +335,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 } else {
                   expectTypeOf(roll.error).toEqualTypeOf<{ code: string }>();
                 }
-                const card = yield* grant.record(() => {
+                const card = yield* grant.record(function* () {
                   expect(granted).toBe(true);
                   cardCalls++;
                   return { ok: true as const, value: { suit: "hearts", rank: 7 } };
@@ -221,6 +394,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 return yield* current.admission.child([pending], next);
               },
             });
+            yield* installGuestRetention(runtime.composition, host, recovery, journal);
             return yield* host.operations.run();
           });
         }

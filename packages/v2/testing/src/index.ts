@@ -6,8 +6,3 @@ export { createSqliteJournalRig } from "./sqlite.ts";
 
 export { readJournal, historyFrom } from "./history.ts";
 export { createJournalStorageRig } from "./journal.ts";
-
-export { createEffectCapabilitiesRig } from "./effect-capabilities.ts";
-export type { CapabilityRequest, EffectDefinition } from "./contracts.ts";
-
-export { defineEffect } from "./effect-definition.ts";
