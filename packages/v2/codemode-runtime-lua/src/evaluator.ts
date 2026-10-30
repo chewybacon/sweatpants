@@ -12,6 +12,10 @@ export class LuaFailure extends Error {
   }
 }
 
+/**
+ * Bind the pinned Lua VM to Guest execution, logical cancellation and checkpoints.
+ * workflow.scope cleanup is protected; physical close only discards VM state.
+ */
 export function createLuaEvaluator<R, Q, Y>(
   runtime: Runtime<Y>,
   options: {
@@ -25,7 +29,9 @@ export function createLuaEvaluator<R, Q, Y>(
   const owned = new WeakMap<Guest<R, Q, Y>, () => unknown>();
   function create() {
     let state: Record<string, unknown> | undefined;
-    let phase: "new" | "busy" | "suspended" | "completed" | "failed" | "closed" = "new";
+    let phase: "new" | "busy" | "suspended" | "completed" | "cancelled" | "failed" | "closed" =
+      "new";
+    let current: Turn<R, Q> | undefined;
     function* transition(
       action: string,
       fields: Record<string, unknown>,
@@ -44,16 +50,47 @@ export function createLuaEvaluator<R, Q, Y>(
         const boundary = record(result.boundary);
         let turn: Turn<R, Q>;
         if (boundary.kind === "suspended") {
-          turn = { kind: "suspended", request: options.decodeRequest(boundary.request) };
+          const cleanup = typeof result.cleanup_depth === "number" && result.cleanup_depth > 0;
+          if (result.cancelling === true && !cleanup) {
+            throw new Error("Lua yielded outside cleanup during cancellation");
+          }
+          turn = {
+            kind: "suspended",
+            request: options.decodeRequest(boundary.request),
+            scope: {
+              scopeId: "lua:root",
+              frameId: cleanup ? `lua:cleanup:${result.cleanup_depth}` : "lua:body",
+              phase: cleanup ? "cleanup" : "body",
+            },
+          };
           phase = "suspended";
         } else if (boundary.kind === "completed") {
           turn = { kind: "completed", value: options.decodeResult(boundary.value) };
           phase = "completed";
+        } else if (
+          boundary.kind === "cancelled" ||
+          (boundary.kind === "failed" && result.cancelling === true)
+        ) {
+          if (typeof result.reason !== "string") {
+            throw new Error("Missing Lua cancellation reason");
+          }
+          turn = {
+            kind: "cancelled",
+            reason: result.reason,
+            failure:
+              boundary.kind === "failed"
+                ? typeof boundary.error === "string"
+                  ? boundary.error
+                  : JSON.stringify(boundary.error)
+                : undefined,
+          };
+          phase = "cancelled";
         } else if (boundary.kind === "failed") {
           throw new LuaFailure(boundary.error);
         } else {
           throw new Error("Unexpected Lua boundary");
         }
+        current = turn;
         state = result;
         finished = true;
         return turn;
@@ -80,11 +117,21 @@ export function createLuaEvaluator<R, Q, Y>(
           reply: outcome.ok ? outcome.value : outcome.error,
         });
       },
+      *cancel(reason) {
+        if (phase === "cancelled" || (phase === "suspended" && state?.cancelling === true)) {
+          return current!;
+        }
+        if (phase !== "suspended") {
+          throw new Error(`Cannot cancel Lua guest while ${phase}`);
+        }
+        return yield* transition("cancel", { state, reason });
+      },
       *close() {
         if (phase === "busy") {
           throw new Error("Cannot close Lua guest during advancement");
         }
         state = undefined;
+        current = undefined;
         phase = "closed";
       },
     };

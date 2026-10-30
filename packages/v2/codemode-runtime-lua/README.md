@@ -13,9 +13,8 @@ discards retained state without evaluating authored cleanup. Authored failures
 throw LuaFailure with their value, distinct from transport/decoder failures.
 
 Commands/outputs have a 4 MiB budget and compute continuations have a fuel ceiling.
-Synchronous Wasm instructions are not interrupted by native cancellation. This
-slice does not expose logical cancellation or claim parity with the full v1 Lua
-kernel's inspection, tooling or authoring features.
+Synchronous Wasm instructions are not interrupted by native cancellation. Logical cancellation uses the pinned VM protocol described below. This slice does
+not claim parity with the full v1 Lua kernel's inspection, tooling or authoring features.
 
 ## Pinned evaluator provenance
 
@@ -32,3 +31,38 @@ legacy JavaScript adapter or network service is used.
 
 The public luaWasmUrl points to packaged bytes. Hosts choose their own loader;
 importing this package does not compile or instantiate the VM.
+
+## Logical cancellation
+
+Guest.cancel(reason) invokes the VM's cancellation command at a suspended boundary.
+`workflow.scope(body, cleanup)` cleanup may yield further journaled exchanges. The
+adapter exposes cleanup depth as a replay-stable protected ScopeBoundary, so cancelling
+an already-pending cleanup preserves its reply authority. Repeated cancellation keeps
+the current boundary and original reason. Cleanup failure becomes a cancelled Turn
+with a failure diagnostic; ordinary authored failure remains LuaFailure.
+
+```lua
+return workflow.scope(function()
+  return workflow.effect("lookup", { effect = "lookup", input = "topic" })
+end, function(completion)
+  workflow.effect("release", { effect = "release", input = "topic" })
+end)
+```
+
+The VM unwinds through Lua's exception mechanism. Catching its cancellation signal
+cannot produce successful terminal completion. Attempting another body exchange
+after catching cancellation fails closed before request decoding; continue cancellation
+through workflow.scope cleanup instead. The pinned VM does not expose general critical
+regions. Cleanup is protected, but this is not full TypeScript logical-scope parity.
+
+Evaluator checkpoints retain cancellation intent and suspended cleanup, and can restore
+that exact boundary. The durable journal currently discards checkpoints on cancellation
+and reconstructs cancellation plus accepted cleanup by replay; this change preserves
+that recovery policy. Physical close discards state without running authored cleanup.
+The existing synchronous computation budget and interruption limits still apply.
+
+Acceptance covers cancellation during body or cleanup, repeated cancellation, cleanup
+failure, direct checkpoint restoration, and a losing owned Lua race child across SQLite
+reopen. A protected loser keeps its grant until cleanup answers; an unprotected loser
+rejects stale answers. These are in-process journeys, not crash-safety evidence.
+The VM bytes, provenance and checkpoint format are unchanged.
