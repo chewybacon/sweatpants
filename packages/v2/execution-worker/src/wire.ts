@@ -20,7 +20,17 @@ function object(value: unknown): Record<string, unknown> {
 }
 export function decodeCommand<V, E>(input: unknown): GuestCommand<V, E> {
   const value = envelope(input);
-  if (value.action === "resume") {
+  if (value.action === "initialize") {
+    const invocation = object(value.invocation);
+    if (
+      typeof invocation.program !== "string" ||
+      invocation.program.length === 0 ||
+      !("input" in invocation) ||
+      (value.checkpointFormat !== undefined && typeof value.checkpointFormat !== "string")
+    ) {
+      throw new Error("Invalid Guest initialization");
+    }
+  } else if (value.action === "resume") {
     const outcome = object(value.outcome);
     if (
       (outcome.ok !== true && outcome.ok !== false) ||

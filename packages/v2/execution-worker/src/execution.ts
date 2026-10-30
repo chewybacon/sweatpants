@@ -9,14 +9,18 @@ export function createWorkerExecution<R, Q, Y, V = unknown, E = unknown>(
   runtime: Runtime<Y>,
   options: WorkerExecutionOptions<Y>,
 ): WorkerExecution<R, Q, Y, V, E> {
+  const invocation = options.invocation ? Object.freeze({ ...options.invocation }) : undefined;
+  const format = options.checkpointFormat;
   const owned = new WeakMap<Guest<R, Q, Y, V, E>, WorkerSession<R, Q, Y, V, E>>();
   function* open() {
     const placement = yield* options.open();
     const session = yield* createWorkerSession<R, Q, Y, V, E>(runtime, placement);
+    if (invocation) {
+      yield* session.initialize(invocation, format);
+    }
     owned.set(session.guest, session);
     return session;
   }
-  const format = options.checkpointFormat;
   const checkpoints: CheckpointAdapter<R, Q, Y, V, E, unknown> | undefined =
     format === undefined
       ? undefined

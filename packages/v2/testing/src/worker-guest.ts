@@ -16,7 +16,8 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
   const ports = new Map<string, MessageChannel>();
   const codec = { encode: serialize, decode: (bytes: Uint8Array) => deserialize(bytes) as unknown };
   const execution = createWorkerExecution<R, Q, Y, V, E>(options.runtime, {
-    checkpointFormat: options.checkpoints?.format,
+    invocation: options.invocation,
+    checkpointFormat: options.resolve ? options.checkpointFormat : options.checkpoints?.format,
     *open() {
       const incarnation = `worker-${tasks.length}`;
       const channel = new MessageChannel();
@@ -56,13 +57,23 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
         },
       };
       const task = options.runtime.start(() =>
-        serveGuestWorker(options.runtime, {
-          incarnation,
-          port: serverPort,
-          codec,
-          acquire: options.acquire,
-          checkpoints: options.checkpoints,
-        }),
+        serveGuestWorker(
+          options.runtime,
+          options.resolve
+            ? {
+                incarnation,
+                port: serverPort,
+                codec,
+                resolve: options.resolve,
+              }
+            : {
+                incarnation,
+                port: serverPort,
+                codec,
+                acquire: options.acquire,
+                checkpoints: options.checkpoints,
+              },
+        ),
       );
       tasks.push(task);
       void task.result.catch(() => undefined);

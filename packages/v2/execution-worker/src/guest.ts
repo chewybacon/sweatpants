@@ -93,6 +93,24 @@ export function* createWorkerSession<R, Q, Y, V = unknown, E = unknown>(
   };
   return {
     guest,
+    *initialize(invocation, checkpointFormat) {
+      try {
+        const response = yield* exchange({
+          ...identity(),
+          action: "initialize",
+          invocation,
+          checkpointFormat,
+        });
+        if (response !== undefined) {
+          poisoned = true;
+          throw new Error("Unexpected Guest initialization response");
+        }
+      } catch (error) {
+        // Initialization may have reached the peer. Abandon this incarnation, never retry it.
+        yield* guest.close();
+        throw error;
+      }
+    },
     *capture(format) {
       return yield* exchange({ ...identity(), action: "capture", format });
     },

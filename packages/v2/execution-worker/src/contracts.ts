@@ -1,4 +1,10 @@
-import type { Guest, GuestWork, CheckpointAdapter } from "@sweatpan.ts/execution";
+import type {
+  Guest,
+  GuestWork,
+  CheckpointAdapter,
+  ProgramInvocation,
+  ResolvedProgram,
+} from "@sweatpan.ts/execution";
 import type { Operation } from "@standard-durability/core";
 import type { Transport, WireCodec } from "@sweatpan.ts/connection";
 
@@ -14,18 +20,30 @@ export interface WorkerGuestOptions {
   terminate(): Promise<void>;
 }
 
-/** Worker assembly acquires inside the server scope, preserving evaluator resources. */
-export interface GuestWorkerOptions<R, Q, Y, V, E> {
+/** Server assembly supplies either a pinned evaluator or its own invocation resolver. */
+export type GuestWorkerOptions<R, Q, Y, V, E> = {
   readonly incarnation: string;
   readonly port: Transport;
   readonly codec: WireCodec;
-  acquire(): Operation<Guest<R, Q, Y, V, E>, Y>;
-  /** Evaluator-owned snapshot capability; format is checked before capture/restore. */
-  readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
-}
+} & (
+  | {
+      acquire(): Operation<Guest<R, Q, Y, V, E>, Y>;
+      readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
+      readonly resolve?: never;
+    }
+  | {
+      /** Called in the server scope with decoded admission output; never a host callback. */
+      resolve(invocation: ProgramInvocation): Operation<ResolvedProgram<R, Q, Y, V, E>, Y>;
+      readonly acquire?: never;
+      readonly checkpoints?: never;
+    }
+);
 
 /** Placement opens a fresh pinned incarnation for acquisition or checkpoint restoration. */
 export interface WorkerExecutionOptions<Y> {
+  /** Send initialization over each fresh connection; omit for an already-pinned server.
+   * The admitted input must remain immutable for the bound execution's lifetime. */
+  readonly invocation?: ProgramInvocation;
   /** Omit for journal replay only. When supplied, the pinned server must support this format. */
   readonly checkpointFormat?: string;
   open(): Operation<WorkerGuestOptions, Y>;

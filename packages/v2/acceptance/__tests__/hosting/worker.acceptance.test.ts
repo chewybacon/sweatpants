@@ -15,6 +15,107 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => task.cancel());
     return task;
   }
+  for (const fault of ["malformed", "before-initialization", "reinitialize"] as const) {
+    it(`${runtime.name}: worker bootstrap rejects ${fault} before resolving or running a program`, async () => {
+      let resolutions = 0;
+      const invocation = { program: "pinned", input: { topic: "research" } };
+      const worker = createWorkerGuestRig<number, string, Y>({
+        runtime,
+        invocation,
+        *resolve(received) {
+          resolutions++;
+          return {
+            program: received.program,
+            *acquire() {
+              return createScopedGuest(function* () {
+                yield "ready";
+                return 1;
+              });
+            },
+          };
+        },
+        command(command) {
+          if (fault === "malformed") {
+            return { ...command, invocation: { input: null } };
+          }
+          if (fault === "before-initialization") {
+            return { ...command, action: "start" };
+          }
+          return command.action === "start"
+            ? {
+                ...command,
+                action: "initialize",
+                invocation: { program: "replacement", input: null },
+              }
+            : command;
+        },
+      });
+      onTestFinished(() => worker.close());
+      const task = start(function* () {
+        const guest = yield* worker.acquire();
+        yield* runtime.composition.ensure(() => guest.close());
+        return yield* guest.start();
+      });
+      await expect(task.result).rejects.toThrow(
+        fault === "malformed"
+          ? "Invalid Guest initialization"
+          : fault === "before-initialization"
+            ? "requires initialization"
+            : "already initialized",
+      );
+      expect(resolutions).toBe(0);
+      expect(worker.terminations).toBe(1);
+    });
+  }
+
+  for (const fault of ["lost", "invalid"] as const) {
+    it(`${runtime.name}: ${fault} bootstrap acknowledgement abandons the incarnation and joins termination`, async () => {
+      const failure = new AbortController();
+      let replySeen!: () => void;
+      const reply = new Promise<void>((resolve) => {
+        replySeen = resolve;
+      });
+      let resolutions = 0;
+      const worker = createWorkerGuestRig<number, string, Y>({
+        runtime,
+        failure: failure.signal,
+        invocation: { program: "pinned", input: null },
+        *resolve(received) {
+          resolutions++;
+          return {
+            program: received.program,
+            *acquire() {
+              return createScopedGuest(function* () {
+                return 1;
+              });
+            },
+          };
+        },
+        response(response) {
+          replySeen();
+          return fault === "lost" ? undefined : { ...response, value: "unexpected" };
+        },
+      });
+      onTestFinished(() => {
+        failure.abort(new Error("test cleanup"));
+        return worker.close();
+      });
+      const task = start(worker.acquire);
+      await Promise.race([reply, task.result]);
+      if (fault === "lost") {
+        failure.abort(new Error("Bootstrap acknowledgement abandoned"));
+      }
+      await expect(task.result).rejects.toThrow(
+        fault === "lost"
+          ? "Bootstrap acknowledgement abandoned"
+          : "Unexpected Guest initialization response",
+      );
+      expect(worker.commands.map((command) => command.action)).toEqual(["initialize"]);
+      expect(resolutions).toBe(0);
+      expect(worker.terminations).toBe(1);
+    });
+  }
+
   it(`${runtime.name}: failed connection acquisition still joins worker termination`, async () => {
     const failure = new AbortController();
     failure.abort(new Error("already disconnected"));

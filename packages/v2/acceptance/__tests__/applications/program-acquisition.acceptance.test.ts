@@ -183,8 +183,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* acquisition.around({
               *resolve([invocation], next) {
                 routed.push(invocation.program);
-                // Simulate deployment bootstrap data crossing a serialized boundary.
-                // This does not add bootstrap messages to the Guest advancement protocol.
+                // Local evaluator assembly still uses an explicitly detached invocation.
                 const startup = serialize(invocation);
                 const bound = createProgramExecution({
                   invocation,
@@ -201,7 +200,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   }
                   return { program: invocation.program, ...local };
                 }
-                const worker = createWorkerGuestRig({ runtime, ...bound });
+                const worker = createWorkerGuestRig({
+                  runtime,
+                  invocation,
+                  checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
+                  *resolve(received) {
+                    expect(received).not.toBe(invocation);
+                    expect(received.input).not.toBe(invocation.input);
+                    // The server receives this invocation only through the Guest connection.
+                    return yield* next(invocationSchema.parse(received));
+                  },
+                });
                 yield* runtime.composition.ensure(() => runtime.fromPromise(() => worker.close()));
                 return {
                   program: invocation.program,

@@ -1,5 +1,10 @@
 import type { Composition, Operation } from "@standard-durability/core";
-import type { Guest, Turn } from "@sweatpan.ts/execution";
+import {
+  createProgramExecution,
+  type Guest,
+  type Turn,
+  type ProgramExecution,
+} from "@sweatpan.ts/execution";
 import type { GuestWorkerOptions } from "./contracts.ts";
 import type { GuestCommandReceiver } from "./types.ts";
 
@@ -8,6 +13,8 @@ export function* createGuestCommandReceiver<R, Q, Y, V, E>(
   composition: Composition<Y>,
   options: GuestWorkerOptions<R, Q, Y, V, E>,
 ): Operation<GuestCommandReceiver<Y, V, E>, Y> {
+  let execution: Pick<ProgramExecution<R, Q, Y, V, E>, "acquire" | "checkpoints"> | undefined =
+    options.acquire ? { acquire: options.acquire, checkpoints: options.checkpoints } : undefined;
   let guest: Guest<R, Q, Y, V, E> | undefined;
   function* closeGuest() {
     const closing = guest;
@@ -40,8 +47,23 @@ export function* createGuestCommandReceiver<R, Q, Y, V, E>(
           finished = true;
           return undefined;
         }
+        if (command.action === "initialize") {
+          if (execution || !options.resolve) {
+            throw new Error("Guest incarnation is already initialized");
+          }
+          execution = createProgramExecution({
+            invocation: command.invocation,
+            resolve: options.resolve,
+            checkpointFormat: command.checkpointFormat,
+          });
+          finished = true;
+          return undefined;
+        }
+        if (!execution) {
+          throw new Error("Guest incarnation requires initialization");
+        }
         if (command.action === "restore" || command.action === "capture") {
-          const adapter = options.checkpoints;
+          const adapter = execution.checkpoints;
           if (!adapter || adapter.format !== command.format) {
             throw new Error("Unsupported Guest checkpoint format");
           }
@@ -65,7 +87,7 @@ export function* createGuestCommandReceiver<R, Q, Y, V, E>(
           if (command.action !== "start") {
             throw new Error("Guest has not been acquired");
           }
-          guest = yield* options.acquire();
+          guest = yield* execution.acquire();
         }
         let turn: Turn<R, Q>;
         if (command.action === "start") {

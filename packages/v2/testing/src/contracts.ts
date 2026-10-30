@@ -1,5 +1,11 @@
+import type { Operation } from "@standard-durability/core";
 import type { Transport, WireCodec } from "@sweatpan.ts/connection";
-import type { GuestWork, CheckpointAdapter } from "@sweatpan.ts/execution";
+import type {
+  GuestWork,
+  CheckpointAdapter,
+  ProgramInvocation,
+  ResolvedProgram,
+} from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 export interface Latch<T> {
@@ -35,17 +41,30 @@ export interface NotificationRig {
 }
 
 /** Serialized in-process execution peer, with deterministic response fault injection. */
-export interface WorkerGuestRigOptions<R, Q, Y, V, E> {
+export type WorkerGuestRigOptions<R, Q, Y, V, E> = {
   /** Simulate independent transport failure, including during native finalization. */
   readonly failure?: AbortSignal;
   readonly runtime: Runtime<Y>;
-  readonly acquire: GuestWork<R, Q, Y, V, E>;
-  readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
   /** Inspect decoded wire data; return replacement data, including malformed frames. */
   readonly command?: (command: Readonly<Record<string, unknown>>) => unknown;
   /** Undefined drops the reply after execution; replacement simulates correlation faults. */
   readonly response?: (response: Readonly<Record<string, unknown>>) => unknown;
-}
+} & (
+  | {
+      readonly acquire: GuestWork<R, Q, Y, V, E>;
+      readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
+      readonly invocation?: never;
+      readonly resolve?: never;
+      readonly checkpointFormat?: never;
+    }
+  | {
+      readonly invocation: ProgramInvocation;
+      resolve(invocation: ProgramInvocation): Operation<ResolvedProgram<R, Q, Y, V, E>, Y>;
+      readonly checkpointFormat?: string;
+      readonly acquire?: never;
+      readonly checkpoints?: never;
+    }
+);
 
 /** MessageChannel uses V8 bytes; no live continuation or callback crosses the port. */
 export interface WorkerGuestRig<R, Q, Y, V, E> {

@@ -140,3 +140,51 @@ original tool acquisition in the host scope first, then supply that Guest to loc
 placement. Retain that host scope through delivery. This intentionally local binding
 assembly does not make callback closures deployable across processes. A remote placement
 must assemble its own pinned program/capabilities; no closure crosses the byte transport.
+
+## Invocation-data startup
+
+For a worker that owns a program resolver, supply invocation data on the host:
+
+```ts
+const execution = createWorkerExecution(runtime, {
+  invocation, // { program, input } from journal admission
+  open, // opens a fresh endpoint/incarnation, independent of program selection
+  checkpointFormat, // optional; omit for replay-only execution
+});
+
+// Worker assembly supplies its own registry/resolver, never a function sent by the host.
+yield *
+  serveGuestWorker(runtime, {
+    incarnation,
+    port,
+    codec,
+    resolve: programs.operations.resolve,
+  });
+```
+
+The proxy sends an ordered initialization command over the same connection before
+returning a Guest or requesting restoration. Its acknowledgement means the decoded
+invocation and optional checkpoint format are pinned to this incarnation; it does not
+mean the artifact has been resolved or the program started. The server binds
+createProgramExecution and invokes its own resolver on start or restore. That helper
+verifies the selected program reference before entering the evaluator. Resolver input
+is unknown admission output; decode its transport shape without rerunning authored
+admission transforms. Host grants, handlers and code closures are not sent.
+
+A resolver server rejects advancement before initialization and rejects a second
+initialization, including attempts to retarget program/input. A close before startup
+is permitted for physical disposal. Already-pinned servers using acquire/checkpoints
+continue to work without initialization and reject attempts to initialize them.
+The public server options require one mode or the other.
+
+Lost or invalid initialization acknowledgements poison and terminate the incarnation.
+No initialization is retried on the same connection. Assembly's independent failure
+signal must fire when it abandons an acknowledgement, exactly as for advancement and
+close. Resolution errors subsequently use the ordinary Guest failure path.
+
+The Lua acquisition journeys now send worker invocation data through this production
+protocol rather than cloning a descriptor outside it. They cover replay and checkpoint
+restoration across placement changes. Worker fault journeys cover malformed startup,
+missing initialization, retarget attempts and lost/invalid acknowledgements. Tests use
+in-process MessageChannel peers; OS worker launch, artifact distribution and remote
+identity/authentication remain deployment responsibilities.

@@ -276,9 +276,9 @@ acceptance proves fresh acquisition replays the first answer without redelivery 
 continues with the admitted input. Replay-only cases install no checkpoint adapter. A terminal
 journal returns its result even when the executable is unavailable.
 
-Startup data is serialized by the simulated deployment assembly; this is not a new
-bootstrap command on the Guest connection, a real worker launcher or an authenticated
-artifact protocol. The content-reference recipe is provisional, not a portable manifest
+Worker startup data now crosses the production Guest connection's initialization
+command; local pinned assembly still detaches invocation data before evaluator entry.
+This is not a real worker launcher or an authenticated artifact protocol. The content-reference recipe is provisional, not a portable manifest
 format. Schema/decoder and runtime compatibility policy still require explicit design
 before promoting an artifact resolver into production.
 
@@ -297,3 +297,9 @@ propagates without fresh acquisition or delivery. Successful restoration reconci
 accepted suffix and crosses local/worker placement without acquiring a fresh Guest.
 Capture stays associated with the original/restored evaluator rather than resolving a
 new instance. Public type consumers preserve input, outcome and checkpoint state types.
+
+Worker initialization uses the same ordered connection as advancement. Focused worker
+journeys reject malformed invocation data, advancement before initialization and attempts
+to retarget an initialized incarnation. Lost/invalid initialization acknowledgements join
+termination without resolving an artifact or starting a Guest. Existing application
+replay/restore journeys use the server-owned resolver and check detached invocation data.
