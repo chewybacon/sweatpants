@@ -39,3 +39,5 @@ export { createJournalRecord } from "./journal-tree.ts";
 
 export type { JournalTransaction, TransactionInstruction } from "./contracts.ts";
 export { createJournalTransaction } from "./transaction.ts";
+
+export { JournalConflict } from "./conflict.ts";

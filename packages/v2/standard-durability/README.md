@@ -102,3 +102,13 @@ established as portable guarantees by this evidence.
 Schema descriptors and the `defineOperation`/`defineApi` helpers are retained
 internally for future authoring work. They are not public exports or a validation
 boundary. The public scoped composition API remains `Composition.createApi`.
+
+## Native error recovery
+
+`Composition.catchError(work, recover)` catches thrown errors across native API and
+scope boundaries without creating a scope. Plain generator try/catch is insufficient
+for failures of yielded Effect operations. Native interruption bypasses recovery;
+combined native failures may also propagate unchanged. Scope ownership and cleanup
+remain the responsibility of `scoped` and `ensure`. The error-boundary acceptance
+journeys exercise scoped API failures, cleanup-before-recovery and interruption on
+both runtimes.

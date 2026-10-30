@@ -631,11 +631,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           gates.reply("first", { status: 200, body: "commit" });
           await s.wait(1, first.result);
           gates.reply("second", { status: 200, body: "commit" });
-          if (boundary === "beforePark") {
-            await expect(second.result).rejects.toThrow("revision conflict");
-          } else {
-            expect(await second.result).toEqual({ state: "occupied", grant: s.grants[0] });
-          }
+          expect(await second.result).toEqual({ state: "occupied", grant: s.grants[0] });
           expect(s.peer.requests).toHaveLength(1);
           s.peer.reply(s.grants[0]!.attemptId, { status: 200, body: "reservation-1" });
           expect(await first.result).toEqual({

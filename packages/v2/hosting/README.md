@@ -47,8 +47,9 @@ an outstanding attempt, rather than inventing an authored failure.
 
 ## Explicit replacement
 
-Overlapping activations can fail with a journal revision conflict before reaching
-attempt acquisition. Retrying activation does not itself authorize effect delivery.
+Ordinary runs reread after a journal revision conflict before attempt acquisition.
+Reactivation does not itself authorize effect delivery. Explicit `run(grant)`
+replacement propagates conflicts rather than carrying permission to another boundary.
 A run that reaches attempt acquisition and observes an outstanding attempt returns `{ state: "occupied", grant }`
 and does not call the handler. It does not infer host death from time or pending
 state. A host may explicitly call `run(grant)` to replace exactly that observed
@@ -415,20 +416,23 @@ serializer. Install this middleware once per answer-ingress chain.
 ## Reactivation after a cancellation race
 
 Cancellation may commit after a host observes a pending boundary but before it
-registers a participant wait. Registration rejects the stale boundary, and `run()`
-propagates that rejection. When sibling hosts are scheduled together, this may also
-stop their physical tasks; it does not undo durable cancellation or accepted history.
+registers a participant wait or begins an attempt. Durable commands signal these
+pre-delivery races with `JournalConflict`. Ordinary `run()` rereads and reactivates
+in the same call, continuing pending logical cleanup. Revision conflicts during
+activation are handled the same way. Direct activation remains a single attempt.
 
-The caller must run the host again from the journal to continue logical cleanup.
-The default hosting loop does not automatically retry this race. Reactivation reads
-current authority and must not directly redeliver an old request or reuse permission
-from the failed activation. This is a recovery responsibility, not a blanket policy
-to retry arbitrary handler or storage errors.
+Only these typed conflicts are recoverable. Delivery-mode policy, handler execution,
+settlement, storage failures and divergent replay are not blanket-retried. Explicit
+attempt replacement still rejects a stale expectation. Owned routing reactivates a
+parent whose boundary advanced before child acquisition, but does not catch errors
+from executing child hosts. Each child host owns its own pre-delivery recovery.
 
-The owned-group acceptance journey forces this ordering through scoped middleware,
-asserts stale registration and late-answer rejection, then explicitly reactivates and
-joins cleanup. Separate nested-group coverage checks descendant fencing and critical
-branch authority across reopen before parent cleanup can run.
+`Composition.catchError` bridges native API/scope error propagation on both runtimes.
+It creates no scope and does not convert native cancellation into retry permission.
+The deterministic sibling-cancellation journey now drains to the next cleanup wait
+without a caller retry; async replay and competing-host journeys check reactivation
+without duplicate delivery. The host still returns normally for a parked, occupied,
+or explicitly invalidated request; this is not a polling or liveness guarantee.
 
 ## Inline owned groups
 
@@ -499,7 +503,7 @@ same-count reordering under an incorrectly reused program identity.
 
 The host, recovery and journal must describe the same execution. Owned authority
 must remain in one transaction domain. This API neither grants effect permission
-implicitly nor supplies automatic retries after stale-boundary rejection.
+implicitly. Its host reactivates typed pre-delivery conflicts without retrying handlers.
 
 ## Inline owned race
 
@@ -516,9 +520,9 @@ A loser cleanup failure follows owned cancellation semantics rather than silentl
 returning the winner; a protected parent still requires explicit reconciliation.
 Parent cancellation takes priority over returning a winner.
 
-Race shares all's replay reconstruction, local-closure placement restrictions and
-caller responsibility for reactivation after stale-boundary rejection. It adds no
-physical abort notification or automatic retry policy.
+Race shares all's replay reconstruction and local-closure placement restrictions.
+Hosting reactivates typed pre-delivery conflicts. Race adds no physical abort
+notification or handler retry policy.
 
 ## Two researchers, each racing sources
 
@@ -562,6 +566,6 @@ requests and drains the same cleanup hierarchy without returning findings.
 
 The example runs with ordinary and retained activation on both runtimes, reopens
 SQLite while losers need cleanup, and checks that a completed winner stays complete.
-It controls source terminal-commit order to avoid conflating composition with the
-existing stale-host reactivation limitation. It does not establish automatic retry,
-remote placement, live provider behavior, or crash recovery.
+That example controls source terminal-commit order to isolate composition. Separate
+hosting journeys force stale observations and verify automatic reactivation. Neither
+establishes remote placement, live provider behavior, or crash recovery.

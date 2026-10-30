@@ -1,3 +1,4 @@
+import { JournalConflict } from "./conflict.ts";
 import { requestJournalCancellation, settleOwnedChild } from "./transitions.ts";
 import type { Outcome, Operation } from "@standard-durability/core";
 import type {
@@ -266,7 +267,7 @@ export function createJournalTree<Y>(
       } else {
         const state = parent.snapshot;
         if (state.status !== "running" || state.pending?.id !== requestId || state.children) {
-          throw new Error("Stale or unknown child call boundary");
+          throw new JournalConflict("Stale or unknown child call boundary");
         }
         if (request.grant || request.registration) {
           throw new Error("Owned call excludes attempts and participant registration");

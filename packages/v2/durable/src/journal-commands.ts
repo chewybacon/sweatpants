@@ -1,3 +1,4 @@
+import { JournalConflict } from "./conflict.ts";
 import type { AcceptanceTransition } from "./types.ts";
 import type { Operation } from "@standard-durability/core";
 import { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";
@@ -69,7 +70,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   function* current(revision: number) {
     const { snapshot: state } = yield* read();
     if (revision !== state.revision) {
-      throw new Error("Journal revision conflict");
+      throw new JournalConflict("Journal revision conflict");
     }
     if (state.status !== "running") {
       throw new Error("Journal already completed");
@@ -168,7 +169,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
       *register(requestId) {
         const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
-          throw new Error("Stale or unknown pending request");
+          throw new JournalConflict("Stale or unknown pending request");
         }
         if (state.children) {
           throw new Error("Owned call excludes participant registration");
@@ -221,7 +222,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
       *begin(requestId, retrySafety, replace) {
         const { snapshot: state } = yield* read();
         if (state.status !== "running" || state.pending?.id !== requestId) {
-          throw new Error("Stale or unknown pending request");
+          throw new JournalConflict("Stale or unknown pending request");
         }
         if (state.children) {
           throw new Error("Owned call excludes executing attempts");

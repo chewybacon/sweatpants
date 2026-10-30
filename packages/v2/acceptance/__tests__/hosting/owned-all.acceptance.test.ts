@@ -370,11 +370,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const grant = s.waits.get("performance")!;
     await s.reply("security", "closed");
     s.raceCancellation();
-    await expect(s.run()).rejects.toThrow("Stale or unknown pending request");
+    expect((await s.run()).state).toBe("child");
     await expect(
       start(() => sibling.journal.interactions.answer(grant, { ok: true, value: "late" })).result,
     ).rejects.toThrow("revoked");
-    await s.run();
     expect(s.operations.get("performance")).toBe("child-cleanup");
     await s.reply("performance", "closed");
     expect((await s.run()).state).toBe("waiting");

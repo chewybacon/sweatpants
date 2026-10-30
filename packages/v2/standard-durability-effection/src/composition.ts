@@ -6,6 +6,13 @@ import type { EffectionYield } from "./contracts.ts";
 
 /** Reference adapter, using native scopes and middleware rather than a new scheduler. */
 export const effection: Composition<EffectionYield> = {
+  *catchError(work, recover) {
+    try {
+      return yield* work();
+    } catch (error) {
+      return yield* recover(error);
+    }
+  },
   scoped,
   ensure,
   createContext<T>(name: string): Context<T, EffectionYield> {

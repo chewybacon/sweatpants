@@ -1,3 +1,4 @@
+import { JournalConflict } from "@sweatpan.ts/durable";
 import type { Operation } from "@standard-durability/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Branch, CapabilityRequest } from "@sweatpan.ts/core";
@@ -94,7 +95,7 @@ export function createOwnedGroup<C, I, Y>(
               return runtime.composition.scoped(function* () {
                 const state = yield* journal.read();
                 if (state.status !== "running" || state.pending?.id !== pending.id) {
-                  throw new Error("Stale owned group");
+                  return true; // Parent advanced; ask its host to reactivate.
                 }
                 // Never inherit an ancestor's registry. Every routed group rebuilds
                 // its own parent in this scope, even if a same-slot registry is visible.
@@ -123,19 +124,32 @@ export function createOwnedGroup<C, I, Y>(
                 if (!factories || factories.length !== position.count) {
                   throw new Error("Owned branch bindings unavailable");
                 }
-                const children = yield* journal.ensureChildren<
-                  unknown,
-                  CapabilityRequest,
-                  unknown,
-                  string
-                >(pending.id, {
-                  join,
-                  children: factories.map((_, index) => ({
-                    program: `${state.program}/${effect.id}/${join}:${position.slot}/branch:${index}`,
-                    input: { slot: position.slot, index },
-                  })),
-                  outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
-                });
+                const children = yield* runtime.composition.catchError(
+                  function* () {
+                    return yield* journal.ensureChildren<
+                      unknown,
+                      CapabilityRequest,
+                      unknown,
+                      string
+                    >(pending.id, {
+                      join,
+                      children: factories.map((_, index) => ({
+                        program: `${state.program}/${effect.id}/${join}:${position.slot}/branch:${index}`,
+                        input: { slot: position.slot, index },
+                      })),
+                      outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
+                    });
+                  },
+                  function* (error) {
+                    if (!(error instanceof JournalConflict)) {
+                      throw error;
+                    }
+                    return undefined;
+                  },
+                );
+                if (!children) {
+                  return true;
+                }
                 const settled = yield* runtime.all(
                   children.map((child, index) => () => run(child, factories[index]!, index)),
                 );

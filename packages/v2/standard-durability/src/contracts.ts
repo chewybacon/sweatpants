@@ -84,6 +84,15 @@ export interface Composition<Y> {
   createContext<T>(name: string): Context<T, Y>;
   /** A child owner that joins cleanup before returning. Plain yield* adds no scope. */
   scoped<T>(work: Work<T, Y>): Operation<T, Y>;
+  /**
+   * Recover a thrown error across native operation/API boundaries, without creating
+   * a scope. Native interruption propagates without recovery. Runtime-specific
+   * combined failures may also propagate without invoking the handler.
+   */
+  catchError<T, R>(
+    work: Work<T, Y>,
+    recover: (error: unknown) => Operation<R, Y>,
+  ): Operation<T | R, Y>;
   /** Register cleanup in the executing scope; no separate child lifetime. */
   ensure(cleanup: Work<void, Y>): Operation<void, Y>;
 }

@@ -132,8 +132,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await Promise.race([storage.peer.waitForRequests(1), stale.result]);
     await start(() => journal.cancellation.request(waiting.pending!.id, "deadline")).result;
     storage.peer.reply("history", { status: 200, body: "page" });
-    await expect(stale.result).rejects.toThrow("revision conflict");
-    await expect(start(() => host.operations.run()).result).resolves.toEqual({
+    await expect(stale.result).resolves.toEqual({
       state: "cancelled",
       reason: "deadline",
       failure: undefined,

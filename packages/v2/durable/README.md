@@ -260,3 +260,11 @@ array only after all siblings become terminal. Parent cancellation takes precede
 loser cleanup failures follow cancellation/reconciliation rules. The default `"all"`
 continues to project all values in declaration order. Neither policy turns delivery
 exceptions into accepted results.
+
+## Pre-delivery conflicts
+
+`JournalConflict` distinguishes obsolete revision writes, participant registration,
+attempt acquisition and initial owned-group acquisition from other failures. Direct
+journal calls still throw. A host may reread current authority and reactivate after
+this error; it must not infer permission to redeliver an effect. Invalid grants,
+settlement rejection, replay divergence and storage failures are not this signal.

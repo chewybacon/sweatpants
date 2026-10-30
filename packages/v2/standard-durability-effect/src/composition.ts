@@ -1,5 +1,5 @@
 import { executeWork } from "./execute.ts";
-import { Context as NativeContext, Effect, Scope } from "effect";
+import { Context as NativeContext, Effect, Scope, Cause } from "effect";
 import {
   composeOperation,
   type Api,
@@ -74,6 +74,16 @@ export function effectProgram<T>(work: Work<T, EffectYield>): Effect.Effect<T> {
 }
 
 export const effect: Composition<EffectYield> = {
+  catchError(work, recover) {
+    return Effect.catchCause(execute(work), (cause) => {
+      const reason = cause.reasons[0];
+      // Never turn interruption or combined operation/cleanup failure into a retry.
+      if (cause.reasons.length !== 1 || !reason || !Cause.isDieReason(reason)) {
+        return Effect.failCause(cause);
+      }
+      return execute(() => recover(reason.defect));
+    });
+  },
   scoped(work) {
     return Effect.flatMap(CompositionFrame, (parent) => {
       check(parent);
