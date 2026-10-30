@@ -1,4 +1,4 @@
-import type { GuestCommand, GuestResponse } from "@sweatpan.ts/execution";
+import type { GuestCommand, GuestResponse } from "./types.ts";
 import type { GuestWireCodec } from "./contracts.ts";
 
 function envelope(codec: GuestWireCodec, bytes: unknown): Record<string, unknown> {

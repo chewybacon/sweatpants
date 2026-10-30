@@ -1,7 +1,8 @@
 import type { Operation, Outcome } from "@standard-durability/core";
-import type { Guest, GuestCommand, GuestResponse, Turn } from "@sweatpan.ts/execution";
+import type { Guest, Turn } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { WorkerGuestOptions } from "./contracts.ts";
+import type { GuestCommand, GuestResponse } from "./types.ts";
 import { decodeResponse } from "./wire.ts";
 
 /**

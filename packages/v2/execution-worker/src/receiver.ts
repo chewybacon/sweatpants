@@ -1,6 +1,6 @@
 import type { Composition } from "@standard-durability/core";
-import type { Guest, GuestResponse, Turn } from "@sweatpan.ts/execution";
-import type { GuestCommandReceiver } from "./types.ts";
+import type { Guest, Turn } from "@sweatpan.ts/execution";
+import type { GuestCommandReceiver, GuestResponse } from "./types.ts";
 
 /** Serialize command advancement; any advancement failure fences this incarnation. */
 export function createGuestCommandReceiver<R, Q, Y, V, E>(

@@ -1,4 +1,4 @@
-import type { GuestCommand, GuestResponse, GuestWork } from "@sweatpan.ts/execution";
+import type { GuestWork } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 export interface Latch<T> {
@@ -39,20 +39,20 @@ export interface WorkerGuestRigOptions<R, Q, Y, V, E> {
   readonly failure?: AbortSignal;
   readonly runtime: Runtime<Y>;
   readonly acquire: GuestWork<R, Q, Y, V, E>;
-  /** Replace an outbound command to simulate stale/duplicate delivery. */
-  readonly command?: (command: GuestCommand<V, E>) => GuestCommand<V, E>;
+  /** Inspect decoded wire data; return replacement data, including malformed frames. */
+  readonly command?: (command: Readonly<Record<string, unknown>>) => unknown;
   /** Undefined drops the reply after execution; replacement simulates correlation faults. */
-  readonly response?: (response: GuestResponse<R, Q>) => GuestResponse<R, Q> | undefined;
+  readonly response?: (response: Readonly<Record<string, unknown>>) => unknown;
 }
 
 /** MessageChannel uses V8 bytes; no live continuation or callback crosses the port. */
 export interface WorkerGuestRig<R, Q, Y, V, E> {
   readonly acquire: GuestWork<R, Q, Y, V, E>;
-  readonly commands: readonly GuestCommand<V, E>[];
-  readonly responses: readonly GuestResponse<R, Q>[];
+  readonly commands: readonly Readonly<Record<string, unknown>>[];
+  readonly responses: readonly Readonly<Record<string, unknown>>[];
   readonly terminations: number;
   /** Inject a malformed peer command; resolves after the server receives the bytes. */
-  inject(command: GuestCommand<V, E>): Promise<void>;
+  inject(incarnation: string, command: unknown): Promise<void>;
   /** Join every simulated remote scope. */
   close(): Promise<void>;
 }

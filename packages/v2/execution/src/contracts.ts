@@ -144,24 +144,3 @@ export interface CheckpointAdapter<R, Q, Y, V, E, Snapshot> {
   capture(guest: Guest<R, Q, Y, V, E>): Operation<Snapshot | undefined, Y>;
   restore(snapshot: Snapshot): Operation<RestoredGuest<R, Q, Y, V, E>, Y>;
 }
-
-/** Ordered command for one already-acquired, pinned Guest incarnation. */
-export type GuestCommand<V = unknown, E = unknown> = {
-  readonly incarnation: string;
-  readonly sequence: number;
-} & (
-  | { readonly action: "start" }
-  | { readonly action: "resume"; readonly outcome: Outcome<V, E> }
-  | { readonly action: "cancel"; readonly reason: string }
-  | { readonly action: "close" }
-);
-
-/** Correlated execution response. Errors are transport diagnostics, never authored Outcomes. */
-export type GuestResponse<R, Q> = {
-  readonly incarnation: string;
-  readonly sequence: number;
-} & (
-  | { readonly kind: "turn"; readonly turn: Turn<R, Q> }
-  | { readonly kind: "closed" }
-  | { readonly kind: "error"; readonly message: string }
-);

@@ -77,8 +77,8 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
         },
       });
     },
-    inject(command) {
-      const channel = ports.get(command.incarnation);
+    inject(incarnation, command) {
+      const channel = ports.get(incarnation);
       if (!channel) {
         return Promise.reject(new Error("Unknown worker incarnation"));
       }

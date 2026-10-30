@@ -5,4 +5,3 @@ export { createExecution } from "./execution.ts";
 export type { ScopeBoundary, ScopeInstruction, LogicalScope } from "./contracts.ts";
 export { createScopedGuest } from "./scoped-guest.ts";
 export type { RestoredGuest, CheckpointAdapter } from "./contracts.ts";
-export type { GuestCommand, GuestResponse } from "./contracts.ts";

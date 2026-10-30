@@ -16,7 +16,7 @@ yield * runtime.composition.ensure(() => guest.close());
 yield * serveGuestWorker(runtime, { incarnation, port, codec, acquire });
 ```
 
-The portable GuestCommand/GuestResponse envelopes live in execution. Commands carry
+Wire commands and responses are internal to this adapter, not execution contracts. Commands carry
 an incarnation ID and increasing sequence number. Start/resume/cancel return Turn;
 close acknowledges physical Guest disposal. Errors are diagnostics, not authored
 Outcome failures. The receiver rejects stale/out-of-order commands before advancement.
@@ -67,3 +67,9 @@ Transport failure closes the internal stream and fences the server. The proxy's 
 failure AbortSignal remains responsible for interrupting uncertain exchanges/finalizers;
 a broadcast Signal does not replace that retained failure condition. No StreamApi is
 needed for this private protocol loop.
+
+The public surface is createWorkerGuest, serveGuestWorker, their options, and the
+port/codec contracts supplied by assembly. Callers consume Guest and Turn from
+execution. Correlation, command envelopes, response diagnostics, decoding and receiver
+state stay internal. Testing faults operate on decoded wire data and may deliberately
+inject malformed values; they do not require public production message types.

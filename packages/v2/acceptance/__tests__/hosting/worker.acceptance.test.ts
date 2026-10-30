@@ -115,7 +115,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return yield* guest.start();
     });
     await Promise.race([advancing, task.result]);
-    await worker.inject({
+    await worker.inject("worker-0", {
       incarnation: "worker-0",
       sequence: 1,
       action: "resume",
@@ -161,12 +161,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           });
         },
         response(response) {
-          if (
-            !dropped &&
-            response.kind === "turn" &&
-            response.turn.kind === "suspended" &&
-            response.turn.request === "approve"
-          ) {
+          if (!dropped && response.kind === "turn" && response.sequence === 1) {
             dropped = true;
             notifyLost();
             return undefined;
@@ -329,7 +324,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         response(response) {
           return mismatch === "incarnation"
             ? { ...response, incarnation: "previous" }
-            : { ...response, sequence: response.sequence + 1 };
+            : { ...response, sequence: Number(response.sequence) + 1 };
         },
       });
       onTestFinished(() => worker.close());
