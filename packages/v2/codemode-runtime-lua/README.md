@@ -66,3 +66,42 @@ failure, direct checkpoint restoration, and a losing owned Lua race child across
 reopen. A protected loser keeps its grant until cleanup answers; an unprotected loser
 rejects stale answers. These are in-process journeys, not crash-safety evidence.
 The VM bytes, provenance and checkpoint format are unchanged.
+
+## Declared effect bindings
+
+Use `defineLuaEffectBindings` when Lua exchanges call declared framework effects:
+
+```ts
+const bindings = defineLuaEffectBindings({ lookup: lookupEffect });
+const evaluator = createLuaEvaluator(runtime, {
+  source,
+  input,
+  loadModule,
+  decodeRequest: bindings.decodeRequest,
+  decodeResult,
+});
+const grant = effects.grant({ lookup: lookupEffect });
+// Host assembly uses grant.handle and installs grant.admission before routing.
+```
+
+```lua
+local result = workflow.effect("lookup-site", { effect = "lookup", input = "topic" })
+assert(result.ok)
+return result.value
+```
+
+Bindings capture alias-to-definition IDs at declaration time. The decoder checks the
+VM envelope and resolves only these aliases; names such as `toString` have no implicit
+meaning. The request must include an `input` field. The VM site remains metadata;
+existing journal positions and logical scope identify exchanges. Changing bindings
+changes the program's replay contract, so pin them with the program identity.
+
+Bindings do not install handlers or grant access. Hosting grants remain explicit,
+including for declarations known to the decoder. Context and successful response
+schemas run through ordinary effect delivery; accepted normalized Outcomes replay
+without re-executing handlers or schemas. Failures remain authored Outcome data.
+The evaluator's generic decodeRequest option remains available for other protocols.
+
+Acceptance covers alias resolution through SQLite reopen, replay and checkpoints,
+as well as rejected unknown/ungranted names, malformed envelopes and invalid schema
+values on both runtimes. This is local assembly evidence, not remote authentication.

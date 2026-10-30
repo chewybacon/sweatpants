@@ -1,10 +1,7 @@
+import type { Transport } from "@sweatpan.ts/connection";
 import { MessageChannel } from "node:worker_threads";
 import { serialize, deserialize } from "node:v8";
-import {
-  createWorkerGuest,
-  serveGuestWorker,
-  type GuestMessagePort,
-} from "@sweatpan.ts/execution-worker";
+import { createWorkerGuest, serveGuestWorker } from "@sweatpan.ts/execution-worker";
 import type { RuntimeExecution } from "@sweatpan.ts/runtime";
 import type { WorkerGuestRig, WorkerGuestRigOptions } from "./contracts.ts";
 
@@ -29,7 +26,7 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
       const channel = new MessageChannel();
       ports.set(incarnation, channel);
       const { port1, port2 } = channel;
-      const serverPort: GuestMessagePort = {
+      const serverPort: Transport = {
         addEventListener: port2.addEventListener.bind(port2),
         removeEventListener: port2.removeEventListener.bind(port2),
         start: () => port2.start(),
@@ -43,15 +40,20 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
           }
         },
       };
-      const clientPort: GuestMessagePort = {
+      const clientPort: Transport = {
         addEventListener: port1.addEventListener.bind(port1),
         removeEventListener: port1.removeEventListener.bind(port1),
         start: () => port1.start(),
         close: () => port1.close(),
         postMessage(bytes) {
-          const command = deserialize(bytes) as WorkerGuestRig<R, Q, Y, V, E>["commands"][number];
+          const frame = deserialize(bytes) as {
+            value: WorkerGuestRig<R, Q, Y, V, E>["commands"][number];
+          };
+          const command = frame.value;
           commands.push(command);
-          port1.postMessage(codec.encode(options.command ? options.command(command) : command));
+          port1.postMessage(
+            codec.encode({ ...frame, value: options.command ? options.command(command) : command }),
+          );
         },
       };
       const task = options.runtime.start(() =>
@@ -64,7 +66,7 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
       );
       tasks.push(task);
       void task.result.catch(() => undefined);
-      return createWorkerGuest<R, Q, Y, V, E>(options.runtime, {
+      return yield* createWorkerGuest<R, Q, Y, V, E>(options.runtime, {
         incarnation,
         port: clientPort,
         codec,

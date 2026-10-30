@@ -1,12 +1,18 @@
-import { readJournal } from "@sweatpan.ts/testing";
+import {
+  createHostedRecovery as createRecovery,
+  readJournal,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
-import { createRecovery, type ChildLink, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type ChildLink, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import type { OwnedChild, OwnedJournal } from "@sweatpan.ts/durable";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -72,7 +78,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     function* runChild(
       child: OwnedChild<{ approval: string }, string, string, string, unknown, Y>,
     ) {
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "child-recovery",
         program: "child",
         matches: isDeepStrictEqual,
@@ -111,7 +117,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     function run() {
       const generation = assembly;
       return start(function* () {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "parent-recovery",
           program: "parent",
           matches: isDeepStrictEqual,
@@ -515,7 +521,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         depth: number,
         journal: OwnedJournal<string, string, string, string, unknown, Y>,
       ): Operation<HostedResult<string, string>, Y> {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: `recovery:${depth}`,
           program: `level:${depth}`,
           matches: isDeepStrictEqual,

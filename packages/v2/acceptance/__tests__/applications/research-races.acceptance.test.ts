@@ -1,3 +1,8 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -9,7 +14,7 @@ import {
   type Branch,
   type CapabilityRequest,
 } from "@sweatpan.ts/core";
-import { createRecovery, type OwnedJournal, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedJournal, type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createScopedGuest,
   type LogicalScope,
@@ -24,7 +29,7 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const fetchSource = defineEffect({
@@ -137,7 +142,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 release,
               });
               const recovery = createRecovery<unknown, CapabilityRequest, Y, unknown, string>(
-                runtime.composition,
+                runtime,
                 {
                   name: `recovery:${journal.id}`,
                   program,

@@ -1,6 +1,7 @@
 # Serialized Guest execution
 
-`createWorkerGuest(runtime, options)` implements Guest over a dedicated MessagePort.
+`yield* createWorkerGuest(runtime, options)` acquires a Guest proxy and its connection
+in the invoking scope.
 `serveGuestWorker(runtime, options)` acquires and advances the actual Guest in one
 remote native scope. Worker creation, program selection and input admission remain
 assembly responsibilities. Transfer a dedicated port to a worker and run the server
@@ -8,7 +9,7 @@ there; neither a body closure nor host grants are sent through this protocol.
 
 ```ts
 // Host: own the proxy in the acquisition scope.
-const guest = createWorkerGuest(runtime, { incarnation, port, codec, failure, terminate });
+const guest = yield * createWorkerGuest(runtime, { incarnation, port, codec, failure, terminate });
 yield * runtime.composition.ensure(() => guest.close());
 // Supply this acquisition to ordinary journal recovery/hosting.
 
@@ -35,7 +36,7 @@ proxy. No command is retried on that incarnation. Its owner closes it, forcibly 
 remote physical shutdown via terminate(), then reacquires for journal replay. A lost
 resume response may mean the remote computation advanced; it does not authorize
 another effect delivery. This adapter does not add automatic host retries or a second
-command log. Checkpoint capture/restore over the channel is deferred.
+command log. Checkpoint capture/restore uses the same connection when the evaluator supplies it.
 
 Normal close requests disposal and waits for acknowledgement, then invokes terminate
 as the final physical resource barrier. A poisoned proxy skips the uncertain channel
@@ -59,17 +60,77 @@ and protected cleanup across reopen, disposal acknowledgement and joined remote
 scope cleanup. This establishes serialized protocol behavior, not OS-process crash
 survival, remote authentication, or worker deployment integration.
 
-The server consumes MessagePort callbacks through a scoped runtime Signal subscription.
-Subscription is established before listeners attach, and scope cleanup removes listeners
-and releases queued messages. Arrival-time admission owns one outstanding-command slot
-through response publication, so stream buffering cannot admit overlapping commands.
-Transport failure closes the internal stream and fences the server. The proxy's separate
-failure AbortSignal remains responsible for interrupting uncertain exchanges/finalizers;
-a broadcast Signal does not replace that retained failure condition. No StreamApi is
-needed for this private protocol loop.
+Both endpoints use @sweatpan.ts/connection for transport listeners, stream ingress,
+request/reply correlation, decoding of connection frames and pending-reply failure.
+The server admits at most one unanswered incoming request, including queued requests;
+the proxy rejects incoming calls. Guest incarnation/sequence checks remain local to
+this adapter. A successful advancement replies with Turn directly; successful close
+replies with undefined. Delivery exceptions use the connection's diagnostic reply.
+There is no second GuestResponse envelope or correlation layer in the reply.
 
-The public surface is createWorkerGuest, serveGuestWorker, their options, and the
-port/codec contracts supplied by assembly. Callers consume Guest and Turn from
-execution. Correlation, command envelopes, response diagnostics, decoding and receiver
-state stay internal. Testing faults operate on decoded wire data and may deliberately
-inject malformed values; they do not require public production message types.
+The public surface includes the proxy/server and local/worker assembly factories with their options. Assembly
+imports Transport and WireCodec from connection. Callers consume Guest and Turn from
+execution. Guest commands and receiver state stay internal. Testing faults operate
+on wire data and may deliberately inject malformed values. Wire compatibility with
+the previous experimental adapter is intentionally not preserved.
+
+Acquisition registers the termination barrier before opening the connection, so a
+failed acquisition also joins the remote resources. Normal owners still register
+Guest.close to request acknowledged disposal before scope exit. Termination is joined
+once, including after connection failure or unsuccessful acquisition.
+
+## Default local placement and checkpoints
+
+`createLocalExecution(runtime, { acquire, codec, checkpoints? })` is the standard
+in-process hosted assembly. It uses createLocalTransport and exactly the same connection,
+proxy and receiver as worker placement. Bytes are copied on send and delivered on a
+microtask. The codec still serializes application values. The server has its own native
+scope; it does not implicitly inherit host handlers, contexts or authority.
+
+```ts
+const local = createLocalExecution(runtime, {
+  acquire: evaluator.acquire,
+  checkpoints: evaluator.checkpoints,
+  codec,
+});
+const recovery = createRecovery(runtime.composition, {
+  name,
+  program,
+  acquire: local.acquire,
+  matches,
+});
+if (local.checkpoints) {
+  yield *
+    recovery.around(
+      createCheckpointMiddleware({
+        program,
+        execution: recovery.execution,
+        adapter: local.checkpoints,
+        matches,
+      }),
+    );
+}
+```
+
+`createWorkerExecution(runtime, { open, checkpointFormat })` supplies the same acquire
+and checkpoint adapter over caller-provided remote placement. Every acquisition/restore
+calls open for fresh transport and incarnation. Its adapter recognizes only its own
+proxies; capturing an unrelated Guest returns undefined.
+
+Capture and restore are internal protocol commands. The server checks the pinned
+adapter format, then invokes the evaluator's checkpoint capability. It lazily acquires
+on start or restores on the first restore command: restoration never starts a fresh
+program or overwrites a live Guest. Capture returns serialized state; restore returns
+the restored Turn. The existing recovery middleware validates the journal anchor and
+reconciles accepted history after that boundary. Unsupported saved formats still select
+ordinary replay before acquisition; supported restore failures propagate. Cancellation
+continues to select replay according to existing recovery policy.
+
+Checkpoint policy remains middleware; representation and restoration remain evaluator
+capabilities. Connection and transport do not know journal positions or checkpoint policy.
+
+For native tool bodies whose recorded callbacks are installed locally, invoke the
+original tool acquisition in the host scope first, then supply that Guest to local
+placement. Retain that host scope through delivery. This intentionally local binding
+assembly does not make callback closures deployable across processes. A remote placement
+must assemble its own pinned program/capabilities; no closure crosses the byte transport.

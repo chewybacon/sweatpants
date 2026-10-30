@@ -1,12 +1,16 @@
+import {
+  createHostedRecovery as createRecovery,
+  createJournalStorageRig,
+} from "@sweatpan.ts/testing";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { isDeepStrictEqual } from "node:util";
 import { composeOperation, type Work, type Operation } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createRecovery, type TransactionInstruction } from "@sweatpan.ts/durable";
+import { type TransactionInstruction } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
-import { createJournalStorageRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -21,7 +25,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       program: "transaction-client",
       equals: isDeepStrictEqual,
     });
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "instruction-recovery",
       program: "transaction-client",
       matches: isDeepStrictEqual,

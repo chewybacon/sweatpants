@@ -1,10 +1,15 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest, type EffectDefinition } from "@sweatpan.ts/core";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
@@ -13,7 +18,7 @@ import {
 } from "@sweatpan.ts/hosting";
 import { defineTool, type ToolDefinition } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 // Provisional authored sugar and routing remain local to this executable tracer.
@@ -180,7 +185,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const current = runtime.composition.createContext<ReturnType<typeof grants>>(
             `grant:${tool.id}`,
           );
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: `recover:${tool.id}`,
             program: tool.id,
             matches: isDeepStrictEqual,
@@ -243,7 +248,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         yield* effects.install(read);
         yield* effects.install(sample);
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "review-recovery",
           program: review.id,
           matches: isDeepStrictEqual,

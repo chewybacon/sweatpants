@@ -1,14 +1,11 @@
 import type { Operation } from "@standard-durability/core";
+import { createConnection } from "@sweatpan.ts/connection";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { GuestWorkerOptions } from "./contracts.ts";
 import { createGuestCommandReceiver } from "./receiver.ts";
 import { decodeCommand } from "./wire.ts";
 
-/**
- * Own an acquired Guest and process serialized commands in this native scope.
- * Normal close acknowledges physical disposal. Native shutdown also disposes without
- * logical cancellation. Dedicated channel; transport/decoding failure ends this server.
- */
+/** Own a pinned Guest and serve sequential advancement over a shared connection. */
 export function* serveGuestWorker<R, Q, Y, V, E>(
   runtime: Runtime<Y>,
   options: GuestWorkerOptions<R, Q, Y, V, E>,
@@ -16,51 +13,35 @@ export function* serveGuestWorker<R, Q, Y, V, E>(
   yield* runtime.composition.ensure(function* () {
     options.port.close();
   });
-  const guest = yield* options.acquire();
-  yield* runtime.composition.ensure(() => guest.close());
-  const receiver = createGuestCommandReceiver(runtime.composition, options.incarnation, guest);
-  const incoming = runtime.createSignal<unknown>();
-  // Subscribe before attaching callbacks so synchronous arrival cannot be lost.
-  const subscription = yield* incoming;
-  let failed = false;
-  let outstanding = false;
-  const failure = () => {
-    failed = true;
-    incoming.close();
-  };
-  const message = (event: unknown) => {
-    if (failed) {
-      return;
-    }
-    if (!event || typeof event !== "object" || !("data" in event) || outstanding) {
-      failure();
-      return;
-    }
-    // Admission precedes buffering; a queued or executing command occupies the slot.
-    outstanding = true;
-    incoming.send(event.data);
-  };
-  options.port.addEventListener("message", message);
-  options.port.addEventListener("messageerror", failure);
-  yield* runtime.composition.ensure(function* () {
-    options.port.removeEventListener("message", message);
-    options.port.removeEventListener("messageerror", failure);
+  const receiver = yield* createGuestCommandReceiver(runtime.composition, options);
+  const connection = yield* createConnection(runtime, {
+    transport: options.port,
+    codec: options.codec,
+    failure: new AbortController().signal,
+    maxIncoming: 1,
   });
-  options.port.start();
   while (true) {
-    const item = yield* subscription.next();
-    if (failed || item.done) {
-      throw new Error("Guest command channel failed");
+    const incoming = yield* connection.receive();
+    const result = yield* runtime.composition.catchError(
+      function* () {
+        const command = decodeCommand<V, E>(incoming.value);
+        const response = yield* receiver.receive(command);
+        return { ok: true as const, response, closed: command.action === "close" };
+      },
+      function* (error) {
+        return {
+          ok: false as const,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      },
+    );
+    if (!result.ok) {
+      yield* incoming.reject(result.message);
+      return;
     }
-    const command = decodeCommand<V, E>(options.codec, item.value);
-    const response = yield* receiver.receive(command);
-    if (failed) {
-      throw new Error("Guest command channel failed");
-    }
-    // eslint-disable-next-line unicorn/require-post-message-target-origin -- Dedicated MessagePort, not Window.postMessage.
-    options.port.postMessage(options.codec.encode(response));
-    outstanding = false;
-    if (response.kind === "closed" || response.kind === "error") {
+    // Publication failures are connection failures; never attempt a second reply.
+    yield* incoming.respond(result.response);
+    if (result.closed) {
       return;
     }
   }

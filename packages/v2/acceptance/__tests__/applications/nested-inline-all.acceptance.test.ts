@@ -1,9 +1,14 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, it, onTestFinished } from "vitest";
 import type { Operation, Work } from "@standard-durability/core";
 import { defineEffect, type All, type Branch, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createRecovery, type OwnedJournal, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedJournal, type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createScopedGuest,
   type LogicalScope,
@@ -17,7 +22,7 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const question = defineEffect({
@@ -108,7 +113,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             ): Operation<HostedResult<unknown, CapabilityRequest>, Y> {
               const grant = effects.grant({ question, all: owned.effect });
               const recovery = createRecovery<unknown, CapabilityRequest, Y, unknown, string>(
-                runtime.composition,
+                runtime,
                 {
                   name: `recover:${journal.id}`,
                   program,

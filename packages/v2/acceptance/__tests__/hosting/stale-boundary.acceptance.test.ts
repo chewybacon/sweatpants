@@ -1,11 +1,15 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
 import type { Work } from "@standard-durability/core";
-import { activateJournal, createRecovery, JournalConflict } from "@sweatpan.ts/durable";
+import { activateJournal, JournalConflict } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installGuestRetention } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -28,7 +32,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let conflicted = false;
         let deliveries = 0;
         const result = await start(function* () {
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "stale-recovery",
             program: "stale:v1",
             matches: isDeepStrictEqual,
@@ -108,7 +112,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const journal = store.open();
         let deliveries = 0;
         const run = start(function* () {
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "delivery-recovery",
             program: "delivery:v1",
             matches: isDeepStrictEqual,

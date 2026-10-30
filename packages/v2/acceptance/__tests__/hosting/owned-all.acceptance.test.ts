@@ -1,10 +1,15 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Work } from "@standard-durability/core";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -51,7 +56,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let parentWait: ResolutionGrant | undefined;
     function* runChild(child: Child): Operation<boolean, Y> {
       const label = child.link.input as string;
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: `all-child-recovery:${label}`,
         program: child.link.program,
         matches: isDeepStrictEqual,
@@ -128,7 +133,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     function run() {
       return start(function* () {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "all-parent-recovery",
           program: "research-parent",
           matches: isDeepStrictEqual,

@@ -15,6 +15,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => task.cancel());
     return task;
   }
+  it(`${runtime.name}: failed connection acquisition still joins worker termination`, async () => {
+    const failure = new AbortController();
+    failure.abort(new Error("already disconnected"));
+    const worker = createWorkerGuestRig<unknown, string, Y>({
+      runtime,
+      failure: failure.signal,
+      *acquire() {
+        return createScopedGuest(function* () {
+          yield "request";
+        });
+      },
+    });
+    onTestFinished(() => worker.close());
+    await expect(start(worker.acquire).result).rejects.toThrow("already disconnected");
+    expect(worker.terminations).toBe(1);
+    expect(worker.commands).toEqual([]);
+  });
+
   it(`${runtime.name}: independent failure releases a lost close acknowledgement during finalization`, async () => {
     const failure = new AbortController();
     let dropped!: () => void;
@@ -38,7 +56,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
       },
       response(response) {
-        if (response.kind === "closed") {
+        if (response.ok === true && response.value === undefined) {
           dropped();
           return undefined;
         }
@@ -116,10 +134,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     await Promise.race([advancing, task.result]);
     await worker.inject("worker-0", {
-      incarnation: "worker-0",
-      sequence: 1,
-      action: "resume",
-      outcome: { ok: true, value: "early" },
+      kind: "request",
+      id: 1,
+      value: {
+        incarnation: "worker-0",
+        sequence: 1,
+        action: "resume",
+        outcome: { ok: true, value: "early" },
+      },
     });
     release();
     await serverClosed;
@@ -161,7 +183,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           });
         },
         response(response) {
-          if (!dropped && response.kind === "turn" && response.sequence === 1) {
+          if (!dropped && response.ok === true && response.id === 1) {
             dropped = true;
             notifyLost();
             return undefined;
@@ -270,7 +292,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(deliveries).toEqual(["reserve"]);
       expect(physicalCloses).toBe(worker.terminations);
       expect(
-        worker.responses.filter((response) => response.kind === "closed").length,
+        worker.responses.filter((response) => response.ok === true && response.value === undefined)
+          .length,
       ).toBeGreaterThan(0);
       const saved = await start(() => readJournal(third.journal)).result;
       expect(saved.history.filter((entry) => entry.request === "reserve")).toHaveLength(1);
@@ -300,15 +323,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(yield* guest.start()).toMatchObject({ kind: "suspended", request: "first" });
         return yield* guest.resume({ ok: true, value: "reply" });
       }).result,
-    ).rejects.toThrow("Mismatched Guest response");
+    ).rejects.toThrow("Stale or unavailable Guest command");
     expect(advanced).toBe(1);
     expect(worker.responses[1]).toMatchObject({
-      kind: "error",
-      message: "Stale or unavailable Guest command",
+      kind: "response",
+      ok: false,
+      value: "Stale or unavailable Guest command",
     });
     expect(worker.terminations).toBe(1);
   });
-  for (const mismatch of ["incarnation", "sequence"] as const) {
+  for (const mismatch of ["id", "kind"] as const) {
     it(`${runtime.name}: mismatched ${mismatch} response fences the proxy without logical cleanup`, async () => {
       let cleanups = 0;
       const worker = createWorkerGuestRig<unknown, string, Y>({
@@ -322,9 +346,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           });
         },
         response(response) {
-          return mismatch === "incarnation"
-            ? { ...response, incarnation: "previous" }
-            : { ...response, sequence: Number(response.sequence) + 1 };
+          return mismatch === "id"
+            ? { ...response, id: Number(response.id) + 1 }
+            : { ...response, kind: "invalid" };
         },
       });
       onTestFinished(() => worker.close());
@@ -335,7 +359,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* runtime.composition.catchError(
             () => guest.start(),
             function* (error) {
-              expect(String(error)).toContain("Mismatched Guest response");
+              expect(String(error)).toContain(
+                mismatch === "id"
+                  ? "Mismatched connection response"
+                  : "Invalid connection frame kind",
+              );
             },
           );
           return yield* guest.start();

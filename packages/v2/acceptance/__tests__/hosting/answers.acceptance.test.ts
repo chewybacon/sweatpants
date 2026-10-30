@@ -1,9 +1,14 @@
+import {
+  createHostedRecovery as createRecovery,
+  createLatch,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createRecovery, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
@@ -12,7 +17,7 @@ import {
   type Hosting,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createLatch, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -87,23 +92,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const journal = store.open();
         const effects = createEffectCapabilities(runtime, "answers");
         const granted = effects.grant({ pick });
-        const recovery = createRecovery<unknown, CapabilityRequest, Y, unknown, string>(
-          runtime.composition,
-          {
-            name: "answers-recovery",
-            program: "participant-answer",
-            matches: isDeepStrictEqual,
-            *acquire() {
-              return createScopedGuest(function* () {
-                const result = yield* granted.capabilities.pick("Which cell?");
-                if (result.ok) {
-                  expectTypeOf(result.value).toEqualTypeOf<number>();
-                }
-                return result;
-              });
-            },
+        const recovery = createRecovery<unknown, CapabilityRequest, Y, unknown, string>(runtime, {
+          name: "answers-recovery",
+          program: "participant-answer",
+          matches: isDeepStrictEqual,
+          *acquire() {
+            return createScopedGuest(function* () {
+              const result = yield* granted.capabilities.pick("Which cell?");
+              if (result.ok) {
+                expectTypeOf(result.value).toEqualTypeOf<number>();
+              }
+              return result;
+            });
           },
-        );
+        });
         const host: Hosting<unknown, CapabilityRequest, unknown, string, Y> = createHosting(
           runtime.composition,
           {

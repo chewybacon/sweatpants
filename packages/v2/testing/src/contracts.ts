@@ -1,3 +1,4 @@
+import type { Transport, WireCodec } from "@sweatpan.ts/connection";
 import type { GuestWork } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
@@ -72,4 +73,14 @@ export interface DuplexExchangeRig<L, LR, R, RR> {
   readonly requests: readonly { from: "left" | "right"; id: number; value: unknown }[];
   /** Abort both handlers, reject outstanding exchanges, close ports, and join handlers. */
   close(): Promise<void>;
+}
+
+/** Two in-process byte endpoints and assembly-controlled failure notification. */
+export interface TransportRig {
+  readonly left: Transport;
+  readonly right: Transport;
+  readonly codec: WireCodec;
+  readonly failure: AbortSignal;
+  fail(error: unknown): void;
+  close(): void;
 }

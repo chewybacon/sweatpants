@@ -1,3 +1,10 @@
+import {
+  createHostedRecovery as createRecovery,
+  createDuplexExchangeRig,
+  createSqliteJournalRig,
+  readJournal,
+  type DuplexExchangeRig,
+} from "@sweatpan.ts/testing";
 import { serialize, deserialize } from "node:v8";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
@@ -5,18 +12,13 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Outcome, Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createRecovery, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createEffectCapabilities,
   createHosting,
   installEffectAnswers,
 } from "@sweatpan.ts/hosting";
-import {
-  createDuplexExchangeRig,
-  createSqliteJournalRig,
-  readJournal,
-  type DuplexExchangeRig,
-} from "@sweatpan.ts/testing";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -77,7 +79,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             const journal = store.open();
             const effects = createEffectCapabilities(runtime, "researcher-grants");
             const grant = effects.grant(permitted ? { elicit } : {});
-            const recovery = createRecovery(runtime.composition, {
+            const recovery = createRecovery(runtime, {
               name: "researcher-recovery",
               program: "researcher:reverse",
               matches: isDeepStrictEqual,
@@ -170,8 +172,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             Callback,
             Outcome<unknown, unknown>,
             Command,
-            Step
-          >({
+            Step,
+            Y
+          >(runtime, {
             async left(callback, signal) {
               // Parent invocation is still outstanding while its reverse handler executes.
               expect(connection.left.pending).toBe(1);

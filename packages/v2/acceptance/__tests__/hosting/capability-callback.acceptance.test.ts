@@ -1,13 +1,18 @@
+import {
+  createHostedRecovery as createRecovery,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Work } from "@standard-durability/core";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, createEffectCapabilities } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string, T> {
@@ -83,7 +88,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (!child) {
           throw new Error("Callback has not been acquired");
         }
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "callback-recovery",
           program: "clarify",
           matches: isDeepStrictEqual,
@@ -114,7 +119,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function run() {
         return start(function* () {
           yield* effects.install(notify);
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "researcher-recovery",
             program: "researcher",
             matches: isDeepStrictEqual,

@@ -1,8 +1,13 @@
+import {
+  createHostedRecovery as createRecovery,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { type CapabilityRequest } from "@sweatpan.ts/core";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Outcome, Work, Operation } from "@standard-durability/core";
-import { createRecovery, type Attempts } from "@sweatpan.ts/durable";
+import { type Attempts } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createHosting,
@@ -11,7 +16,7 @@ import {
   type Hosting,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -47,7 +52,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function acquireContext() {
           return effects.grant({}, { record: true });
         }
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "invalid-record-recovery",
           program: "invalid-async-record",
           matches: isDeepStrictEqual,
@@ -153,7 +158,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         return effects.grant({}, { record: true });
       }
       const current = runtime.composition.createContext<ReturnType<typeof fresh>>("record-grant");
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "cancel-record-recovery",
         program: "cancel-record-cleanup",
         matches: isDeepStrictEqual,
@@ -269,7 +274,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function acquireContext() {
           return effects.grant({}, { record: true });
         }
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "async-record",
           program: "async-record",
           matches: isDeepStrictEqual,
@@ -420,7 +425,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function acquireContext() {
           return effects.grant({}, { record: true });
         }
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "record-loop",
           program: "record-loop",
           matches: isDeepStrictEqual,
@@ -530,7 +535,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               ? { ok: false as const, error: { code: "empty-deck" } }
               : { ok: true as const, value: rollCalls };
           }
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "record-recovery",
             program: "recorded-draw",
             matches: isDeepStrictEqual,

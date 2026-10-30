@@ -1,16 +1,16 @@
+import {
+  createHostedRecovery as createRecovery,
+  createJournalStorageRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { expect, it, onTestFinished } from "vitest";
 import { isDeepStrictEqual } from "node:util";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import {
-  activateJournal,
-  createJournalBinding,
-  createRecovery,
-  type OwnedJournal,
-} from "@sweatpan.ts/durable";
+import { activateJournal, createJournalBinding, type OwnedJournal } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
-import { createJournalStorageRig, readJournal } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -27,7 +27,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       storage.backend,
       storage.id,
     );
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "parent-recovery",
       program: "parent",
       matches: isDeepStrictEqual,
@@ -52,7 +52,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
     }
     function complete(child: OwnedJournal<string, string, string, string, unknown, Y>) {
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "child-recovery",
         program: "child",
         matches: isDeepStrictEqual,

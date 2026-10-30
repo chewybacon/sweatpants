@@ -1,13 +1,16 @@
-import { readJournal } from "@sweatpan.ts/testing";
+import {
+  createHostedRecovery as createRecovery,
+  readJournal,
+  createProtocolRig,
+  createNotificationRig,
+  createLatch,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Work, Operation, Outcome } from "@standard-durability/core";
-import {
-  createRecovery,
-  type AttemptGrant,
-  type Attempts,
-  type RetrySafety,
-} from "@sweatpan.ts/durable";
+import { type AttemptGrant, type Attempts, type RetrySafety } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createHosting,
@@ -15,12 +18,7 @@ import {
   installAttemptCancellation,
   type HostedResult,
 } from "@sweatpan.ts/hosting";
-import {
-  createProtocolRig,
-  createNotificationRig,
-  createLatch,
-  createSqliteJournalRig,
-} from "@sweatpan.ts/testing";
+
 import type { Serializer } from "@sweatpan.ts/storage";
 import { v8Serializer } from "@sweatpan.ts/storage-sqlite";
 import type { Runtime } from "@sweatpan.ts/runtime";
@@ -105,7 +103,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
 
       let physicalDisposals = 0;
       function host(attempts: Attempts<string, string, string, Y> = journal.attempts) {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "reservation-recovery",
           program: "reservation",
           matches: isDeepStrictEqual,

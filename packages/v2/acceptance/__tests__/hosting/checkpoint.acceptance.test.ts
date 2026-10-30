@@ -1,6 +1,6 @@
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { readJournal } from "@sweatpan.ts/testing";
+import { readJournal, createHostedExecution } from "@sweatpan.ts/testing";
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -16,7 +16,11 @@ import {
   createEffectCapabilities,
   type HostedResult,
 } from "@sweatpan.ts/hosting";
-import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
+import {
+  createLuaEvaluator,
+  defineLuaEffectBindings,
+  luaWasmUrl,
+} from "@sweatpan.ts/codemode-runtime-lua";
 import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -27,13 +31,6 @@ function record(value: unknown): Record<string, unknown> {
     throw new Error("Expected record");
   }
   return value as Record<string, unknown>;
-}
-function decodeRequest(value: unknown): CapabilityRequest {
-  const request = record(record(value).request);
-  if (typeof request.effect !== "string") {
-    throw new Error("Expected effect key");
-  }
-  return { effect: request.effect, input: request.input };
 }
 function decodeResult(value: unknown) {
   const result = record(value);
@@ -62,7 +59,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       it(`${runtime.name} ${lifetime}: reopens named Lua effects through grants after acceptance with fresh delivery scopes (${mode})`, async () => {
         const store = createSqliteJournalRig<
           ReturnType<typeof decodeResult>,
-          ReturnType<typeof decodeRequest>,
+          CapabilityRequest,
           unknown,
           string,
           unknown,
@@ -108,7 +105,7 @@ assert(not approval.ok)
 return { hold = hold.value.text, approval = approval.error.code }
 `,
             input: null,
-            decodeRequest,
+            decodeRequest: (value) => bindings.decodeRequest(value),
             decodeResult,
             loadModule() {
               commands++;
@@ -117,11 +114,16 @@ return { hold = hold.value.text, approval = approval.error.code }
               ));
             },
           });
+          const placement = createHostedExecution(runtime, evaluator);
+          const checkpointAdapter = placement.checkpoints;
+          if (!checkpointAdapter) {
+            throw new Error("Expected checkpoint capability");
+          }
           const recovery = createRecovery(runtime.composition, {
             name: "booking-recovery",
             program: "booking",
             matches: isDeepStrictEqual,
-            acquire: evaluator.acquire,
+            acquire: placement.acquire,
           });
           const attempts: typeof journal.attempts = {
             begin: journal.attempts.begin,
@@ -139,7 +141,7 @@ return { hold = hold.value.text, approval = approval.error.code }
           function declaration(binding: string) {
             return defineEffect(
               {
-                key: binding,
+                key: `booking:${binding}`,
                 context: textSchema((hold) => {
                   contextParses++;
                   return { binding, hold };
@@ -176,6 +178,7 @@ return { hold = hold.value.text, approval = approval.error.code }
           }
           const reserve = declaration("reserve");
           const approve = declaration("approve");
+          const bindings = defineLuaEffectBindings({ reserve, approve });
           const ctx = effects.grant({ reserve, approve });
           const host = createHosting(runtime.composition, {
             name: "booking-host",
@@ -224,15 +227,15 @@ return { hold = hold.value.text, approval = approval.error.code }
                   execution: recovery.execution,
                   program: "booking",
                   adapter: {
-                    ...evaluator.checkpoints,
+                    ...checkpointAdapter,
                     // Simulate a checkpoint format retired between host assemblies.
                     format:
                       stopAfterFirst && mode === "fallback"
                         ? "retired-lua-format"
-                        : evaluator.checkpoints.format,
+                        : checkpointAdapter.format,
                     *restore(state) {
                       restores++;
-                      return yield* evaluator.checkpoints.restore(state);
+                      return yield* checkpointAdapter.restore(state);
                     },
                   },
                   matches: isDeepStrictEqual,
@@ -272,7 +275,7 @@ return { hold = hold.value.text, approval = approval.error.code }
         peer.reply("approve", { status: 200, body: "declined" });
         const result = await execution.result;
         expectTypeOf(result).toEqualTypeOf<
-          HostedResult<{ hold: string; approval: string }, ReturnType<typeof decodeRequest>>
+          HostedResult<{ hold: string; approval: string }, CapabilityRequest>
         >();
         expect(result).toEqual({
           state: "completed",

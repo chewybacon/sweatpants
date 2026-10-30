@@ -1,17 +1,22 @@
+import {
+  createHostedRecovery as createRecovery,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { isDeepStrictEqual } from "node:util";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createRecovery, type Attempts } from "@sweatpan.ts/durable";
+import { type Attempts } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createHosting,
   installGuestRetention,
   createEffectCapabilities,
 } from "@sweatpan.ts/hosting";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 // Real Standard Schema transformations, kept local to the acceptance application.
@@ -65,7 +70,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       >({ program: "shared", equals: isDeepStrictEqual });
       onTestFinished(() => store.close());
       const journal = store.open();
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "shared-recovery",
         program: "shared",
         matches: isDeepStrictEqual,
@@ -165,7 +170,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function assemble(delay: boolean) {
         const journal = store.open();
         const grant = effects.grant({ lookup, elicit });
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "research-recovery",
           program: "research",
           matches: isDeepStrictEqual,
@@ -291,7 +296,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       const grant = effects.grant({ market: chooseMarket, count: chooseCount });
       const journal = store.open();
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "declared-recovery",
         program: "declared-exchanges",
         matches: isDeepStrictEqual,
@@ -409,7 +414,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         return effects.grant({ choose, read }, { record: true });
       }
       const journal = store.open();
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "file-recovery",
         program: "choose-file",
         matches: isDeepStrictEqual,
@@ -548,7 +553,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         );
         const ctx = effects.grant({ lookup });
         const journal = store.open();
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "named-outcome-recovery",
           program: "named-outcome",
           matches: isDeepStrictEqual,
@@ -638,7 +643,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       onTestFinished(() => store.close());
       const journal = store.open();
-      const recovery = createRecovery(runtime.composition, {
+      const recovery = createRecovery(runtime, {
         name: "forged-recovery",
         program: "forged",
         matches: isDeepStrictEqual,

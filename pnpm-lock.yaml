@@ -2749,6 +2749,9 @@ importers:
       '@sweatpan.ts/codemode-runtime-lua':
         specifier: workspace:*
         version: link:../codemode-runtime-lua
+      '@sweatpan.ts/connection':
+        specifier: workspace:*
+        version: link:../connection
       '@sweatpan.ts/core':
         specifier: workspace:*
         version: link:../core
@@ -2857,6 +2860,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
       '@sweatpan.ts/execution':
         specifier: workspace:*
         version: link:../execution
@@ -2869,6 +2875,19 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode-runtime-scheme:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/v2/connection:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2957,6 +2976,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/connection':
+        specifier: workspace:*
+        version: link:../connection
       '@sweatpan.ts/execution':
         specifier: workspace:*
         version: link:../execution
@@ -3201,6 +3223,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/connection':
+        specifier: workspace:*
+        version: link:../connection
       '@sweatpan.ts/durable':
         specifier: workspace:*
         version: link:../durable

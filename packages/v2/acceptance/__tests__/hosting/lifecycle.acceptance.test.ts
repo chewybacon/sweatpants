@@ -1,13 +1,19 @@
-import { readJournal } from "@sweatpan.ts/testing";
+import {
+  createHostedRecovery as createRecovery,
+  readJournal,
+  createLatch,
+  createProtocolRig,
+} from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import type { Work } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createRecovery } from "@sweatpan.ts/durable";
+
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { describe, expect, it } from "vitest";
-import { createLatch, createProtocolRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -18,7 +24,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       program: "resource-session",
       equals: isDeepStrictEqual,
     });
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "resource-recovery",
       program: "resource-session",
       matches: isDeepStrictEqual,

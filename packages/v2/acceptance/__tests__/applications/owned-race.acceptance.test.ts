@@ -1,3 +1,8 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -8,7 +13,7 @@ import {
   type LogicalScope,
   type ScopeInstruction,
 } from "@sweatpan.ts/execution";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createEffectCapabilities,
   createHosting,
@@ -16,7 +21,7 @@ import {
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const answer = defineEffect({ key: "race.answer", context: z.string(), response: z.string() });
@@ -57,35 +62,32 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           "race.group",
         );
         const grant = effects.grant({ race: owned.effect, cleanup });
-        const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
-          runtime.composition,
-          {
-            name: "race-parent-recovery",
-            program: "race-parent:v1",
-            matches: isDeepStrictEqual,
-            *acquire() {
-              const race = yield* owned.acquire();
-              return createScopedGuest(function* (scope) {
-                yield* scope.ensure(function* () {
-                  yield* grant.capabilities.cleanup("parent");
-                });
-                function branch(index: number) {
-                  return function* (ctx: Context) {
-                    yield* ctx.scope.ensure(function* () {
-                      yield* ctx.cleanup(`child-${index}`);
-                    });
-                    return protectedIndex === index
-                      ? yield* ctx.scope.critical(() => ctx.ask(`child-${index}`))
-                      : yield* ctx.ask(`child-${index}`);
-                  };
-                }
-                const result = yield* race(branch(0), branch(1));
-                expectTypeOf(result).toEqualTypeOf<Result>();
-                return result;
+        const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(runtime, {
+          name: "race-parent-recovery",
+          program: "race-parent:v1",
+          matches: isDeepStrictEqual,
+          *acquire() {
+            const race = yield* owned.acquire();
+            return createScopedGuest(function* (scope) {
+              yield* scope.ensure(function* () {
+                yield* grant.capabilities.cleanup("parent");
               });
-            },
+              function branch(index: number) {
+                return function* (ctx: Context) {
+                  yield* ctx.scope.ensure(function* () {
+                    yield* ctx.cleanup(`child-${index}`);
+                  });
+                  return protectedIndex === index
+                    ? yield* ctx.scope.critical(() => ctx.ask(`child-${index}`))
+                    : yield* ctx.ask(`child-${index}`);
+                };
+              }
+              const result = yield* race(branch(0), branch(1));
+              expectTypeOf(result).toEqualTypeOf<Result>();
+              return result;
+            });
           },
-        );
+        });
         function* drive(child: Child, factory: Factory, index: number): Operation<boolean, Y> {
           children[index] = child;
           boundary = child.link.requestId;
@@ -93,7 +95,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return false;
           }
           const childGrant = effects.grant({ answer, cleanup });
-          const childRecovery = createRecovery(runtime.composition, {
+          const childRecovery = createRecovery(runtime, {
             name: `race-child-recovery:${index}`,
             program: child.link.program,
             matches: isDeepStrictEqual,

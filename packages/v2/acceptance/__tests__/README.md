@@ -228,3 +228,18 @@ runs recorded work and participant elicitation across fresh assemblies. Memory a
 SQLite retain normalized input before initial execution and through completion;
 recovery never revalidates it. A separate two-connection SQLite journey lets an earlier
 submission finish validation late and proves it cannot replace the winning input.
+
+
+## Hosted placement default
+
+Hosted/application journeys use testing.createHostedRecovery, which acquires local
+callback/grant bindings in the host scope and advances the Guest through the production
+connection and asynchronous local byte transport. createHostedExecution supplies the
+same placement for evaluator/checkpoint assemblies. Use its checkpoint adapter, not the
+underlying evaluator adapter, when recovery holds a proxy Guest.
+
+Direct acquisition remains intentional in low-level evaluator, scoped-execution and
+retention tests. Parked mount/admission experiments are not promoted by this migration.
+Connection conformance runs against both local bytes and MessageChannel; worker fault
+journeys exercise the latter. A new transport should add conformance and a few lifecycle
+integration journeys rather than duplicate every authored workflow scenario.

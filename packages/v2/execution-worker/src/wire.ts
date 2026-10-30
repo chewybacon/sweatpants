@@ -1,11 +1,8 @@
-import type { GuestCommand, GuestResponse } from "./types.ts";
-import type { GuestWireCodec } from "./contracts.ts";
+import type { GuestCommand } from "./types.ts";
+import type { Turn } from "@sweatpan.ts/execution";
 
-function envelope(codec: GuestWireCodec, bytes: unknown): Record<string, unknown> {
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("Expected Guest wire bytes");
-  }
-  const value = object(codec.decode(bytes));
+function envelope(input: unknown): Record<string, unknown> {
+  const value = object(input);
   if (
     typeof value.incarnation !== "string" ||
     !Number.isSafeInteger(value.sequence) ||
@@ -21,8 +18,8 @@ function object(value: unknown): Record<string, unknown> {
   }
   return value as Record<string, unknown>;
 }
-export function decodeCommand<V, E>(codec: GuestWireCodec, bytes: unknown): GuestCommand<V, E> {
-  const value = envelope(codec, bytes);
+export function decodeCommand<V, E>(input: unknown): GuestCommand<V, E> {
+  const value = envelope(input);
   if (value.action === "resume") {
     const outcome = object(value.outcome);
     if (
@@ -35,51 +32,46 @@ export function decodeCommand<V, E>(codec: GuestWireCodec, bytes: unknown): Gues
     if (typeof value.reason !== "string") {
       throw new Error("Invalid cancellation reason");
     }
+  } else if (value.action === "capture" || value.action === "restore") {
+    if (typeof value.format !== "string" || (value.action === "restore" && !("state" in value))) {
+      throw new Error("Invalid Guest checkpoint command");
+    }
   } else if (value.action !== "start" && value.action !== "close") {
     throw new Error("Invalid Guest command");
   }
   // Application payloads belong to the trusted codec/program contract; schemas run in hosting.
   return value as unknown as GuestCommand<V, E>;
 }
-export function decodeResponse<R, Q>(codec: GuestWireCodec, bytes: unknown): GuestResponse<R, Q> {
-  const value = envelope(codec, bytes);
-  if (value.kind === "turn") {
-    const turn = object(value.turn);
-    if (turn.kind === "suspended") {
-      if (!("request" in turn)) {
-        throw new Error("Missing Guest request");
-      }
-      if (turn.scope !== undefined) {
-        const scope = object(turn.scope);
-        if (
-          typeof scope.scopeId !== "string" ||
-          typeof scope.frameId !== "string" ||
-          (scope.phase !== "body" && scope.phase !== "cleanup") ||
-          (scope.critical !== undefined && typeof scope.critical !== "string")
-        ) {
-          throw new Error("Invalid Guest scope");
-        }
-      }
-    } else if (turn.kind === "completed") {
-      if (!("value" in turn)) {
-        throw new Error("Missing Guest result");
-      }
-    } else if (turn.kind === "cancelled") {
+export function decodeTurn<R, Q>(input: unknown): Turn<R, Q> {
+  const turn = object(input);
+  if (turn.kind === "suspended") {
+    if (!("request" in turn)) {
+      throw new Error("Missing Guest request");
+    }
+    if (turn.scope !== undefined) {
+      const scope = object(turn.scope);
       if (
-        typeof turn.reason !== "string" ||
-        (turn.failure !== undefined && typeof turn.failure !== "string")
+        typeof scope.scopeId !== "string" ||
+        typeof scope.frameId !== "string" ||
+        (scope.phase !== "body" && scope.phase !== "cleanup") ||
+        (scope.critical !== undefined && typeof scope.critical !== "string")
       ) {
-        throw new Error("Invalid cancelled Guest turn");
+        throw new Error("Invalid Guest scope");
       }
-    } else {
-      throw new Error("Invalid Guest turn");
     }
-  } else if (value.kind === "error") {
-    if (typeof value.message !== "string") {
-      throw new Error("Invalid Guest error");
+  } else if (turn.kind === "completed") {
+    if (!("value" in turn)) {
+      throw new Error("Missing Guest result");
     }
-  } else if (value.kind !== "closed") {
-    throw new Error("Invalid Guest response");
+  } else if (turn.kind === "cancelled") {
+    if (
+      typeof turn.reason !== "string" ||
+      (turn.failure !== undefined && typeof turn.failure !== "string")
+    ) {
+      throw new Error("Invalid cancelled Guest turn");
+    }
+  } else {
+    throw new Error("Invalid Guest turn");
   }
-  return value as unknown as GuestResponse<R, Q>;
+  return turn as unknown as Turn<R, Q>;
 }

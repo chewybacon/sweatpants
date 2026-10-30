@@ -1,9 +1,13 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createRecovery } from "@sweatpan.ts/durable";
+
 import {
   createEffectCapabilities,
   createHosting,
@@ -12,7 +16,7 @@ import {
 } from "@sweatpan.ts/hosting";
 import { admitTool, createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -90,23 +94,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const effects = createEffectCapabilities(runtime, "acquisition-root-effects");
       const acquisition = createToolAcquisition(runtime, effects, tool, "root-acquisition");
       function assemble() {
-        const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
-          runtime.composition,
-          {
-            name: "root-recovery",
-            program: tool.id,
-            matches: isDeepStrictEqual,
-            *acquire() {
-              const snapshot = yield* journal.read();
-              if (!snapshot.admission) {
-                throw new Error("Input not admitted");
-              }
-              return yield* acquisition.operations.acquire(
-                snapshot.admission.input as { query: string },
-              );
-            },
+        const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(runtime, {
+          name: "root-recovery",
+          program: tool.id,
+          matches: isDeepStrictEqual,
+          *acquire() {
+            const snapshot = yield* journal.read();
+            if (!snapshot.admission) {
+              throw new Error("Input not admitted");
+            }
+            return yield* acquisition.operations.acquire(
+              snapshot.admission.input as { query: string },
+            );
           },
-        );
+        });
         const host = createHosting(runtime.composition, {
           name: "root-host",
           journal,

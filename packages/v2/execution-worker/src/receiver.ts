@@ -1,57 +1,85 @@
-import type { Composition } from "@standard-durability/core";
+import type { Composition, Operation } from "@standard-durability/core";
 import type { Guest, Turn } from "@sweatpan.ts/execution";
-import type { GuestCommandReceiver, GuestResponse } from "./types.ts";
+import type { GuestWorkerOptions } from "./contracts.ts";
+import type { GuestCommandReceiver } from "./types.ts";
 
-/** Serialize command advancement; any advancement failure fences this incarnation. */
-export function createGuestCommandReceiver<R, Q, Y, V, E>(
+/** Lazily acquire or restore one pinned incarnation; checkpointing never replaces a live Guest. */
+export function* createGuestCommandReceiver<R, Q, Y, V, E>(
   composition: Composition<Y>,
-  incarnation: string,
-  guest: Guest<R, Q, Y, V, E>,
-): GuestCommandReceiver<R, Q, Y, V, E> {
+  options: GuestWorkerOptions<R, Q, Y, V, E>,
+): Operation<GuestCommandReceiver<Y, V, E>, Y> {
+  let guest: Guest<R, Q, Y, V, E> | undefined;
+  function* closeGuest() {
+    const closing = guest;
+    guest = undefined;
+    if (closing) {
+      yield* closing.close();
+    }
+  }
+  yield* composition.ensure(closeGuest);
   let sequence = 0;
   let busy = false;
   let dead = false;
   return {
     *receive(command) {
-      const identity = { incarnation: command.incarnation, sequence: command.sequence };
-      if (command.incarnation !== incarnation || command.sequence !== sequence || busy || dead) {
-        return { ...identity, kind: "error", message: "Stale or unavailable Guest command" };
+      if (
+        command.incarnation !== options.incarnation ||
+        command.sequence !== sequence ||
+        busy ||
+        dead
+      ) {
+        throw new Error("Stale or unavailable Guest command");
       }
       sequence++;
       busy = true;
       let finished = false;
       try {
-        const response = yield* composition.catchError<GuestResponse<R, Q>, GuestResponse<R, Q>>(
-          function* () {
-            if (command.action === "close") {
-              dead = true;
-              yield* guest.close();
-              return { ...identity, kind: "closed" };
+        if (command.action === "close") {
+          dead = true;
+          yield* closeGuest();
+          finished = true;
+          return undefined;
+        }
+        if (command.action === "restore" || command.action === "capture") {
+          const adapter = options.checkpoints;
+          if (!adapter || adapter.format !== command.format) {
+            throw new Error("Unsupported Guest checkpoint format");
+          }
+          if (command.action === "capture") {
+            if (!guest) {
+              throw new Error("Cannot capture an unacquired Guest");
             }
-            let turn: Turn<R, Q>;
-            if (command.action === "start") {
-              turn = yield* guest.start();
-            } else if (command.action === "resume") {
-              turn = yield* guest.resume(command.outcome);
-            } else {
-              if (!guest.cancel) {
-                throw new Error("Guest cancellation is unsupported");
-              }
-              turn = yield* guest.cancel(command.reason);
-            }
-            return { ...identity, kind: "turn", turn };
-          },
-          function* (error) {
-            dead = true;
-            return {
-              ...identity,
-              kind: "error",
-              message: error instanceof Error ? error.message : String(error),
-            };
-          },
-        );
+            const state = yield* adapter.capture(guest);
+            finished = true;
+            return state;
+          }
+          if (guest) {
+            throw new Error("Cannot restore over a live Guest");
+          }
+          const restored = yield* adapter.restore(command.state);
+          guest = restored.guest;
+          finished = true;
+          return restored.turn;
+        }
+        if (!guest) {
+          if (command.action !== "start") {
+            throw new Error("Guest has not been acquired");
+          }
+          guest = yield* options.acquire();
+        }
+        let turn: Turn<R, Q>;
+        if (command.action === "start") {
+          turn = yield* guest.start();
+        } else if (command.action === "resume") {
+          turn = yield* guest.resume(command.outcome);
+        } else {
+          if (!guest.cancel) {
+            throw new Error("Guest cancellation is unsupported");
+          }
+          turn = yield* guest.cancel(command.reason);
+        }
         finished = true;
-        return response;
+        return turn;
       } finally {
         busy = false;
         if (!finished) {

@@ -1,9 +1,14 @@
+import {
+  createHostedRecovery as createRecovery,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
@@ -13,7 +18,7 @@ import {
 } from "@sweatpan.ts/hosting";
 import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 function textSchema<T>(transform: (text: string) => T): StandardSchemaV1<string, T> {
@@ -155,13 +160,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           let waiting: { grant: ResolutionGrant; child: Child } | undefined;
           function childHost(child: Child) {
             const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
-              runtime.composition,
+              runtime,
               {
                 name: "tool-recovery",
                 program: investigate.id,
                 matches: isDeepStrictEqual,
                 acquire() {
-                  // Trusted ensureChild binding pins this normalized input and program.
                   return acquisition.operations.acquire(child.link.input as Input);
                 },
               },
@@ -214,7 +218,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   });
                 }
                 const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
-                  runtime.composition,
+                  runtime,
                   {
                     name: "caller-recovery",
                     program: "tool-caller",

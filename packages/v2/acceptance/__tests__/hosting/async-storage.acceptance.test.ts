@@ -1,15 +1,17 @@
-import { expect, it, onTestFinished } from "vitest";
-import { isDeepStrictEqual } from "node:util";
-import type { Work } from "@standard-durability/core";
-import type { Runtime } from "@sweatpan.ts/runtime";
-import { createJournalBinding, createRecovery, type AcceptedHistory } from "@sweatpan.ts/durable";
-import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createHosting } from "@sweatpan.ts/hosting";
 import {
+  createHostedRecovery as createRecovery,
   createJournalStorageRig,
   createProtocolRig,
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
+import { expect, it, onTestFinished } from "vitest";
+import { isDeepStrictEqual } from "node:util";
+import type { Work } from "@standard-durability/core";
+import type { Runtime } from "@sweatpan.ts/runtime";
+import { createJournalBinding, type AcceptedHistory } from "@sweatpan.ts/durable";
+import { createScopedGuest } from "@sweatpan.ts/execution";
+import { createHosting } from "@sweatpan.ts/hosting";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -27,7 +29,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       storage.id,
     );
     const provider = createProtocolRig();
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "async-recovery",
       program: "booking",
       matches: isDeepStrictEqual,
@@ -92,7 +94,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       storage.id,
     );
     const provider = createProtocolRig();
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "page-recovery",
       program: "approval",
       matches: isDeepStrictEqual,
@@ -166,7 +168,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         };
       },
     };
-    const recovery = createRecovery(runtime.composition, {
+    const recovery = createRecovery(runtime, {
       name: "loop-recovery",
       program: "loop",
       matches: isDeepStrictEqual,

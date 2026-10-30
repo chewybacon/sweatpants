@@ -1,18 +1,25 @@
+import {
+  createHostedExecution,
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
+import {
+  createRecovery as createPlacedRecovery,
+  createCheckpointMiddleware,
+  type OwnedChild,
+  type ResolutionGrant,
+} from "@sweatpan.ts/durable";
+
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
 import type { Work, Operation } from "@standard-durability/core";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-import {
-  createRecovery,
-  createCheckpointMiddleware,
-  type OwnedChild,
-  type ResolutionGrant,
-} from "@sweatpan.ts/durable";
+
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 let module: Promise<WebAssembly.Module> | undefined;
@@ -136,7 +143,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function run() {
         waits.clear();
         return start(function* () {
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "lua-race-parent",
             program: "lua-race:v1",
             matches: isDeepStrictEqual,
@@ -187,22 +194,39 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                         function* () {
                           children[index] = child;
                           const lua = evaluator();
-                          const childRecovery = createRecovery<string, string, Y, string, string>(
-                            runtime.composition,
-                            {
-                              name: `child:${index}`,
-                              program: child.link.program,
-                              matches: isDeepStrictEqual,
-                              acquire:
-                                index === 0
-                                  ? lua.acquire
-                                  : function* () {
-                                      return createScopedGuest(function* () {
-                                        return (yield "win") as string;
-                                      });
-                                    },
-                            },
-                          );
+                          const placement = createHostedExecution<
+                            string,
+                            string,
+                            Y,
+                            string,
+                            string
+                          >(runtime, {
+                            acquire:
+                              index === 0
+                                ? lua.acquire
+                                : function* () {
+                                    return createScopedGuest(function* () {
+                                      return (yield "win") as string;
+                                    });
+                                  },
+                            checkpoints: lua.checkpoints,
+                          });
+                          const checkpointAdapter = placement.checkpoints;
+                          if (!checkpointAdapter) {
+                            throw new Error("Expected checkpoint capability");
+                          }
+                          const childRecovery = createPlacedRecovery<
+                            string,
+                            string,
+                            Y,
+                            string,
+                            string
+                          >(runtime.composition, {
+                            name: `child:${index}`,
+                            program: child.link.program,
+                            matches: isDeepStrictEqual,
+                            acquire: placement.acquire,
+                          });
                           if (index === 0) {
                             yield* childRecovery.around(
                               createCheckpointMiddleware({
@@ -210,10 +234,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                                 execution: childRecovery.execution,
                                 matches: isDeepStrictEqual,
                                 adapter: {
-                                  ...lua.checkpoints,
+                                  ...checkpointAdapter,
                                   *restore(saved) {
                                     restored++;
-                                    return yield* lua.checkpoints.restore(saved);
+                                    return yield* checkpointAdapter.restore(saved);
                                   },
                                 },
                               }),

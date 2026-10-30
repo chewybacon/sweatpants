@@ -97,6 +97,7 @@ Root `pnpm land` runs this suite under its own coverage identity
 | `runtime`                       | `@sweatpan.ts/runtime`                  |
 | `runtime-effection`             | `@sweatpan.ts/runtime-effection`        |
 | `runtime-effect`                | `@sweatpan.ts/runtime-effect`           |
+| `connection`                    | `@sweatpan.ts/connection`               |
 | `execution`                     | `@sweatpan.ts/execution`                |
 | `execution-in-process`          | `@sweatpan.ts/execution-in-process`     |
 | `execution-worker`              | `@sweatpan.ts/execution-worker`         |

@@ -1,9 +1,14 @@
+import {
+  createHostedRecovery as createRecovery,
+  createProtocolRig,
+  createSqliteJournalRig,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createRecovery, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
@@ -12,7 +17,7 @@ import {
   installEffectAnswers,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 type Player = "X" | "O";
@@ -156,7 +161,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const journal = store.open();
           const effects = createEffectCapabilities(runtime, "game-effects");
           let current: ReturnType<typeof acquireContext> | undefined;
-          const recovery = createRecovery(runtime.composition, {
+          const recovery = createRecovery(runtime, {
             name: "game-recovery",
             program: "play-ttt-v2",
             matches: isDeepStrictEqual,

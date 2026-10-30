@@ -1,8 +1,13 @@
-import { readJournal, historyFrom } from "@sweatpan.ts/testing";
+import {
+  createHostedRecovery as createRecovery,
+  readJournal,
+  historyFrom,
+} from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
-import { createRecovery, type Journal, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type Journal, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
@@ -54,7 +59,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     function run(store: Journal<{ answer: string }, string, string, string, unknown, Y> = journal) {
       return start(function* () {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "scopes",
           program: "scopes",
           matches: isDeepStrictEqual,
@@ -232,7 +237,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(ack.grant);
       const audit = await s.waiting("audit");
       await s.answer(audit.grant);
-      await expect(s.run()).rejects.toBe("child failed");
+      await expect(s.run()).rejects.toThrow("child failed");
       const snapshot = await start(() => readJournal(s.journal)).result;
       expect(snapshot.history.map((entry) => entry.request)).toEqual([
         "approval",

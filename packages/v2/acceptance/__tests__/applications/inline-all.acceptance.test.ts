@@ -1,3 +1,8 @@
+import {
+  createHostedRecovery as createRecovery,
+  createSqliteJournalRig,
+  readJournal,
+} from "@sweatpan.ts/testing";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -8,7 +13,7 @@ import {
   type LogicalScope,
   type ScopeInstruction,
 } from "@sweatpan.ts/execution";
-import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createEffectCapabilities,
   createHosting,
@@ -16,7 +21,7 @@ import {
   createOwnedAll,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
+
 import { defineTool } from "@sweatpan.ts/tools";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -92,7 +97,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           groupId,
         );
         const parentGrant = effects.grant({ seed, group: ownedAll.effect, cleanup });
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "inline-parent-recovery",
           program: "inline-parent:v1",
           matches: isDeepStrictEqual,
@@ -135,7 +140,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         function* runChild(child: Child, index: number, factory: Factory): Operation<boolean, Y> {
           const grant = effects.grant({ approval, compute, cleanup, scoreTool });
-          const childRecovery = createRecovery(runtime.composition, {
+          const childRecovery = createRecovery(runtime, {
             name: `inline-child:${index}`,
             program: child.link.program,
             matches: isDeepStrictEqual,
@@ -192,7 +197,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 id: pending.id,
                 *run() {
                   const toolGrant = effects.grant(scoreTool.capabilities, { record: true });
-                  const toolRecovery = createRecovery(runtime.composition, {
+                  const toolRecovery = createRecovery(runtime, {
                     name: "inline-score-recovery",
                     program: scoreTool.id,
                     matches: isDeepStrictEqual,

@@ -1,8 +1,15 @@
-import { readJournal } from "@sweatpan.ts/testing";
+import {
+  createHostedRecovery as createRecovery,
+  readJournal,
+  createNotificationRig,
+  createProtocolRig,
+  createLatch,
+} from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
-import { createRecovery, type AttemptGrant } from "@sweatpan.ts/durable";
+import { type AttemptGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createHosting,
@@ -11,7 +18,7 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
-import { createNotificationRig, createProtocolRig, createLatch } from "@sweatpan.ts/testing";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -44,7 +51,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let cleanupVisits = 0;
       let cancellationCalls = 0;
       function assemble() {
-        const recovery = createRecovery(runtime.composition, {
+        const recovery = createRecovery(runtime, {
           name: "reservation-recovery",
           program: "reservation-cancellation",
           matches: isDeepStrictEqual,
