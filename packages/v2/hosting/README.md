@@ -519,3 +519,49 @@ Parent cancellation takes priority over returning a winner.
 Race shares all's replay reconstruction, local-closure placement restrictions and
 caller responsibility for reactivation after stale-boundary rejection. It adds no
 physical abort notification or automatic retry policy.
+
+## Two researchers, each racing sources
+
+The [research acceptance example](../acceptance/__tests__/applications/research-races.acceptance.test.ts)
+composes both APIs without another execution primitive. Its host supplies each
+child context with fresh `scope`, `all`, `race`, and granted effect calls:
+
+```ts
+function* researcher(ctx: Context, topic: string) {
+  yield* ctx.scope.ensure(function* () {
+    yield* ctx.release(topic);
+  });
+  return yield* ctx.race(
+    function* (branch) {
+      return yield* source(branch, `${topic}/primary`);
+    },
+    function* (branch) {
+      return yield* source(branch, `${topic}/backup`);
+    },
+  );
+}
+
+const findings =
+  yield *
+  ctx.all(
+    function* (branch) {
+      return yield* researcher(branch, "security");
+    },
+    function* (branch) {
+      return yield* researcher(branch, "performance");
+    },
+  );
+// [Finding, Finding], in researcher declaration order.
+```
+
+`source` uses its own context to register cleanup, request a source response, and
+return `{ source, text }`. Each researcher's race waits for source cleanup, then
+that researcher runs its own cleanup. The outer all waits for both researchers
+before returning the ordered findings. Root cancellation fences unfinished source
+requests and drains the same cleanup hierarchy without returning findings.
+
+The example runs with ordinary and retained activation on both runtimes, reopens
+SQLite while losers need cleanup, and checks that a completed winner stays complete.
+It controls source terminal-commit order to avoid conflating composition with the
+existing stale-host reactivation limitation. It does not establish automatic retry,
+remote placement, live provider behavior, or crash recovery.
