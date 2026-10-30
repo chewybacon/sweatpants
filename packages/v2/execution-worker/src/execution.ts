@@ -1,10 +1,10 @@
-import type { Guest } from "@sweatpan.ts/execution";
+import type { Guest, CheckpointAdapter } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { WorkerExecution, WorkerExecutionOptions } from "./contracts.ts";
 import type { WorkerSession } from "./types.ts";
 import { createWorkerSession } from "./guest.ts";
 
-/** Bind checkpoint policy to proxies owned by this pinned placement assembly. */
+/** Acquire pinned proxies for journal replay, with optional evaluator checkpoint support. */
 export function createWorkerExecution<R, Q, Y, V = unknown, E = unknown>(
   runtime: Runtime<Y>,
   options: WorkerExecutionOptions<Y>,
@@ -16,24 +16,29 @@ export function createWorkerExecution<R, Q, Y, V = unknown, E = unknown>(
     owned.set(session.guest, session);
     return session;
   }
+  const format = options.checkpointFormat;
+  const checkpoints: CheckpointAdapter<R, Q, Y, V, E, unknown> | undefined =
+    format === undefined
+      ? undefined
+      : {
+          format,
+          *capture(guest) {
+            const session = owned.get(guest);
+            if (!session) {
+              return undefined;
+            }
+            return yield* session.capture(format);
+          },
+          *restore(state) {
+            const session = yield* open();
+            const turn = yield* session.restore(format, state);
+            return { guest: session.guest, turn };
+          },
+        };
   return {
     *acquire() {
       return (yield* open()).guest;
     },
-    checkpoints: {
-      format: options.checkpointFormat,
-      *capture(guest) {
-        const session = owned.get(guest);
-        if (!session) {
-          return undefined;
-        }
-        return yield* session.capture(options.checkpointFormat);
-      },
-      *restore(state) {
-        const session = yield* open();
-        const turn = yield* session.restore(options.checkpointFormat, state);
-        return { guest: session.guest, turn };
-      },
-    },
+    checkpoints,
   };
 }

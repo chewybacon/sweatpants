@@ -243,3 +243,20 @@ retention tests. Parked mount/admission experiments are not promoted by this mig
 Connection conformance runs against both local bytes and MessageChannel; worker fault
 journeys exercise the latter. A new transport should add conformance and a few lifecycle
 integration journeys rather than duplicate every authored workflow scenario.
+
+## Authored recording and group recovery
+
+`applications/recorded-tools.acceptance.test.ts` replaces the lower-level recording
+replay/identity matrix and combined file-exchange journey. Bodies use `defineTool`,
+`ctx.record`, typed elicits and capabilities through `createToolAcquisition` and
+connection-backed hosting. Attempt middleware still controls the exact interruption
+before or after acceptance. Explicit/positional identity, structured failure inference,
+occupied unsafe attempts, changed-key rejection and one-time normalization retain
+their original assertions. Invalid erased callbacks and native operation lifecycle
+remain targeted hosting journeys.
+
+The authored inline-all recovery journey also verifies distinct child identities,
+rejection of reordered definitions and alternate delivery species, and no group
+acceptance before every branch finishes. It replaces the corresponding basic
+owned-all hosting journey; specialized cancellation, protected branches and
+transactional projection rollback remain separate evidence.

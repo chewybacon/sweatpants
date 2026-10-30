@@ -1,7 +1,7 @@
 import type { Transport } from "@sweatpan.ts/connection";
 import { MessageChannel } from "node:worker_threads";
 import { serialize, deserialize } from "node:v8";
-import { createWorkerGuest, serveGuestWorker } from "@sweatpan.ts/execution-worker";
+import { createWorkerExecution, serveGuestWorker } from "@sweatpan.ts/execution-worker";
 import type { RuntimeExecution } from "@sweatpan.ts/runtime";
 import type { WorkerGuestRig, WorkerGuestRigOptions } from "./contracts.ts";
 
@@ -21,64 +21,75 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
     get terminations() {
       return terminations;
     },
-    *acquire() {
-      const incarnation = `worker-${tasks.length}`;
-      const channel = new MessageChannel();
-      ports.set(incarnation, channel);
-      const { port1, port2 } = channel;
-      const serverPort: Transport = {
-        addEventListener: port2.addEventListener.bind(port2),
-        removeEventListener: port2.removeEventListener.bind(port2),
-        start: () => port2.start(),
-        close: () => port2.close(),
-        postMessage(bytes) {
-          const response = deserialize(bytes) as WorkerGuestRig<R, Q, Y, V, E>["responses"][number];
-          responses.push(response);
-          const selected = options.response ? options.response(response) : response;
-          if (selected !== undefined) {
-            port2.postMessage(codec.encode(selected));
-          }
-        },
-      };
-      const clientPort: Transport = {
-        addEventListener: port1.addEventListener.bind(port1),
-        removeEventListener: port1.removeEventListener.bind(port1),
-        start: () => port1.start(),
-        close: () => port1.close(),
-        postMessage(bytes) {
-          const frame = deserialize(bytes) as {
-            value: WorkerGuestRig<R, Q, Y, V, E>["commands"][number];
-          };
-          const command = frame.value;
-          commands.push(command);
-          port1.postMessage(
-            codec.encode({ ...frame, value: options.command ? options.command(command) : command }),
-          );
-        },
-      };
-      const task = options.runtime.start(() =>
-        serveGuestWorker(options.runtime, {
+    acquire: createWorkerExecution<R, Q, Y, V, E>(options.runtime, {
+      *open() {
+        const incarnation = `worker-${tasks.length}`;
+        const channel = new MessageChannel();
+        ports.set(incarnation, channel);
+        const { port1, port2 } = channel;
+        const serverPort: Transport = {
+          addEventListener: port2.addEventListener.bind(port2),
+          removeEventListener: port2.removeEventListener.bind(port2),
+          start: () => port2.start(),
+          close: () => port2.close(),
+          postMessage(bytes) {
+            const response = deserialize(bytes) as WorkerGuestRig<
+              R,
+              Q,
+              Y,
+              V,
+              E
+            >["responses"][number];
+            responses.push(response);
+            const selected = options.response ? options.response(response) : response;
+            if (selected !== undefined) {
+              port2.postMessage(codec.encode(selected));
+            }
+          },
+        };
+        const clientPort: Transport = {
+          addEventListener: port1.addEventListener.bind(port1),
+          removeEventListener: port1.removeEventListener.bind(port1),
+          start: () => port1.start(),
+          close: () => port1.close(),
+          postMessage(bytes) {
+            const frame = deserialize(bytes) as {
+              value: WorkerGuestRig<R, Q, Y, V, E>["commands"][number];
+            };
+            const command = frame.value;
+            commands.push(command);
+            port1.postMessage(
+              codec.encode({
+                ...frame,
+                value: options.command ? options.command(command) : command,
+              }),
+            );
+          },
+        };
+        const task = options.runtime.start(() =>
+          serveGuestWorker(options.runtime, {
+            incarnation,
+            port: serverPort,
+            codec,
+            acquire: options.acquire,
+          }),
+        );
+        tasks.push(task);
+        void task.result.catch(() => undefined);
+        return {
           incarnation,
-          port: serverPort,
+          port: clientPort,
           codec,
-          acquire: options.acquire,
-        }),
-      );
-      tasks.push(task);
-      void task.result.catch(() => undefined);
-      return yield* createWorkerGuest<R, Q, Y, V, E>(options.runtime, {
-        incarnation,
-        port: clientPort,
-        codec,
-        failure: options.failure ?? new AbortController().signal,
-        async terminate() {
-          terminations++;
-          port1.close();
-          await task.cancel();
-          port2.close();
-        },
-      });
-    },
+          failure: options.failure ?? new AbortController().signal,
+          async terminate() {
+            terminations++;
+            port1.close();
+            await task.cancel();
+            port2.close();
+          },
+        };
+      },
+    }).acquire,
     inject(incarnation, command) {
       const channel = ports.get(incarnation);
       if (!channel) {

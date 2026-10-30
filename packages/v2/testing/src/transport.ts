@@ -1,6 +1,9 @@
-import { createLocalTransport } from "@sweatpan.ts/connection";
+import { createConnection, createLocalTransport } from "@sweatpan.ts/connection";
 import { MessageChannel } from "node:worker_threads";
 import { serialize, deserialize } from "node:v8";
+import type { Connection } from "@sweatpan.ts/connection";
+import type { Runtime } from "@sweatpan.ts/runtime";
+import type { Operation } from "@standard-durability/core";
 import type { TransportRig } from "./contracts.ts";
 
 /** In-process ordered byte transport; codecs detach values exactly as worker fixtures do. */
@@ -27,4 +30,22 @@ export function createTransportRig(kind: "local" | "message-channel" = "local"):
       port2.close();
     },
   };
+}
+
+/** Acquire both peers in the caller's scope; the caller still owns the transport rig. */
+export function* acquireConnections<Y>(
+  runtime: Runtime<Y>,
+  rig: TransportRig,
+): Operation<readonly [Connection<Y>, Connection<Y>], Y> {
+  const left = yield* createConnection(runtime, {
+    transport: rig.left,
+    codec: rig.codec,
+    failure: rig.failure,
+  });
+  const right = yield* createConnection(runtime, {
+    transport: rig.right,
+    codec: rig.codec,
+    failure: rig.failure,
+  });
+  return [left, right];
 }

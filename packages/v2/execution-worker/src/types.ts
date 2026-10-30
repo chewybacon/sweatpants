@@ -13,6 +13,7 @@ export type GuestCommand<V = unknown, E = unknown> = {
   readonly sequence: number;
 } & (
   | { readonly action: "start" }
+  // Deliver an answer to a live Guest, including accepted answers during journal replay.
   | { readonly action: "resume"; readonly outcome: Outcome<V, E> }
   | { readonly action: "cancel"; readonly reason: string }
   | { readonly action: "capture"; readonly format: string }
@@ -20,6 +21,7 @@ export type GuestCommand<V = unknown, E = unknown> = {
   | { readonly action: "close" }
 );
 
+/** Internal wire operations; capture/restore require an explicitly configured server adapter. */
 export interface WorkerSession<R, Q, Y, V, E> {
   readonly guest: Guest<R, Q, Y, V, E>;
   capture(format: string): Operation<unknown, Y>;

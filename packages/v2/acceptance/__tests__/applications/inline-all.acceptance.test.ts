@@ -360,6 +360,26 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.run();
       expect(s.children.map((child) => child.link.childId)).toEqual(ids);
       expect(s.counts.branches[1]).toBe(finishedVisits);
+      expect(new Set(ids).size).toBe(2);
+      // A partially completed authored group still owns its original boundary:
+      // recovery cannot reorder its children or replace it with another delivery species.
+      const boundary = s.children[0]!.link.requestId;
+      await expect(
+        start(() =>
+          s.journal.ensureChildren<unknown, CapabilityRequest, unknown, string>(boundary, {
+            children: [...s.children].reverse().map(({ link }) => ({
+              program: link.program,
+              input: link.input,
+            })),
+            outcome: (values) => ({ ok: true, value: values }),
+          }),
+        ),
+      ).rejects.toThrow("Owned child definition differs");
+      await expect(start(() => s.journal.attempts.begin(boundary, "unsafe"))).rejects.toThrow(
+        "Owned",
+      );
+      await expect(start(() => s.journal.interactions.register(boundary))).rejects.toThrow("Owned");
+      expect((await s.snapshot()).history.map((entry) => entry.request.effect)).toEqual([seed.id]);
       const pending = await start(() => s.children[0]!.journal.read());
       if (pending.status !== "running") {
         throw new Error("Expected pending approval");

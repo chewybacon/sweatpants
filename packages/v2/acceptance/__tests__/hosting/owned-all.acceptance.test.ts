@@ -270,58 +270,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     };
   }
 
-  it(`${runtime.name}: owned all retains completed siblings across reopen and joins in declaration order`, async () => {
-    const s = scenario();
-    expect((await s.run()).state).toBe("child");
-    expect([...s.operations.values()]).toEqual(["research", "research"]);
-    const ids = s.ids;
-    expect(new Set(ids).size).toBe(2);
-    await s.reply("performance", "performance-result");
-    await s.run();
-    expect(s.operations.get("performance")).toBe("child-cleanup");
-    await s.reply("performance", "closed");
-    await s.run();
-    const finishedVisits = s.visits.get("performance");
-    expect((await s.snapshot()).history).toHaveLength(0);
-    s.reopen();
-    await s.run();
-    expect(s.ids).toEqual(ids);
-    expect(s.visits.get("performance")).toBe(finishedVisits);
-    await expect(
-      start(() =>
-        s.journal.ensureChildren<string, Request, unknown, string>(s.boundary, {
-          children: [
-            { program: "research-child", input: "performance" },
-            { program: "research-child", input: "security" },
-          ],
-          outcome: (values) => ({ ok: true, value: values }),
-        }),
-      ).result,
-    ).rejects.toThrow("Owned child definition differs");
-    await expect(
-      start(() => s.journal.attempts.begin(s.boundary, "unsafe")).result,
-    ).rejects.toThrow("Owned");
-    await expect(start(() => s.journal.interactions.register(s.boundary)).result).rejects.toThrow(
-      "Owned",
-    );
-    await s.reply("security", "security-result");
-    await s.run();
-    await s.reply("security", "closed");
-    const joined = await s.run();
-    expect(joined.state).toBe("waiting");
-    const snapshot = await s.snapshot();
-    expect(snapshot.history).toHaveLength(1);
-    expect(snapshot.history[0]?.outcome).toEqual({
-      ok: true,
-      value: ["security-result", "performance-result"],
-    });
-    await s.releaseParent();
-    await expect(s.run()).resolves.toEqual({
-      state: "completed",
-      value: ["security-result", "performance-result"],
-    });
-  });
-
   for (const failures of [false, true]) {
     it(`${runtime.name}: owned all cancellation fences siblings and joins every cleanup before parent unwind (failures: ${failures})`, async () => {
       const s = scenario();

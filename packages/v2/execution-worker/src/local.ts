@@ -2,7 +2,6 @@ import { createLocalTransport } from "@sweatpan.ts/connection";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { LocalExecution, LocalExecutionOptions, WorkerGuestOptions } from "./contracts.ts";
 import type { Operation } from "@standard-durability/core";
-import { createWorkerGuest } from "./guest.ts";
 import { createWorkerExecution } from "./execution.ts";
 import { serveGuestWorker } from "./serve.ts";
 
@@ -38,17 +37,8 @@ export function createLocalExecution<R, Q, Y, V = unknown, E = unknown>(
     yield* runtime.composition.ensure(() => runtime.fromPromise(terminate));
     return { incarnation, port: port1, codec: options.codec, failure: failure.signal, terminate };
   }
-  if (options.checkpoints) {
-    return createWorkerExecution<R, Q, Y, V, E>(runtime, {
-      open,
-      checkpointFormat: options.checkpoints.format,
-    });
-  }
-  return {
-    checkpoints: undefined,
-    *acquire() {
-      const placement = yield* open();
-      return yield* createWorkerGuest<R, Q, Y, V, E>(runtime, placement);
-    },
-  };
+  return createWorkerExecution<R, Q, Y, V, E>(runtime, {
+    open,
+    checkpointFormat: options.checkpoints?.format,
+  });
 }

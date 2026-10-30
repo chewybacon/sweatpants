@@ -112,8 +112,10 @@ if (local.checkpoints) {
 }
 ```
 
-`createWorkerExecution(runtime, { open, checkpointFormat })` supplies the same acquire
-and checkpoint adapter over caller-provided remote placement. Every acquisition/restore
+`createWorkerExecution(runtime, { open })` supplies replay-only acquisition over
+caller-provided remote placement; its `checkpoints` is undefined. Supplying
+`checkpointFormat` explicitly enables the checkpoint adapter and requires a matching
+server-side evaluator adapter. Every acquisition/restore
 calls open for fresh transport and incarnation. Its adapter recognizes only its own
 proxies; capturing an unrelated Guest returns undefined.
 
@@ -126,7 +128,11 @@ reconciles accepted history after that boundary. Unsupported saved formats still
 ordinary replay before acquisition; supported restore failures propagate. Cancellation
 continues to select replay according to existing recovery policy.
 
-Checkpoint policy remains middleware; representation and restoration remain evaluator
+`resume(outcome)` advances a live Guest with an answer. Journal replay also uses it:
+a fresh Guest starts from the beginning and consumes accepted answers without repeating
+external work. It does not require a checkpoint or restoration of an old incarnation.
+
+Checkpoint policy remains middleware; representation and restoration remain optional evaluator
 capabilities. Connection and transport do not know journal positions or checkpoint policy.
 
 For native tool bodies whose recorded callbacks are installed locally, invoke the

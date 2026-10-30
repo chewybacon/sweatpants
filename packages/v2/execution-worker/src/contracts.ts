@@ -26,14 +26,16 @@ export interface GuestWorkerOptions<R, Q, Y, V, E> {
 
 /** Placement opens a fresh pinned incarnation for acquisition or checkpoint restoration. */
 export interface WorkerExecutionOptions<Y> {
-  readonly checkpointFormat: string;
+  /** Omit for journal replay only. When supplied, the pinned server must support this format. */
+  readonly checkpointFormat?: string;
   open(): Operation<WorkerGuestOptions, Y>;
 }
 
 /** Ordinary recovery capabilities implemented through the serialized Guest protocol. */
 export interface WorkerExecution<R, Q, Y, V, E> {
   readonly acquire: GuestWork<R, Q, Y, V, E>;
-  readonly checkpoints: CheckpointAdapter<R, Q, Y, V, E, unknown>;
+  /** Absent unless assembly explicitly supplies a checkpoint format. */
+  readonly checkpoints: CheckpointAdapter<R, Q, Y, V, E, unknown> | undefined;
 }
 
 /** In-process placement uses the same byte protocol and independent evaluator scope as a worker. */
