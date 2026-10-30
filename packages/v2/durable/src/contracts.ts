@@ -296,10 +296,16 @@ export interface OwnedChildOptions<R, V, E> {
   readonly outcome: (value: R) => Outcome<V, E>;
 }
 
-/** Nonempty ordered owned call group. One pure projection runs after every child completes. */
+/** Nonempty owned call group. Projection runs after every child is terminal. */
 export interface OwnedChildrenOptions<C, V, E> {
+  /** all by default; race atomically pins the first completed child and stops siblings. */
+  readonly join?: "all" | "race";
   readonly children: readonly { readonly program: string; readonly input: unknown }[];
-  /** Values follow declaration order, regardless of completion order. Must perform no effects. */
+  /**
+   * all supplies values in declaration order; race supplies only the pinned winner.
+   * Runs after loser cleanup drains. Must perform no effects. Cleanup failures follow
+   * owned cancellation semantics rather than silently returning the winner.
+   */
   readonly outcome: (values: readonly C[]) => Outcome<V, E>;
 }
 
@@ -369,6 +375,9 @@ export interface RequestRecord {
   revoked?: string;
   registration?: InteractionRegistration;
   children?: readonly ChildLink[];
+  join?: "all" | "race";
+  /** First completed child in a race; committed with terminal state and loser fencing. */
+  winner?: string;
 }
 
 /** Transaction-local storage access. Reads are detached; writes publish only on commit. */

@@ -52,3 +52,11 @@ export interface All<C, Y> {
     CapabilityRequest
   >;
 }
+
+/** Nonempty owned race; first terminal completion wins, then loser cleanup is joined. */
+export interface Race<C, Y> {
+  /** Returned failure Outcomes can win. Delivery exceptions remain unsettled. */
+  <const B extends readonly [Branch<C, Y>, ...Branch<C, Y>[]]>(
+    ...branches: B
+  ): Operation<B[number] extends Branch<C, Y, infer R> ? R : never, CapabilityRequest>;
+}

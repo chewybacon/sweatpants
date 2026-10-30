@@ -1,4 +1,4 @@
-import type { All, Branch, CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
+import type { All, Branch, Race, CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
   OwnedChild,
@@ -265,4 +265,10 @@ export interface OwnedAll<C, I, Y> {
       index: number,
     ) => Operation<boolean, Y>;
   }): Operation<void, Y>;
+}
+
+/** Scoped race assembly. Uses the same child-host implementation contract as owned all. */
+export interface OwnedRace<C, I, Y> extends Omit<OwnedAll<C, I, Y>, "acquire"> {
+  /** Acquire a nonempty race callable in this Guest's owning scope. */
+  acquire(): Operation<Race<C, I>, Y>;
 }

@@ -252,3 +252,11 @@ This first slice exposes homogeneous child journals, not a public heterogeneous
 It uses native `runtime.all` only to schedule child hosts; durable ownership and joining
 belong to the journal. Settlement reads sibling headers, O(group size) per completion;
 it does not hydrate their accepted histories. Large-group optimization is deferred.
+
+`ensureChildren({ join: "race", ... })` pins the first terminal completed child's
+identity in the request record and fences eligible losers in that same transaction.
+The join policy is immutable on reacquisition. Projection receives a singleton winner
+array only after all siblings become terminal. Parent cancellation takes precedence;
+loser cleanup failures follow cancellation/reconciliation rules. The default `"all"`
+continues to project all values in declaration order. Neither policy turns delivery
+exceptions into accepted results.

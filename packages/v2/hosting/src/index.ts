@@ -17,3 +17,5 @@ export { installEffectAnswers } from "./answers.ts";
 export type { EffectAnswers } from "./contracts.ts";
 export { createOwnedAll } from "./owned-all.ts";
 export type { OwnedAll } from "./contracts.ts";
+export { createOwnedRace } from "./owned-race.ts";
+export type { OwnedRace } from "./contracts.ts";

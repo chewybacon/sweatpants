@@ -500,3 +500,22 @@ same-count reordering under an incorrectly reused program identity.
 The host, recovery and journal must describe the same execution. Owned authority
 must remain in one transaction domain. This API neither grants effect permission
 implicitly nor supplies automatic retries after stale-boundary rejection.
+
+## Inline owned race
+
+`createOwnedRace` uses the same scoped acquisition and installation as `createOwnedAll`.
+Its nonempty `race(factory, factory, ...)` returns the union of branch result types.
+The first child to commit terminal completion wins, including that child's logical
+cleanup. An authored failed Outcome can win; a delivery exception remains unsettled.
+
+Winner selection and cancellation of eligible losers commit atomically. The winner
+is durable across reopen and cannot be replaced by a late protected result. The parent
+receives it only after every loser finishes logical cleanup. Critical regions and
+cleanup retain authority, so a protected or parked loser can delay return indefinitely.
+A loser cleanup failure follows owned cancellation semantics rather than silently
+returning the winner; a protected parent still requires explicit reconciliation.
+Parent cancellation takes priority over returning a winner.
+
+Race shares all's replay reconstruction, local-closure placement restrictions and
+caller responsibility for reactivation after stale-boundary rejection. It adds no
+physical abort notification or automatic retry policy.

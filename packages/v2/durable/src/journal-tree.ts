@@ -105,7 +105,41 @@ export function createJournalTree<Y>(
     ) {
       throw new Error("Stale child settlement");
     }
-    if (next.snapshot.status === "cancelled" && !parent.snapshot.cancellationRequested) {
+    const request = yield* records.request(link.parentId, link.requestId);
+    if (!request) {
+      throw new Error("Missing owned request");
+    }
+    if (
+      request.join === "race" &&
+      !request.winner &&
+      next.snapshot.status === "completed" &&
+      !parent.snapshot.cancellationRequested
+    ) {
+      // The winner and all eligible loser fences publish with this terminal commit.
+      request.winner = link.childId;
+      yield* records.setRequest(link.parentId, link.requestId, request);
+      for (const sibling of parent.snapshot.children) {
+        if (sibling.childId === link.childId) {
+          continue;
+        }
+        const loser = yield* record(records, sibling.childId);
+        const state = loser.snapshot;
+        if (state.status !== "running" || state.cancellation || state.cancellationRequested) {
+          continue;
+        }
+        if (state.pending) {
+          yield* cancel(records, sibling.childId, state.pending.id, "Race lost");
+        } else {
+          loser.queuedStop ??= "Race lost";
+          yield* records.set(sibling.childId, loser);
+        }
+      }
+    }
+    if (
+      next.snapshot.status === "cancelled" &&
+      !parent.snapshot.cancellationRequested &&
+      !request.winner
+    ) {
       const scope = parent.snapshot.pending.scope;
       if (scope?.phase === "cleanup" || scope?.critical !== undefined) {
         throw new Error(
@@ -133,17 +167,28 @@ export function createJournalTree<Y>(
         .map((child) => child.failure)
         .filter((value) => value !== undefined)
         .join("\n") || undefined;
-    const result = cancelled.length
-      ? { status: "cancelled" as const, reason: cancelled[0]!.reason, failure }
-      : { status: "completed" as const };
+    const result =
+      request.winner && !parent.snapshot.cancellationRequested
+        ? failure
+          ? { status: "cancelled" as const, reason: "Race loser cleanup failed", failure }
+          : { status: "completed" as const }
+        : cancelled.length
+          ? { status: "cancelled" as const, reason: cancelled[0]!.reason, failure }
+          : { status: "completed" as const };
     let projected: Outcome<unknown, unknown> | undefined;
     if (result.status === "completed" && !parent.snapshot.cancellationRequested) {
       const binding = bindings.get(link.childId);
       if (!binding || binding.program !== link.program) {
         throw new Error("Missing owned child result binding");
       }
+      const selected = request.winner
+        ? siblings.filter((child) => child.parent?.childId === request.winner)
+        : siblings;
+      if (!selected.length) {
+        throw new Error("Missing race winner");
+      }
       projected = binding.outcome(
-        siblings.map((child) => {
+        selected.map((child) => {
           if (child.snapshot.status !== "completed") {
             throw new Error("Incomplete owned group");
           }
@@ -209,6 +254,7 @@ export function createJournalTree<Y>(
       let links = request.children;
       if (links) {
         if (
+          (request.join ?? "all") !== (definition.join ?? "all") ||
           links.length !== definition.children.length ||
           links.some((link, index) => {
             const child = definition.children[index]!;
@@ -235,7 +281,11 @@ export function createJournalTree<Y>(
         for (const link of links) {
           yield* records.set(link.childId, createJournalRecord(link.program, link));
         }
-        yield* records.setRequest(id, requestId, { ...request, children: links });
+        yield* records.setRequest(id, requestId, {
+          ...request,
+          children: links,
+          join: definition.join ?? "all",
+        });
         yield* records.set(id, {
           ...parent,
           snapshot: { ...state, children: links, revision: state.revision + 1 },
