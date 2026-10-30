@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const apps = ["yo-chat", "yo-mcp", "yo-agent", "yo-studio"];
+const apps = ["yo-chat", "yo-mcp"];
 
 export function dependencyBuildArgs(app: string): string[] {
   if (!apps.includes(app)) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createDurableTool, createTool } from "@sweatpants/agent-sdk";
+import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { sha256 } from "@sweatpants/foundation";
 import { makePlugin } from "../plugin.ts";
 

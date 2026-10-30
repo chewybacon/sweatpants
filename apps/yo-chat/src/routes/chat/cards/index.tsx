@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChatDemoShell } from "@/components/ChatDemoShell";
-import { pickCardPlugin } from "@/tools/pick-card";
+import { pickCardPlugin } from "@/tools/pick-card/plugin";
 
 export const Route = createFileRoute("/chat/cards/")({
   component: CardsChatDemo,

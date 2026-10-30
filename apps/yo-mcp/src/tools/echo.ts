@@ -5,9 +5,9 @@
  * Demonstrates the simplest possible MCP tool.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
-export const echoTool = createTool("echo")
+export const echoTool = createDurableTool("echo", { version: "1" })
   .description("Echo back the input message")
   .parameters(
     z.object({
@@ -15,6 +15,8 @@ export const echoTool = createTool("echo")
       uppercase: z.boolean().default(false).describe("Whether to uppercase the message"),
     }),
   )
+  .effects({})
+  .elicits({})
   .execute(function* (params) {
     const result = params.uppercase ? params.message.toUpperCase() : params.message;
     return {

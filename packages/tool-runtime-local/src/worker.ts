@@ -58,3 +58,5 @@ export type {
   DurableProgramWorkerResult,
   DurableWorkerAttachmentMetadata,
 } from "./durable-worker-protocol.ts";
+
+export { serveWorkerGuest } from "./guest-worker.ts";

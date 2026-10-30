@@ -1,77 +1,83 @@
-# Flowmode package ownership
+# Flowmode in the current framework
 
-Names follow `flowmode-{layer}-{lang}`. The language suffix is omitted for
-shared layers. Lexical sorting groups the family, then each layer and its
-language implementations; it does not imply dependency order.
+Flowmode runs compiled workflows in Lua and Scheme kernels. It supplies portable
+kernel checkpoints and explicit execution boundaries. The JavaScript iterator
+foundation supplies a smaller live Guest capability. They share lifecycle
+enforcement without pretending that every Guest can capture a checkpoint.
 
-`flowmode-runtime` and `flowmode-backend` are workspace packages containing the
-existing kernel contracts and backend adapter. Their files, tests, and consumers
-have moved mechanically; interfaces and runtime behavior are unchanged.
+## Source map
 
-The three compiler packages now contain the shared TypeScript frontend and both
-language targets, consumed automatically through the Sweatpants Vite integration.
-`flowmode-runtime-lua` and `flowmode-runtime-scheme` own the evaluators used by
-yo-workflow Playground and Execution. Their package gates cover evaluator behavior
-and generated assets. The scoped scheduler remains experimental.
+| Package                                             | Responsibility                                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `flowmode-compiler`                                 | Analyzes and lowers supported authored source; compilation is not arbitrary JavaScript execution. |
+| `flowmode-compiler-lua`, `flowmode-compiler-scheme` | Target-specific compilation.                                                                      |
+| `flowmode-runtime`                                  | Program/kernel identity, exchanges, snapshots, execution contracts and composition.               |
+| `flowmode-runtime-lua`, `flowmode-runtime-scheme`   | Evaluator implementations and target-specific state validation.                                   |
+| `flowmode-backend`                                  | Binding and host integration, including adapting kernel Guests to durable program execution.      |
+| `foundation`                                        | Shared Guest/Execution contracts, command discipline and optional checkpoint capabilities.        |
 
-## Ownership map
+`apps/yo-workflow` remains a playground and inspector. It is not evidence that all
+former chat/deployment integrations support compiled workflows.
 
-- [flowmode-backend](../../packages/flowmode-backend/README.md): shared journal
-  attachment integration for language kernels.
-- [flowmode-compiler](../../packages/flowmode-compiler/README.md): shared developer
-  source admission, typed Scheme IR, helper-module bundling, and artifact tooling.
-- [flowmode-compiler-lua](../../packages/flowmode-compiler-lua/README.md): Lua target
-  lowering from the shared intermediate representation.
-- [flowmode-compiler-scheme](../../packages/flowmode-compiler-scheme/README.md):
-  Scheme target emission and artifact assembly.
-- [flowmode-runtime](../../packages/flowmode-runtime/README.md): language-neutral
-  kernel, composition, and inspection contracts.
-- [flowmode-runtime-lua](../../packages/flowmode-runtime-lua/README.md): ordinary
-  Lua evaluation and portable VM state.
-- [flowmode-runtime-scheme](../../packages/flowmode-runtime-scheme/README.md):
-  Scheme evaluation and its checkpoint-capable kernel integration.
+## Kernel boundary
 
-## Promotion order
+A `WorkflowProgram` contains a digest, kernel identity and target code. A
+`WorkflowKernel` can start a program or restore a compatible `KernelSnapshot`.
+Both return a boundary plus a live execution handle.
 
-Lua owns Piccolo/Wasm, portable VM state, its evaluation port and reusable compute
-replay. Scheme owns both existing evaluator paths: the Playground session API and
-Execution's checkpoint kernel. These have distinct entry points and are not
-silently unified. Both Playground tools use durable-tool replay for recovery;
-portable Lua state between VM commands is not an authority checkpoint.
+```text
+authored source → compiler → pinned WorkflowProgram
+  → kernel.start(program, input) or kernel.restore(program, snapshot)
+  → suspended exchange / terminal boundary
+  → host handles exchange and supplies correlated reply
+  → execution.resume(suspensionId, reply)
+```
 
-The Execution inspector separately consumes the kernel/backend and compiled
-artifact path. Promoting that path must preserve its compiled developer tool,
-model-authored caller, uncompiled host tool, suspended cleanup, and fresh-instance
-restore behavior in both languages.
+`ExchangeRequest` carries `site`, `binding` and JSON `input`. `ExchangeReply` is a
+value or throw reply. The kernel stops at external requests; advancing it does not
+execute those effects. Native Operation wrappers allow scheduling or transport,
+but do not make an unbounded synchronous Wasm computation interruptible. Evaluators
+must bound their compute slices.
 
-The shared runtime and backend now use the Flowmode package names. The shared
-compiler protocol, portable artifact contracts and language authoring interfaces
-stay in the runtime package so model-authored language stacks can implement that
-protocol without depending on the TypeScript frontend. Both shared packages now
-have product consumers through the promoted language runtimes and are recorded
-as libraries in the workspace ledger.
+A kernel snapshot contains kernel identity, program digest and portable state.
+Journal position and receipt authority belong to the host envelope. Compatibility
+currently requires exact kernel kind/version/program-format/snapshot-format and
+matching program digest. This is a check, not a snapshot migration policy. Artifact
+loading owns content-digest verification; target runtimes validate target formats.
 
-The Scheme package preserves both evaluators. Unifying their language or recovery
-contracts would require a separate design change.
+## Guest and Execution
 
-Compiler boundaries should be checked against their actual consumers before
-creating separate workspace members. A scaffold reserves a name; it does not
-require a package if the implementation belongs with another layer.
+`createKernelExecution` uses foundation's checkpoint execution wrapper to enforce
+resume/cancel/dispose/capture discipline. Optional inspection returns detached
+diagnostics; inspection is not a recovery capability.
 
-## Completion criteria for each promotion
+`createKernelGuest` adapts the live kernel to `Guest<Json, ExchangeRequest, ...>`.
+It exposes cancellation and capture alongside that Guest. `startKernelGuest` maps
+requests into the retained host's operation descriptors and suspension protocol.
+This adapter is a remaining ProgramDriver integration, not a new authoring API.
 
-1. State the supported behavior and unsupported capabilities, with source-backed
-   conformance evidence. Experimental tests alone do not establish app support.
-2. Move the implementation, reproducible build inputs, and relevant tests to its
-   owner. Establish explicit exports and dependency direction.
-3. Migrate a real consumer and remove superseded paths in the same change. Do not
-   leave aliases, re-export shims, or duplicate old/new implementations.
-4. Update the workspace member ledger, language parity documentation, build
-   wiring, and lockfile as applicable.
-5. Pass the relevant package/type/acceptance gates and deterministic landing gate.
-   Provider integration changes additionally require applicable live validation.
+Logical cancellation can produce cleanup exchanges. Repeated cancellation must not
+interrupt cleanup. Physical disposal releases evaluator resources without logical
+unwind. A successful capture must detach portable state from live JS/Wasm handles.
 
-Scoped task scheduling and durable timers remain separate unfinished capabilities.
-They are not prerequisites for promoting the existing sequential game behavior.
-Generic execution/port primitives remain in `foundation`; journal, storage,
-transport, and chat packages retain their existing ownership.
+## Recovery is not one mechanism
+
+For an ordinary iterator tool, a parked activation closes its Guest. The next
+activation reconstructs the generator and replays accepted outcomes. It does not
+serialize the JS continuation.
+
+Flowmode can restore kernel state without executing the prefix. The host still
+owns the journal, accepted outcomes and recovery policy around that checkpoint.
+Checkpoint capture by itself does not prove an external effect was accepted.
+
+These approaches share advancement and lifecycle concepts. Keep checkpointing,
+correlated Execution and the smaller Guest capability distinct where their
+semantics differ. The shared guard is a useful unification; another combined
+execution interface would not remove the underlying responsibilities.
+
+Sources: [kernel contracts](../../packages/flowmode-runtime/src/index.ts),
+[execution wrapper](../../packages/flowmode-runtime/src/execution.ts),
+[backend Guest adapter](../../packages/flowmode-backend/src/guest.ts),
+[compiler](../../packages/flowmode-compiler/src/compiler.ts).
+Evidence: [journal recovery](../../acceptance/__tests__/flowmode/journal-recovery.acceptance.test.ts),
+[backend](../../acceptance/__tests__/flowmode/backend.acceptance.test.ts).

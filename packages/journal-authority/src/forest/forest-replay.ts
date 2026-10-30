@@ -10,14 +10,25 @@ import {
   type ReplayOperationEntry,
   type StrandHead,
 } from "@sweatpants/durable-execution";
-import { encodeCanonicalJson, sha256, type ReadonlyJson } from "@sweatpants/foundation";
+import {
+  digestCanonicalJson,
+  encodeCanonicalJson,
+  sha256,
+  type ReadonlyJson,
+} from "@sweatpants/foundation";
 
 import type {
+  AcceptedExtensionRequest,
+  AcceptedExtensionObservation,
+  AcceptedPrefixAnchor,
   AuthoritySessionState,
   AuthorityState,
   PullState,
+  RecordRecoveryObservation,
   TaskState,
 } from "../contract/authority-contract.ts";
+
+import { AcceptedExtensionUnavailable } from "../contract/authority-contract.ts";
 
 const REPLAY_DOMAIN = "sweatpants.forest-replay.v2";
 
@@ -46,29 +57,8 @@ export function planForestReplay(
   const peers: PeerReadyTarget[] = [];
 
   for (const task of ordered) {
-    const groupContext = forkContext(task, relations);
-    const head = strandHead(task);
-    const durability = taskDurability(task, relations);
-    const classification = classifyTask(task, durability, nowMs, relations);
-    const parked = parkedHead(task);
-    const row: PlannedForestRow = {
-      address: { sessionId, turnId: task.turnId, taskId: task.taskId },
-      strand: task.taskId,
-      head,
-      program: structuredClone(task.program.artifact),
-      classification,
-      /* CONDITIONAL-SPREAD: Omit absent parked from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
-      ...(parked === undefined
-        ? {}
-        : {
-            parked: {
-              pullId: parked.pullId,
-              reason: parkedReason(parked),
-              audience: parked.resolutionAuthority.audience,
-            },
-          }),
-      groupContext,
-    };
+    const row = plannedRow(sessionId, task, relations, nowMs);
+    const { classification, head, groupContext } = row;
     rows.push(row);
 
     if (classification === "replayable") {
@@ -105,6 +95,87 @@ export function planForestReplay(
     rows,
     replay,
     peers,
+  };
+}
+
+function plannedRow(
+  sessionId: string,
+  task: TaskState,
+  relations: ForestRelations,
+  nowMs: number,
+): PlannedForestRow {
+  const groupContext = forkContext(task, relations);
+  const head = strandHead(task);
+  const durability = taskDurability(task, relations);
+  const classification = classifyTask(task, durability, nowMs, relations);
+  const parked = parkedHead(task);
+  return {
+    address: { sessionId, turnId: task.turnId, taskId: task.taskId },
+    strand: task.taskId,
+    head,
+    program: structuredClone(task.program.artifact),
+    classification,
+    /* CONDITIONAL-SPREAD: Omit absent parked from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
+    ...(parked === undefined
+      ? {}
+      : {
+          parked: {
+            pullId: parked.pullId,
+            reason: parkedReason(parked),
+            audience: parked.resolutionAuthority.audience,
+          },
+        }),
+    groupContext,
+  };
+}
+
+/** Explicit parked-prefix observation. Does not change planner admission or issue tokens. */
+export function observeRecordRecovery(
+  state: AuthorityState,
+  sessionId: string,
+  taskId: string,
+  nowMs: number,
+): RecordRecoveryObservation {
+  const session = state.sessions.get(sessionId);
+  const task = session?.execution.tasks.get(taskId);
+  if (
+    !session ||
+    !task ||
+    session.execution.tasks.size !== 1 ||
+    task.origin.kind !== "root" ||
+    task.forkGroup ||
+    task.execution.checkpoint ||
+    task.lifecycle.status !== "active" ||
+    task.lifecycle.cancellation.type !== "none"
+  ) {
+    throw new CrankError(
+      "invalid_command",
+      "Recovery observation requires one uncancelled root strand",
+    );
+  }
+  const action = task.actions[task.nextActionIndex];
+  if (
+    action?.kind !== "pull" ||
+    action.pull.resolution.status !== "open" ||
+    action.pull.resolution.revoked
+  ) {
+    throw new CrankError("invalid_command", "Recovery observation requires an open occurrence");
+  }
+  const attempt = action.pull.attempts.at(-1);
+  if (!attempt) {
+    throw new CrankError("invalid_command", "Recovery observation requires an attempt");
+  }
+  const plan = planForestReplay(state, sessionId, session.control.journalHeadId ?? "", nowMs);
+  return {
+    item: buildReplayItem(task, plan.rows[0]!),
+    attachmentId: task.execution.attachmentId,
+    pending: {
+      actionIndex: action.actionIndex,
+      pullIndex: action.pullIndex,
+      pullId: action.pull.pullId,
+      expectedAttemptId: attempt.attemptId,
+      descriptor: structuredClone(action.pull.request.proposedDescriptor),
+    },
   };
 }
 
@@ -312,10 +383,58 @@ function forkContext(task: TaskState, relations: ForestRelations): ForkContext {
     : { groupRevision: 0 };
 }
 
-function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
-  // The seed binds immutable strand identity. Mutable plan fields stay in the
-  // frontier proof so warm suffixes can compare their existing chain in O(1).
-  const replayChainSeed = sha256(
+/** Validate structure for every replayable strand, without materializing its history. */
+function* acceptedActions(task: TaskState): IterableIterator<TaskState["actions"][number]> {
+  for (let index = 0; index < task.nextActionIndex; index++) {
+    const action = task.actions[index];
+    if (action === undefined || action.actionIndex !== index) {
+      throw new CrankError("invalid_journal", "Replay history has an action gap");
+    }
+    if (action.kind === "pull" && action.pull.resolution.status !== "settled") {
+      throw new CrankError("invalid_journal", "Replay prefix contains an unresolved slot");
+    }
+    yield action;
+  }
+}
+
+/** One canonical encoder for full replay and authenticated extensions. No cloning here. */
+function replayEntry(
+  action: TaskState["actions"][number],
+  replayChainSeed: string,
+  previousEntryDigest: string,
+): ReplayEntry {
+  const actionIndex = action.actionIndex;
+  let body: Omit<ReplayOperationEntry, "entryDigest"> | Omit<ReplayEmissionEntry, "entryDigest">;
+  if (action.kind === "pull" && action.pull.resolution.status === "settled") {
+    body = {
+      type: "operation",
+      actionIndex,
+      descriptorKind: action.pull.request.proposedDescriptor.kind,
+      descriptorDigest: action.pull.request.proposedDescriptorDigest,
+      previousEntryDigest,
+      outcome: action.pull.resolution.settlement.outcome,
+      receipt: action.pull.resolution.settlement.receipt,
+    };
+  } else if (action.kind === "emission") {
+    body = {
+      type: "emission",
+      actionIndex,
+      descriptorKind: "emission",
+      descriptorDigest: action.descriptorDigest,
+      previousEntryDigest,
+      offset: action.receipt.offset,
+    };
+  } else {
+    throw new CrankError("invalid_journal", "Replay prefix contains an unresolved slot");
+  }
+  const entryDigest = sha256(
+    encodeCanonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
+  );
+  return { ...body, entryDigest } as ReplayEntry;
+}
+
+function chainSeed(row: PlannedForestRow): string {
+  return sha256(
     encodeCanonicalJson({
       domain: REPLAY_DOMAIN,
       address: row.address,
@@ -323,43 +442,125 @@ function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
       program: row.program,
     }),
   );
+}
+
+/** One committed-state observation after ACK; no planner, draft, or execution permission. */
+export function observeAcceptedExtension(
+  state: AuthorityState,
+  request: AcceptedExtensionRequest,
+  nowMs: number,
+): AcceptedExtensionObservation {
+  const { anchor, settled } = request;
+  const session = state.sessions.get(anchor.address.sessionId);
+  if (!session) {
+    throw new CrankError("unknown_target", `Unknown session ${anchor.address.sessionId}`);
+  }
+  const relations = indexForestRelations(session);
+  let selected: { task: TaskState; row: PlannedForestRow } | undefined;
+  for (const task of breadthFirstTasks(session)) {
+    const row = plannedRow(anchor.address.sessionId, task, relations, nowMs);
+    if (row.classification === "replayable") {
+      if (task.taskId === anchor.address.taskId) {
+        selected = { task, row };
+      } else {
+        // Preserve sibling structural validation without cloning outcomes or hashing chains.
+        for (const _action of acceptedActions(task)) {
+          /* exhaust validation */
+        }
+      }
+    }
+  }
+  if (!selected) {
+    throw new AcceptedExtensionUnavailable();
+  }
+  const { task, row } = selected;
+  const seed = chainSeed(row);
+  const identity = { address: row.address, strand: row.strand, program: row.program };
+  if (
+    encodeCanonicalJson(identity) !==
+      encodeCanonicalJson({
+        address: anchor.address,
+        strand: anchor.strand,
+        program: anchor.program,
+      }) ||
+    anchor.replayChainSeed !== seed ||
+    !Number.isInteger(anchor.throughActionIndex) ||
+    anchor.throughActionIndex < -1 ||
+    anchor.throughActionIndex >= task.nextActionIndex - 1 ||
+    !Number.isInteger(settled.actionIndex) ||
+    settled.actionIndex <= anchor.throughActionIndex
+  ) {
+    throw new CrankError("replay_diverged", "Warm replay target differs from caught-up strand");
+  }
+  let chain = seed;
+  let prefixDigest = seed;
+  let cancellationReplayed = false;
+  let matched = false;
+  const entries: ReplayEntry[] = [];
+  for (const action of acceptedActions(task)) {
+    const entry = replayEntry(action, seed, chain);
+    chain = entry.entryDigest;
+    if (entry.type === "operation" && entry.outcome.status === "cancelled") {
+      cancellationReplayed = true;
+    }
+    if (action.actionIndex <= anchor.throughActionIndex) {
+      prefixDigest = chain;
+    } else {
+      entries.push(structuredClone(entry));
+    }
+    if (action.actionIndex === settled.actionIndex && entry.type === "operation") {
+      const receipt = settled.receipt;
+      const stored = entry.receipt;
+      matched =
+        (receipt.status === "accepted" || receipt.status === "duplicate") &&
+        receipt.sessionId === stored.sessionId &&
+        receipt.taskId === stored.taskId &&
+        receipt.pullId === stored.pullId &&
+        receipt.resolutionOffset === stored.resolutionOffset &&
+        receipt.outcomeDigest === stored.outcomeDigest &&
+        digestCanonicalJson(entry.outcome) === stored.outcomeDigest &&
+        action.kind === "pull" &&
+        action.pull.resolution.status === "settled" &&
+        action.pull.resolution.settlement.outcomeDigest === stored.outcomeDigest;
+    }
+  }
+  if (prefixDigest !== anchor.replayChainDigest) {
+    throw new CrankError("replay_diverged", "Warm replay prefix changed");
+  }
+  if (!matched) {
+    throw new CrankError(
+      "replay_diverged",
+      "Warm replay settlement differs from committed operation",
+    );
+  }
+  const verified: AcceptedPrefixAnchor = {
+    ...identity,
+    replayChainSeed: seed,
+    throughActionIndex: anchor.throughActionIndex,
+    replayChainDigest: prefixDigest,
+  };
+  return {
+    anchor: verified,
+    entries,
+    plannedHead: row.head,
+    executionEpoch: task.execution.epoch,
+    groupContext: row.groupContext,
+    replayedThroughActionIndex: task.nextActionIndex - 1,
+    replayChainDigest: chain,
+    cancellationReplayed,
+  };
+}
+
+function buildReplayItem(task: TaskState, row: PlannedForestRow): ReplayItem {
+  const replayChainSeed = chainSeed(row);
   const replay: ReplayEntry[] = [];
   let previousEntryDigest = replayChainSeed;
   let replayedThroughActionIndex = -1;
-  for (let actionIndex = 0; actionIndex < task.nextActionIndex; actionIndex += 1) {
-    const action = task.actions[actionIndex];
-    if (action === undefined || action.actionIndex !== actionIndex) {
-      throw new CrankError("invalid_journal", "Replay history has an action gap");
-    }
-    let body: Omit<ReplayOperationEntry, "entryDigest"> | Omit<ReplayEmissionEntry, "entryDigest">;
-    if (action.kind === "pull" && action.pull.resolution.status === "settled") {
-      body = {
-        type: "operation",
-        actionIndex,
-        descriptorKind: action.pull.request.proposedDescriptor.kind,
-        descriptorDigest: action.pull.request.proposedDescriptorDigest,
-        previousEntryDigest,
-        outcome: structuredClone(action.pull.resolution.settlement.outcome),
-        receipt: structuredClone(action.pull.resolution.settlement.receipt),
-      };
-    } else if (action.kind === "emission") {
-      body = {
-        type: "emission",
-        actionIndex,
-        descriptorKind: "emission",
-        descriptorDigest: action.descriptorDigest,
-        previousEntryDigest,
-        offset: action.receipt.offset,
-      };
-    } else {
-      throw new CrankError("invalid_journal", "Replay prefix contains an unresolved slot");
-    }
-    const entryDigest = sha256(
-      encodeCanonicalJson({ replayChainSeed, previousEntryDigest, entryWithoutEntryDigest: body }),
-    );
-    replay.push({ ...body, entryDigest } as ReplayEntry);
-    previousEntryDigest = entryDigest;
-    replayedThroughActionIndex = actionIndex;
+  for (const action of acceptedActions(task)) {
+    const entry = replayEntry(action, replayChainSeed, previousEntryDigest);
+    replay.push(structuredClone(entry));
+    previousEntryDigest = entry.entryDigest;
+    replayedThroughActionIndex = action.actionIndex;
   }
   return {
     address: row.address,

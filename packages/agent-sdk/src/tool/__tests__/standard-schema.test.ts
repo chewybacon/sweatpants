@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { run } from "effection";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
@@ -72,7 +73,7 @@ describe("Zod Standard Schema adapter", () => {
         return input.count;
       });
     const invoke = await run(function* () {
-      return yield* tool({} as never);
+      return yield* toolFactory(tool)({} as never);
     });
     await expect(run(() => invoke({ count: "3" } as never))).resolves.toBe(3);
   });
@@ -86,9 +87,9 @@ describe("Zod Standard Schema adapter", () => {
       });
     expect(tool.execution).toBe("ordinary");
     expect(tool.artifacts.parameters.role).toBe("tool_parameters");
-    expectTypeOf(tool).toBeCallableWith({} as never);
+    expectTypeOf(toolFactory(tool)).toBeCallableWith({} as never);
     const invoke = await run(function* () {
-      return yield* tool({} as never);
+      return yield* toolFactory(tool)({} as never);
     });
     await expect(run(() => invoke({ count: "3" } as never))).resolves.toBe(3);
   });

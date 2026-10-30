@@ -4,9 +4,9 @@
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
-export const greetTool = createTool("greet")
+export const greetTool = createDurableTool("greet", { version: "1" })
   .description("Generate a personalized greeting using AI")
   .parameters(
     z.object({
@@ -17,6 +17,8 @@ export const greetTool = createTool("greet")
         .describe("Style of greeting"),
     }),
   )
+  .effects({})
+  .elicits({})
   .samples()
   .execute(function* (params, ctx) {
     yield* ctx.notify("Generating greeting...");

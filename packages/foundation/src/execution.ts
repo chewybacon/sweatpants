@@ -1,4 +1,5 @@
-import type { Operation } from "effection";
+import { createExecutionDiscipline } from "./execution-discipline.ts";
+import type { IterableOperation as Operation } from "./computation.ts";
 import { composeOperation, type OperationMiddleware, type OperationOptions } from "./operation.ts";
 
 /** One occurrence of a suspension, scoped to a live execution handle. */
@@ -18,13 +19,13 @@ export type ExecutionBoundary<Request, Output, Failure = unknown> =
  * Transport failure throws: it must not be confused with a program failure.
  * Recovery, authorization, journal receipts and inspection are separate contracts.
  */
-export interface Execution<Request, Reply, Output, Failure = unknown> {
+export interface Execution<Request, Reply, Output, Failure = unknown, Y = never> {
   resume(
     suspensionId: SuspensionId,
     reply: Reply,
-  ): Operation<ExecutionBoundary<Request, Output, Failure>>;
-  cancel(reason?: string): Operation<ExecutionBoundary<Request, Output, Failure>>;
-  dispose(): Operation<void>;
+  ): Operation<ExecutionBoundary<Request, Output, Failure>, Y>;
+  cancel(reason?: string): Operation<ExecutionBoundary<Request, Output, Failure>, Y>;
+  dispose(): Operation<void, Y>;
 }
 
 /**
@@ -37,16 +38,16 @@ export interface ExecutionState<E, B> {
   readonly boundary: B;
 }
 
-export interface Checkpointing<Snapshot> {
+export interface Checkpointing<Snapshot, Y = never> {
   /** Read-only capture; must not advance or mutate the guest. */
-  capture(): Operation<Snapshot>;
+  capture(): Operation<Snapshot, Y>;
 }
 
-export interface CheckpointExecution<Request, Reply, Output, Failure, Snapshot>
-  extends Execution<Request, Reply, Output, Failure>, Checkpointing<Snapshot> {}
+export interface CheckpointExecution<Request, Reply, Output, Failure, Snapshot, Y>
+  extends Execution<Request, Reply, Output, Failure, Y>, Checkpointing<Snapshot, Y> {}
 
-export interface ExecutionOptions<Request, Reply, Output, Failure> extends OperationOptions<
-  Execution<Request, Reply, Output, Failure>
+export interface ExecutionOptions<Request, Reply, Output, Failure, Y> extends OperationOptions<
+  Execution<Request, Reply, Output, Failure, Y>
 > {
   initial: ExecutionBoundary<Request, Output, Failure>;
   /** Synchronous validation before advancement begins. */
@@ -59,22 +60,24 @@ export interface CheckpointExecutionOptions<
   Output,
   Failure,
   Snapshot,
-> extends ExecutionOptions<Request, Reply, Output, Failure> {
-  driver: CheckpointExecution<Request, Reply, Output, Failure, Snapshot>;
+  Y,
+> extends ExecutionOptions<Request, Reply, Output, Failure, Y> {
+  driver: CheckpointExecution<Request, Reply, Output, Failure, Snapshot, Y>;
   middleware?: readonly OperationMiddleware<
-    CheckpointExecution<Request, Reply, Output, Failure, Snapshot>
+    CheckpointExecution<Request, Reply, Output, Failure, Snapshot, Y>
   >[];
 }
 
-export interface Executor<Program, Input, Request, Reply, Output, Failure = unknown> {
+export interface Executor<Program, Input, Request, Reply, Output, Failure = unknown, Y = never> {
   start(
     program: Program,
     input: Input,
   ): Operation<
     ExecutionState<
-      Execution<Request, Reply, Output, Failure>,
+      Execution<Request, Reply, Output, Failure, Y>,
       ExecutionBoundary<Request, Output, Failure>
-    >
+    >,
+    Y
   >;
 }
 
@@ -84,101 +87,46 @@ export type ExecutionCommand<Reply> =
   | { readonly kind: "cancel"; readonly reason?: string };
 
 /** Transport/evaluator mechanics behind the shared execution state machine. */
-export interface ExecutionDriver<Request, Reply, Output, Failure> {
-  turn(command: ExecutionCommand<Reply>): Operation<ExecutionBoundary<Request, Output, Failure>>;
+export interface ExecutionDriver<Request, Reply, Output, Failure, Y> {
+  turn(command: ExecutionCommand<Reply>): Operation<ExecutionBoundary<Request, Output, Failure>, Y>;
   /** Release must tolerate retry after failure/interruption, including partial release. */
-  dispose(): Operation<void>;
+  dispose(): Operation<void, Y>;
   /** Synchronous domain validation before a command can reach the operative. */
   validateReply?(request: Request, reply: Reply): void;
 }
 
 /** The same per-execution discipline is used with or without checkpointing. */
-function createDiscipline<Request, Reply, Output, Failure>(
-  options: ExecutionOptions<Request, Reply, Output, Failure>,
+function createDiscipline<Request, Reply, Output, Failure, Y>(
+  options: ExecutionOptions<Request, Reply, Output, Failure, Y>,
 ) {
-  let boundary = options.initial;
-  let state: "ready" | "advancing" | "capturing" | "unknown" | "closed" = "ready";
-  let disposal: "pending" | "running" | "done" = "pending";
-
-  function assertReady() {
-    if (state === "closed") {
-      throw new Error("execution_closed");
-    }
-    if (state === "unknown") {
-      throw new Error("execution_outcome_unknown");
-    }
-    if (state === "advancing" || state === "capturing") {
-      throw new Error("execution_command_in_progress");
-    }
-  }
-
-  function* advance(
-    operation: () => Operation<ExecutionBoundary<Request, Output, Failure>>,
-  ): Operation<ExecutionBoundary<Request, Output, Failure>> {
-    state = "advancing";
-    let received = false;
-    try {
-      boundary = yield* operation();
-      received = true;
-      return boundary;
-    } finally {
-      state = received ? "ready" : "unknown";
-    }
-  }
-
-  const execution: Execution<Request, Reply, Output, Failure> = {
+  const discipline = createExecutionDiscipline<ExecutionBoundary<Request, Output, Failure>, Y>(
+    options.initial,
+  );
+  const execution: Execution<Request, Reply, Output, Failure, Y> = {
     *resume(suspensionId, reply) {
-      assertReady();
+      const boundary = discipline.current();
       if (boundary.kind !== "suspended" || boundary.suspensionId !== suspensionId) {
         throw new Error("execution_suspension_mismatch");
       }
       options.validateReply?.(boundary.request, reply);
-      return yield* advance(() => options.driver.resume(suspensionId, reply));
+      return yield* discipline.advance(() => options.driver.resume(suspensionId, reply));
     },
     *cancel(reason) {
-      assertReady();
+      const boundary = discipline.current();
       if (boundary.kind !== "suspended") {
         return boundary;
       }
-      return yield* advance(() => options.driver.cancel(reason));
+      return yield* discipline.advance(() => options.driver.cancel(reason));
     },
-    *dispose() {
-      if (disposal === "done") {
-        return;
-      }
-      if (disposal === "running" || state === "advancing" || state === "capturing") {
-        throw new Error("execution_command_in_progress");
-      }
-      state = "closed";
-      disposal = "running";
-      let released = false;
-      try {
-        yield* options.driver.dispose();
-        released = true;
-      } finally {
-        disposal = released ? "done" : "pending";
-      }
-    },
+    dispose: () => discipline.dispose(() => options.driver.dispose()),
   };
-
-  return {
-    execution,
-    *capture<Snapshot>(read: () => Operation<Snapshot>): Operation<Snapshot> {
-      assertReady();
-      state = "capturing";
-      try {
-        return yield* read();
-      } finally {
-        state = "ready";
-      }
-    },
-  };
+  return { execution, capture: discipline.capture };
 }
 
-function composeExecution<Request, Reply, Output, Failure>(
-  execution: Execution<Request, Reply, Output, Failure>,
-  middleware: readonly OperationMiddleware<Execution<Request, Reply, Output, Failure>>[],
-): Execution<Request, Reply, Output, Failure> {
+function composeExecution<Request, Reply, Output, Failure, Y>(
+  execution: Execution<Request, Reply, Output, Failure, Y>,
+  middleware: readonly OperationMiddleware<Execution<Request, Reply, Output, Failure, Y>>[],
+): Execution<Request, Reply, Output, Failure, Y> {
   return {
     resume: composeOperation(
       (id, reply) => execution.resume(id, reply),
@@ -196,10 +144,10 @@ function composeExecution<Request, Reply, Output, Failure>(
 }
 
 /** Replay executions have no capture capability. Discipline cannot be uninstalled. */
-export function createExecution<Request, Reply, Output, Failure = unknown>(
-  options: ExecutionOptions<Request, Reply, Output, Failure>,
+export function createExecution<Request, Reply, Output, Failure = unknown, Y = never>(
+  options: ExecutionOptions<Request, Reply, Output, Failure, Y>,
 ): ExecutionState<
-  Execution<Request, Reply, Output, Failure>,
+  Execution<Request, Reply, Output, Failure, Y>,
   ExecutionBoundary<Request, Output, Failure>
 > {
   const discipline = createDiscipline(options);
@@ -210,10 +158,10 @@ export function createExecution<Request, Reply, Output, Failure = unknown>(
 }
 
 /** Capture shares the same guard as advancement and disposal on this execution. */
-export function createCheckpointExecution<Request, Reply, Output, Failure, Snapshot>(
-  options: CheckpointExecutionOptions<Request, Reply, Output, Failure, Snapshot>,
+export function createCheckpointExecution<Request, Reply, Output, Failure, Snapshot, Y>(
+  options: CheckpointExecutionOptions<Request, Reply, Output, Failure, Snapshot, Y>,
 ): ExecutionState<
-  CheckpointExecution<Request, Reply, Output, Failure, Snapshot>,
+  CheckpointExecution<Request, Reply, Output, Failure, Snapshot, Y>,
   ExecutionBoundary<Request, Output, Failure>
 > {
   const discipline = createDiscipline(options);

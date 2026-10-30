@@ -30,7 +30,7 @@ test("the public Scheme target compiles the actual developer tool and retains in
 }, 30_000);
 
 test("inline generator inspection sites point into the original source columns", async () => {
-  const inline = `import { createDurableTool } from "@sweatpants/agent-sdk";
+  const inline = `import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { z } from "zod";
 import type { Operation } from "effection";
 export const tool = createDurableTool("tool", { version: "1" }).description("Inline source mapping").parameters(z.object({})).output(z.string()).elicits({ question: { response: z.object({ approved: z.boolean() }) } }).execute(function* (input: {}, ctx: { elicit(key: "question", request: { message: string }): Operation<unknown> }): Operation<string> { "use workflow"; const answer = yield* ctx.elicit("question", { message: "Question?" }); return "done"; });`;

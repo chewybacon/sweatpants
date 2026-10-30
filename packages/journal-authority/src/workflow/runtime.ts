@@ -67,7 +67,6 @@ import { definePort } from "@sweatpants/foundation/port";
 
 import {
   ProgramEffectRuntimeContext,
-  type ProgramEffectRuntime,
   type RuntimeRecordBoundary,
   type SerializableProgramProposal,
 } from "./program-effect-runtime.ts";
@@ -77,8 +76,10 @@ export {
   type RuntimeRecordBoundary,
   type SerializableProgramProposal,
 } from "./program-effect-runtime.ts";
-import { EffectionKernel } from "./effection-kernel.ts";
-import { driveProgramExecution, type ProgramExecutionState } from "./program-execution.ts";
+import { createProgramKernel, type ProgramKernel } from "./program-kernel.ts";
+import { createBoundarySession, type Reconstruction } from "./program-reconstruction.ts";
+import type { NativeWorkComputation } from "./program-backend.ts";
+import { type ProgramExecutionState } from "./program-execution.ts";
 
 /** An Effection Effect that can be yielded by a constrained Workflow. */
 export type DurableProgramEffect<T> = Effect<T> & {
@@ -1094,7 +1095,7 @@ interface AttachmentState {
   readonly resolvers: Set<TrackedResolver<unknown>>;
   readonly dispose: WithResolvers<Error>;
   phase: AttachmentPhase;
-  actionIndex: number;
+  readonly actionIndex: number;
   awaiting?: AttachmentAwaiting;
   activeExchange: boolean;
   disposition: ProgramShutdownReason;
@@ -1271,8 +1272,6 @@ function* applyCommand(state: AttachmentState, command: ProgramCommand): Operati
       throw protocol("emission ack mismatch");
     }
     const ack = emission.ack;
-    delete state.awaiting;
-    state.actionIndex += 1;
     ack.resolve(command.offset);
     const runtimeEvent = yield* nextRuntimeEvent(state);
     return presentRuntimeEvent(state, runtimeEvent);
@@ -1329,14 +1328,11 @@ function* applyCommand(state: AttachmentState, command: ProgramCommand): Operati
     }
     verifyResumeReceipt(state, command);
     const boundary = pullAwaiting.boundary;
-    delete state.awaiting;
-    state.actionIndex += 1;
     boundary.resume.resolve(structuredClone(command.outcome));
     const runtimeEvent = yield* nextRuntimeEvent(state);
     return presentRuntimeEvent(state, runtimeEvent);
   }
   const pullAwaitingCancel = state.awaiting?.kind === "pull" ? state.awaiting : undefined;
-  delete state.awaiting;
   pullAwaitingCancel?.boundary.resume.reject(new DurableProgramCancellation(command.reason));
   const runtimeEvent = yield* nextRuntimeEvent(state);
   return presentRuntimeEvent(state, runtimeEvent);
@@ -1381,8 +1377,13 @@ function* superviseCommands(state: AttachmentState): Operation<void> {
 /** Opens one resource-owned program attachment. */
 export function openProgramAttachment(
   request: AttachProgramRequest,
-  workflow: (() => Operation<Json>) | { start(): Operation<ProgramExecutionState> },
+  workflow:
+    | (() => Operation<Json>)
+    | NativeWorkComputation
+    | ProgramKernel
+    | { start(): Operation<ProgramExecutionState> },
   actionIndex = 0,
+  recovery?: Reconstruction,
 ): Operation<ProgramAttachmentHandle> {
   return resource(function* (provide) {
     yield* RecordAttemptPort.installDriver(ordinaryRecordAttemptDriver);
@@ -1396,79 +1397,102 @@ export function openProgramAttachment(
       resolvers: new Set(),
       dispose: withResolvers<Error>("dispose program attachment"),
       phase: "created",
-      actionIndex,
+      get actionIndex() {
+        return session.index;
+      },
       activeExchange: false,
       disposition: "scope_exit",
     };
-    const runtime: ProgramEffectRuntime = {
-      *perform<T extends Json>(boundary: RuntimeRecordBoundary<T>): Operation<OperationOutcome> {
+    const session = createBoundarySession(
+      actionIndex,
+      function* (boundaryRequest) {
         if (state.phase === "disposed") {
           throw stale();
         }
-        const resume = trackedResolver<OperationOutcome>(
-          `record resume ${state.actionIndex}`,
-          state.resolvers,
-        );
-        state.events.add({
-          type: "boundary",
-          actionIndex: state.actionIndex,
-          boundary,
-          resume,
-        });
-        const outcome = yield* resume.operation;
-        return outcome;
-      },
-      *requestEmission(descriptor: EmissionDescriptor): Operation<Json> {
-        if (state.phase === "disposed") {
-          throw stale();
+        if (boundaryRequest.kind === "record") {
+          const resume = trackedResolver<OperationOutcome>(
+            `record resume ${state.actionIndex}`,
+            state.resolvers,
+          );
+          state.events.add({
+            type: "boundary",
+            actionIndex: state.actionIndex,
+            boundary: boundaryRequest.boundary,
+            resume,
+          });
+          return { kind: "record", outcome: yield* resume.operation };
         }
         const ack = trackedResolver<Json>(`emission ack ${state.actionIndex}`, state.resolvers);
         state.events.add({
           type: "emission",
           actionIndex: state.actionIndex,
-          descriptor,
+          descriptor: boundaryRequest.descriptor,
           ack,
         });
-        return yield* ack.operation;
+        return { kind: "emission", value: yield* ack.operation };
       },
-    };
-
-    yield* ProgramEffectRuntimeContext.set(runtime);
-    const workflowTask = yield* spawn(function* () {
-      try {
-        const result = yield* driveProgramExecution(
-          typeof workflow === "function"
-            ? () => EffectionKernel.start(workflow, request.input)
-            : () => workflow.start(),
+      () => {
+        delete state.awaiting;
+      },
+      (error) => closeState(state, error),
+      (entry) => {
+        requireParsed(
+          programCommandParser,
+          entry.type === "operation"
+            ? {
+                type: "resume-record",
+                actionIndex: entry.actionIndex,
+                outcome: entry.outcome,
+                receipt: entry.receipt,
+                replayed: true,
+              }
+            : { type: "ack-emission", actionIndex: entry.actionIndex, offset: entry.offset },
+          "program_protocol_error",
+          "Invalid program command",
         );
+      },
+      recovery,
+    );
+    const kernel =
+      typeof workflow !== "function" && "run" in workflow
+        ? workflow
+        : createProgramKernel(workflow);
+    const workflowTask = yield* spawn(function* () {
+      let event: Extract<ProgramEvent, { type: "completed" | "failed" }>;
+      try {
+        const result = yield* kernel.run(session.handle);
         const value = assertReplayedCanonicalValue(result, "schema_validation_failed");
         assertInlineSize(value);
-        state.events.add({
-          type: "terminal",
-          event: { type: "completed", actionIndex: state.actionIndex, value },
-        });
+        event = { type: "completed", actionIndex: state.actionIndex, value };
       } catch (error) {
-        state.events.add({
-          type: "terminal",
-          event: {
-            type: "failed",
-            actionIndex: state.actionIndex,
-            error: serializeDurableError(error),
-          },
-        });
+        event = {
+          type: "failed",
+          actionIndex: state.actionIndex,
+          error: serializeDurableError(error),
+        };
+      }
+      try {
+        yield* session.finish(event);
+        state.events.add({ type: "terminal", event });
+      } catch (error) {
+        closeState(state, asError(error));
       }
     });
     const supervisorTask = yield* spawn(() => superviseCommands(state));
     const disposerTask = yield* spawn(function* () {
       yield* state.dispose.operation;
-      yield* supervisorTask.halt();
-      yield* workflowTask.halt();
+      try {
+        yield* supervisorTask.halt();
+        yield* workflowTask.halt();
+      } finally {
+        yield* session.closeRecovery();
+      }
     });
 
     const handle: ProgramAttachmentHandle = Object.freeze({
       *exchange(command: ProgramCommand): Operation<ProgramEvent> {
         if (state.phase === "disposed" || state.phase === "terminal") {
-          throw stale();
+          throw session.failure ?? stale();
         }
         if (state.activeExchange) {
           const error = protocol("concurrent exchange");
@@ -1477,6 +1501,7 @@ export function openProgramAttachment(
         }
         state.activeExchange = true;
         const reply = trackedResolver<ProgramEvent>("attachment exchange", state.resolvers);
+        let delivered = false;
         try {
           const acceptedCommand = requireParsed(
             programCommandParser,
@@ -1486,8 +1511,12 @@ export function openProgramAttachment(
           );
           state.commands.add({ command: acceptedCommand, reply });
           const event = yield* reply.operation;
+          delivered = true;
           return event;
         } finally {
+          if (!delivered) {
+            closeState(state, stale());
+          }
           state.activeExchange = false;
         }
       },
@@ -1505,6 +1534,7 @@ export function openProgramAttachment(
       },
       *close(reason: ProgramShutdownReason): Operation<void> {
         if (state.phase === "disposed") {
+          yield* disposerTask;
           return;
         }
         state.disposition = requireParsed(
@@ -1525,6 +1555,7 @@ export function openProgramAttachment(
       yield* supervisorTask.halt();
       yield* workflowTask.halt();
       yield* disposerTask.halt();
+      yield* session.closeRecovery();
     }
   });
 }

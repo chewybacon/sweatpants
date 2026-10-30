@@ -1,4 +1,5 @@
-import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
+import { defineEffect } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { z } from "zod";
 

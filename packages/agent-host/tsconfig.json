@@ -38,6 +38,12 @@
     },
     {
       "path": "../model-sampling"
+    },
+    {
+      "path": "../primitive-journal"
+    },
+    {
+      "path": "../runtime-effection"
     }
   ]
 }

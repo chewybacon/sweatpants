@@ -1,0 +1,52 @@
+{
+  "name": "@sweatpan.ts/acceptance",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts"
+      },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json && tsc -p tsconfig.production.json",
+    "lint": "cd ../../.. && oxlint --type-aware packages/v2/acceptance",
+    "format:check": "cd ../../.. && oxfmt packages/v2/acceptance --check",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest run",
+    "test:watch": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" vitest"
+  },
+  "devDependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@standard-schema/spec": "catalog:",
+    "@sweatpan.ts/codemode-runtime-lua": "workspace:*",
+    "@sweatpan.ts/connection": "workspace:*",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/execution-worker": "workspace:*",
+    "@sweatpan.ts/hosting": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/runtime-effect": "workspace:*",
+    "@sweatpan.ts/runtime-effection": "workspace:*",
+    "@sweatpan.ts/storage": "workspace:*",
+    "@sweatpan.ts/storage-memory": "workspace:*",
+    "@sweatpan.ts/storage-sqlite": "workspace:*",
+    "@sweatpan.ts/testing": "workspace:*",
+    "@sweatpan.ts/tools": "workspace:*",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "effection": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

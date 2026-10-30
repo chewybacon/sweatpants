@@ -1,57 +1,31 @@
-import { CrankError } from "@sweatpants/durable-execution";
-import { createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
-import { sha256 } from "@sweatpants/foundation";
 import { z } from "zod";
+import {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+  DrawInputSchema,
+  DrawOutputSchema,
+} from "../schemas/pick-card.ts";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
-import { CardSchema } from "./cards";
-
-/** One public parameter schema shared by model inventory and durable execution. */
-export const PickCardParametersSchema = z.object({
-  count: z.number().int().min(2).max(10).default(5).describe("Number of cards to draw"),
-});
-
-/** Accepted CardPicker content schema (not the outer action envelope). */
-export const PickCardResponseSchema = z.object({
-  picked: CardSchema,
-});
-
-/** Canonical authored CardPicker context; correlation metadata stays private. */
-export const PickCardContextSchema = z.object({
-  cards: z.array(CardSchema),
-  prompt: z.string(),
-});
-
-/** Host-side card draw contract with Zod-authored Standard Schema validators. */
-export const drawPickCards = defineEffect({
-  name: "pick-card.draw",
-  version: "1",
-  input: z.object({ count: z.number().int().min(2).max(10) }),
-  output: z.object({ cards: z.array(CardSchema).min(2).max(10) }),
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-});
-
-/**
- * The one `pick_card` contract and exact crank-native program definition.
- * Inventory, plugin UI, placement, and validator catalog all derive from this
- * object; no ordinary fallback exists.
- */
-export const pickCard = createDurableTool("pick_card")
+export const pickCard = createDurableTool("pick_card", {
+  version: "2.0.0",
+})
   .description("Draw random cards and let the user pick one")
-  .identity({
-    version: "2.0.0",
-    digest: sha256("yo-chat.pick-card@2.0.0:unified-contract-content-elicit-v1"),
-  })
   .parameters(PickCardParametersSchema)
   .output(z.string())
-  .elicits({
-    pickCard: {
-      response: PickCardResponseSchema,
-      context: PickCardContextSchema,
+  .effects({
+    draw: {
+      version: "2",
+      input: DrawInputSchema,
+      output: DrawOutputSchema,
+      // A lost unaccepted draw must stop recovery rather than silently draw again.
+      retrySafety: { mode: "unsafe" as const },
     },
   })
-  .effects({ [drawPickCards.name]: drawPickCards })
+  .elicits({ pickCard: { response: PickCardResponseSchema, context: PickCardContextSchema } })
   .execute(function* (input, context) {
-    const { cards } = yield* context.effect(drawPickCards, { count: input.count });
+    const { cards } = yield* context.effect("draw", { count: input.count });
     const prompt = `Pick one of these ${cards.length} cards:`;
     const result = yield* context.elicit("pickCard", {
       message: prompt,
@@ -67,7 +41,7 @@ export const pickCard = createDurableTool("pick_card")
         candidate.display === result.content.picked.display,
     );
     if (!card) {
-      throw new CrankError("schema_validation_failed", "Selected card was not offered");
+      throw new Error("Selected card was not offered");
     }
     return [
       `Card selection recorded: the user picked ${card.rank} of ${card.suit} (${card.display}).`,
@@ -75,3 +49,9 @@ export const pickCard = createDurableTool("pick_card")
       "Acknowledge the specific selected card to the user now.",
     ].join(" ");
   });
+
+export {
+  PickCardParametersSchema,
+  PickCardResponseSchema,
+  PickCardContextSchema,
+} from "../schemas/pick-card.ts";

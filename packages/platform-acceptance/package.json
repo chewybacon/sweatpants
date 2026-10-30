@@ -32,6 +32,7 @@
     "@sweatpants/model-provider": "workspace:*",
     "@sweatpants/model-provider-pi-ai": "workspace:*",
     "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/primitive-journal": "workspace:*",
     "@sweatpants/storage-sqlite": "workspace:*",
     "@sweatpants/test-rig": "workspace:*",
     "@sweatpants/tool-runtime": "workspace:*",

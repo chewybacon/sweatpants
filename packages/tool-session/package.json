@@ -113,6 +113,27 @@
         "types": "./dist/tool-invocation-execution.d.ts",
         "default": "./dist/invocation-execution.js"
       }
+    },
+    "./placement": {
+      "development": {
+        "import": "./src/execution/tool-placement.ts",
+        "types": "./src/execution/tool-placement.ts"
+      },
+      "import": {
+        "types": "./dist/execution/tool-placement.d.ts",
+        "default": "./dist/execution/tool-placement.js"
+      },
+      "default": "./src/execution/tool-placement.ts"
+    },
+    "./execution/tool-guest": {
+      "development": {
+        "import": "./src/execution/tool-guest.ts",
+        "types": "./src/execution/tool-guest.ts"
+      },
+      "import": {
+        "types": "./dist/execution/tool-guest.d.ts",
+        "default": "./dist/execution/tool-guest.js"
+      }
     }
   },
   "scripts": {
@@ -134,6 +155,9 @@
     "@sweatpants/foundation": "workspace:*",
     "@sweatpants/model-provider": "workspace:*",
     "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/primitive-journal": "workspace:*",
+    "@sweatpants/standard-durability": "workspace:*",
+    "@sweatpants/standard-durability-effection": "workspace:*",
     "@sweatpants/tool-runtime": "workspace:*",
     "base64-js": "1.5.1",
     "effection": "catalog:",

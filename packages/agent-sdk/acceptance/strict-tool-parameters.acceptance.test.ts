@@ -1,3 +1,4 @@
+import { toolFactory } from "../src/tool/execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../src/index.ts";
@@ -40,7 +41,7 @@ describe("@sweatpants/agent-sdk strict tool parameter acceptance", () => {
         return { ok: true, route: `${params.from}-${params.destination}` };
       });
 
-    const invoke = yield* BookFlight(testToolContext());
+    const invoke = yield* toolFactory(BookFlight)(testToolContext());
 
     try {
       yield* invoke({ destination: "NYC" } as unknown as { from: string; destination: string });

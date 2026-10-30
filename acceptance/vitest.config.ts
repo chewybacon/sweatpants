@@ -8,6 +8,9 @@ export default defineConfig({
     // Authoring and focused placement suites share a bounded resource budget.
     maxWorkers: 1,
     minWorkers: 1,
+    // Stop on the first failure; retries can hide intermittent hangs.
+    bail: 1,
+    retry: 0,
     testTimeout: 30_000,
   },
 });

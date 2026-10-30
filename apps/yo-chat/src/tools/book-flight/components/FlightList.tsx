@@ -5,7 +5,7 @@
  * Used by the book_flight tool's pickFlight elicitation.
  */
 import type { ReactRenderableProps } from "@sweatpants/react-chat";
-import type { Flight } from "../tool";
+import type { Flight } from "../../schemas/book-flight.ts";
 
 // =============================================================================
 // TYPES

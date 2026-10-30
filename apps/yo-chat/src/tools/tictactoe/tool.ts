@@ -1,3 +1,8 @@
+import {
+  GameMoveSchema,
+  PickMoveResponseSchema,
+  PickMoveContextSchema,
+} from "../schemas/tictactoe.ts";
 /**
  * TicTacToe Tool (MCP Standard Sampling)
  *
@@ -6,7 +11,7 @@
  * then the tool parses the free-form response and falls back to a random legal
  * move only when the sampled text is unusable.
  */
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 import {
   type Board,
@@ -20,34 +25,6 @@ import {
 // =============================================================================
 // SCHEMAS
 // =============================================================================
-
-const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
-const BoardSchema = z
-  .tuple([
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-    CellSchema,
-  ])
-  .describe("Board state: 9 cells");
-
-const LastMoveSchema = z.object({
-  position: z.number().min(0).max(8),
-  player: z.enum(["X", "O"]),
-});
-
-const GameMoveSchema = z.object({
-  position: z.number().min(0).max(8),
-  player: z.enum(["X", "O"]),
-  isModel: z.boolean(),
-  boardAfter: BoardSchema,
-  moveNumber: z.number(),
-});
 
 type GameMove = z.infer<typeof GameMoveSchema>;
 
@@ -66,20 +43,14 @@ type GameClientResult =
       winningLine?: number[];
     };
 
-function randomEmptyPosition(board: Board): number {
-  const emptyPositions = board
-    .map((cell, i) => (cell === null ? i : null))
-    .filter((i): i is number => i !== null);
-  return emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!;
-}
-
 // =============================================================================
 // TOOL DEFINITION
 // =============================================================================
 
-export const tictactoeTool = createTool("tictactoe")
-  .description(
-    `Play a complete game of tic-tac-toe against the user.
+export const tictactoeTool = createDurableTool("tictactoe", {
+  version: "1",
+})
+  .description(`Play a complete game of tic-tac-toe against the user.
 
 This tool handles the entire game - just call it once and it will:
 1. Randomly assign X or O to you and the user
@@ -93,30 +64,20 @@ Board positions:
 ---------
 3 | 4 | 5
 ---------
-6 | 7 | 8`,
-  )
+6 | 7 | 8`)
   .parameters(z.object({}))
-  .elicits({
-    pickMove: {
-      response: z.object({
-        // -1 is used by the game-over UI acknowledgement.
-        position: z.number().min(-1).max(8).describe("Cell position user clicked"),
-      }),
-      context: z.object({
-        board: BoardSchema,
-        moveHistory: z.array(GameMoveSchema).describe("History of all moves"),
-        lastMove: LastMoveSchema.optional(),
-        winningLine: z.array(z.number()).optional(),
-        gameOver: z.boolean().optional(),
-        resultMessage: z.string().optional(),
-        modelSymbol: z.enum(["X", "O"]),
-        userSymbol: z.enum(["X", "O"]),
-      }),
+  .effects({
+    random: {
+      version: "1",
+      input: z.object({}),
+      output: z.number(),
+      retrySafety: { mode: "repeatable" as const },
     },
   })
+  .elicits({ pickMove: { response: PickMoveResponseSchema, context: PickMoveContextSchema } })
   .samples()
   .execute(function* (_params, ctx) {
-    const modelPlaysX = Math.random() < 0.5;
+    const modelPlaysX = (yield* ctx.effect("random", {})) < 0.5;
     const modelSymbol = (modelPlaysX ? "X" : "O") as Player;
     const userSymbol = (modelPlaysX ? "O" : "X") as Player;
     const modelGoesFirst = modelPlaysX;
@@ -125,7 +86,7 @@ Board positions:
     let currentPlayer: Player = "X";
     const moveHistory: GameMove[] = [];
 
-    yield* ctx.log("info", `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`);
+    yield* ctx.notify(`Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`);
 
     let clientResult: GameClientResult;
 
@@ -153,11 +114,11 @@ Empty positions: ${emptyPositions.join(", ")}
 Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
 
         const response = yield* ctx.sample({
-          messages: [{ role: "user", content: prompt }],
+          prompt,
         });
 
         const text = response.text ?? "";
-        yield* ctx.log("info", `Model response: "${text}"`);
+        yield* ctx.notify(`Model response: "${text}"`);
 
         const match = text.match(/\b([0-8])\b/);
         let playedCell: number;
@@ -166,21 +127,22 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
           const parsed = parseInt(match[1]!, 10);
           if (emptyPositions.includes(parsed)) {
             playedCell = parsed;
-            yield* ctx.log("info", `Parsed valid move: ${playedCell}`);
+            yield* ctx.notify(`Parsed valid move: ${playedCell}`);
           } else {
-            yield* ctx.log(
-              "warning",
-              `Model chose occupied cell ${parsed}, falling back to random`,
-            );
-            playedCell = randomEmptyPosition(board);
+            yield* ctx.notify(`Model chose occupied cell ${parsed}, falling back to random`);
+            playedCell =
+              emptyPositions[
+                Math.floor((yield* ctx.effect("random", {})) * emptyPositions.length)
+              ]!;
           }
         } else {
-          yield* ctx.log("warning", `Could not parse move from "${text}", falling back to random`);
-          playedCell = randomEmptyPosition(board);
+          yield* ctx.notify(`Could not parse move from "${text}", falling back to random`);
+          playedCell =
+            emptyPositions[Math.floor((yield* ctx.effect("random", {})) * emptyPositions.length)]!;
         }
 
         board = applyMove(board, playedCell, modelSymbol);
-        yield* ctx.log("info", `Model plays cell ${playedCell}`);
+        yield* ctx.notify(`Model plays cell ${playedCell}`);
 
         moveHistory.push({
           position: playedCell,
@@ -224,7 +186,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
 
         const userPosition = result.content.position;
         board = applyMove(board, userPosition, userSymbol);
-        yield* ctx.log("info", `User plays cell ${userPosition}`);
+        yield* ctx.notify(`User plays cell ${userPosition}`);
 
         moveHistory.push({
           position: userPosition,

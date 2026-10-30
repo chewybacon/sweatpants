@@ -1,4 +1,5 @@
-import { completeElicitExchange, createDurableTool, documentEffect } from "@sweatpants/agent-sdk";
+import { completeElicitExchange, documentEffect } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import {
   documentRefSchema,
   documentPatchSchema,

@@ -63,3 +63,21 @@ export {
   type OperationMiddleware,
   type OperationOptions,
 } from "./operation.ts";
+
+export type {
+  Outcome,
+  RuntimeType,
+  Computation,
+  IterableOperation,
+  Turn,
+  Handler,
+  Middleware,
+  HandlerMiddleware,
+  Work,
+  RuntimeExecution,
+  Runtime,
+  Guest,
+  GuestWork,
+} from "./computation.ts";
+
+export { createGuest } from "./guest.ts";

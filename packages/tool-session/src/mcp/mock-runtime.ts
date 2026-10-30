@@ -1,3 +1,5 @@
+import { toolFactory } from "@sweatpants/agent-sdk/internal/tool-execution";
+import type { NormalizedElicitsMap, NormalizedSamplesMap } from "@sweatpants/agent-sdk";
 /**
  * Mock MCP Runtime for Testing
  *
@@ -297,9 +299,19 @@ export function runMCPTool<
   TParams,
   TResult,
   TElicits extends ElicitsMap = {},
-  TSamples extends SamplesMap | true | undefined = undefined,
+  TSamples extends SamplesMap | true | undefined = SamplesMap | true | undefined,
 >(
-  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>,
+  tool: ToolDefinition<
+    StandardSchemaV1<unknown, TParams>,
+    TResult,
+    NormalizedElicitsMap<TElicits>,
+    {},
+    TName
+  > & {
+    readonly samples: TSamples extends SamplesMap
+      ? NormalizedSamplesMap<TSamples>
+      : Readonly<Record<string, never>>;
+  },
   params: TParams,
   client: MockMCPClient,
   options: RunMCPToolOptions = {},
@@ -339,25 +351,20 @@ export function runMCPTool<
       const clientCtx = client.createContext();
       const signal = options.signal ?? (yield* useAbortSignal());
 
-      if (typeof tool !== "function") {
-        throw new Error(
-          `Tool "${String((tool as { name?: string }).name ?? "<unknown>")}" is not a callable ToolDefinition factory`,
-        );
-      }
       // SAFETY: createCoreToolCtx supplies the common runtime services; the
       // selected ToolDefinition carries the exact elicitation/sampling types.
       const toolContext = createCoreToolCtx(tool, clientCtx, signal) as unknown as ToolCtx<
         TElicits,
         TSamples
       >;
-      const invoke = yield* tool(toolContext);
+      const invoke = yield* toolFactory(tool)(toolContext);
       return yield* invoke(validatedParams);
     },
   };
 }
 
 function createCoreToolCtx(
-  tool: RuntimeTool,
+  tool: Pick<RuntimeTool, "name" | "elicits" | "samples">,
   clientCtx: MockMCPClientContext,
   signal: AbortSignal,
 ): ToolCtx<any, any> {

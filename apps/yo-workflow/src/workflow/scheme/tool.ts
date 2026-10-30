@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { assertJson, canonicalJson, sha256, type Json } from "@sweatpants/foundation";
 import { validateAuthoredSchema } from "@sweatpants/foundation/parser";
 import { decisionRequestSchema } from "@sweatpants/model-decision";

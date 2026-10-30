@@ -1,3 +1,4 @@
+import { CrankError } from "@sweatpants/durable-execution";
 import type { DocumentCommandRequest } from "./document-command.ts";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import type {
@@ -6,6 +7,8 @@ import type {
   DurableOperationDescriptor,
   DurableProgramManifest,
   ForestReplayPlan,
+  ReplayItem,
+  ReplayEntry,
   PinnedProgram,
   ProgramRoute,
   ProgramRecoveryCheckpoint,
@@ -72,6 +75,8 @@ import type {
   TaskCloseReceipt,
   ValidateElicitResponseRequest,
   ValidateElicitResponseResult,
+  RecoverRecordRequest,
+  RecoverRecordResult,
   ReserveOperationRequest,
   ReserveOperationResult,
   BreachForkGroupRequest,
@@ -199,6 +204,7 @@ export type ExecutionCommand =
       readonly request: ReserveDelegatedPeerSampleRequest;
     }
   | { readonly type: "execution.report-peer-loss"; readonly request: ReportPeerLossRequest }
+  | { readonly type: "execution.recover-record"; readonly request: RecoverRecordRequest }
   | { readonly type: "execution.reserve-pull"; readonly request: ReserveOperationRequest }
   | { readonly type: "execution.mandate-reserve"; readonly request: MandateReserveRequest }
   | { readonly type: "execution.mandate-emission"; readonly request: MandateEmissionRequest }
@@ -224,6 +230,10 @@ export type ExecutionCommand =
     }
   | { readonly type: "execution.detach-attempt"; readonly request: DetachAttemptCommand }
   | { readonly type: "execution.abandon-attempt"; readonly request: AbandonAttemptCommand }
+  | {
+      readonly type: "execution.orphan-if-current";
+      readonly request: { readonly fence: OrphanFence; readonly reason: "replay_diverged" };
+    }
   | { readonly type: "execution.force-orphan"; readonly request: ForceOrphanCommand };
 
 export type ActivationControlCommand =
@@ -262,6 +272,7 @@ export interface CommandResultByType {
   readonly "execution.commit-peer-evidence": CommitPeerEvidenceResult;
   readonly "execution.reserve-delegated-peer-sample": ReserveDelegatedPeerSampleResult;
   readonly "execution.report-peer-loss": ReportPeerLossResult;
+  readonly "execution.recover-record": RecoverRecordResult;
   readonly "execution.reserve-pull": ReserveOperationResult;
   readonly "execution.mandate-reserve": LiveReservationResult;
   readonly "execution.mandate-emission": EmissionReceipt;
@@ -275,6 +286,7 @@ export interface CommandResultByType {
   readonly "execution.begin-cancellation-unwind": DurableCancellationState;
   readonly "execution.detach-attempt": void;
   readonly "execution.abandon-attempt": void;
+  readonly "execution.orphan-if-current": { readonly status: "orphaned" | "stale" };
   readonly "execution.force-orphan": void;
   readonly "control.claim-activation": ClaimActivationResult;
   readonly "control.renew-activation": RenewActivationResult;
@@ -292,7 +304,53 @@ export type CommandResult<C extends AuthorityCommand> = CommandResultByType[C["t
  * read-only checks: they authenticate and validate a proposed interaction but
  * never mint a capability, append history, or advance authority state.
  */
+/** Read-only evidence, never a runnable classification or dispatch permission. */
+export interface RecordRecoveryObservation {
+  readonly item: ReplayItem;
+  readonly attachmentId: string;
+  readonly pending: {
+    readonly actionIndex: number;
+    readonly pullIndex: number;
+    readonly pullId: string;
+    readonly expectedAttemptId: string;
+    readonly descriptor: DurableOperationDescriptor;
+  };
+}
+
+/** Consistency witness for accepted history, never execution authority. */
+export interface AcceptedPrefixAnchor {
+  readonly address: ReplayItem["address"];
+  readonly strand: ReplayItem["strand"];
+  readonly program: ReplayItem["program"];
+  readonly replayChainSeed: string;
+  readonly throughActionIndex: number;
+  readonly replayChainDigest: string;
+}
+export interface AcceptedExtensionRequest {
+  readonly anchor: AcceptedPrefixAnchor;
+  readonly settled: {
+    readonly actionIndex: number;
+    readonly receipt: ResolutionReceipt;
+  };
+}
+export interface AcceptedExtensionObservation {
+  readonly anchor: AcceptedPrefixAnchor;
+  readonly entries: readonly ReplayEntry[];
+  readonly plannedHead: ReplayItem["plannedHead"];
+  readonly executionEpoch: number;
+  readonly groupContext: ReplayItem["groupContext"];
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainDigest: string;
+  readonly cancellationReplayed: boolean;
+}
+
 export type AuthorityQuery =
+  | { readonly type: "task.accepted-extension"; readonly request: AcceptedExtensionRequest }
+  | {
+      readonly type: "task.record-recovery-observation";
+      readonly sessionId: string;
+      readonly taskId: string;
+    }
   | { readonly type: "control.activation-status"; readonly sessionId: string }
   | { readonly type: "authority.identity" }
   | { readonly type: "authority.nonterminal-schema-digests" }
@@ -335,6 +393,7 @@ export type AuthorityQuery =
       readonly request: AuthorizeModelDispatchRequest;
     }
   | {
+      /** Non-attempt pulls only; attempt owners must use authenticated reservation. */
       readonly type: "pull.resolution-capability";
       readonly sessionId: string;
       readonly taskId: string;
@@ -342,6 +401,8 @@ export type AuthorityQuery =
     };
 
 export interface QueryResultByType {
+  readonly "task.accepted-extension": AcceptedExtensionObservation;
+  readonly "task.record-recovery-observation": RecordRecoveryObservation;
   readonly "control.activation-status": { readonly remainingMs: number };
   readonly "authority.identity": { readonly id: string; readonly incarnation: string };
   readonly "authority.nonterminal-schema-digests": readonly string[];
@@ -596,4 +657,19 @@ export interface KernelTransition<C extends AuthorityCommand> {
   readonly state: AuthorityState;
   readonly entries: readonly DurableSemanticRecord[];
   readonly result: CommandResult<C>;
+}
+
+/** Automatic cleanup carries only the failed activation's original ownership. */
+export interface OrphanFence {
+  readonly address: ReplayItem["address"];
+  readonly program: ReplayItem["program"];
+  readonly executionEpoch: number;
+  readonly forkGroupRevision: number;
+}
+
+export class AcceptedExtensionUnavailable extends CrankError {
+  readonly tag = "accepted-extension-unavailable";
+  constructor() {
+    super("replay_diverged", "Settled strand was not replayable");
+  }
 }

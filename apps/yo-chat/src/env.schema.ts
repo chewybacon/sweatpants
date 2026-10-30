@@ -54,37 +54,10 @@ export const appEnv = createEnv({
     MAX_TOOL_ITERATIONS: z.coerce.number().default(10),
 
     // Authority storage is resolved by chatStorageFromEnv in storage-config.ts:
-    // SQLite by default, SWEATPANTS_STORAGE=memory as the explicit override.
+    // This app requires a persistent SQLite path.
 
-    // Redis configures volatile response tails only; it is not authority storage.
-    REDIS_URL: z.string().optional(),
-
-    // workflow host journal signing secret. Startup fails when it is absent.
-    PROGRAM_DRIVER_CAPABILITY_SECRET: z.string().min(32).optional(),
-
-    // MCP plugin tool execution mode.
-    // - local: current yo-chat behavior; tool generators run in local worker/session runtime.
-    // - agentcore: local chat/UI with tool generators running in AWS Bedrock AgentCore Runtime.
-    MCP_TOOL_RUNTIME: z.enum(["local", "agentcore"]).default("local"),
-
-    // AgentCore Runtime configuration used when MCP_TOOL_RUNTIME=agentcore.
-    AGENTCORE_RUNTIME_ARN: z.string().optional(),
-    AGENTCORE_REGION: z
-      .string()
-      .default(process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"] ?? "us-east-1"),
-    AGENTCORE_ENDPOINT_NAME: z.string().default("DEFAULT"),
-    AGENTCORE_RUNTIME_PROFILE_NAME: z.string().default("yo-chat-agentcore"),
-    // Explicit immutable durable evaluator release. These do not fall back to DEFAULT.
-    AGENTCORE_DURABLE_RELEASE_ID: z.string().optional(),
-    AGENTCORE_DURABLE_IMAGE_DIGEST: z.string().optional(),
-    AGENTCORE_DURABLE_REGISTRY_DIGEST: z.string().optional(),
-    AGENTCORE_DURABLE_IAM_PROFILE: z.string().optional(),
-    AGENTCORE_DURABLE_NETWORK_PROFILE: z.string().optional(),
-    AGENTCORE_DEVELOPMENT_ACTIVE_RECORD_JSON: z.string().optional(),
-    AGENTCORE_DURABLE_IDLE_TIMEOUT_SECONDS: z.coerce.number().default(180),
-    AGENTCORE_DURABLE_MAX_LIFETIME_SECONDS: z.coerce.number().default(28_800),
-    AGENTCORE_TOOL_SESSION_TTL_MS: z.coerce.number().default(15 * 60 * 1000),
-    AGENTCORE_REDIS_KEY_PREFIX: z.string().default("sp:yo-chat:agentcore:"),
+    // The yo-chat demo now uses local Guest placement only.
+    MCP_TOOL_RUNTIME: z.literal("local").default("local"),
   },
 
   /**

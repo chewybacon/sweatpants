@@ -4,9 +4,6 @@ import {
   ProgramPeer,
   recoverProgram,
   type CaughtUpLeaf,
-  type ProgramStep,
-  verifyProgramReplayEntry,
-  assertProgramReplayFrontier,
   type ReplayItem,
 } from "@sweatpants/durable-execution";
 import { canonicalJson, sha256 } from "@sweatpants/foundation";
@@ -80,113 +77,11 @@ export function* replayStrand(item: ReplayItem): Operation<CaughtUpLeaf> {
       },
     };
   } catch (error) {
-    yield* ProgramPeer.operations.shutdown(attachment, "failed");
-    if (error instanceof CrankError && error.code === "replay_diverged") {
-      throw error;
+    try {
+      yield* ProgramPeer.operations.shutdown(attachment, "failed");
+    } catch {
+      /* Preserve the post-restore validation failure. */
     }
-    throw new CrankError("replay_diverged", "Evaluator failed while replaying planned history", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw error;
   }
-}
-
-/**
- * Replays only the newly committed suffix into a verified warm attachment.
- * This is still replay — it has no Authority argument or live capability —
- * and lets one host drive avoid re-running an already caught-up prefix.
- */
-export function* replayWarmSuffix(
-  previous: CaughtUpLeaf,
-  item: ReplayItem,
-  settledActionIndex: number,
-  attemptedInDriver: boolean,
-  warmFrontier: ProgramStep,
-): Operation<CaughtUpLeaf> {
-  if (
-    previous.item.address.sessionId !== item.address.sessionId ||
-    previous.item.address.taskId !== item.address.taskId ||
-    previous.item.program.id !== item.program.id ||
-    previous.item.program.version !== item.program.version ||
-    previous.item.program.digest !== item.program.digest ||
-    item.replay.length <= previous.item.replay.length
-  ) {
-    throw new CrankError("replay_diverged", "Warm replay target differs from caught-up strand");
-  }
-  const prefixLength = previous.item.replay.length;
-  if (
-    prefixLength > 0 &&
-    item.replay[prefixLength - 1].entryDigest !== previous.item.replayChainDigest
-  ) {
-    throw new CrankError("replay_diverged", "Warm replay prefix changed");
-  }
-  let chain = item.replayChainSeed;
-  for (const entry of item.replay) {
-    verifyProgramReplayEntry(item.replayChainSeed, entry, chain);
-    chain = entry.entryDigest;
-  }
-
-  let step = warmFrontier;
-  for (const entry of item.replay.slice(previous.item.replay.length)) {
-    // Emissions crossed earlier in the same advancement were already acked on
-    // this warm attachment. They are verified in the new chain above but do
-    // not get delivered twice.
-    if (entry.actionIndex < settledActionIndex) {
-      if (entry.type !== "emission") {
-        throw new CrankError("replay_diverged", "Warm attachment skipped a settled operation");
-      }
-      continue;
-    }
-    assertProgramReplayFrontier(step, entry);
-    step =
-      entry.type === "operation"
-        ? yield* ProgramPeer.operations.step(previous.restored.attachment, {
-            type: "resume",
-            actionIndex: entry.actionIndex,
-            outcome: entry.outcome,
-            receipt: entry.receipt,
-            // This flag describes attempt provenance, not whether the feed
-            // occurs in replay phase. Host effects were not attempted inside
-            // the evaluator and therefore use replayed=true.
-            replayed: !attemptedInDriver,
-          })
-        : yield* ProgramPeer.operations.step(previous.restored.attachment, {
-            type: "ack_emission",
-            actionIndex: entry.actionIndex,
-            offset: entry.offset,
-          });
-  }
-  if (
-    chain !== item.replayChainDigest ||
-    item.replayedThroughActionIndex !== item.plannedHead.actionIndex
-  ) {
-    throw new CrankError("replay_diverged", "Warm replay did not reach the planned head");
-  }
-  const frontierDigest = sha256(
-    canonicalJson({
-      domain: "sweatpants.caught-up-frontier.v1",
-      strandHeadDigest: item.plannedHead.digest,
-      replayChainDigest: chain,
-      frontier: step,
-    }),
-  );
-  const cancellationReplayed = item.replay.some(
-    (entry) => entry.type === "operation" && entry.outcome.status === "cancelled",
-  );
-  return {
-    item,
-    restored: {
-      attachment: previous.restored.attachment,
-      frontier: step,
-      replayedThroughActionIndex: item.replayedThroughActionIndex,
-      replayChainDigest: chain,
-      frontierDigest,
-    },
-    frontierProof: {
-      frontierDigest,
-      strandHeadDigest: item.plannedHead.digest,
-      replayedThroughActionIndex: item.replayedThroughActionIndex,
-      replayChainDigest: chain,
-      cancellationReplayed,
-    },
-  };
 }

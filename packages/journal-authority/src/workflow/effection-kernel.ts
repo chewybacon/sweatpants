@@ -1,3 +1,4 @@
+import type { Effect } from "effection";
 import {
   createQueue,
   resource,
@@ -24,7 +25,15 @@ type Program = (input: Json) => Operation<Json>;
  * Requests contain live closures: this is deliberately not a wire protocol.
  * JavaScript generators have no capture/restore capability; recovery uses replay.
  */
-export const EffectionKernel: Executor<Program, Json, Request, Reply, Json> = {
+export const EffectionKernel: Executor<
+  Program,
+  Json,
+  Request,
+  Reply,
+  Json,
+  unknown,
+  Effect<unknown>
+> = {
   start(program, input) {
     return resource(function* (provide) {
       const events = createQueue<Boundary, never>();

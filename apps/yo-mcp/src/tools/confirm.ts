@@ -4,14 +4,14 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
 const confirmSchema = z.object({
   confirmed: z.boolean().describe("Whether to proceed"),
   reason: z.string().optional().describe("Optional reason for your choice"),
 });
 
-export const confirmTool = createTool("confirm")
+export const confirmTool = createDurableTool("confirm", { version: "1" })
   .description("Ask the user to confirm an action")
   .parameters(
     z.object({
@@ -19,8 +19,9 @@ export const confirmTool = createTool("confirm")
       dangerous: z.boolean().default(false).describe("Whether this is a dangerous action"),
     }),
   )
+  .effects({})
   .elicits({
-    confirmation: confirmSchema,
+    confirmation: { response: confirmSchema },
   })
   .execute(function* (params, ctx) {
     const prefix = params.dangerous ? "WARNING: " : "";
@@ -49,7 +50,8 @@ export const confirmTool = createTool("confirm")
     return {
       confirmed: result.content.confirmed,
       action: params.action,
-      reason: result.content.reason,
+      // CONDITIONAL-SPREAD: omit an unanswered optional reason at the JSON boundary.
+      ...(result.content.reason === undefined ? {} : { reason: result.content.reason }),
       message: result.content.confirmed
         ? `User confirmed: ${params.action}`
         : `User rejected: ${params.action}${result.content.reason ? ` (Reason: ${result.content.reason})` : ""}`,

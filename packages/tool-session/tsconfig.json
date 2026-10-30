@@ -9,5 +9,12 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "**/*.test.ts"],
-  "references": [{ "path": "../agent-sdk" }]
+  "references": [
+    {
+      "path": "../agent-sdk"
+    },
+    {
+      "path": "../primitive-journal"
+    }
+  ]
 }

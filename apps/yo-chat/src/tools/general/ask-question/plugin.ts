@@ -1,7 +1,7 @@
 import { makePlugin } from "@sweatpants/react-chat";
 
 import { QuestionPrompt } from "./components/QuestionPrompt";
-import { askQuestion } from "./tool";
+import { askQuestion } from "./tool.ts";
 
 export const askQuestionPlugin = makePlugin(askQuestion)
   .onElicit({

@@ -1,157 +1,55 @@
-/**
- * Book Flight Tool (MCP Plugin Pattern)
- *
- * Demonstrates the new MCP plugin tool pattern with:
- * - Server-side tool execution
- * - Client-side elicitation handlers with React UI
- * - Multi-step user interaction (flight selection, seat selection)
- * - LLM sampling for travel tips
- */
+import { createDurableTool, type ToolDefinition } from "@sweatpants/agent-sdk";
 import { z } from "zod";
-import { createTool } from "@sweatpants/agent-sdk";
-import { sleep } from "effection";
+import {
+  BookFlightParametersSchema,
+  PickFlightResponseSchema,
+  PickFlightContextSchema,
+  PickSeatResponseSchema,
+  PickSeatContextSchema,
+  FlightSchema,
+  SeatMapSchema,
+} from "../schemas/book-flight.ts";
 
-// =============================================================================
-// TYPES
-// =============================================================================
+const flightElicits = {
+  pickFlight: { response: PickFlightResponseSchema, context: PickFlightContextSchema },
+  pickSeat: { response: PickSeatResponseSchema, context: PickSeatContextSchema },
+};
+const flightEffects = {
+  search: {
+    version: "1",
+    input: z.object({ from: z.string(), destination: z.string() }),
+    output: z.array(FlightSchema),
+    retrySafety: { mode: "repeatable" as const },
+  },
+  seats: {
+    version: "1",
+    input: z.object({}),
+    output: SeatMapSchema,
+    retrySafety: { mode: "repeatable" as const },
+  },
+  ticket: {
+    version: "1",
+    input: z.object({}),
+    output: z.string(),
+    retrySafety: { mode: "repeatable" as const },
+  },
+};
 
-export interface Flight {
-  id: string;
-  airline: string;
-  flightNumber: string;
-  departure: string;
-  arrival: string;
-  duration: string;
-  price: number;
-}
-
-export interface SeatMap {
-  rows: number;
-  seatsPerRow: string[];
-  taken: string[]; // e.g., ['1A', '2C', '5F']
-}
-
-// =============================================================================
-// MOCK DATA
-// =============================================================================
-
-function mockFlightSearch(_from: string, _destination: string): Flight[] {
-  // Simulate flight search - in production this would call an API
-  return [
-    {
-      id: "FL001",
-      airline: "SkyHigh Airways",
-      flightNumber: "SH 142",
-      departure: "08:00",
-      arrival: "11:30",
-      duration: "3h 30m",
-      price: 299,
-    },
-    {
-      id: "FL002",
-      airline: "CloudAir",
-      flightNumber: "CA 287",
-      departure: "12:45",
-      arrival: "16:00",
-      duration: "3h 15m",
-      price: 349,
-    },
-    {
-      id: "FL003",
-      airline: "JetStream",
-      flightNumber: "JS 901",
-      departure: "18:30",
-      arrival: "22:00",
-      duration: "3h 30m",
-      price: 249,
-    },
-  ];
-}
-
-function mockSeatMap(): SeatMap {
-  return {
-    rows: 10,
-    seatsPerRow: ["A", "B", "C", "D", "E", "F"],
-    taken: ["1A", "1B", "2C", "3D", "4A", "4B", "4C", "5F", "6A", "7B", "8C", "9D", "10E"],
-  };
-}
-
-function generateTicketNumber(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "TKT-";
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-// =============================================================================
-// SCHEMAS
-// =============================================================================
-
-const FlightSchema = z.object({
-  id: z.string(),
-  airline: z.string(),
-  flightNumber: z.string(),
-  departure: z.string(),
-  arrival: z.string(),
-  duration: z.string(),
-  price: z.number(),
-});
-
-const SeatMapSchema = z.object({
-  rows: z.number(),
-  seatsPerRow: z.array(z.string()),
-  taken: z.array(z.string()),
-});
-
-// =============================================================================
-// TOOL DEFINITION
-// =============================================================================
-
-export const bookFlightTool = createTool("book_flight")
+export const bookFlightTool = createDurableTool("book_flight", {
+  version: "1",
+})
   .description("Book a flight for the user with interactive flight and seat selection")
-  .parameters(
-    z.object({
-      from: z.string().describe("Departure city or airport code"),
-      destination: z.string().describe("Destination city or airport code"),
-    }),
-  )
-  .elicits({
-    pickFlight: {
-      response: z.object({
-        flightId: z.string().describe("Selected flight ID"),
-      }),
-      context: z.object({
-        flights: z.array(FlightSchema),
-      }),
-    },
-    pickSeat: {
-      response: z.object({
-        row: z.number().describe("Selected row number"),
-        seat: z.string().describe("Selected seat letter (A-F)"),
-      }),
-      context: z.object({
-        seatMap: SeatMapSchema,
-        flightInfo: z
-          .object({
-            airline: z.string(),
-            flightNumber: z.string(),
-          })
-          .optional(),
-      }),
-    },
-  })
+  .parameters(BookFlightParametersSchema)
+  .effects(flightEffects)
+  .elicits(flightElicits)
   .samples()
   .execute(function* (params, ctx) {
     // 1. Search for flights
     yield* ctx.notify("Searching for flights...", 0.1);
-    const flights = mockFlightSearch(params.from, params.destination);
+    const flights = yield* ctx.effect("search", params);
 
     // 2. Elicit: Pick a flight
     yield* ctx.notify("Found available flights", 0.2);
-
-    yield* sleep(900); // mock request
 
     const flightResult = yield* ctx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
@@ -187,9 +85,7 @@ export const bookFlightTool = createTool("book_flight")
     yield* ctx.notify("Flight selected, loading seat map...", 0.4);
 
     // 3. Elicit: Pick a seat
-    const seatMap = mockSeatMap();
-
-    yield* sleep(900); // mock request
+    const seatMap = yield* ctx.effect("seats", {});
 
     const seatResult = yield* ctx.elicit("pickSeat", {
       message: `Select your seat on ${selectedFlight.airline} ${selectedFlight.flightNumber}`,
@@ -230,7 +126,7 @@ export const bookFlightTool = createTool("book_flight")
 
     // 5. Create booking
     yield* ctx.notify("Creating your booking...", 0.9);
-    const ticketNumber = generateTicketNumber();
+    const ticketNumber = yield* ctx.effect("ticket", {});
 
     yield* ctx.notify("Booking complete!", 1.0);
 
@@ -256,27 +152,5 @@ export const bookFlightTool = createTool("book_flight")
     };
   });
 
-// Result type - union of success and failure cases
 export type BookFlightResult =
-  | {
-      success: true;
-      ticketNumber: string;
-      flight: {
-        id: string;
-        airline: string;
-        flightNumber: string;
-        departure: string;
-        arrival: string;
-        duration: string;
-      };
-      seat: string;
-      price: number;
-      route: { from: string; to: string };
-      travelTip: string;
-      message: string;
-    }
-  | {
-      success: false;
-      reason: string;
-      message: string;
-    };
+  typeof bookFlightTool extends ToolDefinition<any, infer Result, any, any, any> ? Result : never;

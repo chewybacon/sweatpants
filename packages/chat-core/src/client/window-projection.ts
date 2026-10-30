@@ -210,7 +210,24 @@ function* seedMessages(indexed: IndexedPublicRoots): ProjectionProgram<ChatProje
     const messages = indexed.ordered.flatMap((root) =>
       root.kind === "message" ? [root.message] : [],
     );
-    const state = appendAGUIMessages(createChatProjection(), messages);
+    let state = appendAGUIMessages(createChatProjection(), messages);
+    for (const root of indexed.ordered) {
+      if (root.kind === "message" && root.reasoning) {
+        state = foldAGUIEvents(state, [
+          {
+            type: EventType.REASONING_MESSAGE_START,
+            role: "reasoning",
+            messageId: root.message.id,
+          },
+          {
+            type: EventType.REASONING_MESSAGE_CONTENT,
+            messageId: root.message.id,
+            delta: root.reasoning,
+          },
+          { type: EventType.REASONING_MESSAGE_END, messageId: root.message.id },
+        ]);
+      }
+    }
     yield* note({ kind: "messages-seeded", messages: messages.length });
     return state;
   });

@@ -14,6 +14,7 @@ import {
   beginCancellationUnwind,
   detachAttempt,
   forceOrphan,
+  orphanIfCurrent,
 } from "./execution-lifecycle-decisions.ts";
 import {
   bindDeliveryMandate,
@@ -32,6 +33,7 @@ import {
   completeTask,
   completeUnderMandate,
   emitUnderMandate,
+  recoverRecord,
   reserveUnderMandate,
   resolvePull,
 } from "./pull-decisions.ts";
@@ -117,6 +119,9 @@ function dispatchCommand<C extends AuthorityCommand>(
     case "execution.report-peer-loss":
       result = reportPeerLoss(kernel, command.request);
       break;
+    case "execution.recover-record":
+      result = recoverRecord(draft, command.request);
+      break;
     case "execution.reserve-pull":
       result = kernel.reservePull(command.request);
       break;
@@ -160,6 +165,9 @@ function dispatchCommand<C extends AuthorityCommand>(
       break;
     case "execution.abandon-attempt":
       result = abandonAttempt(draft, command.request);
+      break;
+    case "execution.orphan-if-current":
+      result = orphanIfCurrent(draft, command.request);
       break;
     case "execution.force-orphan":
       result = forceOrphan(draft, command.request);

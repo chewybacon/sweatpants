@@ -1,0 +1,41 @@
+{
+  "name": "@sweatpants/standard-durability-effection",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "lint": "cd ../.. && oxlint --type-aware packages/standard-durability-effection",
+    "format:check": "cd ../.. && oxfmt packages/standard-durability-effection --check"
+  },
+  "dependencies": {
+    "@sweatpants/standard-durability": "workspace:*"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "effection": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "effection": "^4.2.0"
+  }
+}

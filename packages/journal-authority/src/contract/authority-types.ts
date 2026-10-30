@@ -387,6 +387,25 @@ export interface ReserveOperationRequest {
   restoredFrontierStep?: ProgramStep;
 }
 
+/** Opt-in recovery of one unknown repeatable record; never used by default drivers. */
+export interface RecoverRecordRequest {
+  /** Replacement ownership and trusted-host reconstruction evidence. */
+  replacement: BindMandateRequest;
+  sessionId: string;
+  turnId: string;
+  taskId: string;
+  actionIndex: number;
+  pullIndex: number;
+  pullId: string;
+  expectedAttemptId: string;
+  descriptor: DurableOperationDescriptor;
+  programCapability: string;
+}
+
+export type RecoverRecordResult = Extract<ReserveOperationResult, { status: "authorized" }> & {
+  mandate: Mandate;
+};
+
 /** Reserve result distinguishing replay, host authorization, and durable parking. */
 export type ReserveOperationResult =
   | {

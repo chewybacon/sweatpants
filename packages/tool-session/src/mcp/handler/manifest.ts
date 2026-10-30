@@ -2,7 +2,7 @@ import { requireJsonObject, type Json, type JsonObject } from "@sweatpants/found
 import type { AnyToolContract } from "@sweatpants/agent-sdk";
 import { MCP_PROTOCOL_VERSION } from "../protocol-version.ts";
 
-type ListedTool = AnyToolContract;
+type ListedTool = Pick<AnyToolContract, "name" | "description" | "artifacts" | "capabilities">;
 type McpElicitProjection = { response: JsonObject; context?: JsonObject };
 type McpToolProjection = {
   name: string;
@@ -150,7 +150,7 @@ export interface GenerateMcpManifestOptions {
  * ```
  */
 export function generateMcpManifest(
-  tools: ReadonlyMap<string, AnyToolContract>,
+  tools: ReadonlyMap<string, ListedTool>,
   options: GenerateMcpManifestOptions = {},
 ): McpManifest {
   const { name = "mcp-server", version = "1.0.0", description, endpoint = "/mcp" } = options;

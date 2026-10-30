@@ -28,6 +28,7 @@ import type { ModelContext } from "@sweatpants/model-provider";
 import type { EffectDefinition } from "@sweatpants/durable-effects";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
+import { effection } from "@sweatpants/standard-durability-effection";
 import { z } from "zod";
 import {
   assertJson,
@@ -60,6 +61,7 @@ import { effectCatalogEntries } from "./durable-effect.ts";
 import { projectModelSampleCompletion } from "./exchange.ts";
 import {
   assertDurableExtensionDeclarations,
+  type DurableClientShape,
   type DurableExtensionContext,
   type DurableExtensionMap,
 } from "./durable-context-extension.ts";
@@ -604,10 +606,9 @@ function builder(state: BuilderState): unknown {
       // The authored contract attaches its own compiled interaction identity:
       // every fluent elicit proposal carries the binding into the journal, so
       // placements and drivers stay mechanics-only.
-      const factory = (rawInput: Json, context: DurableProgramContext) =>
-        program(
-          rawInput,
-          contextForDeclarations(
+      const factory = (rawInput: Json, context: DurableProgramContext) => {
+        const work = function* () {
+          const adapted = yield* contextForDeclarations(
             context,
             manifestElicits,
             bindings.elicits,
@@ -615,8 +616,11 @@ function builder(state: BuilderState): unknown {
             state.extensions ?? {},
             state.decisions,
             normalizedElicits,
-          ),
-        );
+          );
+          return yield* program(rawInput, adapted);
+        };
+        return Object.keys(state.extensions ?? {}).length > 0 ? effection.scoped(work) : work();
+      };
       const extensionIdentity = sortStrings(Object.keys(state.extensions ?? {})).map((alias) => {
         const extension = state.extensions![alias];
         return { alias, name: extension.name, digest: extension.digest };
@@ -625,7 +629,9 @@ function builder(state: BuilderState): unknown {
         extensionIdentity.length === 0 && !state.decisions
           ? baseDigest
           : stableTupleHash([
-              "sweatpants.durable-extension-program.v1",
+              extensionIdentity.length > 0
+                ? "sweatpants.durable-extension-program.v2"
+                : "sweatpants.durable-extension-program.v1",
               {
                 baseDigest,
                 extensions: extensionIdentity,
@@ -681,7 +687,7 @@ function builder(state: BuilderState): unknown {
   };
 }
 
-function contextForDeclarations(
+function* contextForDeclarations(
   context: DurableProgramContext,
   elicits: Record<
     string,
@@ -699,10 +705,12 @@ function contextForDeclarations(
     string,
     ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>
   > = {},
-): DurableProgramContext {
-  const clients = new Map<unknown, ReturnType<DurableExtensionMap[string]["createClient"]>>(
-    Object.values(extensions).map((extension) => [extension, extension.createClient(context)]),
-  );
+): Operation<DurableProgramContext> {
+  const clients = new Map<unknown, DurableClientShape>();
+  for (const extension of Object.values(extensions)) {
+    const client = yield* extension.installClient(context);
+    clients.set(extension, client);
+  }
   const aliases = Object.fromEntries(
     Object.entries(extensions).map(([alias, extension]) => [alias, clients.get(extension)!]),
   );

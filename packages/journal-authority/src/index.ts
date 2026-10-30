@@ -373,6 +373,8 @@ export {
   createEffectionProgramBackend,
   type ProgramBackend,
   type ProgramComputation,
+  type NativeWorkComputation,
+  type BackendComputation,
 } from "./workflow/program-backend.ts";
 
 export { EffectionKernel } from "./workflow/effection-kernel.ts";

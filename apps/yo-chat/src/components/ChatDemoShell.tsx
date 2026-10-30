@@ -1,3 +1,4 @@
+import { askQuestionPlugin } from "@/tools/general/ask-question/plugin";
 import { useThreadMetadata } from "@/lib/use-thread-metadata";
 import {
   Plus,
@@ -160,6 +161,12 @@ function renderPart(part: ReactChatUIPart): ReactNode {
           <div className="mb-1 text-xs text-slate-500">
             {part.activityType} · {part.state}
           </div>
+          {part.data &&
+          typeof part.data === "object" &&
+          "message" in part.data &&
+          typeof part.data.message === "string" ? (
+            <p>{part.data.message}</p>
+          ) : null}
           {part.parts.map((child) => renderPart(child))}
         </div>
       );
@@ -303,10 +310,14 @@ function DemoThreadPanel({
     }),
     [inspectorStore],
   );
+  const plugins = useMemo(
+    () => [askQuestionPlugin, ...(definition.plugins ?? [])],
+    [definition.plugins],
+  );
   const { messages, authority, status, renderStatus, canSendMessage, sendMessage, stop, error } =
     useChat({
       pipeline: definition.pipeline ?? "full",
-      plugins: definition.plugins ?? [],
+      plugins,
       threadId,
       transport: inspectorTransport,
     });

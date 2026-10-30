@@ -2,9 +2,9 @@
  * Tool Registry
  *
  * Export all available tools for the MCP server.
- * All tools use the new createTool API with .elicits() pattern.
+ * All tools use the primitive journal declarations.
  */
-import type { RuntimeTool } from "@sweatpants/agent-sdk";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
 
 // Import all tools
 import { echoTool } from "./echo";
@@ -23,7 +23,7 @@ export { planTripTool } from "./plan-trip";
 /**
  * All available tools
  */
-export const allTools: RuntimeTool[] = [
+export const allTools: ToolDefinition[] = [
   echoTool,
   pickCardTool,
   greetTool,

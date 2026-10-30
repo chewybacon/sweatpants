@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactRenderableProps } from "@sweatpants/react-chat";
-import type { SeatMap } from "../tool";
+import type { SeatMap } from "../../schemas/book-flight.ts";
 
 interface SeatPickerProps extends ReactRenderableProps<{ row: number; seat: string }> {
   seatMap: SeatMap;

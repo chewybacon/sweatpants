@@ -6,6 +6,15 @@
   },
   "references": [
     {
+      "path": "./packages/standard-durability"
+    },
+    {
+      "path": "./packages/standard-durability-effect"
+    },
+    {
+      "path": "./packages/standard-durability-effection"
+    },
+    {
       "path": "./packages/foundation"
     },
     {

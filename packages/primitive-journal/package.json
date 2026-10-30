@@ -1,0 +1,65 @@
+{
+  "name": "@sweatpants/primitive-journal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent experimental iterator journal",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./src/index.ts"
+    },
+    "./sqlite": {
+      "development": {
+        "import": "./src/sqlite.ts",
+        "types": "./src/sqlite.ts"
+      },
+      "import": {
+        "types": "./dist/sqlite.d.ts",
+        "default": "./dist/sqlite.js"
+      },
+      "default": "./src/sqlite.ts"
+    },
+    "./example": {
+      "development": {
+        "import": "./src/example.ts",
+        "types": "./src/example.ts"
+      },
+      "import": {
+        "types": "./dist/example.d.ts",
+        "default": "./dist/example.js"
+      },
+      "default": "./src/example.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc -b",
+    "lint": "cd ../.. && oxlint --type-aware packages/primitive-journal",
+    "lint:fix": "cd ../.. && oxlint --type-aware packages/primitive-journal --fix",
+    "format": "cd ../.. && oxfmt packages/primitive-journal",
+    "format:check": "cd ../.. && oxfmt packages/primitive-journal --check",
+    "build:clean": "tsx ../../scripts/clean-build.ts ."
+  },
+  "dependencies": {
+    "@sweatpants/foundation": "workspace:*"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "customConditions": ["development"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts", "vitest.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,9 +1,19 @@
+import { toolImplementation } from "@sweatpants/agent-sdk/internal/tool-execution";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { PreparedToolInvocation } from "@sweatpants/tool-session/placement";
+import type { RetainedPreparedToolExecution } from "@sweatpants/tool-session/execution";
+import { createIteratorGuest } from "@sweatpants/primitive-journal";
+import { isIteratorTool } from "@sweatpants/agent-sdk/internal/tool-execution";
+import type { Work } from "@sweatpants/standard-durability";
+import type { ToolDefinition } from "@sweatpants/agent-sdk";
+import type { Json } from "@sweatpants/foundation";
 import {
+  createToolGuest,
   isChatDurableTool,
   installInvocationToolRuntime,
   createToolInvocationEphemeralEffectRegistrations,
   type ChatTool,
-  type ToolExecutionAdapter,
+  type RetainedToolExecutionAdapter,
   type ToolExecutionBinding,
 } from "@sweatpants/tool-session/execution";
 import { canonicalJson } from "@sweatpants/foundation";
@@ -28,7 +38,7 @@ import { createModelSamplingProvider } from "./model-sampling.ts";
 
 export function prepareChatTools(
   tools: readonly ChatTool[],
-  execution: ToolExecutionAdapter | undefined,
+  execution: RetainedToolExecutionAdapter | undefined,
   effects: readonly DurableEffectRegistration[],
 ) {
   const names = new Set<string>();
@@ -155,7 +165,7 @@ export function prepareChatTools(
 /** Advanced scoped composition for hosts that own their application lifecycle. */
 export function* installChatTools(options: {
   tools: readonly ChatTool[];
-  execution: ToolExecutionAdapter;
+  execution: RetainedToolExecutionAdapter;
   effects?: readonly DurableEffectRegistration[];
   samplingProvider?: ToolSessionSamplingProvider;
 }): Operation<void> {
@@ -164,21 +174,57 @@ export function* installChatTools(options: {
   );
 }
 
-/** Advanced durable-program placement in the existing host crank, with scoped capabilities. */
-export function inProcess(options: { setup?: () => Operation<void> } = {}): ToolExecutionAdapter {
-  return {
-    prepare(tools) {
-      if (tools.some((tool) => !isChatDurableTool(tool))) {
-        throw new Error(
-          "inProcess accepts durable programs only; ordinary tools require a worker runtime",
-        );
+/** In-process portable tools and retained durable programs, with scoped capabilities. */
+export function inProcess<Y = never>(options: { setup?: Work<void, Y> } = {}) {
+  function prepare<P extends StandardSchemaV1, Result>(
+    tool: ToolDefinition<P, Result>,
+    routeId: string,
+  ): PreparedToolInvocation<P, Result, Y>;
+  function prepare(
+    tools: readonly (ChatTool | ToolDefinition)[],
+    routeId: string,
+  ): RetainedPreparedToolExecution<Y>;
+  function prepare<P extends StandardSchemaV1, Result>(
+    tools: ToolDefinition<P, Result> | readonly (ChatTool | ToolDefinition)[],
+    _routeId: string,
+  ): PreparedToolInvocation<P, Result, Y> | RetainedPreparedToolExecution<Y> {
+    if ("name" in tools) {
+      const tool = tools;
+      if (!isIteratorTool(tool)) {
+        throw new Error("Native tools require their context/worker adapter");
       }
       return {
         setup: options.setup,
-        bindings: tools
-          .filter(isChatDurableTool)
-          .map((tool) => ({ publicName: tool.name, tool, route: { driverKind: "program" } })),
+        guest(input, callId) {
+          return function* () {
+            return createIteratorGuest(() => toolImplementation(tool).invoke(input, callId));
+          };
+        },
       };
-    },
-  };
+    }
+    if (tools.some((tool) => !isIteratorTool(tool) && !isChatDurableTool(tool))) {
+      throw new Error(
+        "inProcess accepts durable programs only; ordinary tools require a worker runtime",
+      );
+    }
+    return {
+      setup: options.setup,
+      guests: new Map(
+        tools
+          .filter((tool): tool is ToolDefinition => isIteratorTool(tool))
+          .map((tool) => [
+            tool.name,
+            (input: Json, callId: string) =>
+              function* () {
+                return createToolGuest(tool, input, callId);
+              },
+          ]),
+      ),
+      bindings: tools
+        .filter((tool): tool is ChatTool => !isIteratorTool(tool))
+        .filter(isChatDurableTool)
+        .map((tool) => ({ publicName: tool.name, tool, route: { driverKind: "program" } })),
+    };
+  }
+  return { singleTool: true as const, prepare };
 }

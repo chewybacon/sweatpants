@@ -1,0 +1,38 @@
+{
+  "name": "@sweatpan.ts/tools",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts"
+      },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "lint": "cd ../../.. && oxlint --type-aware packages/v2/tools",
+    "format:check": "cd ../../.. && oxfmt packages/v2/tools --check"
+  },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@standard-schema/spec": "catalog:",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/hosting": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

@@ -17,6 +17,7 @@
     "apps/yo-chat/src/routeTree.gen.ts",
     "apps/yo-chat/src/__generated__/**",
     "packages/flowmode-runtime-scheme/generated/**",
-    "packages/flowmode-runtime-lua/generated/**"
+    "packages/flowmode-runtime-lua/generated/**",
+    "packages/standard-durability*/.cache/**"
   ]
 }

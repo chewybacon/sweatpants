@@ -9,20 +9,27 @@ import {
   type ProgramDriver,
   type ProgramShutdownReason,
   type ReplayItem,
+  assertProgramReplayFrontier,
+  serializeDurableError,
 } from "@sweatpants/durable-execution";
 
 import type { JournalAuthorityContract } from "../contract/authority-contract.ts";
+import type { OperationOutcome } from "@sweatpants/durable-effects";
+import type { AdvancementServices } from "./advancement-ports.ts";
 import {
-  advanceCaughtUpLeaf,
-  type AdvancementDisposition,
-  type AdvancementServices,
-} from "./advancement-drive.ts";
+  createAcceptanceHandler,
+  deliverAccepted,
+  type AcceptanceHandler,
+  type AcceptedBatch,
+} from "./accepted-boundary.ts";
+import { ActivationFailure, createActivationLifetime } from "./activation-lifetime.ts";
+import { acceptedFrontier } from "./accepted-history.ts";
 import { bindCaughtUpLeaf, livePlacement, requestedTargetPolicy } from "./advancement-policy.ts";
-import { executionComposition } from "./execution-composition.ts";
-import { replayStrand, replayWarmSuffix } from "./replay-walker.ts";
+import { executionComposition, type ExecutionComposition } from "./execution-composition.ts";
+import { replayStrand } from "./replay-walker.ts";
 
 export type { EffectRouter, JournalSamplingService } from "./advancement-ports.ts";
-export type { AdvancementServices } from "./advancement-drive.ts";
+export type { AdvancementServices } from "./advancement-ports.ts";
 
 export interface DriveProgramDriverActivationRequest {
   readonly authority: JournalAuthorityContract;
@@ -33,14 +40,7 @@ export interface DriveProgramDriverActivationRequest {
   readonly advancement: AdvancementServices;
 }
 
-/**
- * Orchestrates the explicit replay → policy → bind → advancement pipeline.
- *
- * Replay always ends before selection. A committed effect/record settlement
- * disposes the attachment and starts a fresh plan; settled history never enters
- * through the live reservation result. Divergence is terminal and cannot fall
- * through to live execution.
- */
+/** Reconstruct once, then advance accepted boundaries within one attachment. */
 export function driveProgramDriverActivation(
   request: DriveProgramDriverActivationRequest,
 ): Operation<AdvancementResult> {
@@ -53,7 +53,7 @@ export function driveProgramDriverActivation(
       });
     }
     const ownerId = request.activationOwnerId ?? `direct:${request.attach.taskId}`;
-    for (;;) {
+    {
       const plan = yield* request.authority.query({
         type: "forest.replay-plan",
         sessionId: request.attach.sessionId,
@@ -99,15 +99,11 @@ export function driveProgramDriverActivation(
       if (item === undefined) {
         throw new CrankError("invalid_journal", "Replayable row has no replay item");
       }
-      const disposition = yield* runPreparedAdvancement(
+      return yield* runPreparedAdvancement(
         request,
         replayItemForAttachment(item, request.attach),
         ownerId,
       );
-      if (disposition.state === "settled") {
-        continue;
-      }
-      return disposition;
     }
   });
 }
@@ -117,78 +113,202 @@ function runPreparedAdvancement(
   request: DriveProgramDriverActivationRequest,
   item: ReplayItem,
   ownerId: string,
-): Operation<AdvancementDisposition> {
+): Operation<AdvancementResult> {
   return scoped(function* () {
+    const lifetime = createActivationLifetime(request.authority, item);
     let caughtUp;
     try {
       caughtUp = yield* replayStrand(item);
     } catch (error) {
-      yield* orphanReplayDivergence(request.authority, item, error);
+      yield* lifetime.failed(new ActivationFailure(error, "reconstruction"));
       throw error;
     }
 
     let shutdownReason: ProgramShutdownReason = "scope_exit";
+    const attachment = caughtUp.restored.attachment;
+    let step = caughtUp.restored.frontier;
+    let execution: ExecutionComposition | undefined;
+    let handle: AcceptanceHandler | undefined;
+    let batch: AcceptedBatch | undefined;
+    let cursor = 0;
+    let cancellationInjected = caughtUp.frontierProof.cancellationReplayed;
+    let primary = false;
     try {
       for (;;) {
-        const placement = livePlacement(
-          request.attach.route,
-          request.attach.affinity,
-          request.driver.evaluatorKind,
-        );
-        const mandate = yield* bindCaughtUpLeaf(
-          request.authority,
-          caughtUp,
-          requestedTargetPolicy(request.attach.taskId, placement),
-          ownerId,
-        );
-        if (mandate === null) {
-          throw new CrankError("stale_activation", "Prepared target lost the bind race");
+        if (batch) {
+          const entry = batch.extension.entries[cursor];
+          if (entry) {
+            cursor++;
+            if (entry.actionIndex < batch.settledActionIndex) {
+              if (entry.type !== "emission") {
+                throw new ActivationFailure(
+                  new CrankError("replay_diverged", "Warm attachment skipped a settled operation"),
+                  "validation",
+                );
+              }
+              continue;
+            }
+            try {
+              assertProgramReplayFrontier(step, entry);
+            } catch (error) {
+              throw new ActivationFailure(error, "validation");
+            }
+            step = yield* deliverAccepted(
+              attachment,
+              entry.type === "operation"
+                ? {
+                    kind: "operation",
+                    actionIndex: entry.actionIndex,
+                    outcome: entry.outcome,
+                    receipt: entry.receipt,
+                    replayed: !batch.attemptedInDriver,
+                  }
+                : { kind: "emission", actionIndex: entry.actionIndex, offset: entry.offset },
+            );
+            continue;
+          }
+          try {
+            caughtUp = acceptedFrontier(caughtUp, batch.extension, step);
+          } catch (error) {
+            throw new ActivationFailure(error, "validation");
+          }
+          batch = undefined;
+          cancellationInjected = caughtUp.frontierProof.cancellationReplayed;
         }
-        const execution = executionComposition(request.authority, mandate);
-        let disposition: AdvancementDisposition;
-        try {
-          disposition = yield* advanceCaughtUpLeaf({
+        if (!execution || !handle) {
+          const placement = livePlacement(
+            request.attach.route,
+            request.attach.affinity,
+            request.driver.evaluatorKind,
+          );
+          const mandate = yield* bindCaughtUpLeaf(
+            request.authority,
+            caughtUp,
+            requestedTargetPolicy(request.attach.taskId, placement),
+            ownerId,
+          );
+          if (mandate === null) {
+            throw new CrankError("stale_activation", "Prepared target lost the bind race");
+          }
+
+          execution = executionComposition(request.authority, mandate);
+          lifetime.bound(execution);
+          handle = createAcceptanceHandler({
             caughtUp,
             execution,
             services: request.advancement,
+            authority: request.authority,
+            onSettled: () => lifetime.settled(),
           });
-        } catch (error) {
-          try {
-            yield* execution.release("failed");
-          } catch {
-            // A settlement or terminal commit may already have ended the lease.
-          }
-          throw error;
         }
-        if (disposition.state === "settled") {
-          const nextPlan = yield* request.authority.query({
-            type: "forest.replay-plan",
-            sessionId: item.address.sessionId,
-          });
-          const nextItem = nextPlan.replay.find(
-            (candidate) => candidate.address.taskId === item.address.taskId,
-          );
-          if (nextItem === undefined) {
-            throw new CrankError("replay_diverged", "Settled strand was not replayable");
-          }
-          caughtUp = yield* replayWarmSuffix(
-            caughtUp,
-            replayItemForAttachment(nextItem, request.attach),
-            disposition.actionIndex,
-            disposition.attemptedInDriver,
-            disposition.frontier,
-          );
+        const cancellation = yield* execution.cancellation();
+        if (
+          cancellationInjected &&
+          isCancellationInProgress(cancellation) &&
+          cancellation.type !== "unwinding"
+        ) {
+          yield* execution.beginCancellationUnwind();
           continue;
         }
-        shutdownReason = shutdownReasonFor(disposition);
-        return disposition;
+        if (!cancellationInjected && isCancellationInProgress(cancellation)) {
+          if (cancellation.type !== "unwinding") {
+            yield* execution.beginCancellationUnwind();
+          }
+          const reason = "reason" in cancellation ? cancellation.reason : undefined;
+          try {
+            step = yield* ProgramPeer.operations.step(attachment, {
+              type: "cancel",
+              /* CONDITIONAL-SPREAD: Omit absent reason from journal commands, decisions, and replay records; explicit undefined is not a portable JSON value. */
+              ...(reason === undefined ? {} : { reason }),
+            });
+          } catch (error) {
+            if (!(error instanceof CrankError) || error.code !== "stale_program_capability") {
+              throw error;
+            }
+            // A scope-owned external attempt may dispose the evaluator while its
+            // cancellation settles. Authority still owns terminal admission.
+            yield* execution.complete({ status: "cancelled" });
+            shutdownReason = "cancelled";
+            return { state: "cancelled" };
+          }
+          cancellationInjected = true;
+          continue;
+        }
+
+        if (step.type === "completed") {
+          const outcome: OperationOutcome = isCancellationInProgress(cancellation)
+            ? { status: "cancelled" }
+            : { status: "ok", value: step.value };
+          const closure = yield* execution.complete(outcome);
+          if (closure.status === "rejected") {
+            const error = { code: closure.code, message: closure.message };
+            yield* execution.complete({ status: "error", error });
+            shutdownReason = "failed";
+            return { state: "failed", error };
+          }
+          shutdownReason = outcome.status === "cancelled" ? "cancelled" : "completed";
+          return outcome.status === "cancelled"
+            ? { state: "cancelled" }
+            : { state: "completed", value: step.value };
+        }
+
+        if (step.type === "failed") {
+          const cancelled =
+            step.error.code === "program_cancelled" || isCancellationInProgress(cancellation);
+          yield* execution.complete(
+            cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
+          );
+          shutdownReason = cancelled ? "cancelled" : "failed";
+          return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
+        }
+
+        const emission = step.type === "emission";
+        try {
+          const decision = yield* handle(step);
+          if (decision.kind === "parked") {
+            shutdownReason = "parked";
+            return decision.result;
+          }
+          if (decision.kind === "emission") {
+            step = yield* deliverAccepted(attachment, decision.reply);
+          } else {
+            batch = decision;
+            cursor = 0;
+            execution = undefined;
+            handle = undefined;
+          }
+        } catch (failure) {
+          const error = failure instanceof ActivationFailure ? failure.original : failure;
+          if (
+            !emission ||
+            !(error instanceof CrankError) ||
+            error.code !== "emission_quota_exceeded"
+          ) {
+            throw failure;
+          }
+          const serialized = serializeDurableError(error);
+          yield* execution!.complete({ status: "error", error: serialized });
+          shutdownReason = "failed";
+          return { state: "failed", error: serialized };
+        }
       }
     } catch (error) {
+      primary = true;
       shutdownReason = "failed";
-      yield* orphanReplayDivergence(request.authority, item, error);
-      throw error;
+      const failure =
+        error instanceof ActivationFailure ? error : new ActivationFailure(error, "live");
+      yield* lifetime.failed(failure);
+      throw failure.original;
     } finally {
-      yield* ProgramPeer.operations.shutdown(caughtUp.restored.attachment, shutdownReason);
+      if (primary) {
+        try {
+          yield* ProgramPeer.operations.shutdown(attachment, shutdownReason);
+        } catch {
+          /* Preserve primary failure after attempting physical disposal. */
+        }
+      } else {
+        yield* ProgramPeer.operations.shutdown(attachment, shutdownReason);
+      }
     }
   });
 }
@@ -202,42 +322,7 @@ function replayItemForAttachment(item: ReplayItem, attach: AttachProgramRequest)
   };
 }
 
-function shutdownReasonFor(
-  disposition: Exclude<AdvancementDisposition, { state: "settled" }>,
-): ProgramShutdownReason {
-  switch (disposition.state) {
-    case "parked":
-      return "parked";
-    case "completed":
-      return "completed";
-    case "cancelled":
-      return "cancelled";
-    case "failed":
-      return "failed";
-  }
-}
-
-function* orphanReplayDivergence(
-  authority: JournalAuthorityContract,
-  item: ReplayItem,
-  error: unknown,
-): Operation<void> {
-  if (!(error instanceof CrankError) || error.code !== "replay_diverged") {
-    return;
-  }
-  yield* authority.command({
-    type: "execution.force-orphan",
-    request: {
-      sessionId: item.address.sessionId,
-      taskId: item.address.taskId,
-      reason: "replay_diverged",
-    },
-  });
-}
-
-function outcomeResult(
-  outcome: import("@sweatpants/durable-effects").OperationOutcome,
-): AdvancementResult {
+function outcomeResult(outcome: OperationOutcome): AdvancementResult {
   switch (outcome.status) {
     case "ok":
       return { state: "completed", value: outcome.value };
@@ -246,4 +331,7 @@ function outcomeResult(
     case "cancelled":
       return { state: "cancelled" };
   }
+}
+function isCancellationInProgress(value: { readonly type: string }): boolean {
+  return value.type !== "none" && value.type !== "cancelled" && value.type !== "orphaned";
 }

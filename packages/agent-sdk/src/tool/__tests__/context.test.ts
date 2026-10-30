@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
@@ -34,7 +35,7 @@ describe("ToolCtx integration", () => {
         };
       });
 
-    const invoke = yield* Tool(ctx);
+    const invoke = yield* toolFactory(Tool)(ctx);
     expect(yield* invoke({ value: "hello" })).toEqual({
       result: "HELLO",
       observedMessages: 1,
