@@ -260,3 +260,40 @@ rejection of reordered definitions and alternate delivery species, and no group
 acceptance before every branch finishes. It replaces the corresponding basic
 owned-all hosting journey; specialized cancellation, protected branches and
 transactional projection rollback remain separate evidence.
+
+## Pinned program acquisition tracer
+
+`applications/program-acquisition.acceptance.test.ts` explores acquisition through an
+ordinary scoped API and placement middleware, with no new production registry API.
+A provisional content reference includes Lua source, alias-to-effect IDs and the actual
+Wasm artifact digest. The existing journal program field pins that reference; admitted
+input comes from the journal rather than the current caller. Assembly resolves and
+checks the artifact before acquiring a Guest.
+
+Both runtimes exercise local bytes and MessageChannel placement. Missing and changed
+artifacts reject before acquisition/delivery, including after reopen. Interruption after
+acceptance proves fresh acquisition replays the first answer without redelivery and
+continues with the admitted input. Replay-only cases install no checkpoint adapter. A terminal
+journal returns its result even when the executable is unavailable.
+
+Startup data is serialized by the simulated deployment assembly; this is not a new
+bootstrap command on the Guest connection, a real worker launcher or an authenticated
+artifact protocol. The content-reference recipe is provisional, not a portable manifest
+format. Schema/decoder and runtime compatibility policy still require explicit design
+before promoting an artifact resolver into production.
+
+The tracer now consumes execution's `ProgramInvocation<Input>` contract. A declared
+contract revision covers the input/result decoders and effect schemas in addition to
+source/bindings/evaluator identity. Changed contract revisions reject both initially
+and after reopen. Successful recovery switches local-to-worker or worker-to-local,
+showing placement is independent of the pinned replay reference. The revision is a
+trusted compatibility assertion, not a computed digest of schema implementation code.
+
+The same journey now includes checkpoint restoration through `createProgramExecution`.
+Both fresh acquisition and restore use a scoped resolver returning the actual artifact
+reference. Wrong source/contract references and missing artifacts reject before entering
+the evaluator. A missing advertised format rejects; an evaluator restore failure
+propagates without fresh acquisition or delivery. Successful restoration reconciles the
+accepted suffix and crosses local/worker placement without acquiring a fresh Guest.
+Capture stays associated with the original/restored evaluator rather than resolving a
+new instance. Public type consumers preserve input, outcome and checkpoint state types.

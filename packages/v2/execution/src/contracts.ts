@@ -30,6 +30,22 @@ export interface Guest<Result, Request, Y, Value = unknown, Error = unknown> {
   close(): Operation<void, Y>;
 }
 
+/**
+ * Data supplied to scoped program acquisition. Placement may change across incarnations;
+ * the pinned program and admitted input may not. This is not a grant or an execution ID.
+ */
+export interface ProgramInvocation<Input = unknown> {
+  /**
+   * Immutable replay-contract reference persisted by the owning journal. Assembly resolves
+   * and verifies it before fresh acquisition or checkpoint restoration. A friendly tool
+   * name alone is insufficient; the reference must account for executable and contract
+   * revisions. Its representation and artifact verification belong to assembly/tooling.
+   */
+  readonly program: string;
+  /** Already-normalized input from admission; acquisition must not rerun author transforms. */
+  readonly input: Input;
+}
+
 /** Acquire a fresh guest and its physical resources without advancing the authored body. */
 export type GuestWork<Result, Request, Y, Value = unknown, Error = unknown> = Work<
   Guest<Result, Request, Y, Value, Error>,
@@ -144,3 +160,33 @@ export interface CheckpointAdapter<R, Q, Y, V, E, Snapshot> {
   capture(guest: Guest<R, Q, Y, V, E>): Operation<Snapshot | undefined, Y>;
   restore(snapshot: Snapshot): Operation<RestoredGuest<R, Q, Y, V, E>, Y>;
 }
+
+/** Verified artifact selection with input already bound; resolution itself creates no Guest. */
+export interface ResolvedProgram<R, Q, Y, V = unknown, E = unknown, S = unknown> {
+  /** Actual immutable reference derived/asserted by the trusted artifact resolver. */
+  readonly program: string;
+  readonly acquire: GuestWork<R, Q, Y, V, E>;
+  readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, S>;
+}
+
+/** Bound invocation usable by ordinary recovery, with explicitly optional checkpoint support. */
+export interface ProgramExecution<R, Q, Y, V = unknown, E = unknown, S = unknown> {
+  readonly acquire: GuestWork<R, Q, Y, V, E>;
+  readonly checkpoints: CheckpointAdapter<R, Q, Y, V, E, S> | undefined;
+}
+
+/** Artifact lookup is caller-owned and may be an ordinary scoped API operation. */
+export interface ProgramExecutionOptions<I, P, Y> {
+  /** Input must remain immutable after binding; admission owns normalization. */
+  readonly invocation: ProgramInvocation<I>;
+  /** Resolve without acquiring a Guest; return the artifact's actual reference. */
+  resolve(invocation: ProgramInvocation<I>): Operation<P, Y>;
+  /** Omit for replay-only execution. A supported restore requires this exact adapter format. */
+  readonly checkpointFormat?: string;
+}
+
+/** Preserve the resolved Guest/snapshot types and include the resolver's native instructions. */
+export type ProgramExecutionFrom<P, Y> =
+  P extends ResolvedProgram<infer R, infer Q, infer G, infer V, infer E, infer S>
+    ? ProgramExecution<R, Q, Y | G, V, E, S>
+    : never;

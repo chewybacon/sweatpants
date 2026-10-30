@@ -211,4 +211,74 @@ The execution-worker adapter implements Guest across a byte channel. Hosting/rec
 consume the same Guest interface for local and remote execution; wire commands and
 responses are private to the adapter. Uncertain advancement discards an incarnation;
 the journal's accepted history reconstructs a fresh one. Program selection and input
-admission happen before acquisition; checkpoint transport is a separate future seam.
+admission happen before acquisition; execution-worker also transports optional checkpoints.
+
+## Pinned program acquisition
+
+`ProgramInvocation<Input>` is the data boundary for acquiring a program:
+
+```ts
+interface ProgramInvocation<Input = unknown> {
+  readonly program: string;
+  readonly input: Input;
+}
+```
+
+`program` is the immutable reference stored by the journal. It identifies the replay
+contract: executable code and dependencies, evaluator semantics, request/result
+encoding, effect alias mappings and replay-visible schema/transform contracts. A name
+such as `research` is a lookup alias, not sufficient identity for durable recovery.
+Assembly/tooling chooses how references are generated and verified; this package does
+not hash JavaScript functions or interpret a manifest format. Declared revision tokens
+are compatibility assertions by trusted assembly, not verified artifact hashes.
+
+`input` is the normalized value already pinned by admission. It is per invocation,
+not part of the reusable program identity. Acquisition may decode the transport shape
+but must not repeat the author's admission transformations. Execution IDs, grants,
+receipts, journal positions and worker incarnations remain separate identities.
+
+An ordinary scoped API can accept this value and return a Guest. Placement middleware
+may change local/worker routing, transport, endpoint, credentials or native runtime
+adapter without changing the reference, provided the evaluator and exchange semantics
+remain compatible. Handler instances and external observations are supplied by hosting;
+accepted outcomes replay from history. Changing the declared effect contract requires
+a new program reference even if effect keys remain the same.
+
+Fresh acquisition and supported checkpoint restoration must both resolve and verify the
+same pinned program before creating a Guest or restoring evaluator state. Checkpoint
+format is a separate optional capability: recovery may replay when a saved format is
+unsupported; a supported restore failure remains an error. A terminal journal needs
+no executable artifact to return its accepted result.
+
+`createProgramExecution` binds an invocation to one resolver for both paths:
+
+```ts
+const execution = createProgramExecution({
+  invocation, // { program, input } from journal admission
+  resolve: programs.operations.resolve,
+  checkpointFormat, // omit for replay-only execution
+});
+// Supply execution.acquire to recovery; install checkpoint middleware only when
+// execution.checkpoints is present. Placement can wrap these same capabilities.
+```
+
+The resolver returns `ResolvedProgram`: the selected artifact's actual `program`
+reference, an input-bound `acquire`, and optional `checkpoints`. It may perform lookup
+and verification but must not acquire a live Guest. The helper compares that reference
+with the pinned invocation before entering either evaluator path. It does not derive
+artifact hashes or verify that trusted resolver implementations honor their metadata.
+
+Each acquisition or restoration resolves afresh. Capture does not resolve again: it
+uses the adapter that created that exact Guest, including restored Guests. Foreign
+Guests and fresh Guests without the selected capture format return no snapshot.
+Restoration requires the advertised format to exist on the selected artifact. Missing
+formats and supported restore failures propagate; fallback to replay belongs to recovery
+middleware's saved-format selection, never to an uncertain restore operation.
+
+The caller's scope owns Guest disposal and evaluator resources. The invocation wrapper
+is frozen when bound; its already-normalized input remains caller-owned and must stay
+immutable. Registry/placement customization uses ordinary scoped APIs. The Lua journeys
+exercise replay and checkpoint restoration across local/MessageChannel placement; they
+do not implement deployed bootstrap or a public artifact registry. Artifact identity
+still requires complete dependency accounting before a hash can be described as covering
+the full implementation.

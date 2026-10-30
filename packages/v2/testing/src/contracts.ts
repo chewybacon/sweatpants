@@ -1,5 +1,5 @@
 import type { Transport, WireCodec } from "@sweatpan.ts/connection";
-import type { GuestWork } from "@sweatpan.ts/execution";
+import type { GuestWork, CheckpointAdapter } from "@sweatpan.ts/execution";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 export interface Latch<T> {
@@ -40,6 +40,7 @@ export interface WorkerGuestRigOptions<R, Q, Y, V, E> {
   readonly failure?: AbortSignal;
   readonly runtime: Runtime<Y>;
   readonly acquire: GuestWork<R, Q, Y, V, E>;
+  readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
   /** Inspect decoded wire data; return replacement data, including malformed frames. */
   readonly command?: (command: Readonly<Record<string, unknown>>) => unknown;
   /** Undefined drops the reply after execution; replacement simulates correlation faults. */
@@ -49,6 +50,7 @@ export interface WorkerGuestRigOptions<R, Q, Y, V, E> {
 /** MessageChannel uses V8 bytes; no live continuation or callback crosses the port. */
 export interface WorkerGuestRig<R, Q, Y, V, E> {
   readonly acquire: GuestWork<R, Q, Y, V, E>;
+  readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, unknown>;
   readonly commands: readonly Readonly<Record<string, unknown>>[];
   readonly responses: readonly Readonly<Record<string, unknown>>[];
   readonly terminations: number;
