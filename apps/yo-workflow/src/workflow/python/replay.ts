@@ -1,6 +1,9 @@
 import { call, type Operation } from "effection";
 import { assertJson, type Json, type Exchange } from "@sweatpants/foundation";
-import type { DurableProgramContext } from "@sweatpants/durable-execution";
+import {
+  DurableProgramCancellation,
+  type DurableProgramContext,
+} from "@sweatpants/durable-execution";
 import {
   MontyEvaluationPort,
   type MontyCommand,
@@ -17,7 +20,12 @@ export interface PythonReplayOptions {
   validateOnly: boolean;
   context: Pick<DurableProgramContext, "record">;
   exchange: Exchange<
-    { capability: { name: string; input: Json }; completedEffects: number; invocationId: string },
+    {
+      capability: { name: string; input: Json };
+      completedEffects: number;
+      invocationId: string;
+      effectIndex: number;
+    },
     CapabilityReply
   >;
 }
@@ -43,6 +51,7 @@ const boundarySchema = z.object({
 export function* runPythonReplay(options: PythonReplayOptions): Operation<Json> {
   let slice = 0;
   let completedEffects = 0;
+  let effectIndex = 0;
   function* evaluate(command: MontyCommand): Operation<Record<string, Json>> {
     const encoded = yield* options.context.record(
       { key: `python.compute/${slice++}`, retrySafety: { mode: "repeatable" } },
@@ -93,14 +102,31 @@ export function* runPythonReplay(options: PythonReplayOptions): Operation<Json> 
       throw Error("Unexpected Python boundary");
     }
     const op = boundary.request.input.operations[0];
-    const effect = yield* options.exchange({
-      capability: {
-        name: op.request.capability.replace(/^sandbox\./, ""),
-        input: op.request.arguments,
-      },
-      completedEffects,
-      invocationId,
-    });
+    let effect: CapabilityReply;
+    try {
+      effect = yield* options.exchange({
+        capability: {
+          name: op.request.capability.replace(/^sandbox\./, ""),
+          input: op.request.arguments,
+        },
+        completedEffects,
+        invocationId,
+        effectIndex: effectIndex++,
+      });
+    } catch (error) {
+      if (!(error instanceof DurableProgramCancellation)) {
+        throw error;
+      }
+      // Journal cancellation is an input to the VM, not disposal. The next
+      // recorded compute turn captures any yielding cleanup before parking.
+      state = yield* evaluate({
+        action: "cancel",
+        source: options.source,
+        snapshot: state.snapshot,
+        reason: error.reason ?? "Cancelled by host",
+      });
+      continue;
+    }
     if (effect.kind === "stop") {
       return effect.result;
     }

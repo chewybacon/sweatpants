@@ -3,7 +3,7 @@
 Actual Rust Wasm execution through the existing Flowmode kernel and journal-authority backend.
 The Python author writes `async def main()`, imports `asyncio` and `sandbox.read_file`, and awaits ordinary variadic `asyncio.gather`.
 See `guest/demo.py` and acceptance coverage in `acceptance/__tests__/monty/`.
-The library is thin bindings and scope cleanup; Rust owns task scheduling, queues and cancellation.
+Rust owns task scheduling, queues, cancellation scopes and yielding cleanup.
 
 `createMontyKernel(loadModule)` provides start/restore/capture/inspect/dispose through the shared kernel API.
 `createMontyProgram({source, contract, bindOperation}, loadModule)` uses the shared program backend and driver.
@@ -30,11 +30,11 @@ Repeated logical cancellation preserves protected cleanup and terminal cancellat
 
 ## Artifacts and source association
 
-The manifest pins every executable and the complete source association. The
-Playground capability build is pinned to Monty
-`8b55321eb405fea158b3864f4ca49945e2eed4a9`. The association retains the original build
-patch provenance and verifies the committed runtime and build input hashes.
-Vendored bytes run without a sibling checkout. The MIT license is retained.
+The manifest pins every executable and the complete source association to Monty
+`e5077481b13a4e9de83cdaca90aff3ae638281be`. Every runtime and build input matches that committed tree.
+The preserved build association records the original dirty build; `buildSourceCommit`
+and `buildSourcePatchSha256` retain its provenance. The executable bytes are unchanged.
+The accepted scope association is retained as provenance.
 
 `pnpm --filter @sweatpants/flowmode-runtime-monty check` verifies vendored bytes and
 the generated complete-manifest identity. An explicit local import using
@@ -67,10 +67,10 @@ exception type/message. The Execution demo fulfills only an explicit local fixtu
 map; its UI offers each pending read separately. One journal elicitation still
 represents the entire frontier, preserving existing revision/capability authority.
 
-The platform selects the durable dialect and starts `main` internally; neither
-private entry calls nor injected globals are required in authored source. Native
-`asyncio.gather` is variadic, including starred generator expansion, and adapts
-durable continuations using VM-owned frozen functions. No coroutine state lives
+The host feeds the authored source unchanged, then invokes public `asyncio.run(main())`
+in a separate feed. There is no dialect import, private entry or source rewriting. Native
+`asyncio.gather` is variadic, including starred generator expansion, over ordinary coroutines. Supplied sandbox capabilities are native coroutines with
+VM-owned frozen implementations. No coroutine state lives
 outside the snapshot. `guest/cleanup.py` demonstrates ordinary `try/finally` and
 `async with` with yielding reads during cancellation. The app's bounded `cleanup`
 example is available via the public start command's `example` field.
@@ -79,9 +79,9 @@ example is available via the public start command's `example` field.
 
 This is a bounded Python subset, not full asyncio parity or a Python compiler for
 TypeScript tools. Gather keywords including `return_exceptions` remain unsupported.
-The internal legacy Scope/Queue bindings remain available for runtime regressions;
-Scope is cancel-on-exit and is not presented as `asyncio.TaskGroup`. Standard Queue
-is not supplied. The adapter admits at most 256 calls per turn, with 64 MiB guest
+Public `asyncio.create_task`, Task handles, `TaskGroup` and `Queue` are supported.
+`import anyio` supplies `create_task_group`, owner-only `start_soon`, `cancel_scope`,
+`CancelScope(shield=True)` and `get_cancelled_exc_class`. See the bounded reference below. The adapter admits at most 256 calls per turn, with 64 MiB guest
 memory, recursion 200 and 1000 suspensions. Host replies are bounded strings or
 listed exceptions, and results are supported JSON-safe values. Duration checks
 are not workerd CPU preemption. Snapshots must be trusted compatible producer output.
@@ -98,3 +98,48 @@ the installed `sandbox` contract names and bounded JSON replies, using a distinc
 snapshot identity. The default Execution profile still accepts only its read-file
 contract and legacy exchange. The application validates capability schemas and
 journals effects; the interpreter never performs these effects itself.
+
+## Supported public concurrency
+
+Both surfaces use the same Rust scheduler, snapshots and host journal. Define
+`async def main()`; the host invokes it with `asyncio.run`. Do not call `anyio.run`.
+The normal group exit waits for children. Failure cancels/drains siblings, reporting
+`RuntimeError` with actual exception tuples rather than `ExceptionGroup`. Only the
+entering task may call AnyIO `start_soon`; groups and scopes are single-use.
+
+```python
+import anyio
+from sandbox import read_file
+
+async def worker(path):
+    try:
+        await read_file(path)
+    finally:
+        with anyio.CancelScope(shield=True):
+            await read_file("cleanup-" + path)
+
+async def main():
+    async with anyio.create_task_group() as group:
+        group.start_soon(worker, "a.txt")
+        group.start_soon(worker, "b.txt")
+    return "done"
+```
+
+Use `with anyio.CancelScope() as scope`, `scope.cancel()`, `cancel_called` and
+`cancelled_caught` for lexical guest cancellation. The read-only shield masks
+ancestor guest cancellation, not its own scope or the first host signal. Scopes
+belong to the constructing task/run. `get_cancelled_exc_class()` returns `ValueError`;
+ordinary ValueErrors are not treated as scope cancellation signals. Guest cancellation
+repeats at supported checkpoints; protect yielding guest cleanup explicitly.
+Host cancellation automatically protects native cleanup and remains terminal even
+if guest code catches its signal. Repeated cancellation retains the first reason
+and pending cleanup. The host must still authorize every effect reply.
+
+Execution supports `example: "anyio"` for shielded cleanup. Playground Stop sends
+journal cancellation into the VM and can park on cleanup interactions, including
+across reload. An Ask cancel remains a returned action. Disposal/abandonment runs
+no authored cleanup. Internal coroutine/Queue steps are not external I/O boundaries.
+No deadlines, sleeps, streams, writable shields, `anyio.run`, full backend parity,
+async generators, arbitrary generator awaitables or general filesystem/network
+access are supplied. Historical incompatible executable identities are rejected
+before loading; older absent runtime roles are never inferred by the adapter.

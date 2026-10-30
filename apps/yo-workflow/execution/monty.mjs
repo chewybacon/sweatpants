@@ -1,6 +1,11 @@
 import { readFileContract } from "@sweatpants/flowmode-runtime-monty/contract";
 import { createMontyProgram } from "@sweatpants/flowmode-runtime-monty/program";
-import { demoSource, cleanupSource, errorSource } from "@sweatpants/flowmode-runtime-monty/guest";
+import {
+  demoSource,
+  cleanupSource,
+  errorSource,
+  anyioSource,
+} from "@sweatpants/flowmode-runtime-monty/guest";
 import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
 import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
 import { z } from "zod";
@@ -33,7 +38,7 @@ export function createMontyStack(loadModule) {
       developerLanguage: "Python",
     },
     caller: demoSource,
-    examples: { cleanup: cleanupSource, error: errorSource },
+    examples: { cleanup: cleanupSource, error: errorSource, anyio: anyioSource },
     schemas: [{ descriptor: operationReply, schema: replyValidator }],
     *buildProgram(source) {
       const program = createMontyProgram(

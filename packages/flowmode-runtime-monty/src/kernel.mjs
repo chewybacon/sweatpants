@@ -23,11 +23,11 @@ export const montyIdentity = Object.freeze({
   version: canonicalDigest({
     library: guestLibrary,
     executableManifest: executableManifestDigest,
-    adapter: "adapter4",
+    adapter: "public-async1",
     contract: readFileContract,
   }),
   programFormat: "monty-python-source-1",
-  snapshotFormat: "monty-dump27-host1",
+  snapshotFormat: "monty-dump35-min13-host1",
 });
 
 export const playgroundIdentity = Object.freeze({
@@ -289,17 +289,18 @@ export function createMontyKernel(loadModule, options = {}) {
         if (typeof next.code !== "string") {
           throw Error("Expected Python source");
         }
-        feed("async def _child(continuation):\n    return continuation._native1()");
         if (feed(guestLibrary).tag !== "complete") {
           throw Error("Guest library failed");
         }
-        const boundary = settleBoundary(
-          feed(
-            `from __monty_host__ import host_coroutines\n${next.code}\nmain()._native1()`,
-            [{ name: "exchange", value: 0 }],
-            [{ tag: "function", val: { name: "exchange" } }],
-          ),
+        const definitions = feed(
+          next.code,
+          [{ name: "exchange", value: 0 }],
+          [{ tag: "function", val: { name: "exchange" } }],
         );
+        if (definitions.tag !== "complete") {
+          throw Error("Define async main(); top-level host effects are unsupported");
+        }
+        const boundary = settleBoundary(feed("import asyncio\nasyncio.run(main())"));
         return createKernelExecution({ initial: boundary, driver });
       },
       *restore(next, snapshot) {

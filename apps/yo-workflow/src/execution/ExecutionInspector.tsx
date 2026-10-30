@@ -12,6 +12,7 @@ const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 export function ExecutionInspector() {
   const [languages, setLanguages] = useState<WorkflowLanguage[]>([]);
   const [language, setLanguage] = useState("scheme");
+  const [pythonExample, setPythonExample] = useState("reads");
   const [view, setView] = useState<ExecutionView | null>(null);
   const [prompt, setPrompt] = useState(
     "Review the launch announcement, and if I approve it, send it to Sam.",
@@ -41,6 +42,10 @@ export function ExecutionInspector() {
                 revision: view?.revision,
                 /* CONDITIONAL-SPREAD: Omit absent prompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(author ? { prompt } : {}),
+                /* CONDITIONAL-SPREAD: Omit the example on non-Python starts and resume commands. */
+                ...(action === "start" && language === "monty" && pythonExample !== "reads"
+                  ? { example: pythonExample }
+                  : {}),
               }),
             }
           : undefined,
@@ -110,9 +115,25 @@ export function ExecutionInspector() {
             ))}
           </select>
         </label>
+        {language === "monty" && (
+          <label className="execution-language">
+            Python example
+            <select
+              value={pythonExample}
+              disabled={busy}
+              onChange={(event) => setPythonExample(event.target.value)}
+            >
+              <option value="reads">asyncio · five reads</option>
+              <option value="cleanup">asyncio · yielding cleanup</option>
+              <option value="anyio">AnyIO · shielded cleanup</option>
+            </select>
+          </label>
+        )}
         <button disabled={busy || !languages.length} onClick={() => void request("start")}>
           {language === "monty"
-            ? "Run five reads"
+            ? pythonExample === "reads"
+              ? "Run five reads"
+              : "Run Python cleanup"
             : view
               ? "New confirmation run"
               : "Run confirmation"}

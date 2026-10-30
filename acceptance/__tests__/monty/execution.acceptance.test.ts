@@ -125,7 +125,7 @@ async def main():
     const store = createMemoryExecutionStore();
     const saved = new Map();
     const { createExecutionService } = executionServiceFactory([
-      { ...createMontyStack(loadMontyModule), caller: legacyCleanupSource },
+      { ...createMontyStack(loadMontyModule), caller: publicCleanupSource },
     ]);
     const service = () =>
       createExecutionService({
@@ -198,7 +198,9 @@ async def main():
   });
 });
 
-const legacyCleanupSource = `async def review(name):
+const publicCleanupSource = `import asyncio
+
+async def review(name):
     try:
         return await operation("Review " + name)
     finally:
@@ -206,11 +208,11 @@ const legacyCleanupSource = `async def review(name):
 
 async def main():
     try:
-        async with Scope() as scope:
-            first = scope.spawn(review("draft A"))
-            second = scope.spawn(review("draft B"))
-            a = await join(first)
-            b = await join(second)
+        async with asyncio.TaskGroup() as scope:
+            first = scope.create_task(review("draft A"))
+            second = scope.create_task(review("draft B"))
+            a = await first
+            b = await second
         return [a, b]
     finally:
         await operation("Finish parent cleanup")

@@ -1,5 +1,5 @@
-import { type Operation } from "effection";
-import { type JournalAuthorityContract } from "@sweatpants/journal-authority";
+import type { Operation } from "effection";
+import type { JournalAuthorityContract } from "@sweatpants/journal-authority";
 import { CrankError, type AdvancementResult } from "@sweatpants/durable-execution";
 import { stableTupleHash } from "@sweatpants/foundation";
 
@@ -54,14 +54,22 @@ export function* runProgramDriverChatActivation(
 
       if (active && (context.pluginAbort || transition.kind === "supersede")) {
         const reason = context.pluginAbort?.reason ?? "active turn superseded by a new message";
+        const cancellation = yield* journal.query({
+          type: "task.cancellation-state",
+          sessionId: context.sessionId,
+          taskId: active.taskId,
+        });
         yield* journal.requestCancellation(
           context.sessionId,
           active.taskId,
           reason,
           context.pluginAbort?.commandId,
         );
-        yield* cancelPendingElicits(journal, before, context.sessionId, context.participantId);
-        yield* disposeEphemeralChildSessions(before, context.sessionId);
+        // A repeated Stop must not settle the new frontier reached by unwind.
+        if (cancellation.type === "none") {
+          yield* cancelPendingElicits(journal, before, context.sessionId, context.participantId);
+          yield* disposeEphemeralChildSessions(before, context.sessionId);
+        }
       }
       const accepted =
         context.pluginAbort || transition.kind === "supersede"

@@ -1013,14 +1013,18 @@ class ChatClientController<
           }
         }
         const terminal = yield* this.consumeStream(stream, true);
-        if (
-          terminal?.type !== EventType.RUN_ERROR ||
-          terminal.code !== "PROGRAM_CANCELLED" ||
-          this.snapshot.authority?.state !== "idle"
-        ) {
+        const cancelled =
+          terminal?.type === EventType.RUN_ERROR &&
+          terminal.code === "PROGRAM_CANCELLED" &&
+          this.snapshot.authority?.state === "idle";
+        const cleanupPending =
+          terminal?.type === EventType.RUN_FINISHED &&
+          terminal.outcome?.type === "interrupt" &&
+          this.snapshot.authority?.state === "parked";
+        if (!cancelled && !cleanupPending) {
           throw new ChatClientError(
             "chat_cancel_not_terminal",
-            "Host cancellation did not reach authoritative terminal cancellation",
+            "Host cancellation did not reach terminal cancellation or pending cleanup",
           );
         }
         yield* this.flushPublication({}, true);

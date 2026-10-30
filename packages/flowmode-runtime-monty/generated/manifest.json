@@ -1,12 +1,18 @@
 {
-  "sourceCommit": "8b55321eb405fea158b3864f4ca49945e2eed4a9",
+  "sourceCommit": "e5077481b13a4e9de83cdaca90aff3ae638281be",
   "sourceState": "clean",
-  "associationSha256": "8e1b43eaa475084779d052f586d58f5f7536532330afd99932820e7cf937822c",
+  "associationSha256": "2f286b64cd32f8e8a4f9f5e871c26cab63ee3f8afbe79d1c25b6c251b3f7f7d3",
+  "associationOrigin": "playground/coroutine-implementation/public-async-playground1/public-async-association-final.json",
+  "acceptedScopeAssociationSha256": "653269fb68ca26b3d42f6ca9ed0228f818a78003c5b782dce7eb867bc8952d4e",
+  "dumpVersion": 35,
+  "minimumReaderVersion": 13,
   "artifacts": {
-    "monty.component.core.wasm": "bb44c67d082bfe70f512e5a73ca49d1c31328cf3183ae272a3240bb201edb7f5",
+    "monty.component.core.wasm": "544535be9fce5808313f17388a0ba7290f02493d099acf405f80a263c0324de2",
     "monty.component.core4.wasm": "85022c45607e585ab1f7bd648ecd60907ec8ec91d37461a7919c6539714723e8",
-    "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc",
     "monty.component.core3.wasm": "f6ca4d98715d3eb51fb58a9cfc6ee558fd2bc7ca8eee48bdea9dda96e6334186",
-    "monty.component.core2.wasm": "e764a442d40199804739a8fcf8b06897d9cd21dc8aae33c067fbe9d38eaaf73e"
-  }
+    "monty.component.core2.wasm": "e764a442d40199804739a8fcf8b06897d9cd21dc8aae33c067fbe9d38eaaf73e",
+    "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc"
+  },
+  "buildSourceCommit": "e5143abdbaae142c26e96662e4c3ab2ae7a05801",
+  "buildSourcePatchSha256": "cdeaabe82782ff349a1b24062c66978e02f010ccb72d9ff64859cc617ec46b24"
 }
