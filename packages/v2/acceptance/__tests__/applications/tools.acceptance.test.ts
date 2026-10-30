@@ -4,14 +4,14 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createRecovery, type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
-import { createScopedGuest, type Guest } from "@sweatpan.ts/execution";
+import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
   createHosting,
   installEffectAnswers,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
-import { defineTool } from "@sweatpan.ts/tools";
+import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -146,47 +146,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const journal = store.open();
           const effects = createEffectCapabilities(runtime, "tool-prototype");
           const caller = effects.grant({ investigate });
-          function freshGrant() {
-            return effects.grant({ readFile, clarification }, { record: true });
-          }
-          const current =
-            runtime.composition.createContext<ReturnType<typeof freshGrant>>("tool-grant");
-          const acquisition = runtime.composition.createApi<{
-            acquire(input: Input): Operation<Guest<Result, CapabilityRequest, Y>, Y>;
-          }>("tool-acquisition", {
-            *acquire(input) {
-              const grant = freshGrant();
-              yield* grant.install();
-              yield* current.set(grant);
-              acquisitions++;
-              yield* runtime.composition.ensure(function* () {
-                disposals++;
-              });
-              // Provisional acquisition assembly; no public tool execution helper yet.
-              return createScopedGuest((scope) =>
-                investigate.body(input, {
-                  scope,
-                  capabilities: { readFile: investigate.capabilities.readFile.call },
-                  record: grant.record,
-                  *await(start, options) {
-                    const outcome = yield* grant.record(function* () {
-                      const value = yield* runtime.fromPromise(async (signal) => start(signal));
-                      return { ok: true as const, value };
-                    }, options.record);
-                    return outcome.value;
-                  },
-                  elicit<K extends keyof typeof investigate.elicits>(
-                    key: K,
-                    ...args: Parameters<(typeof investigate.elicits)[K]["call"]>
-                  ) {
-                    return investigate.elicits[key].call(args[0]) as ReturnType<
-                      (typeof investigate.elicits)[K]["call"]
-                    >;
-                  },
-                }),
-              );
-            },
-          });
+          const acquisition = createToolAcquisition(
+            runtime,
+            effects,
+            investigate,
+            "tool-acquisition",
+          );
           let waiting: { grant: ResolutionGrant; child: Child } | undefined;
           function childHost(child: Child) {
             const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
@@ -207,21 +172,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               recovery: recovery.operations,
               attempts: child.journal.attempts,
               interactions: child.journal.interactions,
-              *handle(request) {
-                const grant = yield* current.expect();
-                return yield* grant.handle(request);
-              },
+              handle: acquisition.handle,
             });
             return { host, recovery };
           }
           function* runChild(child: Child): Operation<boolean, Y> {
             yield* effects.install(readFile);
             const { host, recovery } = childHost(child);
+            yield* host.around(acquisition.admission);
             yield* host.around({
-              *child(args, next) {
-                const grant = yield* current.expect();
-                return yield* grant.admission.child(args, next);
-              },
               *deliveryMode([request], next) {
                 return request.effect === clarification.id ? "wait" : yield* next(request);
               },
@@ -236,6 +195,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           return {
             run() {
               return start(function* () {
+                yield* acquisition.around({
+                  *acquire([input], next) {
+                    acquisitions++;
+                    yield* runtime.composition.ensure(function* () {
+                      disposals++;
+                    });
+                    return yield* next(input);
+                  },
+                });
                 if (placement === "wrapped") {
                   yield* acquisition.around({
                     *acquire([input], next) {

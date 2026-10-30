@@ -1,8 +1,8 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { Operation } from "@standard-durability/core";
+import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
-import type { LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
-import type { EffectCapabilities } from "@sweatpan.ts/hosting";
+import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
+import type { EffectCapabilities, EffectGrant } from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
 export interface ToolContext<
@@ -75,4 +75,23 @@ export interface ToolBuilder<
   ): ToolBuilder<S, D, Next>;
   /** Finish the declaration, inferring the terminal result from the body. */
   execute<R>(body: ToolDefinition<S, D, L, R>["body"]): ToolDefinition<S, D, L, R>;
+}
+
+/** Scoped native acquisition and its host-facing delivery facade. */
+export interface ToolAcquisition<I, R, Y> extends Api<
+  {
+    /**
+     * Acquire one Guest in its owning scope from already-admitted input. No schema
+     * parsing or journal writes occur. Default acquisition grants declared effects
+     * and local recording; scope exit releases recording bindings. Acquire once per
+     * incarnation in a separate owning scope. Native recording requires retention.
+     */
+    acquire(input: I): Operation<Guest<R, CapabilityRequest, Y>, Y>;
+  },
+  Y
+> {
+  /** Admit through the current incarnation's grant, before owned-child routing. */
+  readonly admission: EffectGrant<Record<string, EffectDefinition>, Y>["admission"];
+  /** Deliver through the current incarnation; handlers are installed separately. */
+  handle(request: CapabilityRequest): Operation<Outcome<unknown, string>, Y>;
 }

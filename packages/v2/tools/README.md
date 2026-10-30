@@ -26,10 +26,32 @@ rerunning the schema. Concurrent validations may both run outside the transactio
 but only one normalized input can win. First admission must precede execution.
 Owned children continue to pin input through `ensureChild`.
 
-Tool acquisition remains provisional assembly in the acceptance application. No public
-tool execution helper is provided yet. The application composes the scoped iterator, while its host owns admission, fresh grants, effect installation,
-owned-child routing, recovery and physical disposal. Tool declarations do not grant
-authority. Input must already be normalized and durably pinned by admission.
+`createToolAcquisition(runtime, effects, tool, name)` supplies native acquisition
+through an ordinary scoped API. Its `operations.acquire(normalizedInput)` creates a
+fresh context and recording grant and wraps the body in the scoped evaluator. Input
+must already be normalized and pinned by root admission or owned-child acquisition.
+No input validation or journal writes occur during acquisition.
+
+```ts
+const acquisition = createToolAcquisition(runtime, effects, investigate, "investigate.acquire");
+// Recovery consumes persisted normalized input:
+const guest = yield * acquisition.operations.acquire(normalizedInput);
+// Host assembly uses acquisition.handle and installs acquisition.admission before routing.
+// Install effect handlers, participant delivery policy and Guest retention separately.
+```
+
+Acquisition grants the tool's declared capabilities, elicits and local recording.
+Declarations alone still confer no authority. Capability and elicitation aliases
+occupy separate namespaces. `handle` and `admission` resolve the current incarnation's
+grant from its owning scope; using them after that scope exits fails. Each incarnation
+needs its own scope. Native recorded callbacks require that scope to be retained
+through delivery; `installGuestRetention` supplies that hosting policy.
+
+The API supports acquisition middleware for observation and placement selection.
+Wrapping `next(input)` preserves the native implementation. Replacing it is trusted
+assembly and must provide compatible Guest lifetime and effect delivery; a wrapper
+alone does not establish remote placement. The helper does not open journals, install
+handlers, mount elicits, route owned calls, validate answers or run a session.
 
 `ctx.scope` owns logical cleanup and critical regions.
 `ctx.await(factory, { record: { key: "load" } })` is a convenience over the existing
