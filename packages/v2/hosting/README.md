@@ -429,3 +429,74 @@ The owned-group acceptance journey forces this ordering through scoped middlewar
 asserts stale registration and late-answer rejection, then explicitly reactivates and
 joins cleanup. Separate nested-group coverage checks descendant fencing and critical
 branch authority across reopen before parent cleanup can run.
+
+## Inline owned groups
+
+`createOwnedAll<BranchContext, BranchInstructions, NativeYield>(runtime, name)`
+composes an ordinary effect with journal-owned children. Keep its name stable and
+unique within the pinned parent program. Include `owned.effect` in the parent's
+explicit effect grant and install admission before owned routing.
+
+```ts
+const owned = createOwnedAll<BranchContext, CapabilityRequest | ScopeInstruction, Y>(
+  runtime,
+  "review.all",
+);
+
+// Inside each parent Guest acquisition:
+const all = yield * owned.acquire();
+return createScopedGuest(function* () {
+  return yield* all(
+    function* (branch) {
+      return yield* branch.elicit("Approve?");
+    },
+    function* (branch) {
+      return yield* branch.compute("research");
+    },
+  );
+});
+
+// In the surrounding hosting scope:
+yield *
+  owned.install({
+    host,
+    journal,
+    recovery,
+    run(child, factory, index) {
+      return runChildHost(child, factory, index);
+    },
+  });
+```
+
+`runChildHost` is host assembly: acquire a scoped Guest from `factory(childContext)`,
+grant its permitted capabilities, and run ordinary hosting against `child.journal`.
+Return true after terminal settlement, false when parked or occupied. The callback
+runs concurrently with siblings in separate runtime scopes. It owns application
+routing and participant delivery; the group middleware owns durable grouping.
+Named tool calls inside factories use their ordinary owned invocation path, adding
+a tool journal beneath the branch journal.
+
+The authoring callable `All` and factory type `Branch` live in core. Results retain
+ordered tuple inference. Empty groups return locally. Explicit failure Outcomes
+remain result data; delivery exceptions propagate and do not synthesize failures
+or automatically cancel siblings. Cancellation uses the existing journal tree rules.
+
+Acquire once per parent incarnation. Physical scope exit closes the callable and
+releases its factories without authored cleanup. Parent replay recreates factories
+at their original group positions. Every group drive reconstructs its parent in a
+temporary owning scope and checks the suspended request and logical scope against
+the journal before driving children. Reconstruction removes the parent checkpoint
+to force replay. Inherited bindings are never reused: an ancestor can have the same
+group slot. This adds parent replay on each group drive; no retention flag is added
+to journals.
+
+Captures must be reproducible from pinned code, input and accepted results. Shared
+mutable captures, standalone child recovery without parent reconstruction and remote
+closure placement are unsupported. Pass each branch its own scope and local grants;
+do not capture the parent's scope or recording binding. Program identity must change
+when branch ordering or replay-relevant code changes. Slot identity cannot detect
+same-count reordering under an incorrectly reused program identity.
+
+The host, recovery and journal must describe the same execution. Owned authority
+must remain in one transaction domain. This API neither grants effect permission
+implicitly nor supplies automatic retries after stale-boundary rejection.

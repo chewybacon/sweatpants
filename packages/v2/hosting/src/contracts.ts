@@ -1,6 +1,9 @@
-import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
+import type { All, Branch, CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
+  OwnedChild,
+  OwnedJournal,
+  Recovery,
   Activation,
   RootCancellation,
   AttemptControl,
@@ -229,4 +232,37 @@ export interface EffectCapabilities<Y> {
       options?: { readonly key?: string },
     ): Operation<Result, CapabilityRequest>;
   };
+}
+
+/** Scoped assembly for replay-reconstructed inline child groups. */
+export interface OwnedAll<C, I, Y> {
+  /** Ordinary effect declaration; include it in the parent host's explicit grant. */
+  readonly effect: EffectDefinition<{ slot: number; count: number }, readonly unknown[]>;
+  /**
+   * Bind fresh authoring operations in the acquiring Guest's native scope.
+   * That scope owns the factory closures; using all after disposal rejects.
+   * Call once per Guest acquisition, including parent replay.
+   */
+  acquire(): Operation<All<C, I>, Y>;
+  /**
+   * Install owned-group routing. Reconstructs factories by replaying the
+   * parent without its checkpoint, validates the pending boundary, then drives
+   * child hosts in a scope owning those factories. Parent and children must share
+   * one transaction domain. Install parent admission separately before routing.
+   *
+   * run supplies ordinary child hosting and fresh child context, returning true
+   * only after terminal settlement. Exceptions propagate; no automatic retry or
+   * fail-fast authored-failure conversion is supplied. The host/journal/recovery
+   * must belong to the same pinned program and execution.
+   */
+  install<R, E, S>(options: {
+    readonly host: Hosting<R, CapabilityRequest, unknown, E, Y>;
+    readonly journal: OwnedJournal<R, CapabilityRequest, unknown, E, S, Y>;
+    readonly recovery: Recovery<R, CapabilityRequest, Y, unknown, E, S>;
+    readonly run: (
+      child: OwnedChild<unknown, CapabilityRequest, unknown, string, unknown, Y>,
+      factory: Branch<C, I>,
+      index: number,
+    ) => Operation<boolean, Y>;
+  }): Operation<void, Y>;
 }

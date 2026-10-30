@@ -31,3 +31,24 @@ export interface EffectDefinition<
   /** Construct a Guest operation; advancing it requests delivery without executing a handler. */
   call(context: CallerContext): Operation<Outcome<Response, Failure>, CapabilityRequest>;
 }
+
+/** Controlled child computation. Its host supplies a fresh child-owned context. */
+export type Branch<C, Y, R = unknown> = (context: C) => Operation<R, Y>;
+
+/** Ordered durable child computations, reconstructed through their parent on recovery. */
+export interface All<C, Y> {
+  /**
+   * Run factories as owned children and return results in declaration order.
+   * Empty calls return locally. Returned failure Outcomes remain data. Captures must
+   * be reproducible by parent replay; shared mutable captures are not supported.
+   * Each factory must use its supplied child context for scope and local capabilities.
+   */
+  <const B extends readonly Branch<C, Y>[]>(
+    ...branches: B
+  ): Operation<
+    {
+      -readonly [K in keyof B]: B[K] extends Branch<C, Y, infer R> ? R : never;
+    },
+    CapabilityRequest
+  >;
+}

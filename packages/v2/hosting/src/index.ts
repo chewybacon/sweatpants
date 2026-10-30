@@ -15,3 +15,5 @@ export { installGuestRetention } from "./retention.ts";
 export { installEffectAnswers } from "./answers.ts";
 
 export type { EffectAnswers } from "./contracts.ts";
+export { createOwnedAll } from "./owned-all.ts";
+export type { OwnedAll } from "./contracts.ts";
