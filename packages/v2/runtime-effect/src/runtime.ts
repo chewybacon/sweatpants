@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { effect, effectProgram, execute } from "@standard-durability/effect";
+import { createStreams } from "@sweatpan.ts/runtime";
 import type { Runtime, Work } from "@sweatpan.ts/runtime";
 import type { EffectYield } from "./contracts.ts";
 
@@ -7,7 +8,9 @@ import type { EffectYield } from "./contracts.ts";
 export function createRuntime(
   install: Work<void, EffectYield> = function* () {},
 ): Runtime<EffectYield> {
+  const fromPromise: Runtime<EffectYield>["fromPromise"] = (start) => Effect.promise(start);
   return {
+    ...createStreams({ composition: effect, fromPromise }),
     name: "Effect",
     composition: effect,
     sleep: (milliseconds) => Effect.sleep(milliseconds),
@@ -44,7 +47,7 @@ export function createRuntime(
           return Effect.raceFirst(execute(work), interrupted);
         }),
       ),
-    fromPromise: (start) => Effect.promise(start),
+    fromPromise,
     start(work) {
       const controller = new AbortController();
       const result = Effect.runPromise(

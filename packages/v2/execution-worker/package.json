@@ -23,6 +23,11 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/execution-worker",
     "format:check": "cd ../../.. && oxfmt packages/v2/execution-worker --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

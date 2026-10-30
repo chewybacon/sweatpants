@@ -11,6 +11,7 @@ import {
   useAbortSignal,
   type Operation,
 } from "effection";
+import { createStreams } from "@sweatpan.ts/runtime";
 import type { Runtime, Work } from "@sweatpan.ts/runtime";
 import { effection } from "@standard-durability/effection";
 import type { EffectionYield } from "./contracts.ts";
@@ -19,7 +20,12 @@ import type { EffectionYield } from "./contracts.ts";
 export function createRuntime(
   install: () => Operation<void> = function* () {},
 ): Runtime<EffectionYield> {
+  const fromPromise: Runtime<EffectionYield>["fromPromise"] = function* (start) {
+    const signal = yield* useAbortSignal();
+    return yield* call(() => start(signal));
+  };
   return {
+    ...createStreams({ composition: effection, fromPromise }),
     name: "Effection",
     composition: effection,
     sleep,
@@ -58,10 +64,7 @@ export function createRuntime(
         ]),
       );
     },
-    *fromPromise(start) {
-      const signal = yield* useAbortSignal();
-      return yield* call(() => start(signal));
-    },
+    fromPromise,
     start(work) {
       const task = run(function* () {
         yield* install();

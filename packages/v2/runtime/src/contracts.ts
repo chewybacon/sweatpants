@@ -1,4 +1,4 @@
-import type { Composition, Operation, Work } from "@standard-durability/core";
+import type { Api, Composition, Operation, Work } from "@standard-durability/core";
 
 /** One native execution and its physical resource lifetime. */
 export interface RuntimeExecution<T> {
@@ -14,7 +14,7 @@ export interface RuntimeExecution<T> {
 }
 
 /** Portable native scheduling and physical resource ownership. */
-export interface Runtime<Yielded> {
+export interface Runtime<Yielded> extends Streams<Yielded> {
   readonly name: string;
   readonly composition: Composition<Yielded>;
   sleep(milliseconds: number): Operation<void, Yielded>;
@@ -40,4 +40,46 @@ export interface Runtime<Yielded> {
   fromPromise<T>(start: (signal: AbortSignal) => Promise<T>): Operation<T, Yielded>;
   /** The host boundary. Shared workflows themselves remain iterator-based. */
   start<T>(work: Work<T, Yielded>): RuntimeExecution<T>;
+}
+
+/** Scoped subscription; one next operation at a time. Scope exit releases queued values. */
+export interface Subscription<T, Close, Y> {
+  /** Wait for the next value or completion. Rejects use after the subscribing scope exits. */
+  next(): Operation<IteratorResult<T, Close>, Y>;
+}
+
+/** Subscribing is an operation; its executing scope owns the returned subscription. */
+export interface Stream<T, Close, Y> extends Operation<Subscription<T, Close, Y>, Y> {}
+
+/** Callback-facing broadcast producer. Does not wait for consumers. */
+export interface Signal<T, Close, Y> extends Stream<T, Close, Y> {
+  /** Send to every active subscription; drop when none exist. Safe as an unbound callback. */
+  send(value: T): void;
+  /** Complete current subscriptions after queued values. Future subscriptions are independent. */
+  close(value: Close): void;
+}
+
+/** Operation-facing broadcast producer. Send is lazy, with no consumer acknowledgement. */
+export interface Channel<T, Close, Y> extends Stream<T, Close, Y> {
+  send(value: T): Operation<void, Y>;
+  /** Complete current subscriptions after queued values; does not retain terminal state globally. */
+  close(value: Close): Operation<void, Y>;
+}
+
+/** Live broadcast factories. Per-subscription queues are unbounded; nothing is journaled. */
+export interface Streams<Y> {
+  createSignal<T, Close = void>(): Signal<T, Close, Y>;
+  createChannel<T, Close = void>(): Channel<T, Close, Y>;
+}
+
+/** Interceptable subscription operation; event delivery remains on the returned subscription. */
+export interface StreamMethods<T, Close, Y> {
+  /** Subscribe using the current scoped implementation and middleware. */
+  subscribe(): Operation<Subscription<T, Close, Y>, Y>;
+}
+
+/** Ordinary scoped API with a consumer-only stream facade. No source is captured. */
+export interface StreamApi<T, Close, Y> extends Api<StreamMethods<T, Close, Y>, Y> {
+  /** Each subscription dispatches through operations.subscribe in its executing scope. */
+  readonly stream: Stream<T, Close, Y>;
 }

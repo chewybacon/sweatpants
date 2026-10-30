@@ -26,6 +26,8 @@
   "dependencies": {
     "@standard-durability/core": "workspace:*",
     "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/execution-worker": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",
     "@sweatpan.ts/storage": "workspace:*",
     "@sweatpan.ts/storage-sqlite": "workspace:*"

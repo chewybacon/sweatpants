@@ -204,3 +204,12 @@ through iterator.return(). Scoped suspensions also carry frame identity evidence
 old raw-iterator histories are not replay-compatible with the new evaluator. Pin a
 new program version when migrating persisted executions; this reconstruction does
 not provide a stored-history migration.
+
+## Serialized command boundary
+
+GuestCommand and GuestResponse describe ordered advancement of one already-acquired
+incarnation. They carry no handler closures or journal authority. The execution-worker
+adapter provides a byte-channel proxy and receiver, while hosting/recovery continue
+to consume the same Guest interface. Uncertain advancement discards an incarnation;
+the journal's accepted history reconstructs a fresh one. Program selection and input
+admission happen before acquisition; checkpoint transport is a separate future seam.

@@ -6,3 +6,7 @@ export { createSqliteJournalRig } from "./sqlite.ts";
 
 export { readJournal, historyFrom } from "./history.ts";
 export { createJournalStorageRig } from "./journal.ts";
+export { createWorkerGuestRig } from "./worker-guest.ts";
+export type { WorkerGuestRig, WorkerGuestRigOptions } from "./contracts.ts";
+export { createDuplexExchangeRig } from "./duplex-exchange.ts";
+export type { DuplexExchangeRig, DuplexExchangeRigOptions } from "./contracts.ts";
