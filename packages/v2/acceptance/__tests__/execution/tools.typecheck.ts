@@ -1,10 +1,10 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createEffectCapabilities } from "@sweatpan.ts/hosting";
+import { createEffectCapabilities, type Hosting } from "@sweatpan.ts/hosting";
 import type { OwnedJournal } from "@sweatpan.ts/durable";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { defineTool, admitTool } from "@sweatpan.ts/tools";
+import { defineTool, admitTool, installElicitHandlers } from "@sweatpan.ts/tools";
 
 // Non-executed consumer checked against source and emitted declarations.
 export function toolInference<Y>(
@@ -73,4 +73,48 @@ export function toolAdmissionInference<Y>(
   // @ts-expect-error The admitted result is schema output, not schema input.
   const wrong: Operation<string, Y> = admitTool(runtime, tool, journal, "query");
   return { admitted, wrong };
+}
+
+export function elicitHandlerInference<Y>(
+  runtime: Runtime<Y>,
+  host: Hosting<unknown, CapabilityRequest, unknown, string, Y>,
+  schema: StandardSchemaV1<string, { text: string }>,
+) {
+  const effects = createEffectCapabilities(runtime, "typed-elicit");
+  const question = defineEffect({ key: "typed-question", context: schema, response: schema });
+  const tool = defineTool("typed-tool")
+    .parameters(schema)
+    .elicits({ question })
+    .execute(function* () {});
+  installElicitHandlers(host, effects, tool, {
+    *question(context) {
+      const text: string = context.text;
+      return { ok: true, value: text };
+    },
+  });
+  installElicitHandlers(host, effects, tool, {
+    // @ts-expect-error Only declared elicitation keys are accepted.
+    *missing() {
+      return { ok: true, value: "answer" };
+    },
+  });
+  installElicitHandlers(host, effects, tool, {
+    // @ts-expect-error Handler receives normalized context, not caller input.
+    *question(context: string) {
+      return { ok: true, value: context };
+    },
+  });
+  installElicitHandlers(host, effects, tool, {
+    // @ts-expect-error Success supplies response-schema input, not transformed output.
+    *question() {
+      return { ok: true, value: { text: "answer" } };
+    },
+  });
+  installElicitHandlers(host, effects, tool, {
+    // @ts-expect-error Handlers must return explicit authored Outcomes.
+    *question() {
+      return "answer";
+    },
+  });
+  return installElicitHandlers(host, effects, tool);
 }

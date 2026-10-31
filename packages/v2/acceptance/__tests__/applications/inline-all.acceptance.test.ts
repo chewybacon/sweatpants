@@ -1,3 +1,4 @@
+import { installToolRouting, createToolAcquisition } from "@sweatpan.ts/tools";
 import {
   createHostedRecovery as createRecovery,
   createSqliteJournalRig,
@@ -166,77 +167,42 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             handle: grant.handle,
           });
           yield* host.around(grant.admission);
-          yield* host.around({
-            *child([pending], next) {
-              if (pending.request.effect !== scoreTool.id) {
-                return yield* next(pending);
-              }
-              const snapshot = yield* child.journal.read();
-              const existing = snapshot.status === "running" ? snapshot.children?.[0] : undefined;
-              let input: unknown = existing?.input;
-              if (!existing) {
-                const parsed = yield* runtime.fromPromise(async () =>
-                  scoreTool.context["~standard"].validate(pending.request.input),
-                );
-                if (parsed.issues) {
-                  throw new Error("Invalid score tool input");
-                }
-                input = parsed.value;
-              }
-              const owned = yield* child.journal.ensureChild<
-                number,
-                CapabilityRequest,
-                unknown,
-                string
-              >(pending.id, {
+          yield* installToolRouting(runtime, host, child.journal, {
+            tool: scoreTool,
+            *run(owned) {
+              const acquisition = createToolAcquisition(
+                runtime,
+                effects,
+                scoreTool,
+                "inline-score-acquisition",
+              );
+              const toolRecovery = createRecovery(runtime, {
+                name: "inline-score-recovery",
                 program: scoreTool.id,
-                input,
-                outcome: (value) => ({ ok: true, value: { ok: true, value } }),
-              });
-              return {
-                id: pending.id,
-                *run() {
-                  const toolGrant = effects.grant(scoreTool.capabilities, { record: true });
-                  const toolRecovery = createRecovery(runtime, {
-                    name: "inline-score-recovery",
-                    program: scoreTool.id,
-                    matches: isDeepStrictEqual,
-                    *acquire() {
-                      yield* toolGrant.install();
-                      return createScopedGuest((scope) =>
-                        scoreTool.body(owned.link.input as string, {
-                          scope,
-                          capabilities: toolGrant.capabilities,
-                          record: toolGrant.record,
-                          *await() {
-                            throw new Error("Score tool does not await recorded work");
-                          },
-                          elicit() {
-                            throw new Error("Score tool declares no elicits");
-                          },
-                        }),
-                      );
-                    },
-                  });
-                  const toolHost = createHosting(runtime.composition, {
-                    name: "inline-score-host",
-                    journal: owned.journal,
-                    recovery: toolRecovery.operations,
-                    attempts: owned.journal.attempts,
-                    handle: toolGrant.handle,
-                  });
-                  yield* toolHost.around(toolGrant.admission);
-                  yield* installGuestRetention(
-                    runtime.composition,
-                    toolHost,
-                    toolRecovery,
-                    owned.journal,
-                  );
-                  const result = yield* toolHost.operations.run();
-                  return result.state === "completed" || result.state === "cancelled";
+                matches: isDeepStrictEqual,
+                *acquire() {
+                  return yield* acquisition.operations.acquire(owned.link.input as string);
                 },
-              };
+              });
+              const toolHost = createHosting(runtime.composition, {
+                name: "inline-score-host",
+                journal: owned.journal,
+                recovery: toolRecovery.operations,
+                attempts: owned.journal.attempts,
+                handle: acquisition.handle,
+              });
+              yield* toolHost.around(acquisition.admission);
+              yield* installGuestRetention(
+                runtime.composition,
+                toolHost,
+                toolRecovery,
+                owned.journal,
+              );
+              const result = yield* toolHost.operations.run();
+              return result.state === "completed" || result.state === "cancelled";
             },
+          });
+          yield* host.around({
             *deliveryMode([request], next) {
               return request.effect === approval.id || request.effect === cleanup.id
                 ? "wait"

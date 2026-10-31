@@ -91,6 +91,8 @@ export interface EffectAnswers<E, Y> {
 
 /** Public hosting API and its scoped delivery identity. */
 export interface Hosting<R, Q, V, E, Y> extends Api<HostingMethods<R, Q, V, E, Y>, Y> {
+  /** Exact command facade used by this host; install middleware here before run. */
+  readonly attempts: Api<Attempts<Q, V, E, Y>, Y>;
   /** Current handler grant; inherited by its cleanup, absent outside the delivery scope. */
   readonly delivery: Context<AttemptGrant, Y>;
 }
@@ -100,7 +102,8 @@ export interface HostingOptions<R, Q, V, E, S, Y> {
   readonly name: string;
   readonly recovery: RecoveryMethods<R, Q, Y, V, E, S>;
   readonly journal: Journal<R, Q, V, E, S, Y>;
-  readonly attempts: Attempts<Q, V, E, Y>;
+  /** Raw commands are bound once; a supplied API retains its identity and middleware. */
+  readonly attempts: Attempts<Q, V, E, Y> | Api<Attempts<Q, V, E, Y>, Y>;
   /** Optional durable invalidation; must control the same attempts. */
   readonly attemptControl?: AttemptControl<Q, V, E, Y>;
   /** Required when deliveryMode selects wait; must share this journal's execution. */
@@ -269,4 +272,14 @@ export interface OwnedAll<C, I, Y> {
 export interface OwnedRace<C, I, Y> extends Omit<OwnedAll<C, I, Y>, "acquire"> {
   /** Acquire a nonempty race callable in this Guest's owning scope. */
   acquire(): Operation<Race<C, I>, Y>;
+}
+
+/** Application-bound child runner; true means terminal settlement, not just activation. */
+export interface ChildRunner<C, I, Y> {
+  /** Own fresh child acquisition/context scopes and keep factories within reconstruction lifetime. */
+  run(
+    child: OwnedChild<unknown, CapabilityRequest, unknown, string, unknown, Y>,
+    factory: Branch<C, I>,
+    index: number,
+  ): Operation<boolean, Y>;
 }

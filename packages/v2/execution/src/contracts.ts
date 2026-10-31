@@ -190,3 +190,9 @@ export type ProgramExecutionFrom<P, Y> =
   P extends ResolvedProgram<infer R, infer Q, infer G, infer V, infer E, infer S>
     ? ProgramExecution<R, Q, Y | G, V, E, S>
     : never;
+
+/** Artifact resolution/placement operation. Resolving must not acquire a live Guest. */
+export interface ProgramResolver<I, P, Y> {
+  /** Return the pinned artifact binding; createProgramExecution verifies identity before use. */
+  resolve(invocation: ProgramInvocation<I>): Operation<P, Y>;
+}

@@ -282,3 +282,12 @@ exercise replay and checkpoint restoration across local/MessageChannel placement
 do not implement deployed bootstrap or a public artifact registry. Artifact identity
 still requires complete dependency accounting before a hash can be described as covering
 the full implementation.
+
+## Scoped program resolution
+
+`createProgramResolver(composition, name, driver)` supplies the ordinary Api
+`resolve` operation. Pass `resolver.operations.resolve` to `createProgramExecution`
+for scoped artifact selection and placement middleware. Resolution does not acquire
+a Guest. Pin verification and format checks remain in program execution; capture
+uses the adapter belonging to the exact Guest. A supported restore failure must
+propagate rather than silently acquire a fresh Guest.

@@ -12,3 +12,5 @@ export type {
   ProgramExecutionFrom,
 } from "./contracts.ts";
 export { createProgramExecution } from "./program.ts";
+export type { ProgramResolver } from "./contracts.ts";
+export { createProgramResolver } from "./apis.ts";

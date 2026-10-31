@@ -19,3 +19,5 @@ export { createOwnedAll } from "./owned-all.ts";
 export type { OwnedAll } from "./contracts.ts";
 export { createOwnedRace } from "./owned-race.ts";
 export type { OwnedRace } from "./contracts.ts";
+export type { ChildRunner } from "./contracts.ts";
+export { createChildRunner, createAttemptNotifications } from "./apis.ts";

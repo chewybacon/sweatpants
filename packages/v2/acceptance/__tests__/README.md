@@ -2,7 +2,10 @@
 
 Add `*.acceptance.test.ts` journeys here. Exercise public package APIs through
 protocol simulators running in the same process. Reusable rigs and fixtures belong
-in `@sweatpan.ts/testing`. Simulate protocol peers, not internal implementation
+in `@sweatpan.ts/testing`. The acceptance-only `runtime/assembly.ts` fixture is an
+exception: it assembles both concrete native runtimes without adding those
+runtime dependencies to the portable testing package. Keep its local application
+types beside it. Simulate protocol peers, not internal implementation
 methods. Tests own and dispose their resources and use deterministic scripted
 responses and fault injection.
 
@@ -229,6 +232,25 @@ SQLite retain normalized input before initial execution and through completion;
 recovery never revalidates it. A separate two-connection SQLite journey lets an earlier
 submission finish validation late and proves it cannot replace the winning input.
 
+The root tool admission journey also runs with `installElicitHandlers` in automatic
+and participant modes. Inner scoped handlers override outer wait policy and restore
+it on exit. Automatic handlers receive normalized context; both automatic and later
+participant answers normalize responses once, and terminal replay repeats neither.
+
+`applications/mounted-tool-stream.acceptance.test.ts` is a provisional authoring tracer,
+not a public mount or client plugin API. A local mount uses existing admission, hosting,
+scoped acquisition and participant policy. A separate transport publishes registered
+waits on a cloned-data ReadableStream after Guest disposal. A separately attached typed
+client validates request context, invokes its handler, and submits an authored answer
+through the mount's existing answer ingress. No callback closure crosses the stream.
+
+The same journal survives disconnect before publication, after publication and after
+answer acceptance. Reconnect republishes pending authority; a fast reply is valid as
+soon as the frame appears. Lost acknowledgements permit duplicate submission without
+rerunning the Guest or recorded work. Client-local reply caching avoids repeated UI work
+within this client instance; it is not durable client-side deduplication. This does not
+implement sockets, backpressure, authentication, browser-safe contract splitting or a
+persistent response-event log. Reconnect reconstructs current pending state.
 
 ## Hosted placement default
 
@@ -303,3 +325,9 @@ journeys reject malformed invocation data, advancement before initialization and
 to retarget an initialized incarnation. Lost/invalid initialization acknowledgements join
 termination without resolving an artifact or starting a Guest. Existing application
 replay/restore journeys use the server-owned resolver and check detached invocation data.
+
+## Package shape
+
+The package retains the standard `contracts.ts`, `apis.ts`, and `types.ts`
+scaffolds and its build entry point. Empty scaffold files do not represent
+implemented capabilities; journeys and compile-time consumers provide the evidence.

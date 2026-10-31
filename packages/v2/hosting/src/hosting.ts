@@ -1,5 +1,10 @@
 import type { Api, Composition } from "@standard-durability/core";
-import { activateJournal, JournalConflict, type AttemptGrant } from "@sweatpan.ts/durable";
+import {
+  createAttempts,
+  activateJournal,
+  JournalConflict,
+  type AttemptGrant,
+} from "@sweatpan.ts/durable";
 import type { Hosting, HostingMethods, HostingOptions } from "./contracts.ts";
 
 /**
@@ -16,6 +21,10 @@ export function createHosting<R, Q, V, E, S, Y>(
   composition: Composition<Y>,
   options: HostingOptions<R, Q, V, E, S, Y>,
 ): Hosting<R, Q, V, E, Y> {
+  const attempts =
+    "operations" in options.attempts
+      ? options.attempts
+      : createAttempts(composition, `${options.name}:attempts`, options.attempts);
   const delivery = composition.createContext<AttemptGrant>(`${options.name}:delivery`);
   const api: Api<HostingMethods<R, Q, V, E, Y>, Y> = composition.createApi<
     HostingMethods<R, Q, V, E, Y>
@@ -75,7 +84,7 @@ export function createHosting<R, Q, V, E, S, Y>(
           }
           const safety = yield* api.operations.retrySafety(activation.pending.request);
           const started = yield* composition.catchError(
-            () => options.attempts.begin(activation.pending.id, safety, expected),
+            () => attempts.operations.begin(activation.pending.id, safety, expected),
             conflict,
           );
           if (!started) {
@@ -90,7 +99,7 @@ export function createHosting<R, Q, V, E, S, Y>(
           yield* composition.scoped(function* () {
             yield* delivery.set(grant);
             const outcome = yield* api.operations.handle(request);
-            yield* options.attempts.settle(grant, outcome);
+            yield* attempts.operations.settle(grant, outcome);
           });
         }
       });
@@ -133,5 +142,5 @@ export function createHosting<R, Q, V, E, S, Y>(
       return "unsafe";
     },
   });
-  return { ...api, delivery };
+  return { ...api, delivery, attempts };
 }

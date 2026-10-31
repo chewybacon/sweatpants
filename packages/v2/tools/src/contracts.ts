@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
+import type { OwnedChild } from "@sweatpan.ts/durable";
 import type { EffectCapabilities, EffectGrant } from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
@@ -77,6 +78,19 @@ export interface ToolBuilder<
   execute<R>(body: ToolDefinition<S, D, L, R>["body"]): ToolDefinition<S, D, L, R>;
 }
 
+/** Optional automatic handlers keyed by a tool's declared elicits. Omitted keys park for a participant. */
+export type ElicitHandlers<L extends Record<string, EffectDefinition>, Y> = {
+  readonly [K in keyof L]?: L[K] extends EffectDefinition<
+    infer C,
+    infer _R,
+    infer _I,
+    infer O,
+    infer E
+  >
+    ? (context: C) => Operation<Outcome<O, E>, Y>
+    : never;
+};
+
 /** Scoped native acquisition and its host-facing delivery facade. */
 export interface ToolAcquisition<I, R, Y> extends Api<
   {
@@ -94,4 +108,19 @@ export interface ToolAcquisition<I, R, Y> extends Api<
   readonly admission: EffectGrant<Record<string, EffectDefinition>, Y>["admission"];
   /** Deliver through the current incarnation; handlers are installed separately. */
   handle(request: CapabilityRequest): Operation<Outcome<unknown, string>, Y>;
+}
+
+/** Submission policy for one bound tool and journal. Recovery never calls this API. */
+export interface ToolAdmission<I, O, Y> {
+  /** Each submission may run policy/validation, including duplicates. No exactly-once quota promise. */
+  admit(input: I): Operation<O, Y>;
+}
+
+/** One named-tool route installed on the existing Hosting.child operation. */
+export interface ToolRoute<S extends StandardSchemaV1, R, Y, ParentError = string> {
+  readonly tool: { readonly id: string; readonly context: S };
+  /** Drive this child to terminal settlement or return false when parked/occupied. */
+  run(child: OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>): Operation<boolean, Y>;
+  /** Pure synchronous parent projection; default wraps the child's result as authored success. */
+  readonly outcome?: (value: R) => Outcome<unknown, ParentError>;
 }

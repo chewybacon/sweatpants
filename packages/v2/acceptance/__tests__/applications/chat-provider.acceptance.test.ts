@@ -1,9 +1,11 @@
+import { installToolRouting } from "@sweatpan.ts/tools";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import type { Operation, Work } from "@standard-durability/core";
 import {
-  prepareChatInference,
+  createChatContext,
+  type ChatInferenceOptions,
   type ChatInference,
   type ChatHistoryMessage,
   type ModelSelection,
@@ -18,9 +20,14 @@ import {
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import {
+  createContextCounter,
+  createModelProvider,
+  measureContextBudget,
+} from "@sweatpan.ts/providers";
+import { createResponseSubscriptions } from "@sweatpan.ts/chat-client";
 import type {
   ModelInfo,
-  ModelProvider,
   ModelRequest,
   ModelResponse,
   ModelStreamEvent,
@@ -121,7 +128,7 @@ const cost = z.object({
   cacheWrite: z.number().nullable(),
   total: z.number().nullable(),
 });
-const responseSchema: StandardSchemaV1<ModelResponse> = z.object({
+const responseDataSchema = z.object({
   message: assistant,
   source: z
     .object({
@@ -153,6 +160,7 @@ const responseSchema: StandardSchemaV1<ModelResponse> = z.object({
     })
     .optional(),
 });
+const responseSchema: StandardSchemaV1<ModelResponse> = responseDataSchema;
 type Request = ModelRequest;
 type Response = ModelResponse;
 type Event = ModelStreamEvent;
@@ -221,14 +229,31 @@ const sample = defineEffect({
   context: requestSchema,
   response: responseSchema,
 });
-const selectedRequestSchema: StandardSchemaV1<ChatInference> = z.object({
-  model: z.object({ id: z.string(), provider: z.string(), api: z.string() }),
-  request: requestDataSchema,
+const selectionSchema = z.object({ id: z.string(), provider: z.string(), api: z.string() });
+const inferenceSchema = z.object({ model: selectionSchema, request: requestDataSchema });
+const preparationSchema: StandardSchemaV1<
+  Omit<ChatInferenceOptions, "model"> & { model: ModelSelection }
+> = z.object({
+  model: selectionSchema,
+  history: z.array(
+    z.union([
+      message.options[0],
+      assistant.extend({ model: selectionSchema }),
+      message.options[2],
+      message.options[3],
+    ]),
+  ),
+  tools: requestDataSchema.shape.context.shape.tools,
+  foreignReasoning: z.enum(["reject", "omit"]).optional(),
 });
 const selectedSample = defineEffect({
   key: "chat.selected-model",
-  context: selectedRequestSchema,
-  response: responseSchema,
+  context: preparationSchema,
+  response: z.object({
+    prepared: inferenceSchema,
+    count: z.object({ tokens: z.number(), kind: z.enum(["estimated", "measured"]) }),
+    response: responseDataSchema,
+  }),
 });
 const planner: ModelInfo = {
   id: "planner",
@@ -267,8 +292,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const peer = createProtocolRig();
     let released = 0;
     let intercepted = 0;
-    type Provider = ModelProvider<Y, ChatInference>;
-    const provider = runtime.composition.createApi<Provider>("chat-model", {
+    let preparationPolicy = 0;
+    const preparations: number[] = [];
+    const provider = createModelProvider<Y, ChatInference>(runtime.composition, "chat-model", {
       *stream() {
         throw new Error("Model provider not installed");
       },
@@ -414,16 +440,55 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 return yield* next(request);
               },
             });
-            yield* effects.install(selectedSample, function* (request) {
+            const context = createChatContext(runtime.composition, "chat-preparation");
+            const counter = createContextCounter(runtime.composition, "chat-count", {
+              *count(_model, request) {
+                return {
+                  tokens: Math.ceil(JSON.stringify(request).length / 4),
+                  kind: "estimated" as const,
+                };
+              },
+            });
+            yield* context.around({
+              *prepare([input], next) {
+                preparations.push(preparationPolicy);
+                return yield* next({
+                  ...input,
+                  options: { ...input.options, temperature: preparationPolicy },
+                });
+              },
+            });
+            yield* effects.install(selectedSample, function* (input) {
+              const model = input.model.id === planner.id ? planner : responder;
+              expect(input.model).toEqual({
+                id: model.id,
+                provider: model.provider,
+                api: model.api,
+              });
+              const prepared = yield* context.operations.prepare({ ...input, model });
+              const count = yield* counter.operations.count(model, prepared.request);
+              if (model.maxOutputTokens === null) {
+                throw new Error("Model output budget unavailable");
+              }
+              if (!measureContextBudget(model, count, model.maxOutputTokens).fits) {
+                throw new Error("Context budget exceeded");
+              }
               return yield* runtime.composition.scoped(function* () {
-                const subscription = yield* provider.operations.stream(request);
+                const subscription = yield* provider.operations.stream(prepared);
                 while (true) {
                   const next = yield* subscription.next();
                   if (next.done) {
                     if (next.value.errorMessage) {
                       throw new Error(next.value.errorMessage);
                     }
-                    return { ok: true as const, value: next.value };
+                    return {
+                      ok: true as const,
+                      value: {
+                        prepared: inferenceSchema.parse(prepared),
+                        count,
+                        response: responseDataSchema.parse(next.value),
+                      },
+                    };
                   }
                   if (next.value.type === "error") {
                     throw new Error("Provider error event");
@@ -451,13 +516,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                         parameters: { type: "string" },
                       },
                     ];
-                    const first = yield* root.capabilities.sample(
-                      prepareChatInference({ model: planner, history: messages, tools }),
-                    );
-                    if (!first.ok || first.value.errorMessage) {
+                    const first = yield* root.capabilities.sample({
+                      model: { id: planner.id, provider: planner.provider, api: planner.api },
+                      history: messages,
+                      tools,
+                    });
+                    if (!first.ok || first.value.response.errorMessage) {
                       throw new Error("Model failed");
                     }
-                    const part = first.value.message.content.find(
+                    const part = first.value.response.message.content.find(
                       (part) => part.type === "tool-call",
                     );
                     if (!part || part.type !== "tool-call" || part.toolCall.name !== "confirm") {
@@ -465,7 +532,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     }
                     const call = part.toolCall;
                     messages.push({
-                      ...first.value.message,
+                      ...first.value.response.message,
                       model: { id: planner.id, provider: planner.provider, api: planner.api },
                     });
                     const result = yield* root.capabilities.confirm(z.string().parse(call.input));
@@ -479,18 +546,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                       content: JSON.stringify(result.value),
                       isError: false,
                     });
-                    const final = yield* root.capabilities.sample(
-                      prepareChatInference({
-                        model: responder,
-                        history: messages,
-                        tools,
-                        foreignReasoning: "omit",
-                      }),
-                    );
+                    const final = yield* root.capabilities.sample({
+                      model: { id: responder.id, provider: responder.provider, api: responder.api },
+                      history: messages,
+                      tools,
+                      foreignReasoning: "omit",
+                    });
                     if (!final.ok) {
                       throw new Error("Model failed");
                     }
-                    return final.value.message.content
+                    return final.value.response.message.content
                       .filter((part) => part.type === "text")
                       .map((part) => part.text)
                       .join("");
@@ -506,26 +571,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               handle: root.handle,
             });
             yield* host.around(root.admission);
-            yield* host.around({
-              *child([pending], next) {
-                if (pending.request.effect !== confirm.id) {
-                  return yield* next(pending);
-                }
-                const child = yield* journal.ensureChild<
-                  boolean,
-                  CapabilityRequest,
-                  unknown,
-                  string
-                >(pending.id, {
-                  program: confirm.id,
-                  input: z.string().parse(pending.request.input),
-                  outcome(value) {
-                    return { ok: true, value: { ok: true, value } };
-                  },
-                });
-                return { id: child.link.childId, run: () => runChild(child) };
-              },
-            });
+            yield* installToolRouting(runtime, host, journal, { tool: confirm, run: runChild });
             return yield* host.operations.run();
           }).then(
             (result) => {
@@ -562,7 +608,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     // Ordinary scoped API: source selection is context, compaction is reader policy.
     const Source =
       runtime.composition.createContext<BufferedSignal<Output, string, Y>>("chat-output");
-    const reads = runtime.composition.createApi("chat-output-reads", {
+    const reads = createResponseSubscriptions(runtime.composition, "chat-output-reads", {
       *subscribe({ after }: { after: number }) {
         const source = yield* Source.expect();
         const reader = yield* source.from(after, (previous, following) =>
@@ -632,12 +678,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect((await app.snapshot()).history[0]?.request).toMatchObject({
       input: {
         model: { id: "planner", provider: "test", api: "scripted" },
-        request: { context: { messages: [{ role: "user", content: "Ask before proceeding." }] } },
+        history: [{ role: "user", content: "Ask before proceeding." }],
       },
     });
-    expect((await app.snapshot()).history[0]?.outcome).toEqual({
+    const accepted = (await app.snapshot()).history[0];
+    expect(accepted?.outcome).toMatchObject({
       ok: true,
-      value: { ok: true, value: response("Let me ask.", true) },
+      value: {
+        ok: true,
+        value: {
+          response: response("Let me ask.", true),
+          prepared: { request: { options: { temperature: 0 } } },
+          count: { kind: "estimated" },
+        },
+      },
     });
     // No reader was present for the remaining model output or the parked presentation.
     const retained = await start(function* () {
@@ -676,6 +730,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       textEvent(" ask", "Let me ask"),
       textEvent(".", "Let me ask."),
     ]);
+    preparationPolicy = 1;
     plannerAvailable = false; // Recovery must not resolve or invoke the accepted model again.
     store.reopen();
     app = assemble();
@@ -690,19 +745,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(app.run()).resolves.toEqual(completed);
     expect((await app.snapshot()).history.at(-1)?.request).toMatchObject({
       input: {
-        model: { id: "responder", provider: "test", api: "scripted" },
-        request: {
-          context: {
-            messages: [
-              { role: "user" },
-              { role: "assistant" },
-              { role: "tool", toolCallId: "call-1" },
-            ],
-          },
-        },
+        model: { id: "responder" },
+        history: [{ role: "user" }, { role: "assistant" }, { role: "tool", toolCallId: "call-1" }],
       },
     });
-    expect(requests).toHaveLength(2);
+    expect((await app.snapshot()).history[0]).toEqual(accepted);
+    expect(preparations).toEqual([0, 1]);
+    expect(requests.map((request) => request.options?.temperature)).toEqual([0, 1]);
     expect(selections.map((selection) => selection.id)).toEqual(["planner", "responder"]);
     expect({ released, intercepted }).toEqual({ released: 2, intercepted: 2 });
     expect(events).toEqual([
@@ -734,7 +783,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const task = runtime.start(function* () {
         const effects = createEffectCapabilities(runtime, "failure-effects");
         const grant = effects.grant({ sample });
-        const provider = runtime.composition.createApi<ModelProvider<Y>>("failing-model", {
+        const provider = createModelProvider<Y>(runtime.composition, "failing-model", {
           *stream() {
             yield* runtime.composition.ensure(function* () {
               // An asynchronous barrier proves cleanup is joined, not merely initiated.

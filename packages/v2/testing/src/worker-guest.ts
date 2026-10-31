@@ -56,8 +56,11 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
           );
         },
       };
-      const task = options.runtime.start(() =>
-        serveGuestWorker(
+      const task = options.runtime.start(function* () {
+        if (options.installServer) {
+          yield* options.installServer();
+        }
+        return yield* serveGuestWorker(
           options.runtime,
           options.resolve
             ? {
@@ -73,8 +76,8 @@ export function createWorkerGuestRig<R, Q, Y, V = unknown, E = unknown>(
                 acquire: options.acquire,
                 checkpoints: options.checkpoints,
               },
-        ),
-      );
+        );
+      });
       tasks.push(task);
       void task.result.catch(() => undefined);
       return {

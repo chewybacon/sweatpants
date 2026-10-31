@@ -1,4 +1,4 @@
-import type { Operation } from "@standard-durability/core";
+import type { Work, Operation } from "@standard-durability/core";
 import type { Transport, WireCodec } from "@sweatpan.ts/connection";
 import type {
   GuestWork,
@@ -40,8 +40,20 @@ export interface NotificationRig {
   publish(key: string): void;
 }
 
+/** Scripted in-process response stream. Frames are cloned; disconnect loses transport, not journal state. */
+export interface ResponseStreamRig<T> {
+  /** Publish one detached frame; throws after disconnect. No network or backpressure simulation. */
+  publish(frame: T): void;
+  /** Read the next frame, or done after disconnect drains queued frames. */
+  read(): Promise<ReadableStreamReadResult<T>>;
+  /** Close this connection; the test owns creating any replacement stream. */
+  disconnect(): void;
+}
+
 /** Serialized in-process execution peer, with deterministic response fault injection. */
 export type WorkerGuestRigOptions<R, Q, Y, V, E> = {
+  /** Install capabilities in each independent server scope before accepting commands. */
+  readonly installServer?: Work<void, Y>;
   /** Simulate independent transport failure, including during native finalization. */
   readonly failure?: AbortSignal;
   readonly runtime: Runtime<Y>;

@@ -41,3 +41,4 @@ export type { JournalTransaction, TransactionInstruction } from "./contracts.ts"
 export { createJournalTransaction } from "./transaction.ts";
 
 export { JournalConflict } from "./conflict.ts";
+export { createAttempts } from "./apis.ts";

@@ -8,12 +8,19 @@ are implemented with acceptance journeys; other packages remain scaffolds.
 
 ## Package conventions
 
+- `src/apis.ts`: scoped API factories and default-driver wiring. Substantial behavior
+  stays in focused implementation siblings rather than accumulating in this file.
 - `src/contracts.ts`: public capability interfaces, options, results and type aliases.
 - `src/types.ts`: internal implementation types shared across local modules.
 - `src/index.ts`: explicit public exports and intentional re-exports; no wildcard
   exports, initialization side effects or implementation logic.
-- Implementations live in focused sibling files. File-local helper types may stay
-  with their implementation.
+- Implementations live in focused sibling files (for example `hosting.ts`,
+  `admission.ts`, and `routing.ts`). Behavioral factories may remain with the
+  implementation they own. File-local helper types stay with their implementation.
+- Every package keeps `src/contracts.ts`, `src/apis.ts`, and `src/types.ts`, including
+  intentional comment-only placeholders where that role is not implemented yet.
+  Do not invent declarations to fill a scaffold. `apis.ts` is not a second export
+  barrel; `index.ts` remains the explicit package entry point.
 - Internal modules import siblings directly, not their own index. Other packages
   use declared package entry points, never internal source paths.
 - Public exports carry JSDoc on their defining declaration (including public

@@ -16,7 +16,7 @@ import {
   createHosting,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
-import { defineTool, type ToolDefinition } from "@sweatpan.ts/tools";
+import { createToolAcquisition, defineTool, type ToolDefinition } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -180,11 +180,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         >(tool: ToolDefinition<S, D, L, R>, owned: Child): Operation<boolean, Y> {
           // One trusted erasure seam: caller chooses this runner by pinned program identity.
           const bound = owned as OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>;
-          const grants = () =>
-            effects.grant({ ...tool.capabilities, ...tool.elicits }, { record: true });
-          const current = runtime.composition.createContext<ReturnType<typeof grants>>(
-            `grant:${tool.id}`,
-          );
+          const acquisition = createToolAcquisition(runtime, effects, tool, `acquire:${tool.id}`);
           const recovery = createRecovery(runtime, {
             name: `recover:${tool.id}`,
             program: tool.id,
@@ -195,27 +191,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               } else {
                 counts.performanceAcquire++;
               }
-              const grant = grants();
-              yield* grant.install();
-              yield* current.set(grant);
-              const capabilities = effects.grant(tool.capabilities).capabilities;
-              const elicits = effects.grant(tool.elicits).capabilities;
-              return createScopedGuest((scope) =>
-                tool.body(bound.link.input as StandardSchemaV1.InferOutput<S>, {
-                  scope,
-                  capabilities,
-                  record: grant.record,
-                  *await(factory, options) {
-                    const recorded = yield* grant.record(function* () {
-                      const value = yield* runtime.fromPromise(async (signal) => factory(signal));
-                      return { ok: true as const, value };
-                    }, options.record);
-                    return recorded.value;
-                  },
-                  elicit<K extends keyof L>(key: K, ...args: Parameters<L[K]["call"]>) {
-                    return elicits[key](args[0]) as ReturnType<L[K]["call"]>;
-                  },
-                }),
+              return yield* acquisition.operations.acquire(
+                bound.link.input as StandardSchemaV1.InferOutput<S>,
               );
             },
           });
@@ -225,16 +202,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             recovery: recovery.operations,
             attempts: bound.journal.attempts,
             interactions: bound.journal.interactions,
-            *handle(request) {
-              const grant = yield* current.expect();
-              return yield* grant.handle(request);
-            },
+            handle: acquisition.handle,
           });
+          yield* host.around(acquisition.admission);
           yield* host.around({
-            *child(args, next) {
-              const grant = yield* current.expect();
-              return yield* grant.admission.child(args, next);
-            },
             *deliveryMode([request], next) {
               return request.effect === approval.id ? "wait" : yield* next(request);
             },

@@ -1,3 +1,5 @@
+import { createAttemptNotifications } from "@sweatpan.ts/hosting";
+import { createAttempts } from "@sweatpan.ts/durable";
 import {
   createHostedRecovery as createRecovery,
   readJournal,
@@ -9,7 +11,7 @@ import {
 
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
-import type { Work, Operation, Outcome } from "@standard-durability/core";
+import type { Api, Work, Operation, Outcome } from "@standard-durability/core";
 import { type AttemptGrant, type Attempts, type RetrySafety } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
@@ -71,24 +73,29 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           return yield* journal.attemptControl.invalidate(grant, reason);
         },
       };
-      const transportNotifications = {
-        *subscribe(grant: AttemptGrant) {
-          if (beforeSubscribe) {
-            yield* beforeSubscribe();
-          }
-          const subscription = notifications.subscribe(grant.attemptId);
-          yield* runtime.composition.ensure(function* () {
-            subscription.close();
-          });
-          return subscription.signal;
+      const transportNotifications = createAttemptNotifications(
+        runtime.composition,
+        "attempt-notifications",
+        {
+          *subscribe(grant: AttemptGrant) {
+            if (beforeSubscribe) {
+              yield* beforeSubscribe();
+            }
+            const subscription = notifications.subscribe(grant.attemptId);
+            yield* runtime.composition.ensure(function* () {
+              subscription.close();
+            });
+            return subscription.signal;
+          },
+          *publish(grant: AttemptGrant) {
+            if (beforePublish) {
+              yield* beforePublish();
+            }
+            notifications.publish(grant.attemptId);
+          },
         },
-        *publish(grant: AttemptGrant) {
-          if (beforePublish) {
-            yield* beforePublish();
-          }
-          notifications.publish(grant.attemptId);
-        },
-      };
+      );
+      const notificationCalls: string[] = [];
       function* install(
         hosting: ReturnType<typeof host>["hosting"],
         recovery: ReturnType<typeof host>["recovery"],
@@ -97,12 +104,32 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* installGuestRetention(runtime.composition, hosting, recovery, journal);
         }
         if (liveCancellation) {
-          yield* installAttemptCancellation(runtime, hosting, control, transportNotifications);
+          const installed = yield* installAttemptCancellation(
+            runtime,
+            hosting,
+            control,
+            transportNotifications,
+          );
+          expect(installed).toBe(transportNotifications);
+          yield* installed.around({
+            *subscribe(args, next) {
+              notificationCalls.push("subscribe");
+              return yield* next(...args);
+            },
+            *publish(args, next) {
+              notificationCalls.push("publish");
+              return yield* next(...args);
+            },
+          });
         }
       }
 
       let physicalDisposals = 0;
-      function host(attempts: Attempts<string, string, string, Y> = journal.attempts) {
+      function host(
+        attempts:
+          | Attempts<string, string, string, Y>
+          | Api<Attempts<string, string, string, Y>, Y> = journal.attempts,
+      ) {
         const recovery = createRecovery(runtime, {
           name: "reservation-recovery",
           program: "reservation",
@@ -147,17 +174,50 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return { ok: true, value: reply.body } as const;
           },
         });
-        return { hosting, recovery };
+        if ("operations" in attempts) {
+          expect(hosting.attempts).toBe(attempts);
+        }
+        return { hosting, recovery, commands: hosting.attempts };
       }
       function run(
         safety: RetrySafety = "unsafe",
         replace?: AttemptGrant,
-        attempts?: Attempts<string, string, string, Y>,
-        gates: { beforePark?: Work<void, Y>; beforeBegin?: Work<void, Y> } = {},
+        attempts?:
+          | Attempts<string, string, string, Y>
+          | Api<Attempts<string, string, string, Y>, Y>,
+        gates: {
+          beforePark?: Work<void, Y>;
+          beforeBegin?: Work<void, Y>;
+          afterSettle?: Work<void, Y>;
+          observeCommands?: string[];
+        } = {},
       ) {
-        const { hosting, recovery } = host(attempts);
+        const { hosting, recovery, commands } = host(attempts);
         return start(function* () {
           yield* install(hosting, recovery);
+          if (gates.observeCommands) {
+            const trace = gates.observeCommands;
+            yield* commands.around({
+              *begin(args, next) {
+                trace.push("begin");
+                return yield* next(...args);
+              },
+              *settle(args, next) {
+                trace.push("settle");
+                return yield* next(...args);
+              },
+            });
+          }
+          if (gates.afterSettle) {
+            const afterSettle = gates.afterSettle;
+            yield* commands.around({
+              *settle(args, next) {
+                const accepted = yield* next(...args);
+                yield* afterSettle();
+                return accepted;
+              },
+            });
+          }
           if (gates.beforePark) {
             const gate = gates.beforePark;
             yield* recovery.around({
@@ -211,6 +271,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         wait,
         invalidate,
         notifications,
+        notificationCalls,
         afterInspect(work: Work<void, Y>) {
           afterInspect = work;
         },
@@ -416,6 +477,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           await s.wait(1, first.result);
           const grant = s.grants[0]!;
           expect(await s.invalidate(grant)).toEqual({ state: "invalidated", reason: "deadline" });
+          if (live) {
+            expect(s.notificationCalls).toEqual(["subscribe", "publish"]);
+          }
           expect(await s.invalidate(grant, "different reason")).toEqual({
             state: "invalidated",
             reason: "deadline",
@@ -677,6 +741,36 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         expect(s.peer.requests).toHaveLength(1);
       });
+
+      for (const supplied of [false, true]) {
+        it(`recovers after attempt middleware throws after acceptance (supplied API: ${supplied})`, async () => {
+          const s = scenario();
+          const observed: string[] = [];
+          const first = s.run(
+            "unsafe",
+            undefined,
+            supplied
+              ? createAttempts(runtime.composition, "supplied-attempts", s.journal.attempts)
+              : undefined,
+            {
+              observeCommands: observed,
+              *afterSettle() {
+                throw new Error("Observer failed after acceptance");
+              },
+            },
+          );
+          await s.wait(1, first.result);
+          s.peer.reply(s.grants[0]!.attemptId, { status: 200, body: "reservation-1" });
+          await expect(first.result).rejects.toThrow("Observer failed after acceptance");
+          expect(observed).toEqual(["begin", "settle"]);
+          s.reconnect();
+          expect(await s.run().result).toEqual({
+            state: "completed",
+            value: { reservation: "reservation-1" },
+          });
+          expect(s.peer.requests).toHaveLength(1);
+        });
+      }
 
       it("rolls back an unencodable settlement and accepts resubmission without redelivering the effect", async () => {
         const s = scenario();

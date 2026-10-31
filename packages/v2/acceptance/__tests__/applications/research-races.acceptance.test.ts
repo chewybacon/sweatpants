@@ -23,6 +23,7 @@ import {
 import {
   createEffectCapabilities,
   createHosting,
+  createChildRunner,
   createOwnedAll,
   createOwnedRace,
   installGuestRetention,
@@ -128,6 +129,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             const all = createOwnedAll<Context, Instructions, Y>(runtime, "research.all");
             const race = createOwnedRace<Context, Instructions, Y>(runtime, "research.race");
             const effects = createEffectCapabilities(runtime, "research-effects");
+            const runner = createChildRunner<Context, Instructions, Y>(
+              runtime.composition,
+              "child-runner",
+              {
+                *run() {
+                  throw new Error("Child runner not installed");
+                },
+              },
+            );
             function* drive(
               journal: Journal,
               program: string,
@@ -177,24 +187,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   return "wait";
                 },
               });
+              yield* runner.install({
+                *run(child, branch, index) {
+                  const childPath = `${path}/${index}`;
+                  if (paused.has(childPath)) {
+                    return false;
+                  }
+                  const result = yield* drive(child.journal, child.link.program, branch, childPath);
+                  return result.state === "completed" || result.state === "cancelled";
+                },
+              });
+
               for (const group of [all, race]) {
                 yield* group.install({
                   host,
                   journal,
                   recovery,
-                  *run(child, branch, index) {
-                    const childPath = `${path}/${index}`;
-                    if (paused.has(childPath)) {
-                      return false;
-                    }
-                    const result = yield* drive(
-                      child.journal,
-                      child.link.program,
-                      branch,
-                      childPath,
-                    );
-                    return result.state === "completed" || result.state === "cancelled";
-                  },
+                  run: runner.operations.run,
                 });
               }
               if (retained) {

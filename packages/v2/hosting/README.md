@@ -569,3 +569,25 @@ SQLite while losers need cleanup, and checks that a completed winner stays compl
 That example controls source terminal-commit order to isolate composition. Separate
 hosting journeys force stale observations and verify automatic reactivation. Neither
 establishes remote placement, live provider behavior, or crash recovery.
+
+## Optional assembly facades
+
+`createChildRunner` wraps the existing all/race runner callback in an ordinary Api.
+Its driver remains bound to the application's branch/context contract and owns each
+fresh child assembly scope. Reconstructed factories must not escape the parent
+reconstruction lifetime. Successful activation alone does not mean terminal child
+settlement. Installations are scoped; inherited grants must not be reused for children.
+
+`createAttemptNotifications` provides scoped transport selection around the existing
+subscribe/publish contract. Existing signals retain their source and owner. Preserve
+subscribe-before-inspect and publication after committed invalidation. Publication
+failure cannot undo acceptance or invalidation.
+
+## Attempt API ownership
+
+`createHosting` binds raw `options.attempts` once and exposes the facade as
+`host.attempts`. All host begin/settle calls go through its operations. Install
+observation or scoped replacement on that exact instance before running the host.
+Pass an existing `Api<Attempts>` directly to preserve its identity and middleware;
+passing only its operations remains supported, but adds a host-owned outer facade.
+Do not replace attempt storage with a journal belonging to another execution.

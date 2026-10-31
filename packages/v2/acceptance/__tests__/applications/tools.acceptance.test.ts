@@ -1,3 +1,4 @@
+import { installToolRouting } from "@sweatpan.ts/tools";
 import {
   createHostedRecovery as createRecovery,
   createProtocolRig,
@@ -245,40 +246,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   },
                 });
                 yield* host.around(caller.admission);
-                yield* host.around({
-                  *child([pending], next) {
-                    if (pending.request.effect !== investigate.id) {
-                      return yield* next(pending);
-                    }
-                    const snapshot = yield* journal.read();
-                    const existing =
-                      snapshot.status === "running" ? snapshot.children?.[0] : undefined;
-                    let input: Input;
-                    if (existing) {
-                      input = existing.input as Input;
-                    } else {
-                      const parsed = yield* runtime.fromPromise(async () =>
-                        investigate.context["~standard"].validate(pending.request.input),
-                      );
-                      if (parsed.issues) {
-                        throw new Error("Invalid tool input");
-                      }
-                      input = parsed.value;
-                    }
-                    const child = yield* journal.ensureChild<
-                      Result,
-                      CapabilityRequest,
-                      unknown,
-                      string
-                    >(pending.id, {
-                      program: investigate.id,
-                      input,
-                      outcome(value) {
-                        projections++;
-                        return { ok: true, value: { ok: true, value } };
-                      },
-                    });
-                    return { id: child.link.childId, run: () => runChild(child) };
+                yield* installToolRouting(runtime, host, journal, {
+                  tool: investigate,
+                  run: runChild,
+                  outcome(value) {
+                    projections++;
+                    return { ok: true, value: { ok: true, value } };
                   },
                 });
                 return yield* host.operations.run();

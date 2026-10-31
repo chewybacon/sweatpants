@@ -344,3 +344,10 @@ export interface ImageResponse {
   readonly usage: ModelUsage | null;
   readonly responseId: string | null;
 }
+
+/** Model-specific counting or explicitly labelled estimation of this complete request. */
+export interface ContextCounter<Y> {
+  /** Count the exact prepared request, including tool schemas and supported media.
+   * Unknown media costs must reject or remain explicit estimates, never measured tokens. */
+  count(model: ModelInfo, request: ModelRequest): Operation<ContextTokenCount, Y>;
+}

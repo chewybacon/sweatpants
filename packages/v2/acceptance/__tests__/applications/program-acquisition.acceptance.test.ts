@@ -8,6 +8,7 @@ import type { Work, Operation } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import {
   createProgramExecution,
+  createProgramResolver,
   type ProgramInvocation,
   type ResolvedProgram,
 } from "@sweatpan.ts/execution";
@@ -127,7 +128,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 contract: artifact === "changed-contract" ? "lookup-number:v2" : contractRevision,
               });
             }
-            const acquisition = runtime.composition.createApi("pinned-acquisition", {
+            const artifactResolver = {
               *resolve(
                 invocation: ProgramInvocation<{ topic: string }>,
               ): Operation<ResolvedProgram<string, CapabilityRequest, Y>, Y> {
@@ -179,7 +180,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                         },
                 };
               },
-            });
+            };
+            const acquisition = createProgramResolver(
+              runtime.composition,
+              "pinned-acquisition",
+              artifactResolver,
+            );
             yield* acquisition.around({
               *resolve([invocation], next) {
                 routed.push(invocation.program);
@@ -200,16 +206,31 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   }
                   return { program: invocation.program, ...local };
                 }
+                const serverResolver = createProgramResolver(
+                  runtime.composition,
+                  "server-artifacts",
+                  {
+                    *resolve(
+                      _received: ProgramInvocation,
+                    ): Operation<ResolvedProgram<string, CapabilityRequest, Y>, Y> {
+                      throw new Error("Server artifact inventory not installed");
+                    },
+                  },
+                );
                 const worker = createWorkerGuestRig({
                   runtime,
                   invocation,
                   checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
-                  *resolve(received) {
-                    expect(received).not.toBe(invocation);
-                    expect(received.input).not.toBe(invocation.input);
-                    // The server receives this invocation only through the Guest connection.
-                    return yield* next(invocationSchema.parse(received));
+                  *installServer() {
+                    yield* serverResolver.install({
+                      *resolve(received) {
+                        expect(received).not.toBe(invocation);
+                        expect(received.input).not.toBe(invocation.input);
+                        return yield* artifactResolver.resolve(invocationSchema.parse(received));
+                      },
+                    });
                   },
+                  resolve: serverResolver.operations.resolve,
                 });
                 yield* runtime.composition.ensure(() => runtime.fromPromise(() => worker.close()));
                 return {

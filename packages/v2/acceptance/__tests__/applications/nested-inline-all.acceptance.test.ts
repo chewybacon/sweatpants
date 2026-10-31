@@ -17,6 +17,7 @@ import {
 import {
   createEffectCapabilities,
   createHosting,
+  createChildRunner,
   createOwnedAll,
   installGuestRetention,
   type HostedResult,
@@ -105,6 +106,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               "nested.all",
             );
             const effects = createEffectCapabilities(runtime, "nested-effects");
+            const runner = createChildRunner<Context, CapabilityRequest | ScopeInstruction, Y>(
+              runtime.composition,
+              "child-runner",
+              {
+                *run() {
+                  throw new Error("Child runner not installed");
+                },
+              },
+            );
             function* drive(
               journal: Journal,
               program: string,
@@ -141,10 +151,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   return "wait";
                 },
               });
-              yield* owned.install({
-                host,
-                journal,
-                recovery,
+              yield* runner.install({
                 *run(child, branch, index) {
                   if (depth === 0 && index === 1) {
                     completedOuter = child.journal;
@@ -152,6 +159,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   const result = yield* drive(child.journal, child.link.program, branch, depth + 1);
                   return result.state === "completed" || result.state === "cancelled";
                 },
+              });
+              yield* owned.install({
+                host,
+                journal,
+                recovery,
+                run: runner.operations.run,
               });
               // Root retention leaves an ancestor registry visible. Inner ordinary
               // activation disposes its registry before routing; reopen also skips it.

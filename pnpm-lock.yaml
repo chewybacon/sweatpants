@@ -2749,6 +2749,9 @@ importers:
       '@sweatpan.ts/chat':
         specifier: workspace:*
         version: link:../chat
+      '@sweatpan.ts/chat-client':
+        specifier: workspace:*
+        version: link:../chat-client
       '@sweatpan.ts/codemode-runtime-lua':
         specifier: workspace:*
         version: link:../codemode-runtime-lua
@@ -2836,6 +2839,13 @@ importers:
         version: 7.0.2
 
   packages/v2/chat-client:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'

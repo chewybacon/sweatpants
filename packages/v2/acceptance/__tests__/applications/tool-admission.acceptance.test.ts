@@ -4,14 +4,19 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createRecovery } from "@sweatpan.ts/durable";
-import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
   createHosting,
   installEffectAnswers,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
-import { admitTool, defineTool } from "@sweatpan.ts/tools";
+import {
+  createToolAdmission,
+  createToolAcquisition,
+  admitTool,
+  defineTool,
+  installElicitHandlers,
+} from "@sweatpan.ts/tools";
 import { createLatch, createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
 import type { Runtime } from "@sweatpan.ts/runtime";
@@ -39,181 +44,185 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return execution;
   }
 
-  for (const storage of ["memory", "sqlite"] as const) {
-    it(`${runtime.name}: ${storage} root tool admission pins transformed input through recording, answers and reopen`, async () => {
-      let validations = 0;
-      let acquisitions = 0;
-      let calls = 0;
-      const peer = createProtocolRig();
-      const question = defineEffect({
-        key: "admitted.question",
-        context: textSchema((value) => value),
-        response: textSchema((value) => value === "yes"),
-      });
-      const tool = defineTool("admitted-tool")
-        .parameters(
-          textSchema((value) => {
-            validations++;
-            return { query: value.trim().toLowerCase() };
+  for (const automatic of [false, true]) {
+    for (const storage of ["memory", "sqlite"] as const) {
+      it(`${runtime.name}: ${storage} ${automatic ? "automatic" : "participant"} root tool admission pins transformed input through recording, answers and reopen`, async () => {
+        let validations = 0;
+        let acquisitions = 0;
+        let calls = 0;
+        let handlerCalls = 0;
+        let responseParses = 0;
+        const peer = createProtocolRig();
+        const question = defineEffect({
+          key: "admitted.question",
+          context: textSchema((value) => ({ question: value })),
+          response: textSchema((value) => {
+            responseParses++;
+            return value === "yes";
           }),
-        )
-        .elicits({ question })
-        .execute(function* (input, ctx) {
-          const text = yield* ctx.await(
-            async (signal) => {
-              calls++;
-              const reply = await peer.send({ id: input.query, token: "read" }, signal);
-              return reply.body;
-            },
-            { record: { key: "read" } },
-          );
-          const answer = yield* ctx.elicit("question", input.query);
-          if (!answer.ok) {
-            throw new Error("Authored refusal");
-          }
-          return { text, approved: answer.value };
         });
-      type Input = StandardSchemaV1.InferOutput<typeof tool.context>;
-      type Result = { text: string; approved: boolean };
-      const options = { program: tool.id, equals: isDeepStrictEqual };
-      const store =
-        storage === "sqlite"
-          ? createSqliteJournalRig<Result, CapabilityRequest, unknown, string, unknown, Y>(options)
-          : (() => {
-              const memory = createMemoryJournalStore<Result, CapabilityRequest, unknown, string>(
-                options,
-              );
-              return { open: () => memory.open(), reopen: () => memory.open(), close() {} };
-            })();
-      onTestFinished(() => store.close());
-      function submit(input: string) {
-        return start(() => admitTool(runtime, tool, store.open(), input)).result;
-      }
-      await expect(submit("")).rejects.toThrow("Tool input schema rejected value");
-      expect((await start(() => store.open().read()).result).admission).toBeUndefined();
-      expect(acquisitions).toBe(0);
-      const admitted = await submit(" AUTH ");
-      expectTypeOf(admitted).toEqualTypeOf<Input>();
-      expect(admitted).toEqual({ query: "auth" });
-      admitted.query = "mutated outside storage";
-      await expect(submit("auth")).resolves.toEqual({ query: "auth" });
-      await expect(submit("different")).rejects.toThrow("Conflicting invocation input");
-      await expect(
-        start(() => store.open().admit("wrong-program", { query: "auth" })).result,
-      ).rejects.toThrow("Admission program mismatch");
-      const admittedValidations = validations;
-      expect(acquisitions).toBe(0);
-      store.reopen(); // Admission survives even before the first Guest exists.
-
-      function assemble() {
-        const journal = store.open();
-        const effects = createEffectCapabilities(runtime, "admitted-effects");
-        function fresh() {
-          return effects.grant(tool.elicits, { record: true });
-        }
-        const current =
-          runtime.composition.createContext<ReturnType<typeof fresh>>("admitted-grant");
-        const recovery = createRecovery(runtime.composition, {
-          name: "admitted-recovery",
-          program: tool.id,
-          matches: isDeepStrictEqual,
-          *acquire() {
-            const snapshot = yield* journal.read();
-            if (!snapshot.admission) {
-              throw new Error("Tool invocation has not been admitted");
-            }
-            // Trusted persisted output for this pinned program, not another parse boundary.
-            const input = snapshot.admission.input as Input;
-            const grant = fresh();
-            yield* grant.install();
-            yield* current.set(grant);
-            acquisitions++;
-            return createScopedGuest((scope) =>
-              tool.body(input, {
-                scope,
-                capabilities: {},
-                record: grant.record,
-                *await(factory, options) {
-                  const outcome = yield* grant.record(function* () {
-                    const value = yield* runtime.fromPromise(async (signal) => factory(signal));
-                    return { ok: true as const, value };
-                  }, options.record);
-                  return outcome.value;
-                },
-                elicit<K extends keyof typeof tool.elicits>(
-                  key: K,
-                  ...args: Parameters<(typeof tool.elicits)[K]["call"]>
-                ) {
-                  return tool.elicits[key].call(args[0]) as ReturnType<
-                    (typeof tool.elicits)[K]["call"]
-                  >;
-                },
-              }),
+        const tool = defineTool("admitted-tool")
+          .parameters(
+            textSchema((value) => {
+              validations++;
+              return { query: value.trim().toLowerCase() };
+            }),
+          )
+          .elicits({ question })
+          .execute(function* (input, ctx) {
+            const text = yield* ctx.await(
+              async (signal) => {
+                calls++;
+                const reply = await peer.send({ id: input.query, token: "read" }, signal);
+                return reply.body;
+              },
+              { record: { key: "read" } },
             );
-          },
+            const answer = yield* ctx.elicit("question", input.query);
+            if (!answer.ok) {
+              throw new Error("Authored refusal");
+            }
+            return { text, approved: answer.value };
+          });
+        type Input = StandardSchemaV1.InferOutput<typeof tool.context>;
+        type Result = { text: string; approved: boolean };
+        const options = { program: tool.id, equals: isDeepStrictEqual };
+        const store =
+          storage === "sqlite"
+            ? createSqliteJournalRig<Result, CapabilityRequest, unknown, string, unknown, Y>(
+                options,
+              )
+            : (() => {
+                const memory = createMemoryJournalStore<Result, CapabilityRequest, unknown, string>(
+                  options,
+                );
+                return { open: () => memory.open(), reopen: () => memory.open(), close() {} };
+              })();
+        onTestFinished(() => store.close());
+        // One ingress policy identity; the command binding follows reopened storage.
+        const admission = createToolAdmission(runtime, "root-admission", tool, {
+          admit: (program, input) => store.open().admit(program, input),
         });
-        const host = createHosting(runtime.composition, {
-          name: "admitted-host",
-          journal,
-          recovery: recovery.operations,
-          attempts: journal.attempts,
-          interactions: journal.interactions,
-          *handle(request) {
-            const grant = yield* current.expect();
-            return yield* grant.handle(request);
-          },
+        function submit(input: string) {
+          return start(() => admission.operations.admit(input)).result;
+        }
+        await expect(submit("")).rejects.toThrow("Tool input schema rejected value");
+        expect((await start(() => store.open().read()).result).admission).toBeUndefined();
+        expect(acquisitions).toBe(0);
+        const admitted = await submit(" AUTH ");
+        expectTypeOf(admitted).toEqualTypeOf<Input>();
+        expect(admitted).toEqual({ query: "auth" });
+        admitted.query = "mutated outside storage";
+        await expect(submit("auth")).resolves.toEqual({ query: "auth" });
+        await expect(submit("different")).rejects.toThrow("Conflicting invocation input");
+        await expect(
+          start(() => store.open().admit("wrong-program", { query: "auth" })).result,
+        ).rejects.toThrow("Admission program mismatch");
+        const admittedValidations = validations;
+        expect(acquisitions).toBe(0);
+        store.reopen(); // Admission survives even before the first Guest exists.
+
+        function assemble() {
+          const journal = store.open();
+          const effects = createEffectCapabilities(runtime, "admitted-effects");
+          const acquisition = createToolAcquisition(runtime, effects, tool, "admitted-acquisition");
+          const recovery = createRecovery(runtime.composition, {
+            name: "admitted-recovery",
+            program: tool.id,
+            matches: isDeepStrictEqual,
+            *acquire() {
+              const snapshot = yield* journal.read();
+              if (!snapshot.admission) {
+                throw new Error("Tool invocation has not been admitted");
+              }
+              // Trusted persisted output for this pinned program, not another parse boundary.
+              const input = snapshot.admission.input as Input;
+              acquisitions++;
+              return yield* acquisition.operations.acquire(input);
+            },
+          });
+          const host = createHosting(runtime.composition, {
+            name: "admitted-host",
+            journal,
+            recovery: recovery.operations,
+            attempts: journal.attempts,
+            interactions: journal.interactions,
+            handle: acquisition.handle,
+          });
+          return {
+            run() {
+              return start(function* () {
+                yield* host.around(acquisition.admission);
+                // Outer scope parks all declared elicits; an inner scope may override it.
+                yield* installElicitHandlers(host, effects, tool);
+                yield* installGuestRetention(runtime.composition, host, recovery, journal);
+                if (automatic) {
+                  const result = yield* runtime.composition.scoped(function* () {
+                    yield* installElicitHandlers(host, effects, tool, {
+                      *question(context) {
+                        expectTypeOf(context).toEqualTypeOf<{ question: string }>();
+                        expect(context).toEqual({ question: "auth" });
+                        handlerCalls++;
+                        return { ok: true, value: "yes" };
+                      },
+                    });
+                    yield* effects.api(question).around({
+                      *handle([context], next) {
+                        return yield* next(context);
+                      },
+                    });
+                    return yield* host.operations.run();
+                  });
+                  expect(
+                    yield* host.operations.deliveryMode({ effect: question.id, input: "auth" }),
+                  ).toBe("wait");
+                  return result;
+                }
+                return yield* host.operations.run();
+              }).result;
+            },
+            answer(grant: Parameters<typeof journal.interactions.request>[0]) {
+              return start(function* () {
+                const answers = yield* installEffectAnswers(
+                  host,
+                  effects.grant(tool.elicits),
+                  journal.interactions,
+                );
+                return yield* answers.answer(grant, { ok: true, value: "yes" });
+              }).result;
+            },
+          };
+        }
+        const first = assemble().run();
+        await Promise.race([peer.waitForRequests(1), first]);
+        peer.reply("auth", { status: 200, body: "source text" });
+        const result = await first;
+        const completed = { state: "completed", value: { text: "source text", approved: true } };
+        if (automatic) {
+          expect(result).toEqual(completed);
+        } else {
+          if (result.state !== "waiting") {
+            throw new Error("Expected elicitation");
+          }
+          store.reopen();
+          const resumed = assemble();
+          await expect(resumed.run()).resolves.toEqual(result);
+          await resumed.answer(result.grant);
+          store.reopen();
+          await expect(assemble().run()).resolves.toEqual(completed);
+        }
+        store.reopen();
+        await expect(assemble().run()).resolves.toEqual(completed);
+        expect(handlerCalls).toBe(automatic ? 1 : 0);
+        expect(responseParses).toBe(1);
+        expect({ calls, validations }).toEqual({ calls: 1, validations: admittedValidations });
+        expect((await start(() => store.open().read()).result).admission).toEqual({
+          input: { query: "auth" },
         });
-        return {
-          run() {
-            return start(function* () {
-              yield* host.around({
-                *child(args, next) {
-                  const grant = yield* current.expect();
-                  return yield* grant.admission.child(args, next);
-                },
-                *deliveryMode([request], next) {
-                  return request.effect === question.id ? "wait" : yield* next(request);
-                },
-              });
-              yield* installGuestRetention(runtime.composition, host, recovery, journal);
-              return yield* host.operations.run();
-            }).result;
-          },
-          answer(grant: Parameters<typeof journal.interactions.request>[0]) {
-            return start(function* () {
-              const answers = yield* installEffectAnswers(
-                host,
-                effects.grant(tool.elicits),
-                journal.interactions,
-              );
-              return yield* answers.answer(grant, { ok: true, value: "yes" });
-            }).result;
-          },
-        };
-      }
-      const first = assemble().run();
-      await Promise.race([peer.waitForRequests(1), first]);
-      peer.reply("auth", { status: 200, body: "source text" });
-      const waiting = await first;
-      if (waiting.state !== "waiting") {
-        throw new Error("Expected elicitation");
-      }
-      store.reopen();
-      const resumed = assemble();
-      await expect(resumed.run()).resolves.toEqual(waiting);
-      await resumed.answer(waiting.grant);
-      store.reopen();
-      const completed = { state: "completed", value: { text: "source text", approved: true } };
-      await expect(assemble().run()).resolves.toEqual(completed);
-      store.reopen();
-      await expect(assemble().run()).resolves.toEqual(completed);
-      expect({ calls, validations }).toEqual({ calls: 1, validations: admittedValidations });
-      expect((await start(() => store.open().read()).result).admission).toEqual({
-        input: { query: "auth" },
+        await expect(submit("auth")).resolves.toEqual({ query: "auth" });
+        await expect(submit("different")).rejects.toThrow("Conflicting invocation input");
       });
-      await expect(submit("auth")).resolves.toEqual({ query: "auth" });
-      await expect(submit("different")).rejects.toThrow("Conflicting invocation input");
-    });
+    }
   }
 
   it(`${runtime.name}: concurrent root admission selects one normalized input across SQLite connections`, async () => {

@@ -90,3 +90,17 @@ billing for failed/unaccepted attempts requires separate operational telemetry.
 complete image output, preserving the same physical cancellation and host-owned
 journal boundary. Voice APIs are deferred; audio remains a canonical content type
 that individual adapters may reject explicitly.
+
+## Scoped capabilities
+
+`createModelProvider`, `createImageProvider`, and `createContextCounter` bind
+ordinary `Api` facades. Supply drivers, call `.operations`, observe with `.around`,
+and replace a driver within a scope with `.install`. Captured facades resolve at
+call time; an open subscription retains its source and acquisition lifetime.
+Stream middleware intercepts acquisition; wrap the returned `next` to observe
+frames. Never return a subscription from an already-exited scope or retry inference
+by calling `next` twice.
+
+Context counting requires a driver for the exact prepared request, including tools
+and media. Preserve `measured` versus `estimated` provenance. No tokenizer or
+universal token estimate is provided. Budget arithmetic remains pure.

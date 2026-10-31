@@ -268,3 +268,11 @@ attempt acquisition and initial owned-group acquisition from other failures. Dir
 journal calls still throw. A host may reread current authority and reactivate after
 this error; it must not infer permission to redeliver an effect. Invalid grants,
 settlement rejection, replay divergence and storage failures are not this signal.
+
+## Attempt command interception
+
+`createAttempts(composition, name, journal.attempts)` exposes whole begin/settle
+commands as an optional ordinary Api. This is an assembly/transport boundary, not
+middleware inside a journal transaction. An observer can throw after `next` has
+committed; failed acknowledgement never authorizes redispatch of external work.
+Atomic transitions, projections, commit publication and record access remain private.

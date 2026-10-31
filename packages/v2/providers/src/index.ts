@@ -40,3 +40,5 @@ export type {
   ModelStreamEvent,
 } from "./contracts.ts";
 export { measureContextBudget } from "./context.ts";
+export type { ContextCounter } from "./contracts.ts";
+export { createModelProvider, createImageProvider, createContextCounter } from "./apis.ts";

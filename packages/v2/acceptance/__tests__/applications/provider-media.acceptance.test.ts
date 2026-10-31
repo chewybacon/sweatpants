@@ -8,6 +8,8 @@ import {
 } from "@sweatpan.ts/providers-pi-ai";
 import {
   measureContextBudget,
+  createModelProvider,
+  createImageProvider,
   type ChatImageContentPart,
   type ModelRequest,
 } from "@sweatpan.ts/providers";
@@ -78,7 +80,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(info.reasoningLevels).not.toContain("max");
     expect(Object.isFrozen(info.input)).toBe(true);
     const task = runtime.start(function* () {
-      const api = runtime.composition.createApi("vision", provider);
+      const api = createModelProvider(runtime.composition, "vision", provider);
       const subscription = yield* api.operations.stream(request);
       return yield* subscription.next();
     });
@@ -167,7 +169,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       generate: peer.generate,
     });
     const task = runtime.start(function* () {
-      const api = runtime.composition.createApi("images", provider);
+      const api = createImageProvider(runtime.composition, "images", provider);
       return yield* api.operations.generate({
         input: [{ type: "text", text: "Redraw" }, image],
       });

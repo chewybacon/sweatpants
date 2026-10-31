@@ -76,3 +76,47 @@ reopen/replay and scope cleanup. Source and emitted-declaration consumers check 
 Root admission journeys cover invalid input without acquisition, duplicate/conflicting
 submissions, transformed input across reopen, and a late validation racing a second
 SQLite connection. These are in-process persistence journeys, not OS-crash evidence.
+
+## Scoped elicitation delivery
+
+`installElicitHandlers(host, effects, tool, handlers?)` selects delivery for the tool's
+elicits. Supplied handlers execute through existing effect installation, receiving
+normalized request context and returning an authored Outcome whose successful value
+is response-schema input. Omitted handlers park through participant registration:
+
+```ts
+yield * installElicitHandlers(host, effects, investigate); // participant waits
+// Or, in a child scope:
+yield *
+  installElicitHandlers(host, effects, investigate, {
+    *clarification(context) {
+      return { ok: true, value: "yes" };
+    },
+  });
+```
+
+Each installation defines policy for the entire declared elicitation set. An inner
+installation can switch between automatic and participant delivery; scope exit restores
+outer policy. Routing uses min middleware, so ordinary surrounding `host.around`
+middleware can still wrap or bypass it. `effects.api(definition).around` composes
+handler behavior as usual. Unrelated effects delegate unchanged.
+
+This helper does not grant capabilities, install admission, present requests, or install
+answer ingress. A participant host supplies interactions and uses `installEffectAnswers`
+for later answers. Parked request context remains caller input; automatic handlers receive
+schema output. Both paths normalize successful answers before recording them.
+
+## Admission and routing assembly
+
+`createToolAdmission(runtime, name, tool, journal)` binds `admitTool` as an ordinary
+Api. Authorization and observation surround the whole operation; normalization and
+atomic input pinning remain unchanged. Middleware runs per submission, including
+duplicates. It does not implement exactly-once quotas or billing. Recovery uses
+persisted input and does not readmit. Replacement drivers are trusted assembly.
+
+Use `createToolAcquisition` for fresh grants, recording and tool-body assembly. Keep
+its acquisition scope alive through delivery. `installToolRouting` installs one
+named route on existing `Hosting.child`, reusing stored normalized child input on
+recovery. Install parent grant admission before routing. Importing a definition does
+not grant authority. Group routes still validate every descriptor before creating
+any child; this helper does not replace group admission or child-host ownership.
