@@ -1,2 +1,11 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export type {
+  ModelSelection,
+  ChatHistoryMessage,
+  ChatInferenceOptions,
+  ChatInference,
+  ChatContext,
+  ChatCompactionRequest,
+} from "./contracts.ts";
+export { prepareChatInference } from "./inference.ts";
+export { prepareChatCompaction, applyChatCompaction } from "./compaction.ts";
+export { createChatContext } from "./context.ts";

@@ -23,6 +23,13 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/providers-pi-ai",
     "format:check": "cd ../../.. && oxfmt packages/v2/providers-pi-ai --check"
   },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^1.0.1",
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/providers": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

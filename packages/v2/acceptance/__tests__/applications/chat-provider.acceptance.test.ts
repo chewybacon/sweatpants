@@ -2,6 +2,12 @@ import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import type { Operation, Work } from "@standard-durability/core";
+import {
+  prepareChatInference,
+  type ChatInference,
+  type ChatHistoryMessage,
+  type ModelSelection,
+} from "@sweatpan.ts/chat";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import type { OwnedChild, ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
@@ -11,7 +17,14 @@ import {
   installEffectAnswers,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
-import type { ModelProvider } from "@sweatpan.ts/providers";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type {
+  ModelInfo,
+  ModelProvider,
+  ModelRequest,
+  ModelResponse,
+  ModelStreamEvent,
+} from "@sweatpan.ts/providers";
 import { createBufferedSignal, type BufferedSignal, type Runtime } from "@sweatpan.ts/runtime";
 import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import {
@@ -23,31 +36,212 @@ import {
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
-// Provisional chat vocabulary: promote only after real provider adapters establish it.
-const message = z.discriminatedUnion("role", [
-  z.object({ role: z.literal("user"), text: z.string() }),
-  z.object({
-    role: z.literal("assistant"),
-    text: z.string(),
-    call: z.object({ id: z.string(), name: z.literal("confirm"), input: z.string() }).optional(),
-  }),
-  z.object({ role: z.literal("tool"), callId: z.string(), result: z.boolean() }),
+// Canonical v1 vocabulary. These are tracer validation schemas, not a provider wire decoder.
+const contentSource = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("data"), value: z.string(), mimeType: z.string() }),
+  z.object({ type: z.literal("url"), value: z.string(), mimeType: z.string().optional() }),
 ]);
-const requestSchema = z.object({ model: z.string(), messages: z.array(message) });
-const responseSchema = z.object({
-  text: z.string(),
-  call: z.object({ id: z.string(), name: z.literal("confirm"), input: z.string() }).optional(),
+const contentPart = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({
+    type: z.enum(["image", "audio", "video", "document"]),
+    source: contentSource,
+    metadata: z.record(z.string(), z.json()).nullable(),
+  }),
+]);
+const content = z.union([z.string(), z.array(contentPart)]);
+const toolCall = z.object({
+  id: z.string(),
+  name: z.string(),
+  input: z.json(),
+  thoughtSignature: z.string().nullable(),
 });
-type Request = z.infer<typeof requestSchema>;
-type Response = z.infer<typeof responseSchema>;
-type Event = { type: "text"; text: string };
+const assistant = z.object({
+  role: z.literal("assistant"),
+  content: z.array(
+    z.union([
+      contentPart,
+      z.object({ type: z.literal("tool-call"), toolCall }),
+      z.object({
+        type: z.literal("reasoning"),
+        text: z.string(),
+        format: z.string().nullable(),
+        signature: z.string().nullable(),
+        redacted: z.boolean(),
+      }),
+    ]),
+  ),
+});
+const message = z.union([
+  z.object({ role: z.literal("user"), content }),
+  assistant,
+  z.object({ role: z.enum(["system", "developer"]), content: z.string() }),
+  z.object({
+    role: z.literal("tool"),
+    toolCallId: z.string(),
+    name: z.string(),
+    content,
+    isError: z.boolean(),
+  }),
+]);
+const requestDataSchema = z.object({
+  context: z.object({
+    messages: z.array(message),
+    tools: z.array(
+      z.object({
+        name: z.string(),
+        description: z.string().nullable(),
+        parameters: z.record(z.string(), z.json()),
+      }),
+    ),
+  }),
+  options: z
+    .object({
+      toolChoice: z.enum(["auto", "none", "required"]).optional(),
+      maxTokens: z.number().optional(),
+      temperature: z.number().optional(),
+      topP: z.number().optional(),
+      topK: z.number().optional(),
+      thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+      responseFormat: z
+        .object({
+          type: z.literal("json_schema"),
+          name: z.string().optional(),
+          schema: z.record(z.string(), z.json()),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+const requestSchema: StandardSchemaV1<ModelRequest> = requestDataSchema;
+const cost = z.object({
+  input: z.number().nullable(),
+  output: z.number().nullable(),
+  cacheRead: z.number().nullable(),
+  cacheWrite: z.number().nullable(),
+  total: z.number().nullable(),
+});
+const responseSchema: StandardSchemaV1<ModelResponse> = z.object({
+  message: assistant,
+  source: z
+    .object({
+      api: z.string(),
+      provider: z.string(),
+      model: z.string(),
+      responseModel: z.string().nullable(),
+    })
+    .nullable(),
+  usage: z
+    .object({
+      input: z.number().nullable(),
+      output: z.number().nullable(),
+      total: z.number().nullable(),
+      cacheRead: z.number().nullable(),
+      cacheWrite: z.number().nullable(),
+      reasoning: z.number().nullable().optional(),
+      cacheWrite1h: z.number().nullable().optional(),
+      cost: cost.nullable(),
+    })
+    .nullable(),
+  stopReason: z.string().nullable(),
+  responseId: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  reasoning: z
+    .object({
+      requested: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]).nullable(),
+      provider: z.string().nullable(),
+    })
+    .optional(),
+});
+type Request = ModelRequest;
+type Response = ModelResponse;
+type Event = ModelStreamEvent;
 type Output = Event | { type: "elicit"; grant: ResolutionGrant };
 type OutputFrame = { value: Output; after: number };
+function textEvent(delta: string, text = delta): Event {
+  return {
+    type: "text-delta",
+    contentIndex: 0,
+    delta,
+    partial: { role: "assistant", content: [{ type: "text", text }] },
+  };
+}
+function response(text: string, call = false): Response {
+  return {
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text },
+        {
+          type: "reasoning",
+          text: "",
+          format: "opaque",
+          signature: "retained-signature",
+          redacted: true,
+        },
+        ...(call
+          ? [
+              {
+                type: "tool-call" as const,
+                toolCall: {
+                  id: "call-1",
+                  name: "confirm",
+                  input: "Proceed?",
+                  thoughtSignature: null,
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+    source: {
+      api: "scripted",
+      provider: "test",
+      model: call ? "planner" : "responder",
+      responseModel: null,
+    },
+    usage: {
+      input: 10,
+      output: 5,
+      total: 15,
+      cacheRead: null,
+      cacheWrite: null,
+      reasoning: 3,
+      cacheWrite1h: null,
+      cost: null,
+    },
+    reasoning: { requested: "high", provider: "deep" },
+    stopReason: call ? "toolUse" : "stop",
+    responseId: call ? "response-1" : "response-2",
+    errorMessage: null,
+  };
+}
 const sample = defineEffect({
   key: "chat.model",
   context: requestSchema,
   response: responseSchema,
 });
+const selectedRequestSchema: StandardSchemaV1<ChatInference> = z.object({
+  model: z.object({ id: z.string(), provider: z.string(), api: z.string() }),
+  request: requestDataSchema,
+});
+const selectedSample = defineEffect({
+  key: "chat.selected-model",
+  context: selectedRequestSchema,
+  response: responseSchema,
+});
+const planner: ModelInfo = {
+  id: "planner",
+  provider: "test",
+  api: "scripted",
+  name: "Planner",
+  input: ["text"],
+  output: ["text"],
+  contextWindow: 8192,
+  maxOutputTokens: 1024,
+  reasoningLevels: ["off", "high"],
+};
+const responder: ModelInfo = { ...planner, id: "responder", name: "Responder" };
 const approval = defineEffect({
   key: "confirm.approval",
   context: z.string(),
@@ -67,11 +261,13 @@ const confirm = defineTool("confirm")
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: host drains a model independently of disconnected readers, parks and resumes with accepted history`, async () => {
     const requests: Request[] = [];
+    const selections: ModelSelection[] = [];
+    let plannerAvailable = true;
     const events: Event[] = [];
     const peer = createProtocolRig();
     let released = 0;
     let intercepted = 0;
-    type Provider = ModelProvider<Request, Event, Response, Y>;
+    type Provider = ModelProvider<Y, ChatInference>;
     const provider = runtime.composition.createApi<Provider>("chat-model", {
       *stream() {
         throw new Error("Model provider not installed");
@@ -92,7 +288,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     function assemble() {
       const journal = store.open();
       const effects = createEffectCapabilities(runtime, "chat-effects");
-      const root = effects.grant({ sample, confirm });
+      const root = effects.grant({ sample: selectedSample, confirm });
       const acquisition = createToolAcquisition(runtime, effects, confirm, "confirm-acquisition");
       let waiting: { child: Child; grant: ResolutionGrant } | undefined;
       function childHost(child: Child) {
@@ -144,15 +340,26 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           // The Host owns this execution. Client subscriptions run in separate scopes.
           return start(function* () {
             yield* provider.install({
-              *stream(request) {
+              *stream(inference) {
+                const request = inference.request;
+                const target = inference.model;
+                expect(target.provider).toBe("test");
+                expect(target.api).toBe("scripted");
+                if (target.id === planner.id && !plannerAvailable) {
+                  throw new Error("Original model is unavailable");
+                }
+                expect(target.id).toBe(
+                  request.context.messages.length === 1 ? planner.id : responder.id,
+                );
+                selections.push(structuredClone(target));
                 requests.push(structuredClone(request));
                 yield* runtime.composition.ensure(function* () {
                   released++;
                 });
                 const source = runtime.createSignal<Event, Response>();
                 const subscription = yield* source;
-                if (request.messages.length === 1) {
-                  source.send({ type: "text", text: "Let me" });
+                if (request.context.messages.length === 1) {
+                  source.send(textEvent("Let me"));
                   let first = true;
                   let finished = false;
                   return {
@@ -167,24 +374,36 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                           peer.send({ id: "first-model", token: "finish" }, signal),
                         );
                         finished = true;
-                        source.send({ type: "text", text: " ask" });
-                        source.send({ type: "text", text: "." });
-                        source.close({
-                          text: "Let me ask.",
-                          call: { id: "call-1", name: "confirm", input: "Proceed?" },
-                        });
+                        source.send(textEvent(" ask", "Let me ask"));
+                        source.send(textEvent(".", "Let me ask."));
+                        source.close(response("Let me ask.", true));
                       }
                       return yield* subscription.next();
                     },
                   };
                 } else {
-                  expect(request.messages.at(-1)).toEqual({
-                    role: "tool",
-                    callId: "call-1",
-                    result: true,
+                  expect(request.context.messages[1]).toEqual({
+                    role: "assistant",
+                    content: response("Let me ask.", true).message.content.filter(
+                      (part) => part.type !== "reasoning",
+                    ),
                   });
-                  source.send({ type: "text", text: "Confirmed." });
-                  source.close({ text: "Confirmed." });
+                  expect(request.context.tools).toEqual([
+                    {
+                      name: "confirm",
+                      description: "Ask for approval",
+                      parameters: { type: "string" },
+                    },
+                  ]);
+                  expect(request.context.messages.at(-1)).toEqual({
+                    role: "tool",
+                    toolCallId: "call-1",
+                    name: "confirm",
+                    content: "true",
+                    isError: false,
+                  });
+                  source.send(textEvent("Confirmed."));
+                  source.close(response("Confirmed."));
                 }
                 return subscription;
               },
@@ -195,13 +414,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 return yield* next(request);
               },
             });
-            yield* effects.install(sample, function* (request) {
+            yield* effects.install(selectedSample, function* (request) {
               return yield* runtime.composition.scoped(function* () {
                 const subscription = yield* provider.operations.stream(request);
                 while (true) {
                   const next = yield* subscription.next();
                   if (next.done) {
+                    if (next.value.errorMessage) {
+                      throw new Error(next.value.errorMessage);
+                    }
                     return { ok: true as const, value: next.value };
+                  }
+                  if (next.value.type === "error") {
+                    throw new Error("Provider error event");
                   }
                   events.push(next.value);
                   output.send(next.value);
@@ -216,25 +441,59 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 matches: isDeepStrictEqual,
                 *acquire() {
                   return createScopedGuest(function* () {
-                    const messages: Request["messages"] = [
-                      { role: "user", text: "Ask before proceeding." },
+                    const messages: ChatHistoryMessage[] = [
+                      { role: "user", content: "Ask before proceeding." },
                     ];
-                    const first = yield* root.capabilities.sample({ model: "scripted", messages });
-                    if (!first.ok || !first.value.call) {
+                    const tools = [
+                      {
+                        name: "confirm",
+                        description: "Ask for approval",
+                        parameters: { type: "string" },
+                      },
+                    ];
+                    const first = yield* root.capabilities.sample(
+                      prepareChatInference({ model: planner, history: messages, tools }),
+                    );
+                    if (!first.ok || first.value.errorMessage) {
+                      throw new Error("Model failed");
+                    }
+                    const part = first.value.message.content.find(
+                      (part) => part.type === "tool-call",
+                    );
+                    if (!part || part.type !== "tool-call" || part.toolCall.name !== "confirm") {
                       throw new Error("Expected tool call");
                     }
-                    const call = first.value.call;
-                    messages.push({ role: "assistant", ...first.value });
-                    const result = yield* root.capabilities.confirm(call.input);
+                    const call = part.toolCall;
+                    messages.push({
+                      ...first.value.message,
+                      model: { id: planner.id, provider: planner.provider, api: planner.api },
+                    });
+                    const result = yield* root.capabilities.confirm(z.string().parse(call.input));
                     if (!result.ok) {
                       throw new Error("Tool failed");
                     }
-                    messages.push({ role: "tool", callId: call.id, result: result.value });
-                    const final = yield* root.capabilities.sample({ model: "scripted", messages });
+                    messages.push({
+                      role: "tool",
+                      toolCallId: call.id,
+                      name: call.name,
+                      content: JSON.stringify(result.value),
+                      isError: false,
+                    });
+                    const final = yield* root.capabilities.sample(
+                      prepareChatInference({
+                        model: responder,
+                        history: messages,
+                        tools,
+                        foreignReasoning: "omit",
+                      }),
+                    );
                     if (!final.ok) {
                       throw new Error("Model failed");
                     }
-                    return final.value.text;
+                    return final.value.message.content
+                      .filter((part) => part.type === "text")
+                      .map((part) => part.text)
+                      .join("");
                   });
                 },
               },
@@ -307,8 +566,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       *subscribe({ after }: { after: number }) {
         const source = yield* Source.expect();
         const reader = yield* source.from(after, (previous, following) =>
-          previous.type === "text" && following.type === "text"
-            ? { type: "text", text: previous.text + following.text }
+          previous.type === "text-delta" &&
+          following.type === "text-delta" &&
+          previous.contentIndex === following.contentIndex
+            ? { ...following, delta: previous.delta + following.delta }
             : undefined,
         );
         return {
@@ -347,7 +608,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const first = yield* reader.next();
       expect(first).toEqual({
         done: false,
-        value: { value: { type: "text", text: "Let me" }, after: 1 },
+        value: { value: textEvent("Let me"), after: 1 },
       });
       if (first.done) {
         throw new Error("Expected first output frame");
@@ -368,6 +629,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     peer.reply("first-model", { status: 200, body: "done" });
     const parked = await producing;
     expect(parked.state).toBe("child");
+    expect((await app.snapshot()).history[0]?.request).toMatchObject({
+      input: {
+        model: { id: "planner", provider: "test", api: "scripted" },
+        request: { context: { messages: [{ role: "user", content: "Ask before proceeding." }] } },
+      },
+    });
+    expect((await app.snapshot()).history[0]?.outcome).toEqual({
+      ok: true,
+      value: { ok: true, value: response("Let me ask.", true) },
+    });
     // No reader was present for the remaining model output or the parked presentation.
     const retained = await start(function* () {
       yield* installOutput();
@@ -383,12 +654,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
     });
     expect(retained).toEqual([
-      { value: { type: "text", text: " ask." }, after: 3 },
+      { value: textEvent(" ask.", "Let me ask."), after: 3 },
       { value: { type: "elicit", grant: expect.any(Object) }, after: 4 },
     ]);
     // Earlier queued frames retain their own cursors after later reads.
     expect(structuredClone(retained[0])).toEqual({
-      value: { type: "text", text: " ask." },
+      value: textEvent(" ask.", "Let me ask."),
       after: 3,
     });
     expect(subscriptions).toEqual([0, 1]);
@@ -401,10 +672,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(requests).toHaveLength(1);
     expect(released).toBe(1);
     expect(events).toEqual([
-      { type: "text", text: "Let me" },
-      { type: "text", text: " ask" },
-      { type: "text", text: "." },
+      textEvent("Let me"),
+      textEvent(" ask", "Let me ask"),
+      textEvent(".", "Let me ask."),
     ]);
+    plannerAvailable = false; // Recovery must not resolve or invoke the accepted model again.
     store.reopen();
     app = assemble();
     await expect(app.run()).resolves.toEqual(parked);
@@ -416,22 +688,38 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     app = assemble();
     const completed = { state: "completed", value: "Confirmed." };
     await expect(app.run()).resolves.toEqual(completed);
+    expect((await app.snapshot()).history.at(-1)?.request).toMatchObject({
+      input: {
+        model: { id: "responder", provider: "test", api: "scripted" },
+        request: {
+          context: {
+            messages: [
+              { role: "user" },
+              { role: "assistant" },
+              { role: "tool", toolCallId: "call-1" },
+            ],
+          },
+        },
+      },
+    });
     expect(requests).toHaveLength(2);
+    expect(selections.map((selection) => selection.id)).toEqual(["planner", "responder"]);
     expect({ released, intercepted }).toEqual({ released: 2, intercepted: 2 });
     expect(events).toEqual([
-      { type: "text", text: "Let me" },
-      { type: "text", text: " ask" },
-      { type: "text", text: "." },
-      { type: "text", text: "Confirmed." },
+      textEvent("Let me"),
+      textEvent(" ask", "Let me ask"),
+      textEvent(".", "Let me ask."),
+      textEvent("Confirmed."),
     ]);
     store.reopen();
     await expect(assemble().run()).resolves.toEqual(completed);
     expect(requests).toHaveLength(2);
+    expect(selections.map((selection) => selection.id)).toEqual(["planner", "responder"]);
   });
 });
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
-  for (const mode of ["failure", "cancel"] as const) {
+  for (const mode of ["failure", "cancel", "error-event"] as const) {
     it(`${runtime.name}: ${mode} after partial model output releases the provider without accepting a response`, async () => {
       const peer = createProtocolRig();
       const events: Event[] = [];
@@ -446,41 +734,54 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const task = runtime.start(function* () {
         const effects = createEffectCapabilities(runtime, "failure-effects");
         const grant = effects.grant({ sample });
-        const provider = runtime.composition.createApi<ModelProvider<Request, Event, Response, Y>>(
-          "failing-model",
-          {
-            *stream() {
-              yield* runtime.composition.ensure(function* () {
-                // An asynchronous barrier proves cleanup is joined, not merely initiated.
-                yield* runtime.fromPromise(() => Promise.resolve());
-                released = true;
-              });
-              const source = runtime.createSignal<Event, Response>();
-              const subscription = yield* source;
-              source.send({ type: "text", text: "Unfinished" });
-              let first = true;
-              return {
-                *next() {
-                  if (first) {
-                    first = false;
-                    return yield* subscription.next();
-                  }
-                  yield* runtime.fromPromise((signal) =>
-                    peer.send({ id: "model", token: "inference" }, signal),
-                  );
-                  throw new Error("Unexpected provider completion");
-                },
-              };
-            },
+        const provider = runtime.composition.createApi<ModelProvider<Y>>("failing-model", {
+          *stream() {
+            yield* runtime.composition.ensure(function* () {
+              // An asynchronous barrier proves cleanup is joined, not merely initiated.
+              yield* runtime.fromPromise(() => Promise.resolve());
+              released = true;
+            });
+            const source = runtime.createSignal<Event, Response>();
+            const subscription = yield* source;
+            source.send(textEvent("Unfinished"));
+            let first = true;
+            return {
+              *next() {
+                if (first) {
+                  first = false;
+                  return yield* subscription.next();
+                }
+                yield* runtime.fromPromise((signal) =>
+                  peer.send({ id: "model", token: "inference" }, signal),
+                );
+                if (mode === "error-event") {
+                  return {
+                    done: false as const,
+                    value: {
+                      type: "error" as const,
+                      reason: "error" as const,
+                      error: response("Unfinished").message,
+                    },
+                  };
+                }
+                throw new Error("Unexpected provider completion");
+              },
+            };
           },
-        );
+        });
         yield* effects.install(sample, function* (request) {
           return yield* runtime.composition.scoped(function* () {
             const subscription = yield* provider.operations.stream(request);
             while (true) {
               const next = yield* subscription.next();
               if (next.done) {
+                if (next.value.errorMessage) {
+                  throw new Error(next.value.errorMessage);
+                }
                 return { ok: true as const, value: next.value };
+              }
+              if (next.value.type === "error") {
+                throw new Error("Provider error event");
               }
               events.push(next.value);
               output.send(next.value);
@@ -496,13 +797,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             *acquire() {
               return createScopedGuest(function* () {
                 const result = yield* grant.capabilities.sample({
-                  model: "scripted",
-                  messages: [],
+                  context: { messages: [], tools: [] },
                 });
                 if (!result.ok) {
                   throw new Error("Model failure");
                 }
-                return result.value.text;
+                return result.value.message.content
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join("");
               });
             },
           },
@@ -523,10 +826,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       );
       onTestFinished(() => task.cancel());
       await Promise.race([peer.waitForRequests(1), task.result]);
-      expect(events).toEqual([{ type: "text", text: "Unfinished" }]);
+      expect(events).toEqual([textEvent("Unfinished")]);
       if (mode === "failure") {
         peer.fail("model", new Error("Provider disconnected"));
         await expect(task.result).rejects.toThrow("Provider disconnected");
+      } else if (mode === "error-event") {
+        peer.reply("model", { status: 200, body: "error-event" });
+        await expect(task.result).rejects.toThrow("Provider error event");
       } else {
         await task.cancel();
         expect(peer.aborted).toEqual(["model"]);
@@ -537,7 +843,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const reader = yield* output;
         expect(yield* reader.next()).toEqual({
           done: false,
-          value: { type: "text", text: "Unfinished" },
+          value: textEvent("Unfinished"),
         });
         return yield* reader.next();
       });

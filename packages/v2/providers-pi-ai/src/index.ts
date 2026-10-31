@@ -1,2 +1,4 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export type { PiAiProviderOptions, PiAiImageProviderOptions, PiAiStream } from "./contracts.ts";
+export { createPiAiProvider } from "./provider.ts";
+export { createPiAiImageProvider } from "./images.ts";
+export { describePiAiModel } from "./model.ts";

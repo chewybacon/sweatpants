@@ -13,3 +13,4 @@ export type { DuplexExchangeRig, DuplexExchangeRigOptions } from "./contracts.ts
 export { createTransportRig, acquireConnections } from "./transport.ts";
 export type { TransportRig } from "./contracts.ts";
 export { createHostedExecution, createHostedRecovery } from "./local-execution.ts";
+export { createPiAiStreamRig, createPiAiImageRig } from "./pi-ai.ts";
