@@ -1,7 +1,12 @@
 import type { Api, Composition } from "@standard-durability/core";
 import type { Journal, OwnedJournal } from "@sweatpan.ts/durable";
 import { readJournalPresentation } from "./presentation.ts";
-import type { JournalPresentation, AttemptNotifications, ChildRunner } from "./contracts.ts";
+import type {
+  JournalPresentation,
+  AttemptNotifications,
+  ChildRunner,
+  ActivationDriver,
+} from "./contracts.ts";
 
 /** Optional bound runner facade; pass operations.run to existing all/race installation. */
 export function createChildRunner<C, I, Y>(
@@ -29,4 +34,13 @@ export function createJournalPresentation<R, Q, V, E, S, Y>(
   return composition.createApi<JournalPresentation<R, Q, V, E, Y>>(name, {
     read: (after, limit) => readJournalPresentation(journal, after, limit),
   });
+}
+
+/** Bind one activation owner to scoped start policy. Preserve this facade at consumers. */
+export function createActivationDriver<Result, Y>(
+  composition: Composition<Y>,
+  name: string,
+  driver: ActivationDriver<Result, Y>,
+): Api<ActivationDriver<Result, Y>, Y> {
+  return composition.createApi<ActivationDriver<Result, Y>>(name, driver);
 }

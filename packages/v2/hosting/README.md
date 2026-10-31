@@ -647,3 +647,52 @@ is not a durable publication acknowledgement store or exactly-once transport.
 Projection versioning, recipient authorization, stable public event identities,
 client acknowledgement storage and recursive child presentation remain application
 concerns. Recovery does not replay provisional provider token deltas.
+
+## Scoped activation drivers
+
+`createOwnedActivationDriver(runtime, work)` acquires an activation owner in the
+current scope. `createActivationDriver(composition, name, owner)` exposes its
+`start()` through an ordinary scoped API. Start consumers invoke that same
+facade's `operations.start`; middleware can observe or substitute the owner.
+
+```ts
+// Inside an application supervisor scope:
+const owner =
+  yield *
+  createOwnedActivationDriver(runtime, {
+    *run() {
+      // Install capabilities here: each activation starts a fresh native root.
+      return yield* host.operations.run();
+    },
+  });
+const driver = createActivationDriver(runtime.composition, "activation", owner);
+const execution = yield * driver.operations.start();
+```
+
+Acquire the owner inside a request scope for request-bound execution. Acquire it
+in an enclosing application supervisor for background execution: starts from a
+shorter-lived request remain owned by that supervisor. A request can install its
+own acquired owner on the same facade; scope exit restores the enclosing selection.
+Both policies use the same ownership implementation. An operation facade resolves
+current policy, while an already-started execution retains its original owner.
+
+Every start creates a fresh physical execution. Owner exit closes admission to
+new starts, cancels all remaining executions, and joins their cleanup. Completed
+executions are released from the owner's tracking set. Escaped owner handles reject
+starts after shutdown. Execution and cleanup failures remain observable through
+`execution.result`; owner shutdown, like `RuntimeExecution.cancel`, does not rethrow
+their failures. Applications must arrange their own failure observation policy.
+
+The work must invoke the existing Host API and configure native-root capabilities
+inside `run`. Starting a root does not inherit the request's context bindings.
+This driver owns no response buffer: output streams and readers retain independent
+lifetimes. `createHostedActivation` remains an explicit execution-and-output
+convenience with its own caller-owned handle; it is not automatically registered
+with an activation driver.
+
+Physical shutdown is not durable workflow cancellation or a safe scheduling yield.
+An interrupted unsafe delivery remains occupied. This API does not deduplicate
+starts, lease an execution, retry delivery, or schedule recovery after process death.
+The activation-driver acceptance journey exercises real hosting and SQLite reopen
+on both runtimes, plus joined multi-activation shutdown. It is in-process evidence,
+not process-loss or remote-supervisor coverage.

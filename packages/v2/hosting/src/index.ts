@@ -32,3 +32,7 @@ export type {
   JournalPresentationPage,
   JournalPresentationState,
 } from "./contracts.ts";
+
+export type { ActivationDriver, ActivationWork } from "./contracts.ts";
+export { createActivationDriver } from "./apis.ts";
+export { createOwnedActivationDriver } from "./activation-driver.ts";

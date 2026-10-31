@@ -349,3 +349,17 @@ export interface JournalPresentation<R, Q, V, E, Y> {
     limit?: number,
   ): Operation<JournalPresentationPage<R, Q, V, E>, Y>;
 }
+
+/** Application-bound work. Install native-root capabilities inside run. */
+export interface ActivationWork<Result, Y> {
+  /** Drive the existing Host and join its cleanup; no reader is required. */
+  run(): Operation<Result, Y>;
+}
+
+/** Local activation starter. The implementation determines the owning scope. */
+export interface ActivationDriver<Result, Y> {
+  /** Start a fresh physical execution; this does not deduplicate durable invocations.
+   * The returned handle belongs to the driver's owner, not the caller or its readers.
+   * Reject after owner shutdown. Observe result for execution/cleanup failures. */
+  start(): Operation<RuntimeExecution<Result>, Y>;
+}
