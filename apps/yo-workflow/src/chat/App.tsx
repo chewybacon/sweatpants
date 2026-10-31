@@ -211,12 +211,15 @@ export function App({ initialThreadId }: AppProps) {
               >
                 <option value="scheme">Scheme</option>
                 <option value="lua">Lua</option>
+                <option value="python">Python</option>
               </select>
             </label>
             <p className="hint">
-              {language === "lua"
-                ? "Lua supports conversational steps and loops. Child workflows, timers and concurrent tasks are not available."
-                : "Scheme supports conversational steps, loops and child workflows. Timers and concurrent tasks are not available."}
+              {language === "python"
+                ? "Python runs in Monty: await sandbox capabilities for questions, randomness, documents and model calls. Supported asyncio and AnyIO task groups preserve state across replies and reloads."
+                : language === "lua"
+                  ? "Lua supports conversational steps and loops. Child workflows, timers and concurrent tasks are not available."
+                  : "Scheme supports conversational steps, loops and child workflows. Timers and concurrent tasks are not available."}
             </p>
             <TextArea
               ref={textarea}

@@ -12,6 +12,7 @@ const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 export function ExecutionInspector() {
   const [languages, setLanguages] = useState<WorkflowLanguage[]>([]);
   const [language, setLanguage] = useState("scheme");
+  const [pythonExample, setPythonExample] = useState("reads");
   const [view, setView] = useState<ExecutionView | null>(null);
   const [prompt, setPrompt] = useState(
     "Review the launch announcement, and if I approve it, send it to Sam.",
@@ -20,7 +21,7 @@ export function ExecutionInspector() {
   const [error, setError] = useState<string | null>(null);
   const [authoringError, setAuthoringError] = useState(false);
   const [tab, setTab] = useState<"state" | "source">("state");
-  async function request(action?: string, choice?: string, author = false) {
+  async function request(action?: string, choice?: string, author = false, operationId?: number) {
     setBusy(true);
     setError(null);
     setAuthoringError(false);
@@ -35,11 +36,16 @@ export function ExecutionInspector() {
               body: JSON.stringify({
                 action,
                 choice,
+                operationId,
                 id: action === "start" ? undefined : id,
                 language: action === "start" ? language : view?.language.id,
                 revision: view?.revision,
                 /* CONDITIONAL-SPREAD: Omit absent prompt from workflow requests and execution events; explicit undefined is not a portable JSON value. */
                 ...(author ? { prompt } : {}),
+                /* CONDITIONAL-SPREAD: Omit the example on non-Python starts and resume commands. */
+                ...(action === "start" && language === "monty" && pythonExample !== "reads"
+                  ? { example: pythonExample }
+                  : {}),
               }),
             }
           : undefined,
@@ -54,6 +60,7 @@ export function ExecutionInspector() {
       }
       const next = executionViewSchema.parse(data);
       setView(next);
+      setLanguage(next.language.id);
       const url = new URL(location.href);
       url.searchParams.set("run", next.id);
       history.replaceState(null, "", url);
@@ -90,8 +97,8 @@ export function ExecutionInspector() {
           <p className="execution-eyebrow">WORKFLOW LAB</p>
           <h1>Inside the execution.</h1>
           <p className="execution-muted">
-            Compare the same compiled TypeScript tool in Scheme and Lua. Inspect its state and
-            restore into a fresh runtime instance.
+            Explore Scheme and Lua tools, or a Python workflow with five concurrent file reads.
+            Restore a saved execution in a fresh instance.
           </p>
         </div>
         <label className="execution-language">
@@ -108,50 +115,84 @@ export function ExecutionInspector() {
             ))}
           </select>
         </label>
+        {language === "monty" && (
+          <label className="execution-language">
+            Python example
+            <select
+              value={pythonExample}
+              disabled={busy}
+              onChange={(event) => setPythonExample(event.target.value)}
+            >
+              <option value="reads">asyncio · five reads</option>
+              <option value="cleanup">asyncio · yielding cleanup</option>
+              <option value="anyio">AnyIO · shielded cleanup</option>
+              <option value="signup">Signup · undo on cancellation</option>
+            </select>
+          </label>
+        )}
         <button disabled={busy || !languages.length} onClick={() => void request("start")}>
-          {view ? "New confirmation run" : "Run confirmation"}
+          {language === "monty"
+            ? pythonExample === "signup"
+              ? "Run signup"
+              : pythonExample === "reads"
+                ? "Run five reads"
+                : "Run Python cleanup"
+            : view
+              ? "New confirmation run"
+              : "Run confirmation"}
         </button>
       </header>
       <p className="execution-local">
         Workflow lab · journal-backed execution · each park releases compute · no email is sent
       </p>
-      <section className="execution-author">
-        <label htmlFor="caller-prompt">Model-authored caller</label>
-        <textarea
-          id="caller-prompt"
-          value={prompt}
-          maxLength={4000}
-          onChange={(event) => setPrompt(event.target.value)}
-          disabled={busy}
-        />
-        <button
-          disabled={busy || !languages.length || !prompt.trim()}
-          onClick={() => void request("start", undefined, true)}
-        >
-          {busy ? "Working…" : "Author and run"}
-        </button>
-        <p className="execution-muted">
-          The model writes the caller in your selected language. Both runtimes run the same
-          TypeScript review_draft tool, including its ensure cleanup, then call the uncompiled host
-          tool.
+      {language !== "monty" && (
+        <section className="execution-author">
+          <label htmlFor="caller-prompt">Model-authored caller</label>
+          <textarea
+            id="caller-prompt"
+            value={prompt}
+            maxLength={4000}
+            onChange={(event) => setPrompt(event.target.value)}
+            disabled={busy}
+          />
+          <button
+            disabled={busy || !languages.length || !prompt.trim()}
+            onClick={() => void request("start", undefined, true)}
+          >
+            {busy ? "Working…" : "Author and run"}
+          </button>
+          <p className="execution-muted">
+            The model writes the caller in your selected language. Both runtimes run the same
+            TypeScript review_draft tool, including its ensure cleanup, then call the uncompiled
+            host tool.
+          </p>
+        </section>
+      )}
+      {language !== "monty" && (
+        <div className="execution-tool-catalog">
+          <div>
+            <span className="execution-status">Compiled workflow</span>
+            <h3>review_draft</h3>
+            <p>
+              One TypeScript generator, compiled for each runtime. Its ensure cleanup can suspend.
+            </p>
+          </div>
+          <div>
+            <span className="execution-status waiting">Host tool</span>
+            <h3>send_announcement</h3>
+            <p>
+              Queues a local announcement. Only its request and recorded receipt enter the workflow.
+            </p>
+          </div>
+        </div>
+      )}
+      {language === "monty" && (
+        <p className="execution-local">
+          {pythonExample === "signup"
+            ? "Simulated signup: acknowledge three saved records, then activate to keep them. Cancel before activation to undo acknowledged steps in reverse order. Restore between any replies, including cleanup. Cancel requests resumable unwind; discarding execution cannot run cleanup. No real account is created."
+            : "Fulfill host requests or cancel and follow cleanup. Restore between replies to resume in a fresh instance. These examples are authored in Python."}
         </p>
-      </section>
-      <div className="execution-tool-catalog">
-        <div>
-          <span className="execution-status">Compiled workflow</span>
-          <h3>review_draft</h3>
-          <p>
-            One TypeScript generator, compiled for each runtime. Its ensure cleanup can suspend.
-          </p>
-        </div>
-        <div>
-          <span className="execution-status waiting">Host tool</span>
-          <h3>send_announcement</h3>
-          <p>
-            Queues a local announcement. Only its request and recorded receipt enter the workflow.
-          </p>
-        </div>
-      </div>
+      )}
       {error && (
         <div role="alert" className="execution-error">
           {error}
@@ -171,15 +212,30 @@ export function ExecutionInspector() {
       )}
       {!view ? (
         <section className="execution-empty">
-          <h2>One program. Two kinds of tool.</h2>
+          <h2>
+            {language === "monty"
+              ? pythonExample === "signup"
+                ? "Complete signup—or undo it."
+                : "Host-controlled Python workflows."
+              : "One program. Two kinds of tool."}
+          </h2>
           <p>
-            Review a draft, finish its cleanup, then queue the approved announcement through the
-            host.
+            {language === "monty"
+              ? "Advance one host request at a time, restore its checkpoint, or cancel and follow the unwind."
+              : "Review a draft, finish its cleanup, then queue the approved announcement through the host."}
           </p>
           <ol>
-            <li>Inspect the captured caller and helper.</li>
+            <li>
+              {language === "monty"
+                ? "Read the Python workflow source."
+                : "Inspect the captured caller and helper."}
+            </li>
             <li>Restore the same boundary in a fresh instance.</li>
-            <li>Approve, decline, or cancel—and follow cleanup.</li>
+            <li>
+              {language === "monty"
+                ? "Acknowledge host steps or cancel the workflow."
+                : "Approve, decline, or cancel—and follow cleanup."}
+            </li>
           </ol>
         </section>
       ) : (
@@ -198,7 +254,11 @@ export function ExecutionInspector() {
                 Restore in fresh instance
               </button>
               <button
-                disabled={busy || !parked || !!state?.cancellationRequested}
+                disabled={
+                  busy ||
+                  !parked ||
+                  (view.language.id !== "monty" && !!state?.cancellationRequested)
+                }
                 onClick={() => void request("cancel")}
               >
                 Cancel workflow
@@ -208,9 +268,17 @@ export function ExecutionInspector() {
           <div className="execution-grid">
             <section className="execution-panel">
               <header>
-                <h2>Call stack</h2>
-                <span className="execution-muted">outer → inner</span>
+                <h2>{view.language.id === "monty" ? "Outstanding operations" : "Call stack"}</h2>
+                {view.language.id !== "monty" && (
+                  <span className="execution-muted">outer → inner</span>
+                )}
               </header>
+              {view.language.id === "monty" && (
+                <p className="execution-muted">
+                  Python frames and local variables are not decoded. The operations below are
+                  requests received by the host.
+                </p>
+              )}
               <ol className="execution-stack">
                 {execution?.calls.map(({ id, name }, index) => (
                   <li key={id}>
@@ -238,9 +306,26 @@ export function ExecutionInspector() {
                       : "HOST EFFECT / WAITING FOR YOU"}
                   </p>
                   <h3>{view.pending.message}</h3>
-                  <code>{state?.site}</code>
+                  {view.language.id !== "monty" && <code>{state?.site}</code>}
                   <div className="execution-choices">
-                    {view.pending.key === "approval" ? (
+                    {view.language.id === "monty" ? (
+                      view.operations.map((op) => (
+                        <button
+                          key={op.id}
+                          disabled={busy}
+                          onClick={() =>
+                            void request(
+                              "reply",
+                              op.request ? "fixture" : "completed",
+                              false,
+                              op.id,
+                            )
+                          }
+                        >
+                          {op.label}
+                        </button>
+                      ))
+                    ) : view.pending.key === "approval" ? (
                       <>
                         <button disabled={busy} onClick={() => void request("reply", "approve")}>
                           Approve
@@ -326,75 +411,83 @@ export function ExecutionInspector() {
                 <>
                   <h3>Developer workflow · {view.language.developerLanguage}</h3>
                   <pre>{view.developerSource}</pre>
-                  <h3>Linked {view.language.label} program</h3>
-                  <pre>{view.programSource}</pre>
+                  {view.language.id !== "monty" && (
+                    <>
+                      <h3>Linked {view.language.label} program</h3>
+                      <pre>{view.programSource}</pre>
+                    </>
+                  )}
                 </>
               ) : (
                 <>
                   <CheckpointSummary view={view} />
-                  <details className="execution-internals">
-                    <summary>Internals · environments and continuation frames</summary>
-                    <p className="execution-muted">
-                      {state?.currentEnvironment == null
-                        ? "Lua frame/register data is available below and in the checkpoint. Lexical environment names are not projected."
-                        : `Environment ${state.currentEnvironment} is current. Closures reference shared environment IDs.`}
-                    </p>
-                    {execution?.environments.map((env) => (
-                      <details
-                        key={env.id}
-                        open={env.id === String(state?.currentEnvironment) || env.id === "0"}
-                      >
-                        <summary>
-                          Environment {env.id}{" "}
-                          <span className="execution-muted">
-                            {env.parentId === null ? "· root" : `→ ${env.parentId}`}
-                          </span>
-                        </summary>
-                        <dl>
-                          {env.bindings.map((binding) => (
-                            <div key={binding.name}>
-                              <dt>{binding.name}</dt>
-                              <dd>
-                                <code>{displayInspectedValue(binding.value)}</code>
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </details>
-                    ))}
-                    <details>
-                      <summary>Continuation frames ({state?.frames.length ?? 0})</summary>
-                      <p className="execution-muted">Top of the continuation first.</p>
-                      {state?.frames.map((frame) => (
-                        <pre key={frame.index}>{frame.detail}</pre>
+                  {view.language.id !== "monty" && (
+                    <details className="execution-internals">
+                      <summary>Internals · environments and continuation frames</summary>
+                      <p className="execution-muted">
+                        {state?.currentEnvironment == null
+                          ? "Lua frame/register data is available below and in the checkpoint. Lexical environment names are not projected."
+                          : `Environment ${state.currentEnvironment} is current. Closures reference shared environment IDs.`}
+                      </p>
+                      {execution?.environments.map((env) => (
+                        <details
+                          key={env.id}
+                          open={env.id === String(state?.currentEnvironment) || env.id === "0"}
+                        >
+                          <summary>
+                            Environment {env.id}{" "}
+                            <span className="execution-muted">
+                              {env.parentId === null ? "· root" : `→ ${env.parentId}`}
+                            </span>
+                          </summary>
+                          <dl>
+                            {env.bindings.map((binding) => (
+                              <div key={binding.name}>
+                                <dt>{binding.name}</dt>
+                                <dd>
+                                  <code>{displayInspectedValue(binding.value)}</code>
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </details>
                       ))}
+                      <details>
+                        <summary>Continuation frames ({state?.frames.length ?? 0})</summary>
+                        <p className="execution-muted">Top of the continuation first.</p>
+                        {state?.frames.map((frame) => (
+                          <pre key={frame.index}>{frame.detail}</pre>
+                        ))}
+                      </details>
                     </details>
-                  </details>
+                  )}
                 </>
               )}
             </section>
           </div>
-          <section className="execution-panel execution-timeline">
-            <header>
-              <h2>Announcement outbox</h2>
-              <span className="execution-muted">Host tool · local only</span>
-            </header>
-            <p className="execution-muted">
-              Approved path: review → tool cleanup → send_announcement → recorded receipt
-            </p>
-            {view.outbox.length === 0 ? (
-              <p>No announcements queued.</p>
-            ) : (
-              view.outbox.map((item) => (
-                <div className="execution-pending" key={item.announcementId}>
-                  <span className="execution-status">{item.status}</span>
-                  <h3>{item.title}</h3>
-                  <p>To: {item.recipient}</p>
-                  <code>{item.announcementId}</code>
-                </div>
-              ))
-            )}
-          </section>
+          {view.language.id !== "monty" && (
+            <section className="execution-panel execution-timeline">
+              <header>
+                <h2>Announcement outbox</h2>
+                <span className="execution-muted">Host tool · local only</span>
+              </header>
+              <p className="execution-muted">
+                Approved path: review → tool cleanup → send_announcement → recorded receipt
+              </p>
+              {view.outbox.length === 0 ? (
+                <p>No announcements queued.</p>
+              ) : (
+                view.outbox.map((item) => (
+                  <div className="execution-pending" key={item.announcementId}>
+                    <span className="execution-status">{item.status}</span>
+                    <h3>{item.title}</h3>
+                    <p>To: {item.recipient}</p>
+                    <code>{item.announcementId}</code>
+                  </div>
+                ))
+              )}
+            </section>
+          )}
           <section className="execution-panel execution-timeline">
             <header>
               <h2>Boundary timeline</h2>

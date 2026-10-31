@@ -1,4 +1,4 @@
-import { installOperationMiddleware } from "@sweatpants/foundation";
+import { installOperationMiddleware, uuidv4 } from "@sweatpants/foundation";
 import { EventType } from "@ag-ui/core";
 import {
   call,
@@ -310,10 +310,10 @@ function createUserWire(
   input: UserMessageInput,
 ): Extract<ChatTransportRequestMessage, { role: "user" }> {
   if (typeof input === "string") {
-    return { id: crypto.randomUUID(), role: "user", content: input };
+    return { id: uuidv4(), role: "user", content: input };
   }
   return {
-    id: input.id ?? crypto.randomUUID(),
+    id: input.id ?? uuidv4(),
     role: "user",
     content: userContentToWire(input.content),
   };
@@ -465,7 +465,7 @@ class ChatClientController<
     this.destroyParentScope = destroyParentScope;
     this.options = options;
     this.interaction = options.interaction ?? null;
-    this.id = options.clientId ?? crypto.randomUUID();
+    this.id = options.clientId ?? uuidv4();
     this.threadId = options.threadId;
     if (options.initialConversation === "new") {
       this.snapshot = deepFreeze({
@@ -848,7 +848,7 @@ class ChatClientController<
       }
       if (policy === "queue") {
         const queued: QueuedUserMessage = {
-          id: typeof input === "string" ? crypto.randomUUID() : (input.id ?? crypto.randomUUID()),
+          id: typeof input === "string" ? uuidv4() : (input.id ?? uuidv4()),
           input,
           createdAt: Date.now(),
         };
@@ -901,7 +901,7 @@ class ChatClientController<
       );
     }
     this.pendingUserMessages.set(wire.id, pending);
-    const runId = crypto.randomUUID();
+    const runId = uuidv4();
     this.publishProjection({
       authority: null,
       status: "submitted",
@@ -945,7 +945,7 @@ class ChatClientController<
       }
     }
     this.manualMessages = null;
-    const runId = crypto.randomUUID();
+    const runId = uuidv4();
     const request: ChatTransportRequest = {
       command: {
         type: "regenerate",
@@ -975,7 +975,7 @@ class ChatClientController<
     const authority = this.snapshot.authority;
     if (authority !== null && authority.state !== "idle" && authority.state !== "deleted") {
       const signal = yield* useAbortSignal();
-      const cancellationRunId = crypto.randomUUID();
+      const cancellationRunId = uuidv4();
       const cancellation: ChatTransportRequest = {
         command: {
           type: "interrupt-turn",
@@ -1013,14 +1013,18 @@ class ChatClientController<
           }
         }
         const terminal = yield* this.consumeStream(stream, true);
-        if (
-          terminal?.type !== EventType.RUN_ERROR ||
-          terminal.code !== "PROGRAM_CANCELLED" ||
-          this.snapshot.authority?.state !== "idle"
-        ) {
+        const cancelled =
+          terminal?.type === EventType.RUN_ERROR &&
+          terminal.code === "PROGRAM_CANCELLED" &&
+          this.snapshot.authority?.state === "idle";
+        const cleanupPending =
+          terminal?.type === EventType.RUN_FINISHED &&
+          terminal.outcome?.type === "interrupt" &&
+          this.snapshot.authority?.state === "parked";
+        if (!cancelled && !cleanupPending) {
           throw new ChatClientError(
             "chat_cancel_not_terminal",
-            "Host cancellation did not reach authoritative terminal cancellation",
+            "Host cancellation did not reach terminal cancellation or pending cleanup",
           );
         }
         yield* this.flushPublication({}, true);
@@ -1730,7 +1734,7 @@ class ChatClientController<
         "Elicitation response requires parked conversation authority",
       );
     }
-    const runId = crypto.randomUUID();
+    const runId = uuidv4();
     const transportRequest: ChatTransportRequest = {
       command: {
         type: "respond-to-elicit",

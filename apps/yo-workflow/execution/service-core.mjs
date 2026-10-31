@@ -1,3 +1,5 @@
+import { fulfillRead } from "./monty.mjs";
+import { createDurableSchemaRegistry } from "@sweatpants/journal-authority/schema-registry";
 import { executionDiagnostics } from "./diagnostics.mts";
 import { createWorkflowBindingResolver } from "@sweatpants/flowmode-backend";
 import { requireCompiledWorkflow } from "@sweatpants/flowmode-runtime";
@@ -33,6 +35,9 @@ import { run, call } from "effection";
 const randomUUID = () => crypto.randomUUID();
 
 export function executionServiceFactory(stacks) {
+  const schemaRegistry = createDurableSchemaRegistry(
+    stacks.flatMap((stack) => stack.schemas ?? []),
+  );
   const languages = stacks.map((stack) => stack.descriptor);
   function select(language) {
     const stack = stacks.find((candidate) => candidate.descriptor.id === language);
@@ -114,6 +119,9 @@ export function executionServiceFactory(stacks) {
 
   function* buildProgram(callerSource, language) {
     const stack = select(language);
+    if (stack.buildProgram) {
+      return yield* stack.buildProgram(callerSource);
+    }
     const {
       linked: implementation,
       reviewDraft,
@@ -270,6 +278,10 @@ export function executionServiceFactory(stacks) {
         developerSource: session.program.developerSource,
         programSource: session.program.artifact.code,
         compiledSites: session.program.compiledSites,
+        operations:
+          session.language === "monty"
+            ? (session.inspection?.execution?.boundary?.request?.input?.operations ?? [])
+            : [],
       });
     }
     return {
@@ -293,7 +305,17 @@ export function executionServiceFactory(stacks) {
           }
           const language = command.language ?? "scheme";
           const stack = select(language);
-          const authored = command.prompt ? await author?.(command.prompt, language) : stack.caller;
+          if (language === "monty" && command.prompt) {
+            throw Error("Python uses the supplied demo; model authoring is not supported");
+          }
+          if (command.example && !Object.hasOwn(stack.examples ?? {}, command.example)) {
+            throw Error("Unknown supplied example");
+          }
+          const authored = command.prompt
+            ? await author?.(command.prompt, language)
+            : command.example
+              ? stack.examples[command.example]
+              : stack.caller;
           if (typeof authored !== "string" || !authored.trim()) {
             throw Error("Model authoring is unavailable or returned no source");
           }
@@ -330,6 +352,7 @@ export function executionServiceFactory(stacks) {
           await run(function* () {
             const journal = yield* createJournal(session.store, {
               journalId: session.id,
+              schemaRegistry,
               keyring,
             });
             const attach = {
@@ -433,10 +456,36 @@ export function executionServiceFactory(stacks) {
                     if (session.pending.key === "cleanup" && command.choice !== "release") {
                       throw Error("Choose release");
                     }
-                    const value = {
-                      action: "accept",
-                      content: { approved: command.choice === "approve" },
-                    };
+                    if (
+                      session.language === "monty" &&
+                      !session.inspection?.execution?.boundary?.request?.input?.operations?.some(
+                        (op) => op.id === command.operationId,
+                      )
+                    ) {
+                      throw Error("Choose a currently outstanding operation");
+                    }
+                    const value =
+                      session.language === "monty"
+                        ? {
+                            action: "accept",
+                            content: command.error
+                              ? { operationId: command.operationId, error: command.error }
+                              : {
+                                  operationId: command.operationId,
+                                  value:
+                                    command.choice === "fixture"
+                                      ? fulfillRead(
+                                          session.inspection.execution.boundary.request.input.operations.find(
+                                            (op) => op.id === command.operationId,
+                                          ),
+                                        )
+                                      : (command.choice ?? "completed"),
+                                },
+                          }
+                        : {
+                            action: "accept",
+                            content: { approved: command.choice === "approve" },
+                          };
                     const capability = yield* journal.query({
                       type: "pull.resolution-capability",
                       sessionId: session.id,

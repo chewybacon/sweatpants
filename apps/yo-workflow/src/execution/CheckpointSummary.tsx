@@ -5,6 +5,38 @@ export function CheckpointSummary({ view }: { view: ExecutionView }) {
   if (!state) {
     return <p>No evaluator state captured yet.</p>;
   }
+  if (view.language.id === "monty") {
+    return (
+      <div className="checkpoint-summary">
+        <p>
+          The journal stores an opaque Python snapshot and the outstanding operation IDs. Frames and
+          local values are not decoded.
+        </p>
+        <p>
+          {view.operations.length} outstanding operations ·{" "}
+          {state.cancellationRequested ? "Cancellation requested; finishing cleanup" : view.status}
+        </p>
+        <button
+          disabled={!view.checkpoint}
+          onClick={() => {
+            const url = URL.createObjectURL(
+              new Blob([JSON.stringify(view.checkpoint)], { type: "application/json" }),
+            );
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `monty-${view.id}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Download opaque checkpoint
+        </button>
+        {view.restoration && (
+          <p>Restored in a fresh Wasm instance. Capturing again preserved the snapshot.</p>
+        )}
+      </div>
+    );
+  }
   const environment = state.environments.find((env) => env.id === state.currentEnvironment);
   const next = state.frames[0];
   return (
