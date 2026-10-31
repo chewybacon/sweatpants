@@ -35,6 +35,7 @@
     "@sweatpan.ts/execution": "workspace:*",
     "@sweatpan.ts/execution-worker": "workspace:*",
     "@sweatpan.ts/hosting": "workspace:*",
+    "@sweatpan.ts/providers": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",
     "@sweatpan.ts/runtime-effect": "workspace:*",
     "@sweatpan.ts/runtime-effection": "workspace:*",

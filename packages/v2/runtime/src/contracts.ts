@@ -83,3 +83,39 @@ export interface StreamApi<T, Close, Y> extends Api<StreamMethods<T, Close, Y>, 
   /** Each subscription dispatches through operations.subscribe in its executing scope. */
   readonly stream: Stream<T, Close, Y>;
 }
+
+/** Retained callback stream. Values are held by reference until the buffer is released. */
+export interface BufferedSignal<T, Close, Y> extends Signal<T, Close, Y> {
+  /** Retain a value even with no readers. Throws after terminal; safe as an unbound callback. */
+  send(value: T): void;
+  /** Permanently complete after retained values, including for future readers. First terminal wins. */
+  close(value: Close): void;
+  /**
+   * Read after this many values, starting at zero by default. Each subscription has
+   * its own cursor. Rejects noninteger, negative and beyond-tail offsets when subscribed.
+   * Readers drain retained values before observing retained completion or failure.
+   * Optional pure compaction merges adjacent available values; undefined stops before
+   * the next value. Never mutate inputs. No waiting for additional values to merge.
+   * A compaction exception leaves the cursor unchanged. maxValues bounds source entries
+   * consumed per frame (default 256); it must be a positive safe integer.
+   */
+  from(
+    offset: number,
+    compact?: (previous: T, next: T) => T | undefined,
+    maxValues?: number,
+  ): BufferedStream<T, Close, Y>;
+  /** Retain a terminal failure for current and future readers. First terminal wins. */
+  fail(error: unknown): void;
+}
+
+/** Buffered reader whose offset counts source values, not compacted frames. */
+export interface BufferedSubscription<T, Close, Y> extends Subscription<T, Close, Y> {
+  /** Resume after the values consumed by the last successful next(). */
+  readonly offset: number;
+}
+
+/** Scoped buffered subscription with an observable source cursor. */
+export interface BufferedStream<T, Close, Y> extends Operation<
+  BufferedSubscription<T, Close, Y>,
+  Y
+> {}

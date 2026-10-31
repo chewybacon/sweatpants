@@ -2767,6 +2767,9 @@ importers:
       '@sweatpan.ts/hosting':
         specifier: workspace:*
         version: link:../hosting
+      '@sweatpan.ts/providers':
+        specifier: workspace:*
+        version: link:../providers
       '@sweatpan.ts/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -3049,6 +3052,13 @@ importers:
         version: 7.0.2
 
   packages/v2/providers:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'

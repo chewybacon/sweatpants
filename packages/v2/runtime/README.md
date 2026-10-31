@@ -136,3 +136,78 @@ assembly owns contexts and producer selection; consumers can receive only stream
 Acceptance verifies scoped source selection, driver replacement/restoration, event
 transformation, completion values, and disposed child subscription rejection on both
 runtimes. Type consumers verify inferred message, completion and yield types.
+
+## Retained callback streams
+
+`createBufferedSignal<T, Close, Y>(runtime)` implements the same callback-facing
+send/close and operation-facing subscription shape as Signal, but retains values
+without subscribers and retains terminal completion or failure for future readers.
+
+```ts
+const output = createBufferedSignal<string, string, Y>(runtime);
+output.send("first"); // Retained even before the first subscription.
+const reader = yield * output;
+const first = yield * reader.next();
+// A later reader supplies the count of values it has already consumed.
+const resumed = yield * output.from(1);
+output.send("second");
+output.close("parked");
+```
+
+Each reader owns an independent cursor. Its scope exit removes its notification
+subscription, without cancelling production or deleting history. Values drain before
+completion or failure; `fail(error)` retains the error and each reader throws when
+it reaches the tail. First close/failure wins; send after terminal throws. Offsets
+must be safe integers between zero and the current tail when subscribing.
+
+This primitive creates no producer task. Host assembly owns and drives the producer
+in a scope independent of each client reader. It can append live activity while an
+engine's next operation is still pending, then append the returned presentation
+values and close when that activation parks or completes. Disconnect is reader
+scope disposal, not durable cancellation or Host shutdown.
+
+The buffer stores references in memory without pruning or backpressure. Its owner
+must bound its lifetime and avoid mutating published values. It is neither a durable
+journal nor a persistent response store, and has no cross-process writer fencing.
+Cursor offsets are local to this buffer instance. A live Signal remains appropriate
+when only currently subscribed readers should receive events.
+
+Acceptance covers detached readers, production with no subscribers, independent
+cursors, reconnect after completion/failure, and physical reader cancellation on
+both runtimes. Notifications use coalesced live signals; retained state determines
+what a reader observes.
+
+A buffered reader can compact adjacent compatible values at pull time:
+
+```ts
+const reader =
+  yield *
+  output.from(lastOffset, (previous, next) =>
+    previous.type === "text" && next.type === "text" && previous.messageId === next.messageId
+      ? { ...previous, delta: previous.delta + next.delta }
+      : undefined,
+  );
+const frame = yield * reader.next();
+const resumeOffset = reader.offset;
+```
+
+The callback must be pure and must not mutate either argument. Returning undefined
+leaves the next value for a later frame. Each pull snapshots the available tail and consumes at most 256 source values
+by default. `buffer.from(after, compact, maxValues)` selects a different positive
+safe-integer limit. It merges only adjacent compatible values and never waits to
+accumulate a larger frame. This bounds the number of inputs processed, not the cost
+of arbitrary callback code or the payload size of an individual input. Structural events and different message/tool identities should form boundaries.
+No AG-UI-specific merging policy is built into runtime.
+
+Offsets always count original source values, not delivered frames. Save the reader's
+offset after handling a frame; do not increment a reconnect cursor by one per frame.
+Compaction leaves shared history and other readers untouched. A throwing callback
+leaves this reader's cursor unchanged. Terminal state is observed only after all
+retained values have been returned.
+
+For transport delivery, capture `reader.offset` together with each returned value
+as a frame such as `{ value, after }`. A later read must not change the cursor
+associated with an already queued or serialized frame. Keep executable compaction
+policy in the local implementation; reconnect requests need only source identity
+and an offset. Application subscription middleware can trace or authorize the request
+without exposing the merger as an argument.
