@@ -1,6 +1,10 @@
+import type { BufferedStream, RuntimeExecution } from "@sweatpan.ts/runtime";
 import type { All, Branch, Race, CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Api, Context, Handler, Operation, Outcome } from "@standard-durability/core";
 import type {
+  ChildLink,
+  Accepted,
+  JournalPosition,
   OwnedChild,
   OwnedJournal,
   Recovery,
@@ -282,4 +286,66 @@ export interface ChildRunner<C, I, Y> {
     factory: Branch<C, I>,
     index: number,
   ): Operation<boolean, Y>;
+}
+
+/** One eager execution with independently scoped, cursor-based output readers. */
+export interface HostedActivation<Frame, Result, Y> extends RuntimeExecution<Result> {
+  /** Read retained output; the terminal value is the execution result. Offsets are
+   * local to this activation. Reader disposal never stops production. Compaction
+   * follows BufferedStream semantics and does not change retained source values. */
+  from(
+    offset: number,
+    compact?: (previous: Frame, next: Frame) => Frame | undefined,
+    maxValues?: number,
+  ): BufferedStream<Frame, Result, Y>;
+}
+
+/** Application-owned work and synchronous presentation after its cleanup barrier. */
+export interface HostedActivationOptions<Frame, Result, Y> {
+  /** Install capabilities and drive hosting here. Emit provisional frames eagerly,
+   * even without readers. The callback must not escape the producer lifetime. */
+  run(emit: (frame: Frame) => void): Operation<Result, Y>;
+  /** Derive settled frames only after execution and cleanup finish. No new effects
+   * or durable writes belong here. A thrown error fails result and the output stream;
+   * it cannot roll back an already accepted journal result. */
+  readonly present?: (result: Result) => readonly Frame[];
+}
+
+/** Reader-owned acknowledgement of an applied accepted prefix, bound to one execution.
+ * This is not authority or proof of delivery; callers advance it only after applying a page. */
+export interface PresentationCursor extends JournalPosition {
+  readonly execution: string;
+}
+
+/** Current durable presentation state, without evaluator checkpoints or admission input. */
+export type JournalPresentationState<R, Q> = { readonly revision: number } & (
+  | {
+      readonly status: "running";
+      readonly pending?: PendingRequest<Q>;
+      readonly children?: readonly ChildLink[];
+      readonly interaction?: InteractionRegistration;
+    }
+  | { readonly status: "completed"; readonly value: R }
+  | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string }
+);
+
+/** Bounded accepted data plus state observed at one read. Receipts identify entries
+ * for idempotent application; live token deltas are deliberately absent. */
+export interface JournalPresentationPage<R, Q, V, E> {
+  readonly entries: readonly Accepted<Q, V, E>[];
+  readonly after: PresentationCursor;
+  readonly caughtUp: boolean;
+  readonly state: JournalPresentationState<R, Q>;
+}
+
+/** Read-only recovery of accepted output and an already-registered interaction.
+ * This capability never acquires a Guest, drives hosting, or registers authority. */
+export interface JournalPresentation<R, Q, V, E, Y> {
+  /** Read at most limit entries (default 128). Reject foreign, divergent, fractional,
+   * negative or future cursors. Repeating a cursor repeats data; no delivery receipt
+   * is written. State may be superseded after the read; answer ingress rechecks grants. */
+  read(
+    after?: PresentationCursor,
+    limit?: number,
+  ): Operation<JournalPresentationPage<R, Q, V, E>, Y>;
 }

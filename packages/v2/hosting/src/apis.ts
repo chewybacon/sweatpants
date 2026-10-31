@@ -1,5 +1,7 @@
 import type { Api, Composition } from "@standard-durability/core";
-import type { AttemptNotifications, ChildRunner } from "./contracts.ts";
+import type { Journal, OwnedJournal } from "@sweatpan.ts/durable";
+import { readJournalPresentation } from "./presentation.ts";
+import type { JournalPresentation, AttemptNotifications, ChildRunner } from "./contracts.ts";
 
 /** Optional bound runner facade; pass operations.run to existing all/race installation. */
 export function createChildRunner<C, I, Y>(
@@ -16,4 +18,15 @@ export function createAttemptNotifications<Y>(
   driver: AttemptNotifications<Y>,
 ): Api<AttemptNotifications<Y>, Y> {
   return composition.createApi<AttemptNotifications<Y>>(name, driver);
+}
+
+/** Bind one execution's read-only presentation source to ordinary scoped policy. */
+export function createJournalPresentation<R, Q, V, E, S, Y>(
+  composition: Composition<Y>,
+  name: string,
+  journal: Pick<Journal<R, Q, V, E, S, Y>, "read"> & Pick<OwnedJournal<R, Q, V, E, S, Y>, "id">,
+): Api<JournalPresentation<R, Q, V, E, Y>, Y> {
+  return composition.createApi<JournalPresentation<R, Q, V, E, Y>>(name, {
+    read: (after, limit) => readJournalPresentation(journal, after, limit),
+  });
 }

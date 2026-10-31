@@ -21,3 +21,14 @@ export { createOwnedRace } from "./owned-race.ts";
 export type { OwnedRace } from "./contracts.ts";
 export type { ChildRunner } from "./contracts.ts";
 export { createChildRunner, createAttemptNotifications } from "./apis.ts";
+
+export { createHostedActivation } from "./activation.ts";
+export type { HostedActivation, HostedActivationOptions } from "./contracts.ts";
+
+export { createJournalPresentation } from "./apis.ts";
+export type {
+  PresentationCursor,
+  JournalPresentation,
+  JournalPresentationPage,
+  JournalPresentationState,
+} from "./contracts.ts";

@@ -8,6 +8,7 @@ import { createRecovery, type ResolutionGrant } from "@sweatpan.ts/durable";
 import {
   createEffectCapabilities,
   createHosting,
+  createJournalPresentation,
   installEffectAnswers,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
@@ -105,6 +106,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
 
       function mount() {
         const journal = store.open();
+        const presentation = createJournalPresentation(
+          runtime.composition,
+          "mount-presentation",
+          journal,
+        );
         const admission = createToolAdmission(runtime, "mount-admission", tool, journal);
         const effects = createEffectCapabilities(runtime, "streamed-effects");
         const acquisition = createToolAcquisition(runtime, effects, tool, "streamed-acquisition");
@@ -138,22 +144,32 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
           return yield* host.operations.run();
         }
-        // Transport owns publication AFTER run has registered the wait and released the Guest.
+        // Re-present existing registration/terminal state without acquiring a Guest.
+        // Only a boundary that still needs advancement enters hosting.
         async function connect(connection: ResponseStreamRig<Frame>) {
-          const result = await start(run).result;
+          let page = await start(() => presentation.operations.read()).result;
+          if (page.state.status === "running" && !page.state.interaction) {
+            await start(run).result;
+            page = await start(() => presentation.operations.read()).result;
+          }
           expect(acquisitions).toBe(disposals);
-          if (result.state === "waiting") {
+          const state = page.state;
+          if (
+            state.status === "running" &&
+            state.interaction?.state === "waiting" &&
+            state.pending
+          ) {
             connection.publish({
               kind: "elicitation",
               tool: tool.id,
-              effect: result.pending.request.effect,
-              grant: result.grant,
-              input: result.pending.request.input,
+              effect: state.pending.request.effect,
+              grant: state.interaction.grant,
+              input: state.pending.request.input,
             });
-          } else if (result.state === "completed") {
-            connection.publish({ kind: "completed", value: result.value });
+          } else if (state.status === "completed") {
+            connection.publish({ kind: "completed", value: state.value });
           } else {
-            throw new Error(`Unexpected mount result: ${result.state}`);
+            throw new Error(`Unexpected mount state: ${state.status}`);
           }
         }
         return {
@@ -250,7 +266,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       mounted = mount();
       const second = stream();
       if (disconnectAt !== "after-answer") {
+        const beforeReconnect = acquisitions;
         await mounted.connect(second);
+        expect(acquisitions).toBe(beforeReconnect);
         const event = await second.read();
         if (event.done || event.value.kind !== "elicitation") {
           throw new Error("Expected repeated request");

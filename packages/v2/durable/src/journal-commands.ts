@@ -4,6 +4,7 @@ import type { Operation } from "@standard-durability/core";
 import { acceptJournalOutcome, settleJournalAttempt } from "./acceptance.ts";
 import type {
   Accepted,
+  InteractionRegistration,
   AttemptState,
   JournalSnapshot,
   AttemptGrant,
@@ -22,7 +23,10 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   records: JournalRecords<Y>,
   identity: string,
 ): Omit<OwnedJournal<R, Q, V, E, S, Y>, "ensureChild" | "ensureChildren" | "read"> & {
-  read(): Operation<JournalSnapshot<R, Q, S>, Y>;
+  read(): Operation<
+    JournalSnapshot<R, Q, S> & { readonly interaction?: InteractionRegistration },
+    Y
+  >;
 } {
   const read = () => tree.read<R, Q, S>(identity);
   function* commit<T>(snapshot: JournalSnapshot<R, Q, S>, result: T): Operation<T, Y> {
@@ -273,7 +277,12 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
       },
     },
     *read() {
-      return (yield* read()).snapshot;
+      const snapshot = (yield* read()).snapshot;
+      const interaction =
+        snapshot.status === "running" && snapshot.pending
+          ? (yield* records.request(identity, snapshot.pending.id))?.registration
+          : undefined;
+      return interaction ? { ...snapshot, interaction } : snapshot;
     },
     *park(revision, request, checkpoint, scope) {
       const snapshot = yield* current(revision);

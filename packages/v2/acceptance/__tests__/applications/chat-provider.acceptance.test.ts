@@ -16,6 +16,9 @@ import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createEffectCapabilities,
   createHosting,
+  createHostedActivation,
+  type HostedActivation,
+  type HostedResult,
   installEffectAnswers,
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
@@ -32,7 +35,7 @@ import type {
   ModelResponse,
   ModelStreamEvent,
 } from "@sweatpan.ts/providers";
-import { createBufferedSignal, type BufferedSignal, type Runtime } from "@sweatpan.ts/runtime";
+import type { Runtime } from "@sweatpan.ts/runtime";
 import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import {
   createHostedRecovery,
@@ -358,235 +361,232 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         snapshot() {
           return start(() => readJournal(journal));
         },
-        run(
-          output: BufferedSignal<Output, string, Y> = createBufferedSignal<Output, string, Y>(
-            runtime,
-          ),
-        ) {
-          // The Host owns this execution. Client subscriptions run in separate scopes.
-          return start(function* () {
-            yield* provider.install({
-              *stream(inference) {
-                const request = inference.request;
-                const target = inference.model;
-                expect(target.provider).toBe("test");
-                expect(target.api).toBe("scripted");
-                if (target.id === planner.id && !plannerAvailable) {
-                  throw new Error("Original model is unavailable");
-                }
-                expect(target.id).toBe(
-                  request.context.messages.length === 1 ? planner.id : responder.id,
-                );
-                selections.push(structuredClone(target));
-                requests.push(structuredClone(request));
-                yield* runtime.composition.ensure(function* () {
-                  released++;
-                });
-                const source = runtime.createSignal<Event, Response>();
-                const subscription = yield* source;
-                if (request.context.messages.length === 1) {
-                  source.send(textEvent("Let me"));
-                  let first = true;
-                  let finished = false;
-                  return {
-                    *next() {
-                      if (first) {
-                        first = false;
-                        return yield* subscription.next();
-                      }
-                      if (!finished) {
-                        // The engine's advancement is still pending after live output is readable.
-                        yield* runtime.fromPromise((signal) =>
-                          peer.send({ id: "first-model", token: "finish" }, signal),
-                        );
-                        finished = true;
-                        source.send(textEvent(" ask", "Let me ask"));
-                        source.send(textEvent(".", "Let me ask."));
-                        source.close(response("Let me ask.", true));
-                      }
-                      return yield* subscription.next();
-                    },
-                  };
-                } else {
-                  expect(request.context.messages[1]).toEqual({
-                    role: "assistant",
-                    content: response("Let me ask.", true).message.content.filter(
-                      (part) => part.type !== "reasoning",
-                    ),
+        run() {
+          const activation = createHostedActivation<
+            Output,
+            HostedResult<string, CapabilityRequest>,
+            Y
+          >(runtime, {
+            *run(emit) {
+              yield* provider.install({
+                *stream(inference) {
+                  const request = inference.request;
+                  const target = inference.model;
+                  expect(target.provider).toBe("test");
+                  expect(target.api).toBe("scripted");
+                  if (target.id === planner.id && !plannerAvailable) {
+                    throw new Error("Original model is unavailable");
+                  }
+                  expect(target.id).toBe(
+                    request.context.messages.length === 1 ? planner.id : responder.id,
+                  );
+                  selections.push(structuredClone(target));
+                  requests.push(structuredClone(request));
+                  yield* runtime.composition.ensure(function* () {
+                    released++;
                   });
-                  expect(request.context.tools).toEqual([
-                    {
-                      name: "confirm",
-                      description: "Ask for approval",
-                      parameters: { type: "string" },
-                    },
-                  ]);
-                  expect(request.context.messages.at(-1)).toEqual({
-                    role: "tool",
-                    toolCallId: "call-1",
-                    name: "confirm",
-                    content: "true",
-                    isError: false,
-                  });
-                  source.send(textEvent("Confirmed."));
-                  source.close(response("Confirmed."));
-                }
-                return subscription;
-              },
-            });
-            yield* provider.around({
-              *stream([request], next) {
-                intercepted++;
-                return yield* next(request);
-              },
-            });
-            const context = createChatContext(runtime.composition, "chat-preparation");
-            const counter = createContextCounter(runtime.composition, "chat-count", {
-              *count(_model, request) {
-                return {
-                  tokens: Math.ceil(JSON.stringify(request).length / 4),
-                  kind: "estimated" as const,
-                };
-              },
-            });
-            yield* context.around({
-              *prepare([input], next) {
-                preparations.push(preparationPolicy);
-                return yield* next({
-                  ...input,
-                  options: { ...input.options, temperature: preparationPolicy },
-                });
-              },
-            });
-            yield* effects.install(selectedSample, function* (input) {
-              const model = input.model.id === planner.id ? planner : responder;
-              expect(input.model).toEqual({
-                id: model.id,
-                provider: model.provider,
-                api: model.api,
-              });
-              const prepared = yield* context.operations.prepare({ ...input, model });
-              const count = yield* counter.operations.count(model, prepared.request);
-              if (model.maxOutputTokens === null) {
-                throw new Error("Model output budget unavailable");
-              }
-              if (!measureContextBudget(model, count, model.maxOutputTokens).fits) {
-                throw new Error("Context budget exceeded");
-              }
-              return yield* runtime.composition.scoped(function* () {
-                const subscription = yield* provider.operations.stream(prepared);
-                while (true) {
-                  const next = yield* subscription.next();
-                  if (next.done) {
-                    if (next.value.errorMessage) {
-                      throw new Error(next.value.errorMessage);
-                    }
+                  const source = runtime.createSignal<Event, Response>();
+                  const subscription = yield* source;
+                  if (request.context.messages.length === 1) {
+                    source.send(textEvent("Let me"));
+                    let first = true;
+                    let finished = false;
                     return {
-                      ok: true as const,
-                      value: {
-                        prepared: inferenceSchema.parse(prepared),
-                        count,
-                        response: responseDataSchema.parse(next.value),
+                      *next() {
+                        if (first) {
+                          first = false;
+                          return yield* subscription.next();
+                        }
+                        if (!finished) {
+                          // The engine's advancement is still pending after live output is readable.
+                          yield* runtime.fromPromise((signal) =>
+                            peer.send({ id: "first-model", token: "finish" }, signal),
+                          );
+                          finished = true;
+                          source.send(textEvent(" ask", "Let me ask"));
+                          source.send(textEvent(".", "Let me ask."));
+                          source.close(response("Let me ask.", true));
+                        }
+                        return yield* subscription.next();
                       },
                     };
-                  }
-                  if (next.value.type === "error") {
-                    throw new Error("Provider error event");
-                  }
-                  events.push(next.value);
-                  output.send(next.value);
-                }
-              });
-            });
-            const recovery = createHostedRecovery<string, CapabilityRequest, Y, unknown, string>(
-              runtime,
-              {
-                name: "chat-recovery",
-                program: "chat-tracer",
-                matches: isDeepStrictEqual,
-                *acquire() {
-                  return createScopedGuest(function* () {
-                    const messages: ChatHistoryMessage[] = [
-                      { role: "user", content: "Ask before proceeding." },
-                    ];
-                    const tools = [
+                  } else {
+                    expect(request.context.messages[1]).toEqual({
+                      role: "assistant",
+                      content: response("Let me ask.", true).message.content.filter(
+                        (part) => part.type !== "reasoning",
+                      ),
+                    });
+                    expect(request.context.tools).toEqual([
                       {
                         name: "confirm",
                         description: "Ask for approval",
                         parameters: { type: "string" },
                       },
-                    ];
-                    const first = yield* root.capabilities.sample({
-                      model: { id: planner.id, provider: planner.provider, api: planner.api },
-                      history: messages,
-                      tools,
-                    });
-                    if (!first.ok || first.value.response.errorMessage) {
-                      throw new Error("Model failed");
-                    }
-                    const part = first.value.response.message.content.find(
-                      (part) => part.type === "tool-call",
-                    );
-                    if (!part || part.type !== "tool-call" || part.toolCall.name !== "confirm") {
-                      throw new Error("Expected tool call");
-                    }
-                    const call = part.toolCall;
-                    messages.push({
-                      ...first.value.response.message,
-                      model: { id: planner.id, provider: planner.provider, api: planner.api },
-                    });
-                    const result = yield* root.capabilities.confirm(z.string().parse(call.input));
-                    if (!result.ok) {
-                      throw new Error("Tool failed");
-                    }
-                    messages.push({
+                    ]);
+                    expect(request.context.messages.at(-1)).toEqual({
                       role: "tool",
-                      toolCallId: call.id,
-                      name: call.name,
-                      content: JSON.stringify(result.value),
+                      toolCallId: "call-1",
+                      name: "confirm",
+                      content: "true",
                       isError: false,
                     });
-                    const final = yield* root.capabilities.sample({
-                      model: { id: responder.id, provider: responder.provider, api: responder.api },
-                      history: messages,
-                      tools,
-                      foreignReasoning: "omit",
-                    });
-                    if (!final.ok) {
-                      throw new Error("Model failed");
-                    }
-                    return final.value.response.message.content
-                      .filter((part) => part.type === "text")
-                      .map((part) => part.text)
-                      .join("");
+                    source.send(textEvent("Confirmed."));
+                    source.close(response("Confirmed."));
+                  }
+                  return subscription;
+                },
+              });
+              yield* provider.around({
+                *stream([request], next) {
+                  intercepted++;
+                  return yield* next(request);
+                },
+              });
+              const context = createChatContext(runtime.composition, "chat-preparation");
+              const counter = createContextCounter(runtime.composition, "chat-count", {
+                *count(_model, request) {
+                  return {
+                    tokens: Math.ceil(JSON.stringify(request).length / 4),
+                    kind: "estimated" as const,
+                  };
+                },
+              });
+              yield* context.around({
+                *prepare([input], next) {
+                  preparations.push(preparationPolicy);
+                  return yield* next({
+                    ...input,
+                    options: { ...input.options, temperature: preparationPolicy },
                   });
                 },
-              },
-            );
-            const host = createHosting(runtime.composition, {
-              name: "chat-host",
-              journal,
-              recovery: recovery.operations,
-              attempts: journal.attempts,
-              handle: root.handle,
-            });
-            yield* host.around(root.admission);
-            yield* installToolRouting(runtime, host, journal, { tool: confirm, run: runChild });
-            return yield* host.operations.run();
-          }).then(
-            (result) => {
-              // Publish settled presentation only after the activation's physical cleanup joins.
-              if (waiting) {
-                output.send({ type: "elicit", grant: waiting.grant });
-              }
-              output.close(result.state);
-              return result;
+              });
+              yield* effects.install(selectedSample, function* (input) {
+                const model = input.model.id === planner.id ? planner : responder;
+                expect(input.model).toEqual({
+                  id: model.id,
+                  provider: model.provider,
+                  api: model.api,
+                });
+                const prepared = yield* context.operations.prepare({ ...input, model });
+                const count = yield* counter.operations.count(model, prepared.request);
+                if (model.maxOutputTokens === null) {
+                  throw new Error("Model output budget unavailable");
+                }
+                if (!measureContextBudget(model, count, model.maxOutputTokens).fits) {
+                  throw new Error("Context budget exceeded");
+                }
+                return yield* runtime.composition.scoped(function* () {
+                  const subscription = yield* provider.operations.stream(prepared);
+                  while (true) {
+                    const next = yield* subscription.next();
+                    if (next.done) {
+                      if (next.value.errorMessage) {
+                        throw new Error(next.value.errorMessage);
+                      }
+                      return {
+                        ok: true as const,
+                        value: {
+                          prepared: inferenceSchema.parse(prepared),
+                          count,
+                          response: responseDataSchema.parse(next.value),
+                        },
+                      };
+                    }
+                    if (next.value.type === "error") {
+                      throw new Error("Provider error event");
+                    }
+                    events.push(next.value);
+                    emit(next.value);
+                  }
+                });
+              });
+              const recovery = createHostedRecovery<string, CapabilityRequest, Y, unknown, string>(
+                runtime,
+                {
+                  name: "chat-recovery",
+                  program: "chat-tracer",
+                  matches: isDeepStrictEqual,
+                  *acquire() {
+                    return createScopedGuest(function* () {
+                      const messages: ChatHistoryMessage[] = [
+                        { role: "user", content: "Ask before proceeding." },
+                      ];
+                      const tools = [
+                        {
+                          name: "confirm",
+                          description: "Ask for approval",
+                          parameters: { type: "string" },
+                        },
+                      ];
+                      const first = yield* root.capabilities.sample({
+                        model: { id: planner.id, provider: planner.provider, api: planner.api },
+                        history: messages,
+                        tools,
+                      });
+                      if (!first.ok || first.value.response.errorMessage) {
+                        throw new Error("Model failed");
+                      }
+                      const part = first.value.response.message.content.find(
+                        (part) => part.type === "tool-call",
+                      );
+                      if (!part || part.type !== "tool-call" || part.toolCall.name !== "confirm") {
+                        throw new Error("Expected tool call");
+                      }
+                      const call = part.toolCall;
+                      messages.push({
+                        ...first.value.response.message,
+                        model: { id: planner.id, provider: planner.provider, api: planner.api },
+                      });
+                      const result = yield* root.capabilities.confirm(z.string().parse(call.input));
+                      if (!result.ok) {
+                        throw new Error("Tool failed");
+                      }
+                      messages.push({
+                        role: "tool",
+                        toolCallId: call.id,
+                        name: call.name,
+                        content: JSON.stringify(result.value),
+                        isError: false,
+                      });
+                      const final = yield* root.capabilities.sample({
+                        model: {
+                          id: responder.id,
+                          provider: responder.provider,
+                          api: responder.api,
+                        },
+                        history: messages,
+                        tools,
+                        foreignReasoning: "omit",
+                      });
+                      if (!final.ok) {
+                        throw new Error("Model failed");
+                      }
+                      return final.value.response.message.content
+                        .filter((part) => part.type === "text")
+                        .map((part) => part.text)
+                        .join("");
+                    });
+                  },
+                },
+              );
+              const host = createHosting(runtime.composition, {
+                name: "chat-host",
+                journal,
+                recovery: recovery.operations,
+                attempts: journal.attempts,
+                handle: root.handle,
+              });
+              yield* host.around(root.admission);
+              yield* installToolRouting(runtime, host, journal, { tool: confirm, run: runChild });
+              return yield* host.operations.run();
             },
-            (error: unknown) => {
-              output.fail(error);
-              throw error;
+            present() {
+              return waiting ? [{ type: "elicit", grant: waiting.grant }] : [];
             },
-          );
+          });
+          onTestFinished(() => activation.cancel());
+          return activation;
         },
         answer(value: unknown) {
           return start(function* () {
@@ -604,10 +604,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       };
     }
     let app = assemble();
-    const output = createBufferedSignal<Output, string, Y>(runtime);
+    const output = app.run();
     // Ordinary scoped API: source selection is context, compaction is reader policy.
     const Source =
-      runtime.composition.createContext<BufferedSignal<Output, string, Y>>("chat-output");
+      runtime.composition.createContext<
+        HostedActivation<Output, HostedResult<string, CapabilityRequest>, Y>
+      >("chat-output");
     const reads = createResponseSubscriptions(runtime.composition, "chat-output-reads", {
       *subscribe({ after }: { after: number }) {
         const source = yield* Source.expect();
@@ -622,7 +624,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           *next(): Operation<IteratorResult<OutputFrame, string>, Y> {
             const item = yield* reader.next();
             if (item.done) {
-              return item;
+              return { done: true, value: item.value.state };
             }
             // Capture the source cursor with this frame before another read can advance it.
             return { done: false, value: { value: item.value, after: reader.offset } };
@@ -642,7 +644,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     let after = 0;
     let settled = false;
-    const producing = app.run(output).finally(() => {
+    const producing = output.result.finally(() => {
       settled = true;
     });
     await Promise.race([peer.waitForRequests(1), producing]);
@@ -734,7 +736,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     plannerAvailable = false; // Recovery must not resolve or invoke the accepted model again.
     store.reopen();
     app = assemble();
-    await expect(app.run()).resolves.toEqual(parked);
+    await expect(app.run().result).resolves.toEqual(parked);
     expect(requests).toHaveLength(1);
     await expect(app.answer("yes")).rejects.toThrow("Effect schema rejected value");
     expect((await app.answer(true)).duplicate).toBe(false);
@@ -742,7 +744,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     store.reopen();
     app = assemble();
     const completed = { state: "completed", value: "Confirmed." };
-    await expect(app.run()).resolves.toEqual(completed);
+    await expect(app.run().result).resolves.toEqual(completed);
     expect((await app.snapshot()).history.at(-1)?.request).toMatchObject({
       input: {
         model: { id: "responder" },
@@ -761,7 +763,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       textEvent("Confirmed."),
     ]);
     store.reopen();
-    await expect(assemble().run()).resolves.toEqual(completed);
+    await expect(assemble().run().result).resolves.toEqual(completed);
     expect(requests).toHaveLength(2);
     expect(selections.map((selection) => selection.id)).toEqual(["planner", "responder"]);
   });
@@ -772,7 +774,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     it(`${runtime.name}: ${mode} after partial model output releases the provider without accepting a response`, async () => {
       const peer = createProtocolRig();
       const events: Event[] = [];
-      const output = createBufferedSignal<Event, string, Y>(runtime);
       let released = false;
       const store = createSqliteJournalRig<string, CapabilityRequest, unknown, string, unknown, Y>({
         program: "model-failure",
@@ -780,98 +781,99 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       onTestFinished(() => store.close());
       const journal = store.open();
-      const task = runtime.start(function* () {
-        const effects = createEffectCapabilities(runtime, "failure-effects");
-        const grant = effects.grant({ sample });
-        const provider = createModelProvider<Y>(runtime.composition, "failing-model", {
-          *stream() {
-            yield* runtime.composition.ensure(function* () {
-              // An asynchronous barrier proves cleanup is joined, not merely initiated.
-              yield* runtime.fromPromise(() => Promise.resolve());
-              released = true;
-            });
-            const source = runtime.createSignal<Event, Response>();
-            const subscription = yield* source;
-            source.send(textEvent("Unfinished"));
-            let first = true;
-            return {
-              *next() {
-                if (first) {
-                  first = false;
-                  return yield* subscription.next();
-                }
-                yield* runtime.fromPromise((signal) =>
-                  peer.send({ id: "model", token: "inference" }, signal),
-                );
-                if (mode === "error-event") {
-                  return {
-                    done: false as const,
-                    value: {
-                      type: "error" as const,
-                      reason: "error" as const,
-                      error: response("Unfinished").message,
-                    },
-                  };
-                }
-                throw new Error("Unexpected provider completion");
-              },
-            };
-          },
-        });
-        yield* effects.install(sample, function* (request) {
-          return yield* runtime.composition.scoped(function* () {
-            const subscription = yield* provider.operations.stream(request);
-            while (true) {
-              const next = yield* subscription.next();
-              if (next.done) {
-                if (next.value.errorMessage) {
-                  throw new Error(next.value.errorMessage);
-                }
-                return { ok: true as const, value: next.value };
-              }
-              if (next.value.type === "error") {
-                throw new Error("Provider error event");
-              }
-              events.push(next.value);
-              output.send(next.value);
-            }
-          });
-        });
-        const recovery = createHostedRecovery<string, CapabilityRequest, Y, unknown, string>(
-          runtime,
-          {
-            name: "failure-recovery",
-            program: "model-failure",
-            matches: isDeepStrictEqual,
-            *acquire() {
-              return createScopedGuest(function* () {
-                const result = yield* grant.capabilities.sample({
-                  context: { messages: [], tools: [] },
+      const task = createHostedActivation<Event, HostedResult<string, CapabilityRequest>, Y>(
+        runtime,
+        {
+          *run(emit) {
+            const effects = createEffectCapabilities(runtime, "failure-effects");
+            const grant = effects.grant({ sample });
+            const provider = createModelProvider<Y>(runtime.composition, "failing-model", {
+              *stream() {
+                yield* runtime.composition.ensure(function* () {
+                  // An asynchronous barrier proves cleanup is joined, not merely initiated.
+                  yield* runtime.fromPromise(() => Promise.resolve());
+                  released = true;
                 });
-                if (!result.ok) {
-                  throw new Error("Model failure");
+                const source = runtime.createSignal<Event, Response>();
+                const subscription = yield* source;
+                source.send(textEvent("Unfinished"));
+                let first = true;
+                return {
+                  *next() {
+                    if (first) {
+                      first = false;
+                      return yield* subscription.next();
+                    }
+                    yield* runtime.fromPromise((signal) =>
+                      peer.send({ id: "model", token: "inference" }, signal),
+                    );
+                    if (mode === "error-event") {
+                      return {
+                        done: false as const,
+                        value: {
+                          type: "error" as const,
+                          reason: "error" as const,
+                          error: response("Unfinished").message,
+                        },
+                      };
+                    }
+                    throw new Error("Unexpected provider completion");
+                  },
+                };
+              },
+            });
+            yield* effects.install(sample, function* (request) {
+              return yield* runtime.composition.scoped(function* () {
+                const subscription = yield* provider.operations.stream(request);
+                while (true) {
+                  const next = yield* subscription.next();
+                  if (next.done) {
+                    if (next.value.errorMessage) {
+                      throw new Error(next.value.errorMessage);
+                    }
+                    return { ok: true as const, value: next.value };
+                  }
+                  if (next.value.type === "error") {
+                    throw new Error("Provider error event");
+                  }
+                  events.push(next.value);
+                  emit(next.value);
                 }
-                return result.value.message.content
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text)
-                  .join("");
               });
-            },
+            });
+            const recovery = createHostedRecovery<string, CapabilityRequest, Y, unknown, string>(
+              runtime,
+              {
+                name: "failure-recovery",
+                program: "model-failure",
+                matches: isDeepStrictEqual,
+                *acquire() {
+                  return createScopedGuest(function* () {
+                    const result = yield* grant.capabilities.sample({
+                      context: { messages: [], tools: [] },
+                    });
+                    if (!result.ok) {
+                      throw new Error("Model failure");
+                    }
+                    return result.value.message.content
+                      .filter((part) => part.type === "text")
+                      .map((part) => part.text)
+                      .join("");
+                  });
+                },
+              },
+            );
+            const host = createHosting(runtime.composition, {
+              name: "failure-host",
+              journal,
+              recovery: recovery.operations,
+              attempts: journal.attempts,
+              handle: grant.handle,
+            });
+            yield* host.around(grant.admission);
+            return yield* host.operations.run();
           },
-        );
-        const host = createHosting(runtime.composition, {
-          name: "failure-host",
-          journal,
-          recovery: recovery.operations,
-          attempts: journal.attempts,
-          handle: grant.handle,
-        });
-        yield* host.around(grant.admission);
-        return yield* host.operations.run();
-      });
-      const delivered = task.result.then(
-        () => output.close("completed"),
-        (error: unknown) => output.fail(error),
+        },
       );
       onTestFinished(() => task.cancel());
       await Promise.race([peer.waitForRequests(1), task.result]);
@@ -887,9 +889,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(peer.aborted).toEqual(["model"]);
       }
       expect(released).toBe(true);
-      await delivered;
       const lateReader = runtime.start(function* () {
-        const reader = yield* output;
+        const reader = yield* task.from(0);
         expect(yield* reader.next()).toEqual({
           done: false,
           value: textEvent("Unfinished"),

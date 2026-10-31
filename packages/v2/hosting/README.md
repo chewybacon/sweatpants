@@ -591,3 +591,59 @@ observation or scoped replacement on that exact instance before running the host
 Pass an existing `Api<Attempts>` directly to preserve its identity and middleware;
 passing only its operations remains supported, but adds a host-owned outer facade.
 Do not replace attempt storage with a journal belonging to another execution.
+
+## Application-owned activation
+
+`createHostedActivation(runtime, { run, present })` starts one eager native root.
+Install scoped capabilities inside `run(emit)` and drive `host.operations.run()`
+there. Emitted frames are provisional. The caller owns the activation handle and
+must cancel it when its application lifetime ends; an HTTP reader does not own it.
+
+`activation.from(after, compact?)` acquires an independent buffered reader in the
+subscriber's scope. Disconnect releases only that reader. Production continues
+without readers; offsets and retained values belong to this activation instance.
+The buffer is unbounded and in-memory, with values retained by reference.
+
+`result` settles only after execution cleanup and synchronous settled presentation.
+Optional `present(result)` derives final frames after cleanup, before stream close.
+It must not perform effects or journal writes. Failure in execution, cleanup or
+presentation retains provisional frames followed by failure, never a successful
+stream terminal. Presentation failure cannot undo accepted journal facts. `cancel()`
+joins cleanup and output settlement, is idempotent, and does not reject; inspect
+`result` or read the stream to observe failure.
+
+This is physical activation ownership, not a durable session supervisor, event log,
+publication receipt or automatic retry mechanism. Recovery of accepted-but-unpublished
+state is a separate concern. Existing readers do not follow a replacement activation.
+
+## Recovering presentation after publication loss
+
+`createJournalPresentation(composition, name, journal)` binds a read-only scoped
+`read(after?, limit?)` operation. It returns bounded accepted entries, a receipt-
+anchored cursor and current durable state, including an already-registered wait.
+Journal state and its registration are read atomically. Reading never registers a
+wait, acquires a Guest, drives hosting, or invokes a handler. Accepted receipts and
+resolution grants survive journal reopen; live buffer offsets do not.
+
+Application assembly projects these trusted data into public frames. Checkpoints
+and root admission input are omitted from presentation state, but accepted requests,
+child input and outcomes can contain private data: this is not a wire-safe public
+projection or authorization boundary. Scoped middleware can apply read policy.
+
+Advance a consumer cursor only after applying the entire page. If acknowledgement
+is lost, reread the previous cursor and apply by stable receipt identity. The cursor
+contains execution identity, accepted count and the last receipt; foreign or
+mismatched prefixes reject. Bound the page size explicitly when needed. Drain pages
+until `caughtUp` when reconstructing the full accepted history. Each read captures a
+prefix, but separate page reads can observe newer state as execution advances.
+
+Current state is returned even with no new accepted entries, so registered waits,
+invalidation and completion are not lost behind an unchanged history cursor.
+An exposed grant may become stale immediately afterward; answer ingress must still
+recheck authority. Registration reads never resurrect revoked grants.
+
+This supports reconstruction after acceptance-but-before-publication failure. It
+is not a durable publication acknowledgement store or exactly-once transport.
+Projection versioning, recipient authorization, stable public event identities,
+client acknowledgement storage and recursive child presentation remain application
+concerns. Recovery does not replay provisional provider token deltas.

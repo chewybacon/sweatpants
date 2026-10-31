@@ -113,7 +113,12 @@ export interface Journal<R, Q, V, E, S, Y> {
   readonly cancellation?: CancellationJournal<Q, Y>;
   /** Read current state without acquiring or advancing computation. */
   read(): Operation<
-    JournalSnapshot<R, Q, S> & { readonly history: AcceptedHistory<Q, V, E, Y> },
+    JournalSnapshot<R, Q, S> & {
+      readonly history: AcceptedHistory<Q, V, E, Y>;
+      /** Existing registration for the current pending request, read atomically with
+       * state. Absent before registration or after acceptance; never creates authority. */
+      readonly interaction?: InteractionRegistration;
+    },
     Y
   >;
   /**
