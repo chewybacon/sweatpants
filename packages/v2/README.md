@@ -48,6 +48,20 @@ evaluator capabilities, and codemode-runtime-lua supplies the Lua evaluator.
 `@sweatpan.ts/*` owns framework capabilities and adapters.
 `@sweatpan.tsx/*` owns React integrations.
 
+## Stream-first APIs
+
+For progress-producing operations, expose a stream first and implement callback
+conveniences by draining that stream. This is the default authoring convention.
+A stream can advance work on each pull; it need not be a broadcast or require a
+background task. Single-result operations remain operations.
+
+Start with the [runtime stream authoring guide](./runtime/README.md#pull-driven-streams).
+`Stream` and `Subscription` define consumption, `createPullStream` handles one-owner
+pull lifetimes, and `createStreamApi` adds scoped subscription policy. Signals and
+channels supply broadcast sources. None supplies durable acceptance.
+The [chat loop](./chat/README.md#guest-chat-loop) demonstrates domain work inside a
+Guest, with `runChat` as a callback-compatible wrapper over `streamChat`.
+
 ## Wiring
 
 The root pnpm workspace discovers `packages/v2/*`. Every package has build, check,

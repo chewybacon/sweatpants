@@ -42,13 +42,14 @@ export interface Runtime<Yielded> extends Streams<Yielded> {
   start<T>(work: Work<T, Yielded>): RuntimeExecution<T>;
 }
 
-/** Scoped subscription; one next operation at a time. Scope exit releases queued values. */
+/** Scoped subscription; one next operation at a time. Sources define pull/broadcast behavior. */
 export interface Subscription<T, Close, Y> {
   /** Wait for the next value or completion. Rejects use after the subscribing scope exits. */
   next(): Operation<IteratorResult<T, Close>, Y>;
 }
 
-/** Subscribing is an operation; its executing scope owns the returned subscription. */
+/** Subscription acquisition. next may advance computation or await independent production.
+ * Implementations specify ownership, repeated subscription and delivery semantics. */
 export interface Stream<T, Close, Y> extends Operation<Subscription<T, Close, Y>, Y> {}
 
 /** Callback-facing broadcast producer. Does not wait for consumers. */
@@ -119,3 +120,10 @@ export interface BufferedStream<T, Close, Y> extends Operation<
   BufferedSubscription<T, Close, Y>,
   Y
 > {}
+
+/** Cleanup registration shared by native composition and Guest logical scopes.
+ * Cleanup here only invalidates a local handle; source resources retain their own owners. */
+export interface PullStreamScope<Y> {
+  /** Register synchronous handle invalidation on owner exit. */
+  ensure(cleanup: Work<void, never>): Operation<void, Y>;
+}

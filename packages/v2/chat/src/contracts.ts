@@ -1,5 +1,5 @@
 import type { CapabilityRequest } from "@sweatpan.ts/core";
-import type { Operation } from "@standard-durability/core";
+import type { Operation, Outcome } from "@standard-durability/core";
 import type {
   ChatContent,
   ModelResponse,
@@ -66,7 +66,8 @@ export interface ChatLoopTool {
 
 /** A domain sampling request, before host-side preparation. */
 export interface ChatLoopRequest {
-  readonly model: ModelSelection;
+  /** Zero-based round within this invocation; not a mutable middleware counter. */
+  readonly round: number;
   readonly history: readonly ChatHistoryMessage[];
   readonly tools: readonly ChatToolDefinition[];
 }
@@ -77,18 +78,32 @@ export interface ChatLoopSample {
   readonly response: ModelResponse;
 }
 
-/** Deterministic Guest assembly. Pin these inputs/policies across recovery. */
-export interface ChatLoopOptions {
+/** Semantic loop progress. Application policy selects which fields may reach clients.
+ * Tool start means orchestration reached the call, not that external delivery occurred. */
+export type ChatLoopEvent =
+  | {
+      readonly type: "assistant";
+      readonly round: number;
+      readonly message: ChatAssistantMessage & { readonly model: ModelSelection };
+    }
+  | { readonly type: "tool-started"; readonly round: number; readonly call: ChatToolCall }
+  | {
+      readonly type: "tool-completed";
+      readonly round: number;
+      readonly call: ChatToolCall;
+      readonly content: ChatContent;
+      readonly isError: boolean;
+    };
+
+/** Guest orchestration inputs. Pin catalog and consumption order; sampling policy lives on the Host. */
+export interface ChatStreamOptions {
   readonly history: readonly ChatHistoryMessage[];
   readonly tools: readonly ChatLoopTool[];
-  /** Positive finite model-round budget. Calls requiring a round beyond it fail
-   * before executing that batch's tools. */
-  readonly maxRounds: number;
-  /** Zero-based round selection; must reproduce the same identity on replay. */
-  model(round: number): ModelSelection;
   /** Yield a domain exchange, not native runtime/API work. The host prepares/counts
-   * context, consumes the provider and accepts the response with selected provenance. */
-  sample(request: ChatLoopRequest): Operation<ChatLoopSample, CapabilityRequest>;
+   * context, consumes the provider and accepts the response or policy denial with provenance. */
+  sample(
+    request: ChatLoopRequest,
+  ): Operation<Outcome<ChatLoopSample, ChatSamplingError>, CapabilityRequest>;
 }
 
 /** Terminal response and complete logical history, including all correlated tool results. */
@@ -96,4 +111,40 @@ export interface ChatLoopResult {
   readonly response: ModelResponse;
   readonly history: readonly ChatHistoryMessage[];
   readonly rounds: number;
+}
+
+/** Convenience runner options; runChat drains streamChat through this callback. */
+export interface ChatLoopOptions extends ChatStreamOptions {
+  /** Optional domain callback receiving detached progress data. For recoverable
+   * presentation, yield a recorded effect; direct side effects repeat on replay.
+   * Failures propagate. Pin callback presence/order as part of the program contract. */
+  event?(event: ChatLoopEvent): Operation<void, CapabilityRequest>;
+}
+
+/** An expected sampling policy rejection, accepted as data rather than a delivery failure. */
+export interface ChatSamplingError {
+  readonly code: string;
+  readonly message: string;
+  /** Retain a completed inference when policy denies its requested continuation. */
+  readonly sample?: ChatLoopSample;
+}
+
+/** Host model policy. Accepted sampling records retain the selected identity. */
+export interface ChatModel<Y> {
+  /** Select full model configuration before preparation/provider acquisition. */
+  select(request: ChatLoopRequest): Operation<ModelInfo, Y>;
+}
+
+/** Host sampling boundary. Stream-producing providers remain underneath this complete-result operation. */
+export interface ChatSampling<Y, Sample extends ChatLoopSample = ChatLoopSample> {
+  /** Apply policy and return an accepted sample or expected denial. Exceptions remain delivery failures. */
+  sample(request: ChatLoopRequest): Operation<Outcome<Sample, ChatSamplingError>, Y>;
+}
+
+/** Bind the model facade and complete inference driver once at the Host assembly boundary. */
+export interface ChatSamplingDriver<Y, Sample extends ChatLoopSample = ChatLoopSample> {
+  readonly model: ChatModel<Y>;
+  /** Prepare/count context and drain a provider stream using this selected configuration.
+   * Return matching model provenance; acquisition and cleanup remain driver-owned. */
+  sample(model: ModelInfo, request: ChatLoopRequest): Operation<Sample, Y>;
 }

@@ -1,23 +1,60 @@
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
-import { runChat, type ChatLoopResult } from "@sweatpan.ts/chat";
+import {
+  streamChat,
+  createChatModel,
+  createChatSampling,
+  limitChatRounds,
+  type ChatLoopRequest,
+  type ChatLoopSample,
+  type ChatSamplingError,
+  runChat,
+  type ChatLoopOptions,
+  type ChatLoopResult,
+  type ChatLoopEvent,
+} from "@sweatpan.ts/chat";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
-import { createScopedGuest } from "@sweatpan.ts/execution";
-import { createEffectCapabilities, createHosting } from "@sweatpan.ts/hosting";
+import { createScopedGuest, type ScopeInstruction } from "@sweatpan.ts/execution";
+import {
+  createEffectCapabilities,
+  createHosting,
+  createJournalPresentation,
+} from "@sweatpan.ts/hosting";
 import { createHostedRecovery, createSqliteJournalRig } from "@sweatpan.ts/testing";
-import type { ChatToolCall, ModelResponse } from "@sweatpan.ts/providers";
-import type { Runtime } from "@sweatpan.ts/runtime";
+import type { ChatToolCall, ModelResponse, ModelInfo } from "@sweatpan.ts/providers";
+import type { Runtime, Subscription } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const batch = z.object({
   text: z.string(),
   calls: z.array(z.object({ id: z.string(), name: z.string(), input: z.string() })),
 });
-const sample = defineEffect({ key: "loop.sample", context: z.number(), response: batch });
+const sample = defineEffect({
+  key: "loop.sample",
+  context: z.custom<ChatLoopRequest>(),
+  response: z.custom<ChatLoopSample>(),
+});
+const samplingError = z.custom<ChatSamplingError>();
 const alpha = defineEffect({ key: "loop.alpha", context: z.string(), response: z.string() });
 const beta = defineEffect({ key: "loop.beta", context: z.string(), response: z.string() });
-const model = { id: "model", provider: "script", api: "script" };
+// Local trusted progress exchange; application ingress schemas are a separate boundary.
+const progress = defineEffect({
+  key: "loop.progress",
+  context: z.custom<ChatLoopEvent>(),
+  response: z.null(),
+});
+const model: ModelInfo = {
+  id: "model",
+  provider: "script",
+  api: "script",
+  name: "Model",
+  input: ["text"],
+  output: ["text"],
+  contextWindow: 4096,
+  maxOutputTokens: 128,
+  reasoningLevels: [],
+};
 function response(value: z.infer<typeof batch>): ModelResponse {
   return {
     message: {
@@ -44,11 +81,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       | "success"
       | "authored-failure"
       | "delivery-error"
+      | "progress-error"
       | "unknown"
       | "duplicate"
       | "reused"
       | "limit"
-      | "invalid-limit"
       | "catalog"
       | "wrong-model",
   ) {
@@ -61,12 +98,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       Y
     >({ program: `loop:${mode}`, equals: isDeepStrictEqual });
     onTestFinished(() => store.close());
-    const counts = { samples: 0, alpha: 0, beta: 0, acquired: 0 };
+    const counts = { samples: 0, alpha: 0, beta: 0, acquired: 0, events: 0 };
     const initial = [{ role: "user" as const, content: "Research" }];
     function assemble() {
       const journal = store.open();
       const effects = createEffectCapabilities(runtime, "loop-effects");
-      const grant = effects.grant({ sample, alpha, beta });
+      const grant = effects.grant({ sample, alpha, beta, progress });
       const recovery = createHostedRecovery<ChatLoopResult, CapabilityRequest, Y, unknown, string>(
         runtime,
         {
@@ -75,7 +112,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           matches: isDeepStrictEqual,
           *acquire() {
             counts.acquired++;
-            return createScopedGuest(function* () {
+            return createScopedGuest(function* (scope) {
               const tools = [
                 {
                   definition: { name: "alpha", description: null, parameters: { type: "string" } },
@@ -96,24 +133,32 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   },
                 },
               ];
-              return yield* runChat({
+              const options: ChatLoopOptions = {
                 history: initial,
                 tools: mode === "catalog" ? [tools[0]!, tools[0]!] : tools,
-                maxRounds: mode === "invalid-limit" ? 0 : mode === "limit" ? 1 : 4,
-                model: () => model,
-                *sample(request) {
-                  const round = request.history.filter(
-                    (message) => message.role === "assistant",
-                  ).length;
-                  const sampled = yield* grant.capabilities.sample(round);
-                  if (!sampled.ok) {
-                    throw new Error("Model exchange failed");
+                *event(event) {
+                  const accepted = yield* grant.capabilities.progress(event);
+                  if (!accepted.ok) {
+                    throw new Error("Progress rejected");
                   }
-                  return {
-                    model: mode === "wrong-model" ? { ...model, id: "other" } : request.model,
-                    response: response(sampled.value),
-                  };
                 },
+                *sample(request) {
+                  const sampled = yield* grant.capabilities.sample(request);
+                  return sampled.ok
+                    ? sampled
+                    : { ok: false, error: samplingError.parse(sampled.error) };
+                },
+              };
+              // Exercise stream-first consumption; the provider journey uses runChat.
+              return yield* scope.scoped(function* (owner) {
+                const events = yield* streamChat(owner, options);
+                while (true) {
+                  const item = yield* events.next();
+                  if (item.done) {
+                    return item.value;
+                  }
+                  yield* options.event!(item.value);
+                }
               });
             });
           },
@@ -127,40 +172,64 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         interactions: journal.interactions,
         handle: grant.handle,
       });
+      const presentation = createJournalPresentation(
+        runtime.composition,
+        "loop-presentation",
+        journal,
+      );
       return {
-        run() {
+        read() {
+          const task = runtime.start(() => presentation.operations.read());
+          onTestFinished(() => task.cancel());
+          return task.result;
+        },
+        run(maxRounds = mode === "limit" ? 1 : 4) {
           const task = runtime.start(function* () {
-            yield* effects.install(sample, function* (round) {
-              counts.samples++;
-              if (round === 0) {
-                return {
-                  ok: true,
-                  value: {
-                    text: "Working",
-                    calls: [
-                      { id: "a1", name: "alpha", input: "first" },
-                      {
-                        id: mode === "duplicate" ? "a1" : "b1",
-                        name: mode === "unknown" ? "missing" : "beta",
-                        input: "approve",
-                      },
-                    ],
-                  },
-                };
+            yield* effects.install(progress, function* (event) {
+              counts.events++;
+              if (mode === "progress-error" && event.type === "tool-started") {
+                throw new Error("Progress transport failed");
               }
-              if (round === 1) {
-                return {
-                  ok: true,
-                  value: {
-                    text: "More",
-                    calls: [
-                      { id: mode === "reused" ? "a1" : "a2", name: "alpha", input: "second" },
-                    ],
-                  },
-                };
-              }
-              return { ok: true, value: { text: "Done", calls: [] } };
+              return { ok: true as const, value: null };
             });
+            const models = createChatModel(runtime.composition, "loop-models", {
+              *select() {
+                return model;
+              },
+            });
+            const sampling = createChatSampling(runtime.composition, "loop-sampling", {
+              model: models.operations,
+              *sample(selected, { round }) {
+                counts.samples++;
+                const value =
+                  round === 0
+                    ? {
+                        text: "Working",
+                        calls: [
+                          { id: "a1", name: "alpha", input: "first" },
+                          {
+                            id: mode === "duplicate" ? "a1" : "b1",
+                            name: mode === "unknown" ? "missing" : "beta",
+                            input: "approve",
+                          },
+                        ],
+                      }
+                    : round === 1
+                      ? {
+                          text: "More",
+                          calls: [
+                            { id: mode === "reused" ? "a1" : "a2", name: "alpha", input: "second" },
+                          ],
+                        }
+                      : { text: "Done", calls: [] };
+                return {
+                  model: mode === "wrong-model" ? { ...selected, id: "other" } : selected,
+                  response: response(value),
+                };
+              },
+            });
+            yield* sampling.around(limitChatRounds(maxRounds));
+            yield* effects.install(sample, sampling.operations.sample);
             yield* effects.install(alpha, function* (input) {
               counts.alpha++;
               if (mode === "delivery-error") {
@@ -213,9 +282,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         throw new Error("Expected parked second tool");
       }
       expect(s.counts).toMatchObject({ samples: 1, alpha: 1, beta: 0 });
+      const beforeLoss = await app.read();
+      const progressEntries = beforeLoss.entries.filter(
+        (entry) => entry.request.effect === progress.id,
+      );
+      expect(progressEntries.map((entry) => (entry.request.input as ChatLoopEvent).type)).toEqual([
+        "assistant",
+        "tool-started",
+        "tool-completed",
+        "tool-started",
+      ]);
+      const acquiredBeforeRead = s.counts.acquired;
       s.store.reopen();
       app = s.assemble();
+      // Reconstruct publication from accepted facts without activating the Guest.
+      expect(await app.read()).toEqual(beforeLoss);
+      expect(s.counts.acquired).toBe(acquiredBeforeRead);
+      expect(s.counts.events).toBe(4);
       expect(await app.run()).toEqual(parked);
+      expect(s.counts.events).toBe(4);
       expect(s.counts).toMatchObject({ samples: 1, alpha: 1, beta: 0 });
       await app.answer(parked.grant);
       s.store.reopen();
@@ -253,6 +338,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       ]);
       expect(s.initial).toEqual([{ role: "user", content: "Research" }]);
       expect(s.counts).toMatchObject({ samples: 3, alpha: 2, beta: 0 });
+      const published = (await app.read()).entries.filter(
+        (entry) => entry.request.effect === progress.id,
+      );
+      expect(published).toHaveLength(9);
+      expect(s.counts.events).toBe(9);
+      const completedEvents = published
+        .map((entry) => entry.request.input as ChatLoopEvent)
+        .filter((event) => event.type === "tool-completed");
+      expect(completedEvents.map((event) => [event.call.id, event.isError])).toEqual([
+        ["a1", mode !== "success"],
+        ["b1", false],
+        ["a2", mode !== "success"],
+      ]);
       const acquired = s.counts.acquired;
       s.store.reopen();
       expect(await s.assemble().run()).toEqual(completed);
@@ -263,7 +361,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     ["unknown", "not in chat catalog"],
     ["duplicate", "tool call identity"],
     ["limit", "round limit reached"],
-    ["invalid-limit", "Invalid chat round limit"],
     ["catalog", "unique nonempty names"],
     ["wrong-model", "selected model"],
   ] as const) {
@@ -272,7 +369,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(s.assemble().run()).rejects.toThrow(error);
       expect(s.counts.alpha).toBe(0);
       expect(s.counts.beta).toBe(0);
-      expect(s.counts.samples).toBe(mode === "catalog" || mode === "invalid-limit" ? 0 : 1);
+      expect(s.counts.samples).toBe(mode === "catalog" ? 0 : 1);
     });
   }
   it(`${runtime.name}: a reused call identity cannot dispatch a previously completed tool again`, async () => {
@@ -293,6 +390,143 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(s.assemble().run()).rejects.toThrow("Tool transport failed");
     s.store.reopen();
     expect(await s.assemble().run()).toMatchObject({ state: "occupied" });
-    expect(s.counts).toMatchObject({ samples: 1, alpha: 1, beta: 0 });
+    expect(s.counts).toMatchObject({ samples: 1, alpha: 1, beta: 0, events: 2 });
+    const page = await s.assemble().read();
+    expect(
+      page.entries
+        .filter((entry) => entry.request.effect === progress.id)
+        .map((entry) => (entry.request.input as ChatLoopEvent).type),
+    ).toEqual(["assistant", "tool-started"]);
+  });
+  it(`${runtime.name}: failed progress handling cannot advance to tool delivery on reopen`, async () => {
+    const s = scenario("progress-error");
+    await expect(s.assemble().run()).rejects.toThrow("Progress transport failed");
+    expect(s.counts).toMatchObject({ samples: 1, alpha: 0, beta: 0, events: 2 });
+    s.store.reopen();
+    expect(await s.assemble().run()).toMatchObject({ state: "occupied" });
+    expect(s.counts.alpha).toBe(0);
+    expect(s.counts.events).toBe(2);
+  });
+
+  for (const disposition of ["early-exit", "cancel", "consumer-failure"] as const) {
+    it(`${runtime.name}: pull chat owns early termination without advancing an unconsumed tool (${disposition})`, async () => {
+      let calls = 0;
+      let reader: Subscription<ChatLoopEvent, ChatLoopResult, CapabilityRequest | ScopeInstruction>;
+      const guest = createScopedGuest(function* (scope) {
+        reader = yield* streamChat(scope, {
+          history: [],
+          *sample() {
+            return {
+              ok: true,
+              value: {
+                model,
+                response: response({
+                  text: "Ready",
+                  calls: [{ id: "a", name: "alpha", input: "input" }],
+                }),
+              },
+            };
+          },
+          tools: [
+            {
+              definition: { name: "alpha", description: null, parameters: {} },
+              *call() {
+                calls++;
+                return { content: "done", isError: false };
+              },
+            },
+          ],
+        });
+        expect((yield* reader.next()).done).toBe(false);
+        expect(yield* reader.next()).toMatchObject({
+          done: false,
+          value: { type: "tool-started" },
+        });
+        expect(calls).toBe(0);
+        if (disposition === "consumer-failure") {
+          throw new Error("Consumer failed");
+        }
+        if (disposition === "cancel") {
+          yield* progress.call({
+            type: "tool-started",
+            round: 0,
+            call: { id: "a", name: "alpha", input: "input", thoughtSignature: null },
+          });
+        }
+        return "stopped";
+      });
+      const task = runtime.start(function* () {
+        const turn = yield* guest.start();
+        if (disposition === "cancel") {
+          expect(turn.kind).toBe("suspended");
+          expect(yield* guest.cancel!("stop")).toMatchObject({ kind: "cancelled" });
+        } else {
+          expect(turn).toEqual({ kind: "completed", value: "stopped" });
+        }
+      });
+      onTestFinished(() => task.cancel());
+      if (disposition === "consumer-failure") {
+        await expect(task.result).rejects.toThrow("Consumer failed");
+      } else {
+        await task.result;
+      }
+      const stale = createScopedGuest(() => reader!.next());
+      const probe = runtime.start(() => stale.start());
+      onTestFinished(() => probe.cancel());
+      await expect(probe.result).rejects.toThrow("scope exited");
+      expect(calls).toBe(0);
+    });
+  }
+
+  it(`${runtime.name}: runChat callback failure stops the shared pull implementation before tools`, async () => {
+    let calls = 0;
+    const guest = createScopedGuest(function* (scope) {
+      return yield* runChat(scope, {
+        history: [],
+        *sample() {
+          return {
+            ok: true,
+            value: {
+              model,
+              response: response({
+                text: "Ready",
+                calls: [{ id: "a", name: "alpha", input: "input" }],
+              }),
+            },
+          };
+        },
+        tools: [
+          {
+            definition: { name: "alpha", description: null, parameters: {} },
+            *call() {
+              calls++;
+              return { content: "done", isError: false };
+            },
+          },
+        ],
+        *event() {
+          throw new Error("Callback failed");
+        },
+      });
+    });
+    const task = runtime.start(() => guest.start());
+    onTestFinished(() => task.cancel());
+    await expect(task.result).rejects.toThrow("Callback failed");
+    expect(calls).toBe(0);
+  });
+  it(`${runtime.name}: accepted round denial survives a larger policy on reopen without provider or tools`, async () => {
+    const s = scenario("limit");
+    await expect(s.assemble().run()).rejects.toThrow("round limit reached");
+    const page = await s.assemble().read();
+    expect(page.entries[0]?.outcome).toMatchObject({
+      ok: true,
+      value: {
+        ok: false,
+        error: { code: "round-limit", sample: { response: { message: { role: "assistant" } } } },
+      },
+    });
+    s.store.reopen();
+    await expect(s.assemble().run(10)).rejects.toThrow("round limit reached");
+    expect(s.counts).toMatchObject({ samples: 1, alpha: 0, beta: 0, events: 0 });
   });
 });

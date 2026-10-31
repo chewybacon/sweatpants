@@ -2833,9 +2833,15 @@ importers:
       '@sweatpan.ts/core':
         specifier: workspace:*
         version: link:../core
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../execution
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../providers
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'

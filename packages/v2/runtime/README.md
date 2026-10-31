@@ -50,7 +50,13 @@ optional live-attempt notification; journal invalidation remains a separate comm
 
 ## Streams, channels and signals
 
-Both runtimes expose the same scoped broadcast primitives:
+`Stream<T, Close, Y>` acquires a subscription whose `next()` returns a value or a
+terminal result through operations yielding `Y`. It describes consumption, not a
+particular producer. A pull source advances computation on demand; a broadcast
+source waits for independently published values. Stream-first is the default for
+progress-producing APIs; callback conveniences should drain the same source.
+
+Both runtimes expose the same scoped broadcast implementations:
 
 ```ts
 const clicks = runtime.createSignal<Event>();
@@ -69,8 +75,8 @@ while (true) {
 }
 ```
 
-A Stream is an Operation that acquires a Subscription in the current scope. Each
-subscription independently receives subsequent publications in FIFO order. Scope
+For these Signal/Channel implementations, each subscription independently receives
+subsequent publications in FIFO order. Scope
 exit unsubscribes, releases buffered values and invalidates that subscription;
 cancelling one reader does not close other subscriptions or the producer.
 
@@ -95,11 +101,68 @@ scope cleanup. No extra scheduler, background task or adapter-specific event loo
 introduced. Acceptance runs callback publication, broadcast ordering, closure, scoped
 unsubscription and cancellation against Effect and Effection.
 
+## Pull-driven streams
+
+`createPullStream(owner, factory)` constructs a single-use, single-subscriber stream.
+The owner supplies `ensure` cleanup registration: use native `runtime.composition`
+or a Guest `LogicalScope`. The factory creates a `next` operation at acquisition;
+no producer work runs until the consumer pulls. Values return from `next`; yielded
+instructions still belong to the operation's native or domain protocol.
+
+```ts
+const pages = createPullStream<Page, number, Y, Y>(runtime.composition, () => {
+  let cursor = 0;
+  return function* next() {
+    const page = yield* fetchPage(cursor); // Application operation.
+    if (page.done) {
+      return { done: true, value: cursor };
+    }
+    cursor++;
+    return { done: false, value: page.value };
+  };
+});
+const reader = yield * pages;
+while (true) {
+  const item = yield * reader.next();
+  if (item.done) {
+    return item.value;
+  }
+  yield * processPage(item.value); // Completes before fetching another page.
+}
+```
+
+There is no queue, broadcast, acknowledgement protocol or background task. Processing
+before the next pull provides sequencing, not durable acknowledgement. Record through
+an appropriate domain capability when acceptance must survive recovery.
+
+Acquire and consume inside an owned scope. Exit that scope on early return or consumer
+failure; merely breaking a loop while retaining its owner does not invalidate the
+reader. Owner cleanup invalidates it. Reacquiring the same stream and overlapping
+next calls reject. Repeated reads after normal completion return the terminal result;
+thrown iterator failures are retained. Native interruption/failure can bypass generator
+catch/finally, so exit the owner rather than attempting to resume a failed native pull.
+Source work retains responsibility for its own physical resources and logical cleanup.
+The helper does not cancel or join arbitrary work by itself.
+
+Fresh stream instances are independent computations. To let multiple UI readers
+observe one execution, drive one source in an application-owned activation and expose
+separate broadcast/retained presentation subscriptions. A UI disconnect must not
+implicitly dispose that activation. For Guests, host disposal discards the incarnation
+without running logical finalizers; subscriptions must never escape that incarnation.
+Recovery reconstructs the stream and its consumption order from the pinned program.
+
+`createStreamApi` can decorate this source when its composition understands the same
+instructions. Native composition is not a translator for Guest domain instructions.
+See [streamChat](../chat/README.md#guest-chat-loop) for a direct Guest stream and callback
+runner. Public acceptance covers pull ordering, terminal retention, scoped API wrapping,
+duplicate/concurrent access rejection and cancellation invalidation on both runtimes.
+
 ## API-backed streams
 
 `createStreamApi(composition, name, defaults)` adds a consumer stream facade to an
 ordinary scoped subscription API. Contexts choose the source, APIs provide operation
-middleware/installation, and signals/channels remain the publishing endpoints:
+middleware/installation. The selected source may be pull-driven, a signal/channel,
+or a retained stream:
 
 ```ts
 const Source = runtime.composition.createContext<Stream<Message, void, Y>>("messages.source");

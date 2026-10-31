@@ -5,7 +5,11 @@ import { z } from "zod";
 import type { Operation, Work } from "@standard-durability/core";
 import {
   createChatContext,
-  type ChatInferenceOptions,
+  type ChatLoopRequest,
+  type ChatSamplingError,
+  createChatModel,
+  createChatSampling,
+  limitChatRounds,
   type ChatInference,
   runChat,
   type ModelSelection,
@@ -234,10 +238,8 @@ const sample = defineEffect({
 });
 const selectionSchema = z.object({ id: z.string(), provider: z.string(), api: z.string() });
 const inferenceSchema = z.object({ model: selectionSchema, request: requestDataSchema });
-const preparationSchema: StandardSchemaV1<
-  Omit<ChatInferenceOptions, "model"> & { model: ModelSelection }
-> = z.object({
-  model: selectionSchema,
+const preparationSchema: StandardSchemaV1<ChatLoopRequest> = z.object({
+  round: z.number().int().nonnegative(),
   history: z.array(
     z.union([
       message.options[0],
@@ -247,12 +249,12 @@ const preparationSchema: StandardSchemaV1<
     ]),
   ),
   tools: requestDataSchema.shape.context.shape.tools,
-  foreignReasoning: z.enum(["reject", "omit"]).optional(),
 });
 const selectedSample = defineEffect({
   key: "chat.selected-model",
   context: preparationSchema,
   response: z.object({
+    model: selectionSchema,
     prepared: inferenceSchema,
     count: z.object({ tokens: z.number(), kind: z.enum(["estimated", "measured"]) }),
     response: responseDataSchema,
@@ -297,6 +299,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let intercepted = 0;
     let preparationPolicy = 0;
     const preparations: number[] = [];
+    const modelSelections: string[] = [];
     const provider = createModelProvider<Y, ChatInference>(runtime.composition, "chat-model", {
       *stream() {
         throw new Error("Model provider not installed");
@@ -461,46 +464,54 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   });
                 },
               });
-              yield* effects.install(selectedSample, function* (input) {
-                const model = input.model.id === planner.id ? planner : responder;
-                expect(input.model).toEqual({
-                  id: model.id,
-                  provider: model.provider,
-                  api: model.api,
-                });
-                const prepared = yield* context.operations.prepare({ ...input, model });
-                const count = yield* counter.operations.count(model, prepared.request);
-                if (model.maxOutputTokens === null) {
-                  throw new Error("Model output budget unavailable");
-                }
-                if (!measureContextBudget(model, count, model.maxOutputTokens).fits) {
-                  throw new Error("Context budget exceeded");
-                }
-                return yield* runtime.composition.scoped(function* () {
-                  const subscription = yield* provider.operations.stream(prepared);
-                  while (true) {
-                    const next = yield* subscription.next();
-                    if (next.done) {
-                      if (next.value.errorMessage) {
-                        throw new Error(next.value.errorMessage);
-                      }
-                      return {
-                        ok: true as const,
-                        value: {
+              const models = createChatModel(runtime.composition, "chat-selection", {
+                *select(input) {
+                  const selected = input.round === 0 && plannerAvailable ? planner : responder;
+                  modelSelections.push(selected.id);
+                  return selected;
+                },
+              });
+              const sampling = createChatSampling(runtime.composition, "chat-sampling", {
+                model: models.operations,
+                *sample(model, input) {
+                  const prepared = yield* context.operations.prepare({
+                    ...input,
+                    model,
+                    foreignReasoning: "omit",
+                  });
+                  const count = yield* counter.operations.count(model, prepared.request);
+                  if (model.maxOutputTokens === null) {
+                    throw new Error("Model output budget unavailable");
+                  }
+                  if (!measureContextBudget(model, count, model.maxOutputTokens).fits) {
+                    throw new Error("Context budget exceeded");
+                  }
+                  return yield* runtime.composition.scoped(function* () {
+                    const subscription = yield* provider.operations.stream(prepared);
+                    while (true) {
+                      const next = yield* subscription.next();
+                      if (next.done) {
+                        if (next.value.errorMessage) {
+                          throw new Error(next.value.errorMessage);
+                        }
+                        return {
+                          model: prepared.model,
                           prepared: inferenceSchema.parse(prepared),
                           count,
                           response: responseDataSchema.parse(next.value),
-                        },
-                      };
+                        };
+                      }
+                      if (next.value.type === "error") {
+                        throw new Error("Provider error event");
+                      }
+                      events.push(next.value);
+                      emit(next.value);
                     }
-                    if (next.value.type === "error") {
-                      throw new Error("Provider error event");
-                    }
-                    events.push(next.value);
-                    emit(next.value);
-                  }
-                });
+                  });
+                },
               });
+              yield* sampling.around(limitChatRounds(4));
+              yield* effects.install(selectedSample, sampling.operations.sample);
               const recovery = createHostedRecovery<string, CapabilityRequest, Y, unknown, string>(
                 runtime,
                 {
@@ -508,18 +519,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   program: "chat-tracer",
                   matches: isDeepStrictEqual,
                   *acquire() {
-                    return createScopedGuest(function* () {
-                      const completed = yield* runChat({
+                    return createScopedGuest(function* (scope) {
+                      const completed = yield* runChat(scope, {
                         history: [{ role: "user", content: "Ask before proceeding." }],
-                        maxRounds: 4,
-                        model(round) {
-                          const selected = round === 0 ? planner : responder;
-                          return {
-                            id: selected.id,
-                            provider: selected.provider,
-                            api: selected.api,
-                          };
-                        },
                         tools: [
                           {
                             definition: {
@@ -539,17 +541,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                           },
                         ],
                         *sample(request) {
-                          const result = yield* root.capabilities.sample({
-                            ...request,
-                            foreignReasoning: "omit",
-                          });
-                          if (!result.ok) {
-                            throw new Error("Model failed");
-                          }
-                          return {
-                            model: result.value.prepared.model,
-                            response: result.value.response,
-                          };
+                          const result = yield* root.capabilities.sample(request);
+                          return result.ok
+                            ? result
+                            : {
+                                ok: false,
+                                error: z.custom<ChatSamplingError>().parse(result.error),
+                              };
                         },
                       });
                       return completed.response.message.content
@@ -669,7 +667,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(parked.state).toBe("child");
     expect((await app.snapshot()).history[0]?.request).toMatchObject({
       input: {
-        model: { id: "planner", provider: "test", api: "scripted" },
+        round: 0,
         history: [{ role: "user", content: "Ask before proceeding." }],
       },
     });
@@ -679,6 +677,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       value: {
         ok: true,
         value: {
+          model: { id: "planner", provider: "test", api: "scripted" },
           response: response("Let me ask.", true),
           prepared: { request: { options: { temperature: 0 } } },
           count: { kind: "estimated" },
@@ -737,12 +736,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(app.run().result).resolves.toEqual(completed);
     expect((await app.snapshot()).history.at(-1)?.request).toMatchObject({
       input: {
-        model: { id: "responder" },
+        round: 1,
         history: [{ role: "user" }, { role: "assistant" }, { role: "tool", toolCallId: "call-1" }],
       },
     });
     expect((await app.snapshot()).history[0]).toEqual(accepted);
     expect(preparations).toEqual([0, 1]);
+    expect(modelSelections).toEqual(["planner", "responder"]);
     expect(requests.map((request) => request.options?.temperature)).toEqual([0, 1]);
     expect(selections.map((selection) => selection.id)).toEqual(["planner", "responder"]);
     expect({ released, intercepted }).toEqual({ released: 2, intercepted: 2 });

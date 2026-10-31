@@ -47,7 +47,9 @@ compares provider, API and ID; host resolution must pin the underlying configura
 An alias whose configuration changes is not an immutable model version. The request
 selection should be reproducible from accepted conversation inputs. Reading a mutable
 "current model" preference inside replay is unsafe: record that decision/input first.
-Never silently substitute the latest model in the delivery handler. Previously
+For explicitly selected requests, never silently substitute the latest model in the
+delivery handler. The Host-policy pattern below instead selects inside the recorded
+sampling exchange and retains that decision in its accepted result. Previously
 accepted inference replays without resolving the original provider again.
 
 Switches happen at inference boundaries after all outstanding tool calls have matching
@@ -69,7 +71,7 @@ summary plus retained history while preserving the original journal. No mutable
 conversation store, automatic routing policy or additional runtime primitive is added.
 
 Acceptance extends the existing streaming chat-to-parked-tool journey on both native
-runtimes. Model A is recorded in the first accepted request. After SQLite reopen and a
+runtimes. Model A is recorded in the first accepted sampling result. After SQLite reopen and a
 validated tool answer, model B receives the completed history with foreign reasoning
 omitted. A is made unavailable before recovery: accepted inference still replays
 without dispatch. Terminal recovery repeats neither model. Separate public provider
@@ -126,12 +128,41 @@ The SDK-boundary context journey also prepares through this API before dispatch.
 
 ## Guest chat loop
 
-`runChat({ history, tools, maxRounds, model, sample })` runs sequential model/tool
-rounds inside a Guest. `model(round)` selects a reproducible model identity;
-`sample(request)` yields a recorded domain exchange. Its Host handler prepares
-context through `ChatContext`, counts the prepared request, and invokes the provider.
-Native scoped APIs must not be yielded directly inside the Guest. The accepted
-sample returns both model provenance and the complete provider response.
+`streamChat(scope, { history, tools, sample })` is the primary
+implementation: a single-owner pull stream of `ChatLoopEvent` values ending in a
+`ChatLoopResult`. Pass the Guest's logical scope; acquisition registers invalidation
+there. It runs sequential model/tool rounds only as the consumer pulls.
+
+```ts
+return (
+  yield *
+  scope.scoped(function* (owner) {
+    const events = yield* streamChat(owner, options);
+    while (true) {
+      const item = yield* events.next();
+      if (item.done) {
+        return item.value;
+      }
+      yield* recordProgress(item.value); // Application domain operation.
+    }
+  })
+);
+```
+
+`runChat(scope, options)` drains that same stream in a child logical scope and
+awaits the optional `event` callback between pulls. It adds no second chat loop.
+Omitting the callback drains progress without recording. Consumer failure or early
+exit must exit the owning scope; failure outside `next` does not itself poison a
+subscription. Duplicate subscriptions and overlapping pulls reject. The terminal
+result is available after consuming the final assistant event. Native or UI readers
+must not drive this Guest source; hosted activation can own its execution independently.
+
+`sample({ round, history, tools })` yields a recorded domain exchange and returns an
+Outcome containing either a sample with model provenance or a sampling-policy denial.
+Round is zero-based and comes from the stream, not a mutable middleware counter.
+Native scoped APIs must not be yielded directly inside the Guest. The Host chooses
+the model, prepares/counts context and invokes the provider through the APIs below.
+The loop sequences accepted results; it has no model-selection or round-limit policy.
 
 Each catalog entry pairs model-facing tool metadata with an already-granted
 `call` operation. Metadata grants no authority. The loop checks the entire batch's
@@ -141,15 +172,115 @@ Tools run in order and may park through existing owned-tool hosting. Application
 format authored failures explicitly as content with `isError: true`; delivery
 exceptions propagate without conversion or retry.
 
-`maxRounds` is a positive safe integer. A tool batch on the final permitted round
-fails before dispatch, because no follow-up model round fits. Returned history
-contains the complete logical conversation, correlated tool results and model
-provenance. Caller history and callback data are detached. Model selection, catalog
-and policies must remain reproducible across journal replay; this helper adds no
-persistence, automatic compaction, parallel tools or session supervisor.
+Returned history contains the complete logical conversation, correlated tool results
+and accepted model provenance. Caller history and progress data are detached. Catalog
+and Guest consumption order must remain reproducible across journal replay. This
+helper adds no persistence, automatic compaction, parallel tools or session supervisor.
+Without sampling middleware there is no built-in round budget.
 
 The streaming chat application now consumes this loop with Host-side preparation
 and providers. Additional acceptance journeys exercise multiple calls and rounds,
 authored failures, malformed batches, budgets, occupied delivery failures and SQLite
 reopen without redispatching accepted work, on both native runtimes. These are
 in-process recovery journeys, not process-loss or live-provider tests.
+
+## Host model and sampling policy
+
+`createChatModel(composition, name, driver)` exposes `select(request)` through scoped
+installation and middleware. `createChatSampling(composition, name, driver)` exposes
+`sample(request)` and consumes that model facade's operations internally. Bind one
+facade per intended policy boundary; give distinct capabilities distinct names.
+
+```ts
+const models = createChatModel(runtime.composition, "chat.selection", {
+  *select(request) {
+    return request.round === 0 ? planner : responder;
+  },
+});
+const sampling = createChatSampling(runtime.composition, "chat.sampling", {
+  model: models.operations,
+  *sample(model, request) {
+    // Application driver: use context.prepare, counter.count and provider.stream.
+    return yield* infer(model, request);
+  },
+});
+yield * sampling.around(limitChatRounds(4));
+yield * effects.install(sampleEffect, sampling.operations.sample);
+```
+
+`infer` returns `{ model: { provider, api, id }, response }` and may retain additional
+accepted metadata such as prepared input and token counts. The default sampling driver
+checks returned provenance against the selected model. Replacement drivers and
+short-circuit middleware are trusted assembly and own those obligations themselves.
+Sampling returns one complete result; live progress remains on the existing provider
+stream and independent presentation streams. No second provider stream implementation
+is introduced.
+
+`limitChatRounds(maxRounds)` is optional ordinary sampling middleware. Configuration
+must be a positive safe integer. It rejects exhausted/invalid rounds before selection
+or provider dispatch. After inference on the last allowed round, it rejects a tool
+batch before Guest tool invocation, retaining the completed sample in the denial.
+A final answer remains allowed. Install it outside caching/short-circuit layers when
+it must govern those results as well. Child scopes may add stricter limits; existing
+outer middleware still applies. This is trusted policy, not an unbypassable boundary.
+
+Expected denials use `{ ok: false, error: { code, message, sample? } }`. Record that
+Outcome through the effect boundary. A denial is not a thrown delivery failure: once
+accepted, reopening with a larger limit does not re-run inference or turn it into an
+allowed tool batch. The Guest surfaces the recorded denial as failure. Delivery
+exceptions still escape unsettled. Unlike the earlier loop-local guard, a denied
+sample is retained in the error rather than emitted as normal assistant progress.
+
+An accepted success records the selected model and response. Recovery replays it
+without invoking model policy, preparation or providers again; the next unaccepted
+inference can see a new scoped policy. Selection is not independently pinned before
+sample acceptance. If a decision must survive failed/unaccepted attempts too, pin it
+in admitted input or a separate recorded exchange. Never treat this API as permission
+to retry uncertain provider delivery. Mutable model aliases also require explicit
+configuration/version policy.
+
+Acceptance covers sibling model/limit overrides, restoration, driver replacement,
+pre-dispatch rejection, terminal-round success, cancellation during selection,
+accepted denial replay under changed limits and streaming-provider reopen under
+changed model/preparation policy. These are in-process journeys on both runtimes.
+
+## Recoverable progress
+
+The stream returns detached `ChatLoopEvent` values; the optional runner callback receives
+those same values: `assistant`,
+`tool-started`, and `tool-completed`. Assistant messages retain model provenance and
+all content, including reasoning and media. They are trusted application data, not
+automatically safe public UI frames. Apply explicit projection/access policy before
+publication.
+
+```ts
+*event(event) {
+  const accepted = yield* capabilities.progress(event);
+  if (!accepted.ok) {
+    throw new Error("Progress rejected");
+  }
+}
+```
+
+Here `progress` is an application-defined recorded effect. Its Host handler can
+acknowledge the fact without publishing anything. `createJournalPresentation` can
+later read accepted progress requests with stable receipts, even when publication
+was lost or the next tool is waiting. A client can deduplicate by receipt. This does
+not supply a persistent public event store or exactly-once transport.
+
+The callback itself is not intrinsically durable: it runs again during Guest replay.
+Direct I/O in it can repeat; yielding a recorded capability makes accepted handling
+replay-safe. Adding or removing the callback changes the program's replay contract.
+Its failures propagate and prevent subsequent orchestration. Tool start records intent
+before calling the tool, not proof of external delivery. Completion follows the tool's
+returned authored result; thrown delivery errors emit no completion. Malformed batches
+emit no progress; a budget-denied sample produces no normal progress or tool starts. Live provider deltas remain separate provisional output.
+
+Acceptance reopens SQLite while the second tool is waiting, reads the same accepted
+progress and receipts without acquiring a Guest, and then resumes without repeating
+progress handling. It checks correlated authored failure events and the absence of a
+completion event after an occupied delivery failure.
+
+The stream-first ownership registration changes the logical replay contract relative
+to older callback-only programs. Pin a new program revision when migrating persisted
+executions; do not silently reopen old journals with changed scope boundaries or sampling request/result shapes.
