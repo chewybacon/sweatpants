@@ -98,7 +98,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           );
         };
-        function run() {
+        function run(yieldLeaves = false) {
           return start(function* () {
             // Deliberately reuse ONE assembly at every depth. Its context inherits.
             const owned = createOwnedAll<Context, CapabilityRequest | ScopeInstruction, Y>(
@@ -147,6 +147,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               });
               yield* host.around(grant.admission);
               yield* host.around({
+                *continuation() {
+                  return yieldLeaves && depth === 2
+                    ? { action: "yield", reason: "leaf budget" }
+                    : { action: "continue" };
+                },
+              });
+              yield* host.around({
                 *deliveryMode() {
                   return "wait";
                 },
@@ -157,7 +164,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     completedOuter = child.journal;
                   }
                   const result = yield* drive(child.journal, child.link.program, branch, depth + 1);
-                  return result.state === "completed" || result.state === "cancelled";
+                  return result.state === "yielded"
+                    ? result
+                    : result.state === "completed" || result.state === "cancelled";
                 },
               });
               yield* owned.install({
@@ -191,7 +200,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             }),
           );
         }
+        await expect(run(true)).resolves.toEqual({ state: "yielded", reason: "leaf budget" });
+        expect(waits.size).toBe(0);
+        const completedBeforeReopen = completedOuter!.id;
+        const visitsBeforeReopen = acquisitions.get(completedBeforeReopen);
+        root = store.reopen();
         expect((await run()).state).toBe("child");
+        expect(acquisitions.get(completedBeforeReopen)).toBe(visitsBeforeReopen);
         expect([...waits.keys()].sort()).toEqual(
           Array.from({ length: innerCount }, (_, index) => `leaf-${index}`),
         );

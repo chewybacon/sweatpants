@@ -696,3 +696,71 @@ starts, lease an execution, retry delivery, or schedule recovery after process d
 The activation-driver acceptance journey exercises real hosting and SQLite reopen
 on both runtimes, plus joined multi-activation shutdown. It is in-process evidence,
 not process-loss or remote-supervisor coverage.
+
+## Cooperative activation yielding
+
+`host.operations.continuation()` is a scoped policy operation, defaulting to
+`{ action: "continue" }`. Hosting consults it before every iteration, including
+before the first activation. Middleware can return
+`{ action: "yield", reason: "budget" }`; `run()` then returns
+`{ state: "yielded", reason: "budget" }` after its owned scopes finish cleanup.
+
+```ts
+let accepted = 0;
+yield *
+  host.attempts.around({
+    *settle(args, next) {
+      const result = yield* next(...args);
+      accepted++;
+      return result;
+    },
+  });
+yield *
+  host.around({
+    *continuation() {
+      return accepted >= limit
+        ? { action: "yield", reason: "acceptance budget" }
+        : { action: "continue" };
+    },
+  });
+const result = yield * host.operations.run();
+```
+
+This example counts successful settlement calls in this assembly; it is not a
+persisted usage meter or exactly-once billing. Configure a fresh budget when the
+owner starts another activation. Middleware can instead consult an owner stop
+flag or elapsed time. Continuation is outside stale-journal conflict recovery:
+policy failures propagate and are never converted to a retry.
+
+The gate precedes activation, child routing, and new authority acquisition. It
+runs again only after the previous delivery has settled and its cleanup has joined.
+Yielding releases retained Guest scopes. It creates no participant registration,
+logical cancellation, scheduler intent, or permission to replace an occupied attempt.
+A yielded result is an owner scheduling disposition, not proof that the underlying
+journal is nonterminal: a zero budget can yield before reading an already-completed
+journal. Resume with `run()` under a policy that permits progress.
+
+Configure continuation policy on child hosts explicitly; independently created
+facades do not share policy identity. Child callbacks return `ChildHostingResult`:
+`true` for terminal settlement, `false` for blocking, or the yielded result unchanged.
+For example, translate a child Host result as follows:
+
+```ts
+return result.state === "yielded"
+  ? result
+  : result.state === "completed" || result.state === "cancelled";
+```
+
+Owned all/race joins every started child before propagating a yield and releasing
+replay-reconstructed factories. If several children yield, the first in declaration
+order supplies the reason. Custom group assemblers must preserve yielded results;
+`results.every(Boolean)` would incorrectly count a yield as terminal settlement.
+Named tool routing accepts the same child result contract.
+
+A shared stop flag can prevent further work at each child's next boundary; it does
+not preempt children already delivering or evaluating. No hard deadline, global
+concurrency bound, immediate stop of sibling work, or fair scheduling is implied.
+An owner killed during delivery still follows occupied-attempt semantics.
+Acceptance covers zero-budget acquisition avoidance, accepted-prefix recovery,
+cleanup barriers, scoped policy restoration, and nested all/race reconstruction
+across SQLite reopen with retained and disposable Guest lifetimes.

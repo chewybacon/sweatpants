@@ -122,7 +122,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const journals = new Map<string, Journal>();
         const acquisitions = new Map<string, number>();
         const paused = new Set<string>();
-        function run() {
+        function run(yieldSources = false) {
           waits.clear();
           return start(function* () {
             // One assembly of each kind is shared at every depth.
@@ -183,6 +183,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               });
               yield* host.around(grant.admission);
               yield* host.around({
+                *continuation() {
+                  return yieldSources && path.split("/").length === 3
+                    ? { action: "yield", reason: "source budget" }
+                    : { action: "continue" };
+                },
+              });
+              yield* host.around({
                 *deliveryMode() {
                   return "wait";
                 },
@@ -194,7 +201,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     return false;
                   }
                   const result = yield* drive(child.journal, child.link.program, branch, childPath);
-                  return result.state === "completed" || result.state === "cancelled";
+                  return result.state === "yielded"
+                    ? result
+                    : result.state === "completed" || result.state === "cancelled";
                 },
               });
 
@@ -239,6 +248,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           await run();
           paused.clear();
         }
+        await expect(run(true)).resolves.toEqual({ state: "yielded", reason: "source budget" });
+        expect(waits.size).toBe(0);
+        root = store.reopen();
         expect((await run()).state).toBe("child");
         expect([...waits.keys()].sort()).toEqual([
           "performance/backup",

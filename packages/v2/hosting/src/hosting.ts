@@ -33,6 +33,10 @@ export function createHosting<R, Q, V, E, S, Y>(
       return composition.scoped(function* () {
         let expected = replace;
         while (true) {
+          const decision = yield* api.operations.continuation();
+          if (decision.action === "yield") {
+            return { state: "yielded", reason: decision.reason };
+          }
           function* conflict(error: unknown) {
             if (!(error instanceof JournalConflict) || expected) {
               throw error;
@@ -59,7 +63,11 @@ export function createHosting<R, Q, V, E, S, Y>(
             if (expected) {
               throw new Error("Cannot replace an effect attempt with an owned call");
             }
-            if (!(yield* child.run())) {
+            const result = yield* child.run();
+            if (typeof result !== "boolean") {
+              return result;
+            }
+            if (!result) {
               return { state: "child", childId: child.id };
             }
             continue;
@@ -103,6 +111,9 @@ export function createHosting<R, Q, V, E, S, Y>(
           });
         }
       });
+    },
+    *continuation() {
+      return { action: "continue" };
     },
     activate() {
       return activateJournal(composition, options.recovery, options.journal);

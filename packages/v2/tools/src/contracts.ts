@@ -3,7 +3,7 @@ import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
 import type { OwnedChild } from "@sweatpan.ts/durable";
-import type { EffectCapabilities, EffectGrant } from "@sweatpan.ts/hosting";
+import type { EffectCapabilities, EffectGrant, ChildHostingResult } from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
 export interface ToolContext<
@@ -120,7 +120,9 @@ export interface ToolAdmission<I, O, Y> {
 export interface ToolRoute<S extends StandardSchemaV1, R, Y, ParentError = string> {
   readonly tool: { readonly id: string; readonly context: S };
   /** Drive this child to terminal settlement or return false when parked/occupied. */
-  run(child: OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>): Operation<boolean, Y>;
+  run(
+    child: OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>,
+  ): Operation<ChildHostingResult, Y>;
   /** Pure synchronous parent projection; default wraps the child's result as authored success. */
   readonly outcome?: (value: R) => Outcome<unknown, ParentError>;
 }

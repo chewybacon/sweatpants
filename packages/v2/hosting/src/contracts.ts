@@ -25,8 +25,27 @@ import type {
   Invalidation,
 } from "@sweatpan.ts/durable";
 
-/** Completion, an occupied/invalidated attempt, or a registered participant wait/invalidation. */
+/** Cooperative owner stop; no durable wait, cancellation or retry authority is created.
+ * This is a scheduling disposition, not proof that the journal is nonterminal. */
+export interface ActivationYield {
+  readonly state: "yielded";
+  readonly reason: string;
+}
+
+/** Policy consulted before each hosting iteration, including the first. */
+export type ActivationDecision =
+  | { readonly action: "continue" }
+  | {
+      readonly action: "yield";
+      readonly reason: string;
+    };
+
+/** Terminal child settlement, blocking, or an explicitly propagated cooperative yield. */
+export type ChildHostingResult = boolean | ActivationYield;
+
+/** Completion, blocking, invalidation, or an owner-requested cooperative yield. */
 export type HostedResult<R, Q = unknown> =
+  | ActivationYield
   | { readonly state: "child"; readonly childId: string }
   | { readonly state: "completed"; readonly value: R }
   | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string }
@@ -37,14 +56,14 @@ export type HostedResult<R, Q = unknown> =
 /** Drive an owned child through its ordinary host; storage atomically settles its parent call. */
 export interface ChildHosting<Y> {
   readonly id: string;
-  /** True after terminal settlement; false when child is parked or occupied. */
-  run(): Operation<boolean, Y>;
+  /** True after terminal settlement; false when blocked. Preserve child yields explicitly. */
+  run(): Operation<ChildHostingResult, Y>;
 }
 
 /** Scoped middleware hooks for delivery, retry policy and the hosting loop. */
 export interface HostingMethods<R, Q, V, E, Y> {
   /**
-   * Run until completion, an occupied attempt, or a participant wait/invalidation.
+   * Run until completion, cooperative yield, occupied attempt, or participant wait/invalidation.
    * Typed pre-delivery journal conflicts automatically reread and reactivate.
    * This covers revision races and stale register/begin boundaries. Handlers and
    * settlement are outside recovery: their failures propagate without redelivery.
@@ -56,6 +75,11 @@ export interface HostingMethods<R, Q, V, E, Y> {
    * workflow or record a failure Outcome. An unsettled grant remains occupied.
    */
   run(replace?: AttemptGrant): Operation<HostedResult<R, Q>, Y>;
+  /** Default continues. Checked before activation/routing/new authority, and only
+   * after the previous delivery and its cleanup finish. A yield releases this run's
+   * retention scope. It does not preempt Guest compute, handlers or child groups.
+   * Configure child hosts explicitly when a policy should cover a whole tree. */
+  continuation(): Operation<ActivationDecision, Y>;
   /** Advance to a durable boundary. Defaults to recovery in a disposable scope. */
   activate(): Operation<Activation<R, Q>, Y>;
   /** Optional owned-call routing, before attempt or participant acquisition. Defaults to no child. */
@@ -256,7 +280,7 @@ export interface OwnedAll<C, I, Y> {
    * one transaction domain. Install parent admission separately before routing.
    *
    * run supplies ordinary child hosting and fresh child context, returning true
-   * only after terminal settlement. Exceptions propagate; no automatic retry or
+   * only after terminal settlement; forward yielded Host results unchanged. Exceptions propagate; no automatic retry or
    * fail-fast authored-failure conversion is supplied. The host/journal/recovery
    * must belong to the same pinned program and execution.
    */
@@ -268,7 +292,7 @@ export interface OwnedAll<C, I, Y> {
       child: OwnedChild<unknown, CapabilityRequest, unknown, string, unknown, Y>,
       factory: Branch<C, I>,
       index: number,
-    ) => Operation<boolean, Y>;
+    ) => Operation<ChildHostingResult, Y>;
   }): Operation<void, Y>;
 }
 
@@ -278,14 +302,14 @@ export interface OwnedRace<C, I, Y> extends Omit<OwnedAll<C, I, Y>, "acquire"> {
   acquire(): Operation<Race<C, I>, Y>;
 }
 
-/** Application-bound child runner; true means terminal settlement, not just activation. */
+/** Application-bound child runner; true means terminal settlement. Preserve yielded results. */
 export interface ChildRunner<C, I, Y> {
   /** Own fresh child acquisition/context scopes and keep factories within reconstruction lifetime. */
   run(
     child: OwnedChild<unknown, CapabilityRequest, unknown, string, unknown, Y>,
     factory: Branch<C, I>,
     index: number,
-  ): Operation<boolean, Y>;
+  ): Operation<ChildHostingResult, Y>;
 }
 
 /** One eager execution with independently scoped, cursor-based output readers. */

@@ -36,3 +36,5 @@ export type {
 export type { ActivationDriver, ActivationWork } from "./contracts.ts";
 export { createActivationDriver } from "./apis.ts";
 export { createOwnedActivationDriver } from "./activation-driver.ts";
+
+export type { ActivationDecision, ActivationYield, ChildHostingResult } from "./contracts.ts";
