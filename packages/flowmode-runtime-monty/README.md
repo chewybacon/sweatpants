@@ -30,11 +30,12 @@ Repeated logical cancellation preserves protected cleanup and terminal cancellat
 
 ## Artifacts and source association
 
-The manifest pins every executable and the complete source association to Monty
-`e5077481b13a4e9de83cdaca90aff3ae638281be`. Every runtime and build input matches that committed tree.
-The preserved build association records the original dirty build; `buildSourceCommit`
-and `buildSourcePatchSha256` retain its provenance. The executable bytes are unchanged.
-The accepted scope association is retained as provenance.
+The manifest pins every executable to Monty commit `1667caad8e01be119074f64fc066c5bc61ad3a66`.
+Every associated runtime and build input matches that committed tree.
+`buildSourceCommit` and `buildSourcePatchSha256` preserve the original local build's
+provenance; executable bytes are unchanged. The previous association hash is
+retained as history. The build receipt authenticates runtime inputs and generated
+component bytes.
 
 `pnpm --filter @sweatpants/flowmode-runtime-monty check` verifies vendored bytes and
 the generated complete-manifest identity. An explicit local import using
@@ -128,7 +129,7 @@ async def main():
 Use `with anyio.CancelScope() as scope`, `scope.cancel()`, `cancel_called` and
 `cancelled_caught` for lexical guest cancellation. The read-only shield masks
 ancestor guest cancellation, not its own scope or the first host signal. Scopes
-belong to the constructing task/run. `get_cancelled_exc_class()` returns `ValueError`;
+belong to the constructing task/run. `get_cancelled_exc_class()` returns `asyncio.CancelledError`;
 ordinary ValueErrors are not treated as scope cancellation signals. Guest cancellation
 repeats at supported checkpoints; protect yielding guest cleanup explicitly.
 Host cancellation automatically protects native cleanup and remains terminal even
@@ -143,3 +144,6 @@ No deadlines, sleeps, streams, writable shields, `anyio.run`, full backend parit
 async generators, arbitrary generator awaitables or general filesystem/network
 access are supplied. Historical incompatible executable identities are rejected
 before loading; older absent runtime roles are never inferred by the adapter.
+
+Cancellation uses a dedicated BaseException subclass. Catch `asyncio.CancelledError` explicitly.
+Dump 36 rejects older snapshots whose captured handlers used the former ValueError mapping.

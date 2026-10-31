@@ -152,7 +152,7 @@ export function createMontyKernel(loadModule, options = {}) {
     program = next;
     const component = yield* call(() => instantiate(loadModule, createWasiImports()));
     worker = component.worker;
-    if (worker.cancellationContract() !== 7) {
+    if (worker.cancellationContract() !== 8) {
       throw Error("Unsupported Monty cancellation contract");
     }
     dispatch({

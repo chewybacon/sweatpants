@@ -5,6 +5,7 @@ import {
   cleanupSource,
   errorSource,
   anyioSource,
+  signupSource,
 } from "@sweatpants/flowmode-runtime-monty/guest";
 import { ANY_JSON_SCHEMA_DESCRIPTOR as schema } from "@sweatpants/durable-execution";
 import { createPortableSchemaDescriptor } from "@sweatpants/foundation/schema";
@@ -38,7 +39,12 @@ export function createMontyStack(loadModule) {
       developerLanguage: "Python",
     },
     caller: demoSource,
-    examples: { cleanup: cleanupSource, error: errorSource, anyio: anyioSource },
+    examples: {
+      cleanup: cleanupSource,
+      error: errorSource,
+      anyio: anyioSource,
+      signup: signupSource,
+    },
     schemas: [{ descriptor: operationReply, schema: replyValidator }],
     *buildProgram(source) {
       const program = createMontyProgram(
@@ -60,7 +66,10 @@ export function createMontyStack(loadModule) {
             return {
               kind: "elicit",
               key: "operations",
-              message: "Fulfill a read from the bounded demo fixtures",
+              message:
+                source === signupSource
+                  ? "Acknowledge this simulated signup or rollback step"
+                  : "Fulfill a read from the bounded demo fixtures",
               response: operationReply,
               binding: { id: request.site },
             };

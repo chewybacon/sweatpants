@@ -131,11 +131,12 @@ async def main():
 it("public host cancellation survives guest suppression", async () => {
   await run(function* () {
     const kernel = createMontyKernel(loadMontyModule);
-    const code = `from sandbox import read_file
+    const code = `import asyncio
+from sandbox import read_file
 async def main():
     try:
         await read_file("a.txt")
-    except ValueError:
+    except asyncio.CancelledError:
         return "suppressed"
 `;
     try {
@@ -147,6 +148,54 @@ async def main():
         kind: "cancelled",
         reason: "FIRST",
       });
+    } finally {
+      yield* kernel.close();
+    }
+  });
+});
+
+it("cancellation bypasses validation handlers and restores its dedicated handler", async () => {
+  await run(function* () {
+    const code = `import asyncio
+import anyio
+from sandbox import read_file
+assert anyio.get_cancelled_exc_class() is asyncio.CancelledError
+assert isinstance(asyncio.CancelledError(), BaseException)
+assert not isinstance(asyncio.CancelledError(), Exception)
+async def main():
+    try:
+        await read_file("a.txt")
+    except ValueError:
+        await read_file("wrong-value-handler")
+    except Exception:
+        await read_file("wrong-exception-handler")
+    except asyncio.CancelledError:
+        await read_file("session-cleanup.txt")
+        return "caught"
+`;
+    const program = { kernel: montyIdentity, digest: "dedicated-cancel", code };
+    let kernel = createMontyKernel(loadMontyModule);
+    try {
+      let state = yield* kernel.start(program, null);
+      const boundary = yield* state.execution.cancel("FIRST");
+      expect(boundary.kind).toBe("suspended");
+      const snapshot = yield* state.execution.capture();
+      yield* kernel.close();
+      kernel = createMontyKernel(loadMontyModule);
+      state = yield* kernel.restore(program, snapshot);
+      if (state.boundary.kind !== "suspended") {
+        throw Error("Expected cancellation handler awaiting cleanup");
+      }
+      const input = state.boundary.request.input as {
+        operations: Array<{ id: number; label: string }>;
+      };
+      expect(input.operations.map((op) => op.label)).toEqual(["Read session-cleanup.txt"]);
+      expect(
+        yield* state.execution.resume(state.boundary.suspensionId, {
+          kind: "value",
+          value: { operationId: input.operations[0].id, value: "released" },
+        }),
+      ).toEqual({ kind: "cancelled", reason: "FIRST" });
     } finally {
       yield* kernel.close();
     }

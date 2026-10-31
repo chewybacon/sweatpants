@@ -85,7 +85,7 @@ for (const [name, expected] of Object.entries(manifest.artifacts)) {
     await copyFile(from, new URL(name, directory));
   }
 }
-const { guestLibrary, demoSource, cleanupSource, errorSource, anyioSource } =
+const { guestLibrary, demoSource, cleanupSource, errorSource, anyioSource, signupSource } =
   await import("../src/guest.mjs");
 for (const [file, text] of [
   ["workflow.py", guestLibrary],
@@ -93,6 +93,7 @@ for (const [file, text] of [
   ["cleanup.py", cleanupSource],
   ["error.py", errorSource],
   ["anyio.py", anyioSource],
+  ["signup.py", signupSource],
 ]) {
   if ((await readFile(new URL(`../guest/${file}`, import.meta.url), "utf8")) !== text) {
     throw Error(`Regenerate guest strings: ${file}`);

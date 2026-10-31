@@ -126,14 +126,17 @@ export function ExecutionInspector() {
               <option value="reads">asyncio · five reads</option>
               <option value="cleanup">asyncio · yielding cleanup</option>
               <option value="anyio">AnyIO · shielded cleanup</option>
+              <option value="signup">Signup · undo on cancellation</option>
             </select>
           </label>
         )}
         <button disabled={busy || !languages.length} onClick={() => void request("start")}>
           {language === "monty"
-            ? pythonExample === "reads"
-              ? "Run five reads"
-              : "Run Python cleanup"
+            ? pythonExample === "signup"
+              ? "Run signup"
+              : pythonExample === "reads"
+                ? "Run five reads"
+                : "Run Python cleanup"
             : view
               ? "New confirmation run"
               : "Run confirmation"}
@@ -185,9 +188,9 @@ export function ExecutionInspector() {
       )}
       {language === "monty" && (
         <p className="execution-local">
-          Five reads run together. Fulfill them in any order from the local fixtures, or restore
-          between replies. This demo is authored in Python; compiled TypeScript tools and model
-          authoring are not yet supported.
+          {pythonExample === "signup"
+            ? "Simulated signup: acknowledge three saved records, then activate to keep them. Cancel before activation to undo acknowledged steps in reverse order. Restore between any replies, including cleanup. Cancel requests resumable unwind; discarding execution cannot run cleanup. No real account is created."
+            : "Fulfill host requests or cancel and follow cleanup. Restore between replies to resume in a fresh instance. These examples are authored in Python."}
         </p>
       )}
       {error && (
@@ -210,11 +213,15 @@ export function ExecutionInspector() {
       {!view ? (
         <section className="execution-empty">
           <h2>
-            {language === "monty" ? "Five reads, one workflow." : "One program. Two kinds of tool."}
+            {language === "monty"
+              ? pythonExample === "signup"
+                ? "Complete signup—or undo it."
+                : "Host-controlled Python workflows."
+              : "One program. Two kinds of tool."}
           </h2>
           <p>
             {language === "monty"
-              ? "Fulfill reads in any order from bounded local fixtures. Results retain input order."
+              ? "Advance one host request at a time, restore its checkpoint, or cancel and follow the unwind."
               : "Review a draft, finish its cleanup, then queue the approved announcement through the host."}
           </p>
           <ol>
@@ -226,7 +233,7 @@ export function ExecutionInspector() {
             <li>Restore the same boundary in a fresh instance.</li>
             <li>
               {language === "monty"
-                ? "Fulfill reads in any order or cancel the workflow."
+                ? "Acknowledge host steps or cancel the workflow."
                 : "Approve, decline, or cancel—and follow cleanup."}
             </li>
           </ol>
@@ -306,7 +313,14 @@ export function ExecutionInspector() {
                         <button
                           key={op.id}
                           disabled={busy}
-                          onClick={() => void request("reply", "fixture", false, op.id)}
+                          onClick={() =>
+                            void request(
+                              "reply",
+                              op.request ? "fixture" : "completed",
+                              false,
+                              op.id,
+                            )
+                          }
                         >
                           {op.label}
                         </button>
