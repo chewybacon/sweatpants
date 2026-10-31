@@ -123,3 +123,33 @@ changed prefixes, appended suffixes and repeated compaction through the public A
 API acceptance exercises scoped window policy/context lookup, nested middleware,
 replacement drivers, invalid window rejection and default restoration on both runtimes.
 The SDK-boundary context journey also prepares through this API before dispatch.
+
+## Guest chat loop
+
+`runChat({ history, tools, maxRounds, model, sample })` runs sequential model/tool
+rounds inside a Guest. `model(round)` selects a reproducible model identity;
+`sample(request)` yields a recorded domain exchange. Its Host handler prepares
+context through `ChatContext`, counts the prepared request, and invokes the provider.
+Native scoped APIs must not be yielded directly inside the Guest. The accepted
+sample returns both model provenance and the complete provider response.
+
+Each catalog entry pairs model-facing tool metadata with an already-granted
+`call` operation. Metadata grants no authority. The loop checks the entire batch's
+names and nonempty, unique call IDs before invoking any tool. Input schema validation
+remains with each Host handler; this is not atomic validation of all tool inputs.
+Tools run in order and may park through existing owned-tool hosting. Applications
+format authored failures explicitly as content with `isError: true`; delivery
+exceptions propagate without conversion or retry.
+
+`maxRounds` is a positive safe integer. A tool batch on the final permitted round
+fails before dispatch, because no follow-up model round fits. Returned history
+contains the complete logical conversation, correlated tool results and model
+provenance. Caller history and callback data are detached. Model selection, catalog
+and policies must remain reproducible across journal replay; this helper adds no
+persistence, automatic compaction, parallel tools or session supervisor.
+
+The streaming chat application now consumes this loop with Host-side preparation
+and providers. Additional acceptance journeys exercise multiple calls and rounds,
+authored failures, malformed batches, budgets, occupied delivery failures and SQLite
+reopen without redispatching accepted work, on both native runtimes. These are
+in-process recovery journeys, not process-loss or live-provider tests.

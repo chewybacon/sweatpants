@@ -1,5 +1,9 @@
+import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { Operation } from "@standard-durability/core";
 import type {
+  ChatContent,
+  ModelResponse,
+  ChatToolCall,
   ChatAssistantMessage,
   ChatMessage,
   ChatToolDefinition,
@@ -47,4 +51,49 @@ export interface ChatContext<Y> {
   /** Build the next model request in the caller's scope. Middleware may transform
    * history or replace preparation. No provider dispatch or persistence is implied. */
   prepare(input: ChatInferenceOptions): Operation<ChatInference, Y>;
+}
+
+/** One catalog entry and its already-granted Guest operation. Description is model
+ * data; importing a declaration does not install host authority. */
+export interface ChatLoopTool {
+  readonly definition: ChatToolDefinition;
+  /** Invoke through domain capabilities. Format authored success/failure as model
+   * content explicitly; thrown delivery failures must propagate without conversion. */
+  call(
+    call: ChatToolCall,
+  ): Operation<{ readonly content: ChatContent; readonly isError: boolean }, CapabilityRequest>;
+}
+
+/** A domain sampling request, before host-side preparation. */
+export interface ChatLoopRequest {
+  readonly model: ModelSelection;
+  readonly history: readonly ChatHistoryMessage[];
+  readonly tools: readonly ChatToolDefinition[];
+}
+
+/** Accepted sample provenance and complete response supplied by the host exchange. */
+export interface ChatLoopSample {
+  readonly model: ModelSelection;
+  readonly response: ModelResponse;
+}
+
+/** Deterministic Guest assembly. Pin these inputs/policies across recovery. */
+export interface ChatLoopOptions {
+  readonly history: readonly ChatHistoryMessage[];
+  readonly tools: readonly ChatLoopTool[];
+  /** Positive finite model-round budget. Calls requiring a round beyond it fail
+   * before executing that batch's tools. */
+  readonly maxRounds: number;
+  /** Zero-based round selection; must reproduce the same identity on replay. */
+  model(round: number): ModelSelection;
+  /** Yield a domain exchange, not native runtime/API work. The host prepares/counts
+   * context, consumes the provider and accepts the response with selected provenance. */
+  sample(request: ChatLoopRequest): Operation<ChatLoopSample, CapabilityRequest>;
+}
+
+/** Terminal response and complete logical history, including all correlated tool results. */
+export interface ChatLoopResult {
+  readonly response: ModelResponse;
+  readonly history: readonly ChatHistoryMessage[];
+  readonly rounds: number;
 }

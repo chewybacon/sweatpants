@@ -7,7 +7,7 @@ import {
   createChatContext,
   type ChatInferenceOptions,
   type ChatInference,
-  type ChatHistoryMessage,
+  runChat,
   type ModelSelection,
 } from "@sweatpan.ts/chat";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
@@ -509,60 +509,50 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   matches: isDeepStrictEqual,
                   *acquire() {
                     return createScopedGuest(function* () {
-                      const messages: ChatHistoryMessage[] = [
-                        { role: "user", content: "Ask before proceeding." },
-                      ];
-                      const tools = [
-                        {
-                          name: "confirm",
-                          description: "Ask for approval",
-                          parameters: { type: "string" },
+                      const completed = yield* runChat({
+                        history: [{ role: "user", content: "Ask before proceeding." }],
+                        maxRounds: 4,
+                        model(round) {
+                          const selected = round === 0 ? planner : responder;
+                          return {
+                            id: selected.id,
+                            provider: selected.provider,
+                            api: selected.api,
+                          };
                         },
-                      ];
-                      const first = yield* root.capabilities.sample({
-                        model: { id: planner.id, provider: planner.provider, api: planner.api },
-                        history: messages,
-                        tools,
-                      });
-                      if (!first.ok || first.value.response.errorMessage) {
-                        throw new Error("Model failed");
-                      }
-                      const part = first.value.response.message.content.find(
-                        (part) => part.type === "tool-call",
-                      );
-                      if (!part || part.type !== "tool-call" || part.toolCall.name !== "confirm") {
-                        throw new Error("Expected tool call");
-                      }
-                      const call = part.toolCall;
-                      messages.push({
-                        ...first.value.response.message,
-                        model: { id: planner.id, provider: planner.provider, api: planner.api },
-                      });
-                      const result = yield* root.capabilities.confirm(z.string().parse(call.input));
-                      if (!result.ok) {
-                        throw new Error("Tool failed");
-                      }
-                      messages.push({
-                        role: "tool",
-                        toolCallId: call.id,
-                        name: call.name,
-                        content: JSON.stringify(result.value),
-                        isError: false,
-                      });
-                      const final = yield* root.capabilities.sample({
-                        model: {
-                          id: responder.id,
-                          provider: responder.provider,
-                          api: responder.api,
+                        tools: [
+                          {
+                            definition: {
+                              name: "confirm",
+                              description: "Ask for approval",
+                              parameters: { type: "string" },
+                            },
+                            *call(call) {
+                              const result = yield* root.capabilities.confirm(
+                                z.string().parse(call.input),
+                              );
+                              if (!result.ok) {
+                                throw new Error("Tool failed");
+                              }
+                              return { content: JSON.stringify(result.value), isError: false };
+                            },
+                          },
+                        ],
+                        *sample(request) {
+                          const result = yield* root.capabilities.sample({
+                            ...request,
+                            foreignReasoning: "omit",
+                          });
+                          if (!result.ok) {
+                            throw new Error("Model failed");
+                          }
+                          return {
+                            model: result.value.prepared.model,
+                            response: result.value.response,
+                          };
                         },
-                        history: messages,
-                        tools,
-                        foreignReasoning: "omit",
                       });
-                      if (!final.ok) {
-                        throw new Error("Model failed");
-                      }
-                      return final.value.response.message.content
+                      return completed.response.message.content
                         .filter((part) => part.type === "text")
                         .map((part) => part.text)
                         .join("");

@@ -2830,6 +2830,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../providers

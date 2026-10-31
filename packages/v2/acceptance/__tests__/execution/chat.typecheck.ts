@@ -1,5 +1,8 @@
 import type { Composition, Operation } from "@standard-durability/core";
 import {
+  runChat,
+  type ChatLoopOptions,
+  type ChatLoopResult,
   prepareChatInference,
   createChatContext,
   prepareChatCompaction,
@@ -31,4 +34,23 @@ export function contextApiConsumer<Y>(
 ): Operation<ChatInference, Y> {
   const context = createChatContext(composition, "chat-context");
   return context.operations.prepare({ model, history: [], tools: [] });
+}
+
+/** Guest orchestration retains domain instructions in source and built declarations. */
+export function chatLoopConsumer(
+  options: ChatLoopOptions,
+): Operation<ChatLoopResult, import("@sweatpan.ts/core").CapabilityRequest> {
+  return runChat(options);
+}
+
+/** Host-native work cannot be passed directly into the Guest sampling callback. */
+export function invalidChatLoopConsumer(
+  options: ChatLoopOptions,
+  native: Operation<import("@sweatpan.ts/chat").ChatLoopSample, { readonly native: true }>,
+) {
+  return runChat({
+    ...options,
+    // @ts-expect-error Native instructions require host-side domain handling.
+    sample: () => native,
+  });
 }
