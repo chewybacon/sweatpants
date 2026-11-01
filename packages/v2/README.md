@@ -142,6 +142,7 @@ Root `pnpm land` runs this suite under its own coverage identity
 | `agent`                         | `@sweatpan.ts/agent`                    |
 | `chat`                          | `@sweatpan.ts/chat`                     |
 | `chat-client`                   | `@sweatpan.ts/chat-client`              |
+| `chat-host`                     | `@sweatpan.ts/chat-host`                |
 | `codemode`                      | `@sweatpan.ts/codemode`                 |
 | `codemode-runtime`              | `@sweatpan.ts/codemode-runtime`         |
 | `codemode-runtime-lua`          | `@sweatpan.ts/codemode-runtime-lua`     |
