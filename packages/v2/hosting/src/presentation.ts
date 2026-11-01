@@ -46,6 +46,8 @@ export function* readJournalPresentation<R, Q, V, E, S, Y>(
         : {
             status: "running",
             revision: snapshot.revision,
+            cancellation: snapshot.cancellation,
+            cancellationRequested: snapshot.cancellationRequested,
             pending: snapshot.pending,
             children: snapshot.children,
             interaction: snapshot.interaction,

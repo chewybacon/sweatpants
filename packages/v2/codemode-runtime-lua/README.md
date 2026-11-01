@@ -67,6 +67,51 @@ reopen. A protected loser keeps its grant until cleanup answers; an unprotected 
 rejects stale answers. These are in-process journeys, not crash-safety evidence.
 The VM bytes, provenance and checkpoint format are unchanged.
 
+## Signup compensation and repair assembly
+
+The [Lua signup workflow](../acceptance/__tests__/applications/signup-repair.lua)
+and its [hosted acceptance journey](../acceptance/__tests__/applications/lua-signup-repair.acceptance.test.ts)
+exercise saga-style compensation on the pinned VM, without adding critical-region
+support. A TypeScript parent owns the Lua child through ordinary hosting; Lua authors
+acquisition, approval, commitment and conditional cleanup. Repair decisions are
+application-defined participant answers, not a new VM instruction or framework API.
+
+The application supplies a stable, execution-specific resource key as pinned input.
+The `workflow.scope` cleanup closure is established before acquisition starts. Local
+flags distinguish an accepted resource/commit from an interrupted acquisition/commit;
+replay reconstructs these flags from accepted replies. A known denied release yields a
+protected repair request before cleanup returns. Operator-confirmed external repair
+and explicit waiver carry distinct accepted evidence. Neither rewrites the failed
+release, and the owned parent cannot settle while the repair request is pending.
+
+This assembly intentionally uses a different commitment policy from the TypeScript
+critical-region example. Lua body requests are unprotected: cancellation can revoke an
+in-flight acquisition or commit even if the external service later succeeds. The late
+reply cannot advance that revoked body boundary. Cleanup then parks a new repair
+request naming the interrupted operation and stable resource key. An authorized
+operator must supply evidence of a **final external outcome**, including assurance
+that an old delivery cannot still change it. A transient “not found” lookup is not
+sufficient to authorize compensation. Without that assurance, leave repair pending.
+
+A confirmed committed signup skips compensation; confirmed noncommit allows release
+of known acquired resources. Unknown acquisition requires confirmation of resource
+presence or absence. These are new reconciliation decisions, not accepted results of
+the revoked original calls and not authorization to retry them. The example's boolean
+operator policy is a test input, not production authentication or proof of external
+quiescence. All answers still validate the operation-specific decision and exact grant.
+
+Uncertain **cleanup** delivery remains different: cleanup requests are protected, so
+an unsettled release remains occupied and does not automatically create another repair
+interaction. This example supplies no forced settlement or retry for such an attempt.
+
+The journey covers normal success, known release refusal, repair/waiver, cancellation
+racing late acquisition/commit replies, accepted replies lost to the owner before Lua
+resumes, read-only reconstruction, duplicate/conflicting repair answers and occupied
+cleanup. It uses both native runtimes, serialized local execution and SQLite reopen.
+The VM bytes and checkpoint format are unchanged; the workflow uses journal replay,
+not checkpoint restoration. This is not full critical-region parity, production saga
+infrastructure, an external reconciliation protocol, or process-crash evidence.
+
 ## Declared effect bindings
 
 Use `defineLuaEffectBindings` when Lua exchanges call declared framework effects:

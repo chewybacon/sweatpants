@@ -355,6 +355,10 @@ export interface PresentationCursor extends JournalPosition {
 export type JournalPresentationState<R, Q> = { readonly revision: number } & (
   | {
       readonly status: "running";
+      /** Accepted cancellation control; running does not mean ordinary body work may continue. */
+      readonly cancellation?: RootCancellation<Q>;
+      /** Cancellation accepted while owned children still prevent parent unwinding. */
+      readonly cancellationRequested?: RootCancellation<Q>;
       readonly pending?: PendingRequest<Q>;
       readonly children?: readonly ChildLink[];
       readonly interaction?: InteractionRegistration;

@@ -637,6 +637,14 @@ mismatched prefixes reject. Bound the page size explicitly when needed. Drain pa
 until `caughtUp` when reconstructing the full accepted history. Each read captures a
 prefix, but separate page reads can observe newer state as execution advances.
 
+Running presentation also retains `cancellation` and `cancellationRequested` from
+the same journal snapshot. The latter is accepted intent waiting for owned children
+before the parent can unwind. A pending request's `scope` distinguishes body, cleanup
+and critical protection when the evaluator supplies it. These are durable observations,
+not proof of a live driver; `status: "running"` does not mean cancellation is absent.
+Cancellation records include request/control data and require the same trusted-to-public
+projection as other journal facts.
+
 Current state is returned even with no new accepted entries, so registered waits,
 invalidation and completion are not lost behind an unchanged history cursor.
 An exposed grant may become stale immediately afterward; answer ingress must still
@@ -647,6 +655,53 @@ is not a durable publication acknowledgement store or exactly-once transport.
 Projection versioning, recipient authorization, stable public event identities,
 client acknowledgement storage and recursive child presentation remain application
 concerns. Recovery does not replay provisional provider token deltas.
+
+## Required compensation and repair
+
+A cleanup obligation can remain nonterminal using an ordinary protected participant
+request. If compensation returns a **known accepted failure**, application cleanup
+can request repair and wait for its answer before returning. The original failure
+remains accepted history; the repair decision is a separate accepted outcome. The
+owned parent continues waiting for the child. Do not throw and then assume the ended
+cleanup callback can be resumed: authored cleanup exceptions still follow the existing
+failure/settlement contract, including terminal cancellation with diagnostics.
+
+The [signup compensation assembly](../acceptance/__tests__/applications/signup-compensation.acceptance.test.ts)
+uses `ensure` and `critical` with a replay-reconstructed commitment flag. Acquisition
+and compensation registration share a critical region. Its explicit commitment policy
+allows commit to proceed once its protected region is reached, even if cancellation
+is then accepted before delivery. A successful accepted business commit suppresses
+compensation; it does not promise a successful kernel terminal disposition after
+cancellation. Critical is a cancellation mask, not an external transaction.
+
+A denied release parks a `repair` request containing the resource and failure reason.
+The application's operator ingress checks authorization and the exact interaction,
+validates a decision with evidence, and uses existing answer acceptance. It supports
+confirmation of external repair or explicit waiver; a waiver can leave the resource
+present and is never claimed as successful rollback. The accepted repair decision
+retains that distinction. The authorization boolean in this journey is a test policy
+input, not a production authentication mechanism or public repair API.
+
+Reconciliation may clear intent while this known participant wait remains readable.
+Answer acceptance creates root-tree intent again. Lost acknowledgements reuse the same
+grant/decision; conflicting answers reject. Reopening and reading cancellation plus the
+repair request does not acquire a Guest. With multiple resources, a blocked newest
+compensation delays earlier LIFO callbacks until repaired; no independent cleanup
+scheduling or parallel compensation dependency policy is provided.
+
+An **unknown external outcome** takes a different path: commit or release delivery
+without acceptance remains occupied. It is neither a known failure nor an automatic
+repair interaction, and this assembly provides no unsafe retry or forced success.
+The parent stays nonterminal and intent remains discoverable. External reconciliation
+for such attempts is not implemented by this example.
+
+Acceptance covers both native runtimes, one/two resources, repair and waiver, stale
+and duplicate ingress, owner loss after acquisition/release/commit acceptance, protected
+commit races, uncertain delivery, and SQLite reopen. These are TypeScript workflows
+through the local execution protocol. They do not establish Lua critical-region parity,
+checkpoint recovery during cancellation, global DLQ discovery, a recursive frontier,
+or OS-crash/external-service atomicity guarantees. No new scope exit-read API or storage
+repair registry was required for this explicit participant-repair assembly.
 
 ## Scoped activation drivers
 
@@ -768,3 +823,103 @@ An owner killed during delivery still follows occupied-attempt semantics.
 Acceptance covers zero-budget acquisition avoidance, accepted-prefix recovery,
 cleanup barriers, scoped policy restoration, and nested all/race reconstruction
 across SQLite reopen with retained and disposable Guest lifetimes.
+
+### Observing an owned-tree interaction frontier
+
+The `tree-frontier.acceptance.test.ts` application recursively composes journal
+presentation with durable `JournalReader.openChild`. A nested Lua approval and a
+sibling Lua cleanup-repair request remain independently discoverable and answerable.
+The compensation branch enters cleanup through an application decline; it does not
+independently cancel a child and assume its siblings are unaffected.
+
+An occupied sibling can dominate the root scheduling report without hiding another
+journal's registered interaction. A yielded branch may have accepted its last outcome
+without publishing its next request; observation cannot manufacture that next boundary.
+The example records each node's execution, parent and revision. It does not promise a
+single atomic tree snapshot, infer live advancement from stored state, or expose a new
+framework frontier API. Navigation and payload access still require application
+security policy before use by an untrusted client.
+
+The same assembly also runs two independent Lua cleanup branches. One may finish
+while the other waits for repair; both may register separate repair grants; or one
+may remain occupied while its sibling's repair is answered. Parent cancellation
+preserves these protected cleanup boundaries and joins every unresolved branch.
+Answering one repair does not imply resolution of another branch's uncertain effect.
+This is explicit application independence across owned children, not automatic
+parallelization of a single scope's ordered cleanup callbacks or arbitrary saga
+compensations. The 32 frontier cases cover both stores and both native runtimes.
+
+### Typed interaction projection and answers
+
+The tree-frontier application keeps a local contract registry pinned to its known
+Lua programs. Its context schemas also decode Lua requests. Each interaction projects
+an execution identity, contract key, exact grant, observed revision, scope boundary,
+cancellation facts, title, decoded context and JSON response schema. These are finite,
+serializable render inputs; no Guest acquisition or framework frontier export is needed.
+The schemas are application declarations, not inferred from arbitrary Lua source.
+
+The answer route resolves the execution within the application's owned tree, reads
+the stored request for the supplied grant, checks the pinned program and contract,
+authorizes the role, and validates the response before atomic journal acceptance.
+Submitted rendering metadata is not authority. The typed client convenience preserves
+contract/answer correlation, while the ingress route still accepts and validates unknown
+values. Repair confirmation retains evidence in accepted history. Duplicate submissions
+survive reopen, including after terminal settlement; conflicting evidence rejects.
+
+The example filters operator-only repair prompts from participant views and tests
+malformed input, foreign execution/grant, contract mismatch, stale authority and
+independent answers. Its role argument is simulated policy, not authentication; production
+transport, identity and redaction remain application work. Historical command routing
+for this pinned assembly is described below. JSON-schema projection is demonstrated for these Zod schemas,
+not every Standard Schema implementation. The focused suite now has 36 cases.
+
+### Resolve several interactions, then advance the tree
+
+The frontier experiment exposes a local `advance({ answers, maxIterationsPerHost },
+role)` edge operation. Each answer carries its execution, contract, exact grant and
+value. The operation attempts answers in input order, then drives all eligible owned
+branches, including logical cleanup, and returns per-answer outcomes, the hosting
+report and the next role-filtered frontier. It owns one native task through acceptance,
+advancement and observation. The budget is validated before any acceptance.
+
+Acceptance is atomic per answer, not across the envelope. Confirmed results include
+receipt and duplicate status; exceptions are `unconfirmed`, since an error alone does
+not prove rollback. An unconfirmed entry does not stop attempts for other entries.
+Drive failures are reported separately and do not erase confirmed answers. Observation
+can itself fail, so losing the envelope response still requires reconciliation. A
+concurrent owner can advance between operations; the envelope does not lock the tree.
+
+The three-file journey returns three named read interactions in one frontier. One
+answer envelope supplies their contents and advances every child through its cleanup,
+with host-handled release effects requiring no further client turn. Known cleanup denial
+returns a new repair wait; unknown delivery stays occupied without automatic retry.
+Mixed valid/malformed/stale input preserves successful siblings. Identical retries
+reconcile against the original grants after reopen, including after terminal settlement.
+
+`maxIterationsPerHost` is a cooperative limit on each host's loop in this pass, propagated
+to children. Zero permits acceptance but no Guest advancement. It is not a global work,
+time or memory limit and cannot interrupt stalled handlers or cleanup. Empty frontier
+does not imply completion: inspect the report, especially after yielding or occupancy.
+This is simulated edge composition, not an HTTP adapter or new framework batch API.
+
+### Retry after terminal settlement
+
+The frontier command assembly reconstructs routes from active owned boundaries,
+accepted owned-call receipts and cancellation control boundaries. It reacquires the
+recorded children with their pinned definitions, recursively, without executing Guests.
+The client supplies no traversal path. Historical answer validation uses the original
+interaction registration and accepted outcome; terminal state does not mint new grants
+or make revoked input eligible. Authentication/schema policy still applies to duplicates.
+
+A dropped edge response can therefore be retried after all three files and their cleanup
+have settled. The envelope reports original receipts with `duplicate: true`, the terminal
+result and an empty interaction frontier. Conflicting values, foreign targets and revoked
+or unauthorized answers remain unconfirmed entries; successful siblings still reconcile.
+The 64-case frontier suite verifies this for completed and cancelled nested trees and
+checks unchanged journal revisions, accepted history, activation intent and effect counts.
+
+This router understands this application's owned-group protocol and scans its retained
+history in pages. It is not a generic descendant index or a constant-cost lookup. History,
+registrations, child links and compatible program/schema bindings must remain available;
+pruning and contract-version migration need explicit product policy. No envelope receipt
+store, schema migration or new journal primitive was introduced.

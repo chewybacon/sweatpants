@@ -184,6 +184,56 @@ authored failures, malformed batches, budgets, occupied delivery failures and SQ
 reopen without redispatching accepted work, on both native runtimes. These are
 in-process recovery journeys, not process-loss or live-provider tests.
 
+## Assembling authored tools into the catalog
+
+The `chat-provider` acceptance journey now derives model discovery from an authored
+`defineTool` through `projectToolContract`. Its small Zod adapter remains local to
+the application experiment. No additional scoped API or registry is required:
+
+```ts
+const wireInput = z.object({ question: z.string().min(1) });
+const confirm = defineTool("confirm")
+  .parameters(wireInput.transform(({ question }) => question.trim()).pipe(z.string().min(1)))
+  .elicits({ approval })
+  .execute(function* (question, ctx) {
+    const answer = yield* ctx.elicit("approval", question);
+    if (!answer.ok) {
+      throw new Error("Approval failed");
+    }
+    return answer.value;
+  });
+const contract = projectToolContract(confirm);
+const definition = {
+  name: contract.id,
+  description: "Ask for approval",
+  parameters: z.toJSONSchema(contract.context, { io: "input", target: "draft-7" }),
+};
+```
+
+Build the definition before provider dispatch. The model sees an object containing
+`question`; the tool body receives a normalized string. Project the schema's **input**,
+not its output. The example rejects unsupported JSON representations such as `Date`
+instead of substituting an unconstrained schema. Standard Schema validation alone
+supplies no JSON Schema conversion. Even a successful input projection cannot express
+all post-transform checks or arbitrary refinements: Host validation remains authoritative.
+Provider-specific schema dialect restrictions still belong to the provider adapter.
+
+The catalog entry decodes `call.input` with the same `wireInput` declaration, invokes
+`root.capabilities.confirm(decodedInput)`, and explicitly formats the inferred boolean
+result as model content. Wire decoding does not run the authored transformation. The
+Host grants and routes the original `confirm` object, then validates and persists the
+normalized child input before acquisition. The projected contract is discovery data;
+do not register it as a second declaration with the same identity. Description and
+result formatting remain application choices.
+
+The journey preserves reader-independent execution, participant answers, and SQLite
+reopen. It checks that normalization runs once for the accepted child, the completed
+result reaches the next model request, and accepted sampling is not redispatched.
+Empty wire input and whitespace rejected after normalization never acquire the tool.
+Invalid model arguments currently fail this application; automatic corrective model
+turns are a separate policy. This evidence uses a scripted provider on both runtimes,
+not live model schema conformance, browser imports or process-crash recovery.
+
 ## Host model and sampling policy
 
 `createChatModel(composition, name, driver)` exposes `select(request)` through scoped
@@ -284,3 +334,32 @@ completion event after an occupied delivery failure.
 The stream-first ownership registration changes the logical replay contract relative
 to older callback-only programs. Pin a new program revision when migrating persisted
 executions; do not silently reopen old journals with changed scope boundaries or sampling request/result shapes.
+
+## Authored tool batches and interaction frontiers
+
+The chat-provider acceptance application now connects a two-tool model batch to owned
+children: one authored tool requests ordinary approval, while another enters cleanup
+and requests repair after an accepted release denial. Tool discovery and interaction
+projection use `projectToolContract`; answer validation uses the original declared
+elicits through `installEffectAnswers`. Reading the frontier uses `openChild` and
+journal presentation, without acquiring tool Guests or installing result bindings.
+
+Batch execution remains an application experiment. `streamChat` invokes callbacks
+sequentially. The local sample callback retains the model's validated call descriptors;
+the first tool callback yields one recorded owned-batch request. Child hosts run
+independently, and the parent receives ordered results only when every child settles.
+Later callbacks consume those replay-reconstructed results by call identity. The next
+model round receives both correlated tool messages. No new chat API was extracted.
+
+This composition does not turn chat's sequential `tool-started`/`tool-completed` events
+into an accurate concurrent execution timeline: the batch can start later tools before
+their callbacks are visited. A future batch boundary must specify progress semantics
+before promotion. The model-call batch, not UI demand, owns advancement; observation
+can discover all already-registered child waits while the batch remains unsettled.
+
+Four additional journeys cover either answer order under both runtimes with SQLite
+connection reopen. They verify body/cleanup schema projection, malformed and misrouted
+answer rejection, duplicate answers, unchanged sibling grants, delayed next model round,
+and no redispatch of accepted model/inspection/release effects. Terminal reopening
+acquires no tools. The protocol peer simulates model and resource services; this is not
+a production authorization layer, deployed provider test or OS-crash guarantee.

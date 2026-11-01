@@ -276,3 +276,34 @@ commands as an optional ordinary Api. This is an assembly/transport boundary, no
 middleware inside a journal transaction. An observer can throw after `next` has
 committed; failed acknowledgement never authorizes redispatch of external work.
 Atomic transitions, projections, commit publication and record access remain private.
+
+## Read-only owned-tree navigation
+
+`OwnedJournal` also implements `JournalReader`: `id`, `read()` and
+`openChild(childId)`. Opening a child checks the persisted direct parent link and
+retained parent request, then returns only those three observation members. It does
+not create children, acquire Guests, install result projections or mutate journal
+state. Active links come from a running snapshot's `children`; a saved historical
+direct-child identity remains readable after settlement. Navigate each level rather
+than opening a grandchild directly from the root.
+
+Child payloads are `unknown`; the application decodes the program's contracts.
+The handle is bound to the current storage connection and must be obtained afresh
+after reopening. This is trusted storage navigation, not authorization or redaction.
+A caller that needs to answer an interaction must use a separately authorized command
+assembly with the exact execution and grant. Driving still reacquires children with
+their real program/input and outcome projection through `ensureChildren`.
+
+`createJournalPresentation` in hosting accepts these readers. Recursive traversal
+remains application assembly: each node is a separate snapshot with its own revision,
+not a globally atomic frontier. A reader sees registered interactions, including
+cleanup interactions; it cannot advance a yielded branch to register a new one.
+A root scheduling result is not an inventory of its descendants' interactions, and
+persisted `running` is not evidence that a physical owner is currently executing.
+
+The `tree-frontier.acceptance.test.ts` application exercises nested Lua body waits
+alongside cleanup repair on memory and SQLite under both native runtimes. It covers
+reader-free advancement, observation during an in-flight cleanup effect, fresh-reader
+reopen, either answer order, occupied/yielded siblings, cancellation, invalid ownership
+navigation, and historical child reads. SQLite evidence is in-process connection
+reopen; no process-crash, cross-journal snapshot or external-service guarantee is added.

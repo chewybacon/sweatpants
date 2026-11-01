@@ -27,6 +27,7 @@ export type {
   OwnedChildOptions,
   OwnedChildrenOptions,
   OwnedJournal,
+  JournalReader,
   OwnedChild,
   JournalPosition,
   AcceptedHistory,

@@ -8,3 +8,6 @@ export { createToolAdmission } from "./apis.ts";
 export type { ToolAdmission } from "./contracts.ts";
 export type { ToolRoute } from "./contracts.ts";
 export { installToolRouting } from "./middleware.ts";
+
+export type { ToolContract } from "./contracts.ts";
+export { projectToolContract } from "./contract.ts";

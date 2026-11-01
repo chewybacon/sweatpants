@@ -60,6 +60,31 @@ export interface ToolDefinition<
   ) => Operation<R, CapabilityRequest | ScopeInstruction>;
 }
 
+/**
+ * Typed local view of an authored tool without its body or default implementations.
+ * Schemas and domain call builders are retained by reference, not serialized or
+ * deep-frozen. This is neither a browser import boundary nor an authority grant.
+ * Inferred results are compile-time information, not a runtime result validator.
+ */
+export interface ToolContract<
+  S extends StandardSchemaV1,
+  D extends Record<string, EffectDefinition>,
+  L extends Record<string, EffectDefinition>,
+  R,
+> extends EffectDefinition<
+  StandardSchemaV1.InferOutput<S>,
+  R,
+  StandardSchemaV1.InferInput<S>,
+  R,
+  never
+> {
+  readonly context: S;
+  /** Public effect surfaces; aliases and exact call/schema types are preserved. */
+  readonly capabilities: { readonly [K in keyof D]: Pick<D[K], keyof EffectDefinition> };
+  /** Declared interactions; no default handler or tool body is exposed. */
+  readonly elicits: { readonly [K in keyof L]: Pick<L[K], keyof EffectDefinition> };
+}
+
 /** Immutable builder retaining schema, capability and elicitation inference. */
 export interface ToolBuilder<
   S extends StandardSchemaV1,

@@ -1,5 +1,55 @@
 # V2 engineering conventions
 
+## Assembly-driven API design
+
+The current work is capability assembly: discovering the APIs and compositions that
+make concrete applications straightforward to build from the existing foundation.
+Do not assume every missing feature requires a new primitive, or that every useful
+assembly should become a framework API. A new primitive is justified when a concrete
+assembly exposes a missing fundamental guarantee that existing mechanisms cannot supply.
+
+Use this lexicon in proposals, reviews and handoffs:
+
+- **Primitive:** a mechanism establishing a fundamental guarantee, such as scope
+  ownership, atomic acceptance or replay.
+- **Capability:** a consumer-facing operation or set of operations, such as sampling,
+  admission or program resolution. An API facade alone grants no authority.
+- **Policy:** a choice about how a capability behaves, such as model selection, round
+  limits or retention. Scoped middleware is appropriate when that choice decorates
+  an existing operation; core correctness remains in the owning implementation.
+- **Assembly:** concrete wiring of capabilities, policies and lifetimes for a use case.
+  It identifies who owns work, which instances consumers invoke and how resources end.
+- **Adapter:** an implementation connecting a capability or assembly to a provider,
+  transport, storage engine, runtime or platform.
+- **Assembly experiment:** a provisional consumer used to discover requirements and
+  evaluate boundaries. Its local APIs and policies are not presumed framework exports.
+
+Work from a concrete consumer toward a reusable boundary:
+
+1. State the application behavior to unlock and the existing capabilities it can use.
+   Consult prior research and current code; distinguish missing behavior from missing
+   wiring, a deliberate omission, or an outdated gap description.
+2. Assemble the behavior with existing public APIs in an acceptance journey. Keep
+   provisional contracts and application-specific policy local. Reuse a relevant
+   journey where possible rather than building a parallel lifecycle test suite.
+3. Identify repeated wiring, awkward boundaries or a missing guarantee. Name which
+   category above needs to change. Prefer ordinary composition or a pure helper when
+   those suffice; do not add a scoped API just to wrap a function or fill a scaffold.
+4. Extract only the boundary supported by the consumer evidence. Explain who uses it,
+   what it owns, which guarantees it adds and which choices remain with assembly.
+   Repeated use is useful evidence, not a mandatory quota of consumers. One concrete
+   consumer can justify a boundary when its semantics and benefit are clear.
+5. Route the actual consumer through the extracted implementation and retain its
+   behavioral and inference evidence. Remove superseded experimental paths. Document
+   remaining limits without claiming transport, browser, persistence or deployment
+   guarantees that the experiment did not establish.
+
+Promotion is a design decision, not an automatic consequence of a passing spike.
+Acceptance proves the exercised behavior, not that the API shape is right for every
+consumer. Keep uncertain designs experimental; preserve explicitly parked or unstaged
+work until the user chooses to revisit it. A scaffolding file records a place for a
+responsibility, not an obligation to invent an implementation.
+
 ## Testing
 
 The primary testing method is protocol-simulated, in-process acceptance testing.

@@ -66,7 +66,7 @@ supported by this evaluator.
 
 The declaration exposes schemas, identity and typed interaction definitions as data,
 but also retains executable bodies and possibly server handler dependencies. It is
-not a browser-safe bundle projection. Client splitting,
+not a browser-safe bundle projection. Client import splitting,
 compiler restrictions and checkpointable tool bodies remain future work.
 
 Acceptance journeys invoke tools through granted effects and owned journals on both
@@ -120,3 +120,37 @@ named route on existing `Hosting.child`, reusing stored normalized child input o
 recovery. Install parent grant admission before routing. Importing a definition does
 not grant authority. Group routes still validate every descriptor before creating
 any child; this helper does not replace group admission or child-host ownership.
+
+## Typed public contract projection
+
+`projectToolContract(tool)` returns a `ToolContract` for local interface consumers.
+It preserves tool input/result inference, named capability and elicitation aliases,
+context/response schema types, and domain `call` builders. A runtime whitelist excludes
+the body, nested default implementations and extra authored fields. The new view,
+its maps and nested effect views are shallow-frozen. Schemas and call functions retain
+their original references; they are neither cloned nor deep-frozen.
+
+```ts
+const contract = projectToolContract(investigate);
+// contract.call retains the tool's caller input and inferred result.
+// contract.elicits.clarification retains its context and response schema types.
+// contract.body and nested .implementation members do not exist.
+```
+
+Keep the original tool and effect objects for server acquisition, grants and handler
+installation. The projected objects are distinct identities: registering them alongside
+the originals under the same effect IDs conflicts. Projection installs nothing, grants
+no authority and invokes neither schemas nor the tool. Result inference does not add
+runtime result validation. The call builders still yield ordinary domain requests.
+
+This is a local typed view, not a JSON descriptor, schema exporter, browser-safe module
+or security sandbox. Importing a server definition before projecting it still imports
+its dependencies; schema closures and call functions remain JavaScript. Portable model
+metadata and build-time client imports need separate contracts and evidence.
+
+The mounted-tool client journey now consumes only this view for interaction dispatch
+and context validation. Wire context remains schema input; the client explicitly
+validates it to handler context. It submits response-schema input, and server answer
+ingress transforms that value before the Guest receives it. Original server defaults
+and recording remain intact across SQLite reopen. Source and built-declaration fixtures
+verify inferred tool results, capability failures and transformed elicitation types.

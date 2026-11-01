@@ -314,16 +314,29 @@ export interface OwnedChildrenOptions<C, V, E> {
   readonly outcome: (values: readonly C[]) => Outcome<V, E>;
 }
 
-/** Typed journal capabilities sharing the adapter's atomic transaction boundary. */
-export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never> extends Journal<
-  R,
-  Q,
-  V,
-  E,
-  S,
-  Y
+/** Connection-bound observation of one execution and its persisted direct children.
+ * Child payloads are heterogeneous and must be decoded by the application. Reads
+ * across the tree are separate snapshots, not an atomic frontier. This trusted
+ * storage capability supplies no authentication or redaction.
+ */
+export interface JournalReader<R, Q, V, E, S = unknown, Y = never> extends Pick<
+  Journal<R, Q, V, E, S, Y>,
+  "read"
 > {
   readonly id: string;
+  /** Open an existing direct child, including a retained historical child.
+   * Rejects unrelated/missing identities. Creates no child, installs no result
+   * projection, and acquires no Guest. Reopen through a fresh parent after closing
+   * the storage connection. Returned handles expose observation only.
+   */
+  openChild(
+    childId: string,
+  ): Operation<JournalReader<unknown, unknown, unknown, unknown, unknown, Y>, Y>;
+}
+
+/** Typed journal capabilities sharing the adapter's atomic transaction boundary. */
+export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never>
+  extends Journal<R, Q, V, E, S, Y>, JournalReader<R, Q, V, E, S, Y> {
   /**
    * Pin normalized root input atomically before execution. Program must match this
    * journal. Equal resubmissions return the stored value; conflicting input rejects,

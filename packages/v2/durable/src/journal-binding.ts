@@ -6,6 +6,7 @@ import type {
   JournalBackend,
   JournalBindingOptions,
   OwnedJournal,
+  JournalReader,
   OwnedChildOptions,
   OwnedChildrenOptions,
 } from "./contracts.ts";
@@ -61,6 +62,31 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
     }
     return {
       id,
+      *openChild(
+        childId,
+      ): Operation<JournalReader<unknown, unknown, unknown, unknown, unknown, Y>, Y> {
+        const childProgram = yield* invoke(function* (_tree, records) {
+          const child = yield* records.get(childId);
+          const link = child?.parent;
+          if (!link || link.parentId !== id || link.childId !== childId) {
+            throw new Error("Not a direct owned child");
+          }
+          const request = yield* records.request(id, link.requestId);
+          const stored = request?.children?.find((entry) => entry.childId === childId);
+          if (
+            !stored ||
+            stored.parentId !== id ||
+            stored.requestId !== link.requestId ||
+            stored.program !== link.program ||
+            child.snapshot.program !== link.program
+          ) {
+            throw new Error("Inconsistent owned child link");
+          }
+          return link.program;
+        });
+        const child = bind<unknown, unknown, unknown, unknown, unknown>(childId, childProgram);
+        return { id: child.id, read: child.read, openChild: child.openChild };
+      },
       *admit(program, input) {
         return yield* command((journal) => journal.admit(program, input));
       },
