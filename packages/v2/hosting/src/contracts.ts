@@ -40,13 +40,23 @@ export type ActivationDecision =
       readonly reason: string;
     };
 
-/** Terminal child settlement, blocking, or an explicitly propagated cooperative yield. */
-export type ChildHostingResult = boolean | ActivationYield;
+/** Why a nonterminal child tree stopped. Unknown includes legacy boolean callbacks. */
+export type ChildBlockingReason = "waiting" | "occupied" | "invalidated" | "unknown";
+
+/** Terminal settlement (true), legacy unknown blocking (false), or an explicit disposition.
+ * Use childHostingResult and joinChildHostingResults rather than truthiness checks. */
+export type ChildHostingResult =
+  | boolean
+  | ActivationYield
+  | {
+      readonly state: "blocked";
+      readonly reason: ChildBlockingReason;
+    };
 
 /** Completion, blocking, invalidation, or an owner-requested cooperative yield. */
 export type HostedResult<R, Q = unknown> =
   | ActivationYield
-  | { readonly state: "child"; readonly childId: string }
+  | { readonly state: "child"; readonly childId: string; readonly reason?: ChildBlockingReason }
   | { readonly state: "completed"; readonly value: R }
   | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string }
   | { readonly state: "occupied"; readonly grant: AttemptGrant }
@@ -56,7 +66,7 @@ export type HostedResult<R, Q = unknown> =
 /** Drive an owned child through its ordinary host; storage atomically settles its parent call. */
 export interface ChildHosting<Y> {
   readonly id: string;
-  /** True after terminal settlement; false when blocked. Preserve child yields explicitly. */
+  /** True after terminal settlement; false means unknown blocking. Preserve explicit dispositions. */
   run(): Operation<ChildHostingResult, Y>;
 }
 

@@ -1,3 +1,4 @@
+import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
 import { installToolRouting } from "@sweatpan.ts/tools";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -345,7 +346,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         return { host, recovery };
       }
-      function* runChild(child: Child): Operation<boolean, Y> {
+      function* runChild(child: Child): Operation<ChildHostingResult, Y> {
         const { host, recovery } = childHost(child);
         yield* installGuestRetention(runtime.composition, host, recovery, child.journal);
         yield* host.around(acquisition.admission);
@@ -358,7 +359,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (result.state === "waiting") {
           waiting = { child, grant: result.grant };
         }
-        return result.state === "completed";
+        return childHostingResult(result);
       }
       return {
         snapshot() {

@@ -38,3 +38,6 @@ export { createActivationDriver } from "./apis.ts";
 export { createOwnedActivationDriver } from "./activation-driver.ts";
 
 export type { ActivationDecision, ActivationYield, ChildHostingResult } from "./contracts.ts";
+
+export type { ChildBlockingReason } from "./contracts.ts";
+export { childHostingResult, joinChildHostingResults } from "./child-result.ts";

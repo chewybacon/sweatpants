@@ -23,6 +23,9 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
   const { database: db, serialization, program, equals } = options;
   const id = options.id ?? crypto.randomUUID();
   db.exec(`
+    CREATE TABLE IF NOT EXISTS sweatpants_activations (
+      tree TEXT PRIMARY KEY, token TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS sweatpants_executions (
       tree TEXT NOT NULL, id TEXT NOT NULL, format TEXT NOT NULL, payload BLOB NOT NULL,
       PRIMARY KEY (tree, id)
@@ -37,6 +40,13 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
       PRIMARY KEY (tree, execution, sequence), UNIQUE (tree, execution, receipt)
     );
   `);
+  const readIntent = db.prepare("SELECT token FROM sweatpants_activations WHERE tree = ?");
+  const requestIntent = db.prepare(
+    "INSERT INTO sweatpants_activations VALUES (?, ?) ON CONFLICT(tree) DO UPDATE SET token=excluded.token",
+  );
+  const acknowledgeIntent = db.prepare(
+    "DELETE FROM sweatpants_activations WHERE tree = ? AND token = ?",
+  );
   const select = db.prepare(
     "SELECT format, payload FROM sweatpants_executions WHERE tree = ? AND id = ?",
   );
@@ -67,6 +77,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
       const serializer = yield* serialization.resolve();
       db.exec("BEGIN IMMEDIATE");
       let committed = false;
+      let changed = false;
       const transaction = createJournalTransaction<Y>();
       try {
         const cache = new Map<string, JournalRecord>();
@@ -89,7 +100,10 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             }
             return value;
           },
-          *set(key, value) {
+          *set(key, value, activation) {
+            if (activation !== "preserve") {
+              changed = true;
+            }
             set.run(id, key, serializer.format, serializer.encode(value));
             cache.set(key, value);
           },
@@ -104,6 +118,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             return value;
           },
           *setRequest(execution, requestId, value) {
+            changed = true;
             setRequest.run(id, execution, requestId, serializer.format, serializer.encode(value));
             requests.set(JSON.stringify([execution, requestId]), value);
           },
@@ -114,6 +129,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
               : undefined;
           },
           *append(execution, entry) {
+            changed = true;
             append.run(
               id,
               execution,
@@ -125,6 +141,9 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
           },
         };
         const result = yield* transaction.run(rows, work);
+        if (changed) {
+          requestIntent.run(id, crypto.randomUUID());
+        }
         db.exec("COMMIT");
         committed = true;
         transaction.publish();
@@ -145,6 +164,23 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
   };
   return {
     id,
+    activations: {
+      *read() {
+        const row = readIntent.get(id);
+        return row ? { execution: id, token: row.token as string } : undefined;
+      },
+      *request() {
+        const intent = { execution: id, token: crypto.randomUUID() };
+        requestIntent.run(id, intent.token);
+        return intent;
+      },
+      *acknowledge(observed) {
+        if (observed.execution !== id) {
+          throw new Error("Foreign activation intent");
+        }
+        return acknowledgeIntent.run(id, observed.token).changes !== 0;
+      },
+    },
     open: () => createJournalBinding<R, Q, V, E, S, Y>({ program, equals }, backend, id),
   };
 }

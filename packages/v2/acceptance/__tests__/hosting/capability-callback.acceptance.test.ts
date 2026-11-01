@@ -1,3 +1,4 @@
+import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
 import {
   createHostedRecovery as createRecovery,
   createProtocolRig,
@@ -84,7 +85,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expectTypeOf(answer.value).toEqualTypeOf<{ market: string }>();
         return answer.value;
       }
-      function* runCallback(): Operation<boolean, Y> {
+      function* runCallback(): Operation<ChildHostingResult, Y> {
         if (!child) {
           throw new Error("Callback has not been acquired");
         }
@@ -114,7 +115,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (result.state === "waiting") {
           waiting = { grant: result.grant, request: result.pending.request };
         }
-        return result.state === "completed";
+        return childHostingResult(result);
       }
       function run() {
         return start(function* () {

@@ -3,6 +3,7 @@ import {
   createJournalTransaction,
   createJournalRecord,
   type JournalRecord,
+  type PendingActivation,
   type RequestRecord,
   type Accepted,
   type JournalBackend,
@@ -24,6 +25,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
 ): MemoryJournalStore<R, Q, V, E, S> {
   const assembly = { ...options };
   const id = crypto.randomUUID();
+  let pending: PendingActivation | undefined;
   const records = new Map<string, JournalRecord>([[id, createJournalRecord(assembly.program)]]);
   const requests = new Map<string, RequestRecord>();
   const history = new Map<string, Accepted<unknown, unknown, unknown>[]>();
@@ -34,6 +36,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
       const transaction = createJournalTransaction<never>();
       try {
         const writes = new Map<string, JournalRecord>();
+        let changed = false;
         const requestWrites = new Map<string, RequestRecord>();
         const appends = new Map<string, Accepted<unknown, unknown, unknown>[]>();
         const result = yield* transaction.run(
@@ -41,7 +44,10 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
             *get(execution) {
               return structuredClone(writes.get(execution) ?? records.get(execution));
             },
-            *set(execution, record) {
+            *set(execution, record, activation) {
+              if (activation !== "preserve") {
+                changed = true;
+              }
               writes.set(execution, structuredClone(record));
             },
             *request(execution, request) {
@@ -50,6 +56,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
               );
             },
             *setRequest(execution, request, record) {
+              changed = true;
               requestWrites.set(key(execution, request), structuredClone(record));
             },
             *accepted(execution, receipt) {
@@ -59,6 +66,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
               );
             },
             *append(execution, entry) {
+              changed = true;
               const pending = appends.get(execution) ?? [];
               if (
                 entry.sequence !== (history.get(execution)?.length ?? 0) + pending.length ||
@@ -75,6 +83,7 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
         );
         // Clone before publishing: uncloneable projections/results roll back every record.
         const detached = structuredClone(result);
+        const intent = changed ? { execution: id, token: crypto.randomUUID() } : undefined;
         for (const [execution, record] of writes) {
           records.set(execution, record);
         }
@@ -89,6 +98,9 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
             receipts.set(key(execution, entry.receipt), entry);
           }
         }
+        if (intent) {
+          pending = intent;
+        }
         transaction.publish();
         return detached;
       } finally {
@@ -101,5 +113,27 @@ export function createMemoryJournalStore<R, Q, V, E, S = unknown>(
       );
     },
   };
-  return { id, open: () => createJournalBinding<R, Q, V, E, S>(assembly, backend, id) };
+  return {
+    id,
+    open: () => createJournalBinding<R, Q, V, E, S>(assembly, backend, id),
+    activations: {
+      *read() {
+        return pending ? { ...pending } : undefined;
+      },
+      *request() {
+        pending = { execution: id, token: crypto.randomUUID() };
+        return { ...pending };
+      },
+      *acknowledge(observed) {
+        if (observed.execution !== id) {
+          throw new Error("Foreign activation intent");
+        }
+        if (pending?.token !== observed.token) {
+          return false;
+        }
+        pending = undefined;
+        return true;
+      },
+    },
+  };
 }

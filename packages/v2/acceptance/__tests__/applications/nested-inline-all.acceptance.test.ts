@@ -1,3 +1,4 @@
+import { childHostingResult } from "@sweatpan.ts/hosting";
 import {
   createHostedRecovery as createRecovery,
   createSqliteJournalRig,
@@ -164,9 +165,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     completedOuter = child.journal;
                   }
                   const result = yield* drive(child.journal, child.link.program, branch, depth + 1);
-                  return result.state === "yielded"
-                    ? result
-                    : result.state === "completed" || result.state === "cancelled";
+                  return childHostingResult(result);
                 },
               });
               yield* owned.install({

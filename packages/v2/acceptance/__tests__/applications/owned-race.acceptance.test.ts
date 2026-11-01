@@ -1,3 +1,4 @@
+import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
 import {
   createHostedRecovery as createRecovery,
   createSqliteJournalRig,
@@ -88,7 +89,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             });
           },
         });
-        function* drive(child: Child, factory: Factory, index: number): Operation<boolean, Y> {
+        function* drive(
+          child: Child,
+          factory: Factory,
+          index: number,
+        ): Operation<ChildHostingResult, Y> {
           children[index] = child;
           boundary = child.link.requestId;
           if (paused === index) {
@@ -130,7 +135,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           } else {
             waits.delete(index);
           }
-          return result.state === "completed" || result.state === "cancelled";
+          return childHostingResult(result);
         }
         const host = createHosting(runtime.composition, {
           name: "race-parent-host",

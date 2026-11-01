@@ -42,3 +42,6 @@ export { createJournalTransaction } from "./transaction.ts";
 
 export { JournalConflict } from "./conflict.ts";
 export { createAttempts } from "./apis.ts";
+
+export type { PendingActivation, ActivationIntents } from "./contracts.ts";
+export { createActivationIntents } from "./apis.ts";

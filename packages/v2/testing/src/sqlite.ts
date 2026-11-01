@@ -33,6 +33,10 @@ export function createSqliteJournalRig<R, Q, V, E, S = unknown, Y = never>(
   let current = connect();
   return {
     id,
+    /** Fresh current-connection intent capability; reacquire after reopening. */
+    get activations() {
+      return current.store.activations;
+    },
     open: () => current.store.open(),
     /** Separate connection to the same authority, for racing an externally controlled write. */
     connect: () => connect().store.open(),

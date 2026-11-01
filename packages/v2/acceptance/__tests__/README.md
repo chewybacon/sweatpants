@@ -331,3 +331,26 @@ replay/restore journeys use the server-owned resolver and check detached invocat
 The package retains the standard `contracts.ts`, `apis.ts`, and `types.ts`
 scaffolds and its build entry point. Empty scaffold files do not represent
 implemented capabilities; journeys and compile-time consumers provide the evidence.
+
+## Concrete activation consumers
+
+`applications/request-consumer.acceptance.test.ts` runs validated request commands
+through direct request-scoped reconciliation and returns finite projected JSON.
+Observe reads accepted presentation without acquiring a Guest. Receipt-bearing
+pagination stops at a captured accepted-history endpoint, independently of later
+writes. One entry and a 2048-byte encoded response cap bound each response, not the
+memory required to decode an individually large stored value. Lost responses,
+concurrent Resume, abort cleanup and occupied recovery run under both runtimes.
+These are in-process Request/Response objects, not a live HTTP adapter. Live output,
+production authorization and nested interaction routing remain application work.
+
+`applications/sweep-consumer.acceptance.test.ts` owns application SQLite catalog,
+cursor and token-keyed backoff tables. One designated owner visits one root per tick,
+gates execution on admission, and rebuilds assembly after connection reopen. It proves
+discovery without prompt wakeups, traversal across restart, answer recovery, advisory
+telemetry loss, and new-token bypass of old backoff without unsafe redispatch.
+Deadline signals exercise cooperative interruption and joined cleanup; they do not
+contain synchronous hangs or nonterminating cleanup. A recurring deployed trigger,
+concurrent sweep ownership and process-loss supervision remain platform work.
+The reusable `createSqliteDatabaseRig` owns only the temporary database lifecycle;
+consumer policy stays in these application journeys.

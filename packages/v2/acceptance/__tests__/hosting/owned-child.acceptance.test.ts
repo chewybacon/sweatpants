@@ -1,3 +1,4 @@
+import { childHostingResult } from "@sweatpan.ts/hosting";
 import {
   createHostedRecovery as createRecovery,
   readJournal,
@@ -112,7 +113,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       if (result.state === "waiting") {
         waits.set(child.link.childId, { grant: result.grant, request: result.pending.request });
       }
-      return result.state === "completed" || result.state === "cancelled";
+      return childHostingResult(result);
     }
     function run() {
       const generation = assembly;
@@ -252,7 +253,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const s = scenario({ count: 2 });
       expect((await s.begin()).state).toBe("child");
       const first = s.links[0]!;
-      expect(await s.run().result).toEqual({ state: "child", childId: first.childId });
+      expect(await s.run().result).toEqual({
+        state: "child",
+        childId: first.childId,
+        reason: "waiting",
+      });
       expect(s.links).toHaveLength(1);
       await s.answer(first.childId);
       expect((await s.run().result).state).toBe("child");
@@ -562,7 +567,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               id: child.link.childId,
               *run() {
                 const result = yield* runLevel(depth + 1, child.journal);
-                return result.state === "completed" || result.state === "cancelled";
+                return childHostingResult(result);
               },
             };
           },

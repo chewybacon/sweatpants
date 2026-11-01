@@ -1,3 +1,4 @@
+import { childHostingResult, joinChildHostingResults } from "@sweatpan.ts/hosting";
 import {
   createHostedExecution,
   createHostedRecovery as createRecovery,
@@ -265,11 +266,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                               request: result.pending.request,
                             });
                           }
-                          return result.state === "completed" || result.state === "cancelled";
+                          return childHostingResult(result);
                         },
                     ),
                   );
-                  return results.every(Boolean);
+                  return joinChildHostingResults(results);
                 },
               };
             },

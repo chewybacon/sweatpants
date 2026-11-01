@@ -119,7 +119,7 @@ export interface ToolAdmission<I, O, Y> {
 /** One named-tool route installed on the existing Hosting.child operation. */
 export interface ToolRoute<S extends StandardSchemaV1, R, Y, ParentError = string> {
   readonly tool: { readonly id: string; readonly context: S };
-  /** Drive this child to terminal settlement or return false when parked/occupied. */
+  /** Drive this child and return childHostingResult(result), preserving yields and blocking reasons. */
   run(
     child: OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>,
   ): Operation<ChildHostingResult, Y>;

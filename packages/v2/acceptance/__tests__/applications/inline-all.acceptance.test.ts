@@ -1,3 +1,4 @@
+import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
 import { installToolRouting, createToolAcquisition } from "@sweatpan.ts/tools";
 import {
   createHostedRecovery as createRecovery,
@@ -139,7 +140,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             });
           },
         });
-        function* runChild(child: Child, index: number, factory: Factory): Operation<boolean, Y> {
+        function* runChild(
+          child: Child,
+          index: number,
+          factory: Factory,
+        ): Operation<ChildHostingResult, Y> {
           const grant = effects.grant({ approval, compute, cleanup, scoreTool });
           const childRecovery = createRecovery(runtime, {
             name: `inline-child:${index}`,
@@ -199,7 +204,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 owned.journal,
               );
               const result = yield* toolHost.operations.run();
-              return result.state === "completed" || result.state === "cancelled";
+              return childHostingResult(result);
             },
           });
           yield* host.around({
@@ -215,7 +220,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           } else {
             waits.delete(index);
           }
-          return result.state === "completed" || result.state === "cancelled";
+          return childHostingResult(result);
         }
         const host = createHosting(runtime.composition, {
           name: "inline-parent-host",

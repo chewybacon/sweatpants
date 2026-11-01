@@ -117,3 +117,12 @@ export interface TransportRig {
   fail(error: unknown): void;
   close(): void;
 }
+
+/** Temporary SQLite database for consumer-owned tables. Caller joins work before reopen/close. */
+export interface SqliteDatabaseRig {
+  readonly database: import("node:sqlite").DatabaseSync;
+  /** Close and reopen the same file; discard old stores, statements and connection-bound facades. */
+  reopen(): import("node:sqlite").DatabaseSync;
+  /** Idempotently close the current connection and remove temporary files. */
+  close(): void;
+}

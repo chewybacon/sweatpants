@@ -388,7 +388,9 @@ export interface RequestRecord {
 /** Transaction-local storage access. Reads are detached; writes publish only on commit. */
 export interface JournalRecords<Y> {
   get(id: string): Operation<JournalRecord | undefined, Y>;
-  set(id: string, record: JournalRecord): Operation<void, Y>;
+  /** Normal writes request root activation. Only refreshing an already-pending
+   * boundary's revision/checkpoint may preserve the existing intent token. */
+  set(id: string, record: JournalRecord, activation?: "preserve"): Operation<void, Y>;
   request(id: string, requestId: string): Operation<RequestRecord | undefined, Y>;
   setRequest(id: string, requestId: string, record: RequestRecord): Operation<void, Y>;
   accepted(
@@ -440,4 +442,23 @@ export interface JournalBackend<Y> {
     end: number,
     limit: number,
   ): Operation<readonly Accepted<unknown, unknown, unknown>[], Y>;
+}
+
+/** Coalesced activation intent for one root tree. Opaque token changes on transactions that introduce activation-relevant writes. */
+export interface PendingActivation {
+  readonly execution: string;
+  readonly token: string;
+}
+
+/** Store-owned reconciliation intent, atomic with activation-relevant journal mutations in its root tree.
+ * This is neither a process lease nor effect authority. Reads do not claim work. */
+export interface ActivationIntents<Y> {
+  /** Read the current pending token, or undefined when acknowledged. */
+  read(): Operation<PendingActivation | undefined, Y>;
+  /** Explicitly request activation, including for a new root with no journal writes.
+   * Repeated requests coalesce, but replace the token so stale acknowledgements fail. */
+  request(): Operation<PendingActivation, Y>;
+  /** Clear only the exact observed token. False means it is no longer current;
+   * a foreign execution rejects. Never clears newer work or changes journal authority. */
+  acknowledge(observed: PendingActivation): Operation<boolean, Y>;
 }

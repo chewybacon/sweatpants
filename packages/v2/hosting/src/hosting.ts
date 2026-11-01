@@ -65,7 +65,9 @@ export function createHosting<R, Q, V, E, S, Y>(
             }
             const result = yield* child.run();
             if (typeof result !== "boolean") {
-              return result;
+              return result.state === "yielded"
+                ? result
+                : { state: "child", childId: child.id, reason: result.reason };
             }
             if (!result) {
               return { state: "child", childId: child.id };

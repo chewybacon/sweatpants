@@ -1,3 +1,4 @@
+import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
 import { installToolRouting } from "@sweatpan.ts/tools";
 import {
   createHostedRecovery as createRecovery,
@@ -181,7 +182,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             });
             return { host, recovery };
           }
-          function* runChild(child: Child): Operation<boolean, Y> {
+          function* runChild(child: Child): Operation<ChildHostingResult, Y> {
             yield* effects.install(readFile);
             const { host, recovery } = childHost(child);
             yield* host.around(acquisition.admission);
@@ -195,7 +196,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             if (result.state === "waiting") {
               waiting = { grant: result.grant, child };
             }
-            return result.state === "completed";
+            return childHostingResult(result);
           }
           return {
             run() {

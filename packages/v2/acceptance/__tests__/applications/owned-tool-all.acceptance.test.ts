@@ -1,4 +1,9 @@
 import {
+  childHostingResult,
+  joinChildHostingResults,
+  type ChildHostingResult,
+} from "@sweatpan.ts/hosting";
+import {
   createHostedRecovery as createRecovery,
   createSqliteJournalRig,
   readJournal,
@@ -177,7 +182,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           D extends Record<string, EffectDefinition>,
           L extends Record<string, EffectDefinition>,
           R,
-        >(tool: ToolDefinition<S, D, L, R>, owned: Child): Operation<boolean, Y> {
+        >(tool: ToolDefinition<S, D, L, R>, owned: Child): Operation<ChildHostingResult, Y> {
           // One trusted erasure seam: caller chooses this runner by pinned program identity.
           const bound = owned as OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>;
           const acquisition = createToolAcquisition(runtime, effects, tool, `acquire:${tool.id}`);
@@ -215,7 +220,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           if (result.state === "waiting") {
             wait = { child: owned, grant: result.grant };
           }
-          return result.state === "completed" || result.state === "cancelled";
+          return childHostingResult(result);
         }
         yield* effects.install(read);
         yield* effects.install(sample);
@@ -318,7 +323,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                       },
                   ),
                 );
-                return settled.every(Boolean);
+                return joinChildHostingResults(settled);
               },
             };
           },

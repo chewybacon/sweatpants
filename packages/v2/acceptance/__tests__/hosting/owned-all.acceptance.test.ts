@@ -1,4 +1,9 @@
 import {
+  childHostingResult,
+  joinChildHostingResults,
+  type ChildHostingResult,
+} from "@sweatpan.ts/hosting";
+import {
   createHostedRecovery as createRecovery,
   createSqliteJournalRig,
   readJournal,
@@ -54,7 +59,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const waits = new Map<string, ResolutionGrant>();
     const operations = new Map<string, string>();
     let parentWait: ResolutionGrant | undefined;
-    function* runChild(child: Child): Operation<boolean, Y> {
+    function* runChild(child: Child): Operation<ChildHostingResult, Y> {
       const label = child.link.input as string;
       const recovery = createRecovery(runtime, {
         name: `all-child-recovery:${label}`,
@@ -116,7 +121,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             id: pending.id,
             *run() {
               const settled = yield* runtime.all(group.map((entry) => () => runChild(entry)));
-              return settled.every(Boolean);
+              return joinChildHostingResults(settled);
             },
           };
         },
@@ -129,7 +134,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         waits.delete(label);
         operations.delete(label);
       }
-      return result.state === "completed" || result.state === "cancelled";
+      return childHostingResult(result);
     }
     function run() {
       return start(function* () {
@@ -191,7 +196,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   return yield* runChild(children[1]!);
                 }
                 const settled = yield* runtime.all(children.map((child) => () => runChild(child)));
-                return settled.every(Boolean);
+                return joinChildHostingResults(settled);
               },
             };
           },

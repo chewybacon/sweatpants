@@ -243,9 +243,9 @@ The installed Lua evaluator does not yet expose logical cancellation.
 
 The scoped `child(pending)` hook runs before attempt/participant acquisition. It
 returns a child ID and a `run` capability backed by the child's ordinary host.
-Return true only after that host reaches terminal settlement. False returns
-`{ state: "child", childId }` from the parent host; ingress routes the next answer
-to the child. No handler attempt represents the parent call.
+Return `childHostingResult(result)` to preserve terminal, yielded and blocked
+outcomes. The parent retains child blocking reasons; ingress routes answers to the
+child. Legacy false returns an unknown `{ state: "child", childId }` disposition. No handler attempt represents the parent call.
 
 The memory adapter's `ensureChild` binds a program/input to the exact parent
 request. Repeated activation reuses it. A subsequent call, including another loop
@@ -741,21 +741,25 @@ journal is nonterminal: a zero budget can yield before reading an already-comple
 journal. Resume with `run()` under a policy that permits progress.
 
 Configure continuation policy on child hosts explicitly; independently created
-facades do not share policy identity. Child callbacks return `ChildHostingResult`:
-`true` for terminal settlement, `false` for blocking, or the yielded result unchanged.
-For example, translate a child Host result as follows:
+facades do not share policy identity. Convert results with `childHostingResult`:
 
 ```ts
-return result.state === "yielded"
-  ? result
-  : result.state === "completed" || result.state === "cancelled";
+return childHostingResult(yield * childHost.operations.run());
 ```
 
-Owned all/race joins every started child before propagating a yield and releasing
-replay-reconstructed factories. If several children yield, the first in declaration
-order supplies the reason. Custom group assemblers must preserve yielded results;
-`results.every(Boolean)` would incorrectly count a yield as terminal settlement.
-Named tool routing accepts the same child result contract.
+The helper returns true for terminal settlement, preserves a yield, and otherwise
+returns an explicit blocked reason (waiting, occupied, invalidated, or unknown).
+Parent Host results retain that reason as `{ state: "child", childId, reason }`.
+Legacy true/false callbacks remain accepted, but false means unknown blocking;
+reconciliation must not mistake it for a quiescent participant wait. Participant
+grants and child output still belong to their owning journals/application views.
+
+Owned all/race joins every started child before calling `joinChildHostingResults`
+and releasing replay-reconstructed factories. Custom group assemblers should use
+the same helper after joining children. It preserves the first yield in declaration
+order; otherwise unknown, occupied and invalidated blockers take precedence over
+waiting. Only an all-terminal group returns true. `results.every(Boolean)` is
+incorrect for these results. Named tool routing accepts the same child contract.
 
 A shared stop flag can prevent further work at each child's next boundary; it does
 not preempt children already delivering or evaluating. No hard deadline, global

@@ -197,3 +197,13 @@ uses the same decisions with indexed request/receipt reads and accepted ranges. 
 owned-child and Lua reopening evidence now enters through SQLite. Memory continues
 to serve the other in-process composition and recovery journeys. Cross-domain
 ownership needs a separate protocol.
+
+## Activation intent
+
+`store.activations` exposes root-tree `read`, `request`, and compare-token
+`acknowledge` commands. Journal writes publish a fresh coalesced token with the
+staged records; failed transactions publish neither. Child changes target the same
+root intent. Recovery-only refresh of an existing pending revision/checkpoint
+preserves the token. Reads and acknowledgement do not create new intent.
+Intent remains process-local and independent of any live Host or output reader.
+See [deployment reconciliation](../deployment/README.md) for ownership and scheduling.

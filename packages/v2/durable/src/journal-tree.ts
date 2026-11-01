@@ -231,8 +231,11 @@ export function createJournalTree<Y>(
     },
     *park<R, Q, S>(id: string, snapshot: JournalSnapshot<R, Q, S>, pending: PendingRequest<Q>) {
       const current = yield* record(records, id);
+      const refresh =
+        current.snapshot.status === "running" && current.snapshot.pending?.id === pending.id;
       current.snapshot = snapshot;
-      yield* records.set(id, current);
+      // Recovery refreshes revision/checkpoint without creating new runnable work.
+      yield* records.set(id, current, refresh ? "preserve" : undefined);
       if (current.queuedStop !== undefined && !snapshot.cancellation) {
         const reason = current.queuedStop;
         current.queuedStop = undefined;

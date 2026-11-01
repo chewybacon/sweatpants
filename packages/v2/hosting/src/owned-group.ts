@@ -1,3 +1,4 @@
+import { joinChildHostingResults } from "./child-result.ts";
 import { JournalConflict } from "@sweatpan.ts/durable";
 import type { Operation } from "@standard-durability/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -155,8 +156,7 @@ export function createOwnedGroup<C, I, Y>(
                 );
                 // Join every child before releasing replay-reconstructed factories. A yield
                 // is not terminal settlement and must reach the owning parent Host.
-                const yielded = settled.find((result) => typeof result !== "boolean");
-                return yielded ?? settled.every((result) => result === true);
+                return joinChildHostingResults(settled);
               });
             },
           };

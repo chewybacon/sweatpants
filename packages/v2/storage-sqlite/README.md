@@ -65,3 +65,19 @@ No claim is made about OS-crash survival, disk faults, cross-process concurrency
 exactly-once provider IO, or cross-database atomicity. Retained authority and history
 still consume space; large individual values/checkpoints remain large. No pruning or
 historical branching policy is implied by bounded access.
+
+## Activation intent
+
+`store.activations` exposes root-tree `read`, `request`, and compare-token
+`acknowledge` commands. `sweatpants_activations` stores one opaque pending token per
+root tree. Journal transactions replace it before COMMIT whenever they introduce
+activation-relevant writes, including child replies and cancellation. Failed writes
+roll back records and intent together. Recovery-only revision/checkpoint refresh of
+an existing pending boundary preserves the token. Acknowledgement is one conditional
+DELETE; a newer token from another connection cannot be removed by a stale caller.
+
+Explicit request uses an atomic upsert; reads and acknowledgements do not require
+serializing journal payloads. These commands never advance a Guest or authorize
+retry. Bind a fresh store after closing a connection. The platform retains root IDs
+and arranges discovery/reconciliation; no global scan or background process is
+started by this adapter. See [deployment reconciliation](../deployment/README.md).

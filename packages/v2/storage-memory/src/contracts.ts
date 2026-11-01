@@ -1,8 +1,10 @@
-import type { OwnedJournal } from "@sweatpan.ts/durable";
+import type { OwnedJournal, ActivationIntents } from "@sweatpan.ts/durable";
 
 /** A retained in-memory owned tree, separate from the handles and code bound to it. */
 export interface MemoryJournalStore<R, Q, V, E, S = unknown> {
   readonly id: string;
+  /** Root-tree intent committed atomically with journal writes. */
+  readonly activations: ActivationIntents<never>;
   /**
    * Open a fresh root handle with an empty projection registry. Reacquire children
    * through ensureChild with the pinned program/input and trusted result projection.
