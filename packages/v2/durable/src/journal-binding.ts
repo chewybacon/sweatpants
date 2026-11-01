@@ -7,6 +7,7 @@ import type {
   JournalBindingOptions,
   OwnedJournal,
   JournalReader,
+  OwnedChildInteractions,
   OwnedChildOptions,
   OwnedChildrenOptions,
 } from "./contracts.ts";
@@ -60,32 +61,55 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         ),
       );
     }
+    function* ownedLink(childId: string) {
+      return yield* invoke(function* (_tree, records) {
+        const child = yield* records.get(childId);
+        const link = child?.parent;
+        if (!link || link.parentId !== id || link.childId !== childId) {
+          throw new Error("Not a direct owned child");
+        }
+        const request = yield* records.request(id, link.requestId);
+        const stored = request?.children?.find((entry) => entry.childId === childId);
+        if (
+          !stored ||
+          stored.parentId !== id ||
+          stored.requestId !== link.requestId ||
+          stored.program !== link.program ||
+          child.snapshot.program !== link.program
+        ) {
+          throw new Error("Inconsistent owned child link");
+        }
+        return link;
+      });
+    }
     return {
       id,
       *openChild(
         childId,
       ): Operation<JournalReader<unknown, unknown, unknown, unknown, unknown, Y>, Y> {
-        const childProgram = yield* invoke(function* (_tree, records) {
-          const child = yield* records.get(childId);
-          const link = child?.parent;
-          if (!link || link.parentId !== id || link.childId !== childId) {
-            throw new Error("Not a direct owned child");
-          }
-          const request = yield* records.request(id, link.requestId);
-          const stored = request?.children?.find((entry) => entry.childId === childId);
-          if (
-            !stored ||
-            stored.parentId !== id ||
-            stored.requestId !== link.requestId ||
-            stored.program !== link.program ||
-            child.snapshot.program !== link.program
-          ) {
-            throw new Error("Inconsistent owned child link");
-          }
-          return link.program;
-        });
-        const child = bind<unknown, unknown, unknown, unknown, unknown>(childId, childProgram);
+        const link = yield* ownedLink(childId);
+        const child = bind<unknown, unknown, unknown, unknown, unknown>(childId, link.program);
         return { id: child.id, read: child.read, openChild: child.openChild };
+      },
+      *openChildInteractions<CQ, CV, CE>(
+        childId: string,
+        expectedProgram: string,
+      ): Operation<OwnedChildInteractions<CQ, CV, CE, Y>, Y> {
+        const link = yield* ownedLink(childId);
+        if (link.program !== expectedProgram) {
+          throw new Error("Journal program mismatch");
+        }
+        const child = bind<unknown, CQ, CV, CE, unknown>(childId, link.program);
+        return {
+          link,
+          journal: {
+            id: child.id,
+            interactions: {
+              request: child.interactions.request,
+              answer: child.interactions.answer,
+            },
+          },
+        };
       },
       *admit(program, input) {
         return yield* command((journal) => journal.admit(program, input));

@@ -11,3 +11,6 @@ export { installToolRouting } from "./middleware.ts";
 
 export type { ToolContract } from "./contracts.ts";
 export { projectToolContract } from "./contract.ts";
+
+export { resolveToolExecution } from "./execution.ts";
+export type { ToolExecution, ToolExecutionResolution } from "./contracts.ts";

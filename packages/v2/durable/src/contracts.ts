@@ -350,6 +350,18 @@ export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never>
   readonly attemptControl: AttemptControl<Q, V, E, Y>;
   readonly interactions: Interactions<Q, V, E, Y>;
   /**
+   * Reopen only request/answer authority for an existing direct child, including
+   * historical children. Verifies stored ownership and the expected program; creates
+   * no child, installs no result projection, and grants no execution/registration API.
+   * CQ/CV/CE are supplied by trusted assembly for that pinned program, not decoded
+   * from persisted bytes. Answer acceptance still rechecks the exact resolution grant.
+   * Connection-bound: reopen through a fresh parent after closing storage.
+   */
+  openChildInteractions<CQ, CV, CE>(
+    childId: string,
+    program: string,
+  ): Operation<OwnedChildInteractions<CQ, CV, CE, Y>, Y>;
+  /**
    * Atomically acquire a nonempty ordered sibling group at one pending boundary.
    * Reacquisition checks count, order, programs and inputs, retaining the original
    * projection within this open assembly. A fresh assembly supplies fresh bindings.
@@ -372,6 +384,15 @@ export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never>
     requestId: string,
     options: OwnedChildOptions<C, V, E>,
   ): Operation<OwnedChild<C, CQ, CV, CE, CS, Y>, Y>;
+}
+
+/** Narrow writable binding; no advancement or parent result projection is available. */
+export interface OwnedChildInteractions<Q, V, E, Y> {
+  readonly link: ChildLink;
+  readonly journal: {
+    readonly id: string;
+    readonly interactions: Pick<Interactions<Q, V, E, Y>, "request" | "answer">;
+  };
 }
 
 /** The child journal is driven with ordinary recovery/hosting, without a handler attempt for the call. */

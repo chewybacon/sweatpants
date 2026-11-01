@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
-import type { OwnedChild } from "@sweatpan.ts/durable";
+import type { OwnedChild, ChildLink, Interactions, JournalReader } from "@sweatpan.ts/durable";
 import type { EffectCapabilities, EffectGrant, ChildHostingResult } from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
@@ -150,4 +150,43 @@ export interface ToolRoute<S extends StandardSchemaV1, R, Y, ParentError = strin
   ): Operation<ChildHostingResult, Y>;
   /** Pure synchronous parent projection; default wraps the child's result as authored success. */
   readonly outcome?: (value: R) => Outcome<unknown, ParentError>;
+}
+
+/** Connection-bound ingress for one persisted tool execution, independent of a live Guest. */
+export interface ToolExecution<Tool, E, Y> {
+  readonly execution: string;
+  /** Original server definition selected by persisted program identity, not client input. */
+  readonly tool: Tool;
+  readonly interactions: Pick<Interactions<CapabilityRequest, unknown, E, Y>, "request" | "answer">;
+}
+
+/** Trusted application wiring for resolving an existing direct tool child. */
+export interface ToolExecutionResolution<Tool extends { readonly id: string }, E, Y> {
+  /** Already-authorized parent; only its persisted direct children are reachable. */
+  readonly owner: Pick<
+    JournalReader<unknown, unknown, unknown, unknown, unknown, Y>,
+    "id" | "openChild"
+  >;
+  /** Original compatible definitions. Matching IDs cannot prove code/version compatibility. */
+  readonly programs: ReadonlyMap<string, Tool>;
+  /**
+   * Open the existing child's ingress on this same owner's connection, using the
+   * verified program's response contract. Called only after ownership/catalog checks.
+   * OwnedJournal.openChildInteractions supplies this without result projections.
+   * Must not acquire a Guest, deliver effects or create a replacement execution.
+   * Rebuild after connection close.
+   */
+  bind(
+    execution: string,
+    program: string,
+  ): Operation<
+    {
+      readonly link: ChildLink;
+      readonly journal: {
+        readonly id: string;
+        readonly interactions: ToolExecution<Tool, E, Y>["interactions"];
+      };
+    },
+    Y
+  >;
 }

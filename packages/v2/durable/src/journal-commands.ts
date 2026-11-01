@@ -22,7 +22,10 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   tree: ReturnType<typeof createJournalTree<Y>>,
   records: JournalRecords<Y>,
   identity: string,
-): Omit<OwnedJournal<R, Q, V, E, S, Y>, "ensureChild" | "ensureChildren" | "openChild" | "read"> & {
+): Omit<
+  OwnedJournal<R, Q, V, E, S, Y>,
+  "ensureChild" | "ensureChildren" | "openChild" | "openChildInteractions" | "read"
+> & {
   read(): Operation<
     JournalSnapshot<R, Q, S> & { readonly interaction?: InteractionRegistration },
     Y

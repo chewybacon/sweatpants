@@ -290,9 +290,24 @@ than opening a grandchild directly from the root.
 Child payloads are `unknown`; the application decodes the program's contracts.
 The handle is bound to the current storage connection and must be obtained afresh
 after reopening. This is trusted storage navigation, not authorization or redaction.
-A caller that needs to answer an interaction must use a separately authorized command
-assembly with the exact execution and grant. Driving still reacquires children with
-their real program/input and outcome projection through `ensureChildren`.
+A caller that needs to answer an interaction uses a separately authorized writable
+parent. `parent.openChildInteractions<Q, V, E>(childId, expectedProgram)` verifies the
+same persisted direct ownership link and the expected program, then returns a child
+link and a narrow journal with only `id` and `interactions.request/answer`. It does not
+create children, install result projections, acquire Guests or advance execution.
+Read-only child handles do not expose this operation.
+
+The type arguments describe the pinned child's protocol supplied by trusted assembly;
+they do not decode or validate stored bytes. Request lookup resolves the exact grant,
+including accepted terminal retries. Answer acceptance still atomically checks that
+grant after validation. Opening ingress is not a lease or participant authentication.
+The handle remains tied to its storage connection and must be reopened with a fresh
+parent after closing it.
+
+Answer acceptance updates child history and activation intent while leaving the child
+nonterminal. A later execution pass reattaches the original result projection through
+`ensureChild` or `ensureChildren` before terminal child settlement. This keeps external
+answer ingress independent of application-specific batch history and completion policy.
 
 `createJournalPresentation` in hosting accepts these readers. Recursive traversal
 remains application assembly: each node is a separate snapshot with its own revision,

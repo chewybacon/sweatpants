@@ -29,6 +29,7 @@ export type {
   OwnedJournal,
   JournalReader,
   OwnedChild,
+  OwnedChildInteractions,
   JournalPosition,
   AcceptedHistory,
   RequestRecord,

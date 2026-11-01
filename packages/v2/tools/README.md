@@ -154,3 +154,53 @@ validates it to handler context. It submits response-schema input, and server an
 ingress transforms that value before the Guest receives it. Original server defaults
 and recording remain intact across SQLite reopen. Source and built-declaration fixtures
 verify inferred tool results, capability failures and transformed elicitation types.
+
+## Resolve a persisted tool execution
+
+`resolveToolExecution(resolution, execution)` returns the original tool definition
+and the child's `request` / `answer` interaction methods. It works without a live
+Guest or current waiting frontier, including accepted-answer retries after completion.
+
+```ts
+const bound =
+  yield *
+  resolveToolExecution(
+    {
+      owner: parentJournal,
+      programs: new Map([[investigate.id, investigate]]),
+      // Trusted program contract; no batch history or execution projection is needed.
+      bind: (execution, program) =>
+        parentJournal.openChildInteractions<CapabilityRequest, unknown, string>(execution, program),
+    },
+    executionId,
+  );
+const request = yield * bound.interactions.request(resolutionGrant);
+const granted = effects.grant(bound.tool.elicits);
+const outcome = yield * granted.respond(request, { ok: true, value: rawAnswer });
+const receipt = yield * bound.interactions.answer(resolutionGrant, { ok: true, value: outcome });
+```
+
+The resolver first opens the persisted direct child through the supplied owner and
+selects a catalog entry using its stored program. Missing ownership or an unavailable
+program rejects before `bind` runs. It then checks that the adapter returned the same
+execution, parent and program before exposing ingress. Catalog definition types,
+transport errors and runtime yield types are preserved.
+
+The binder receives the verified program and supplies only an existing child link and
+request/answer authority. `OwnedJournal.openChildInteractions` supplies this directly,
+without scanning parent history or reattaching result projections. Chat uses this
+binding; its group projection is installed separately when execution advances.
+An existing `OwnedChild` also satisfies the binder contract. No recursive route is
+supplied; the owner must be the target's direct parent.
+
+The owner and catalog are trusted assembly inputs. Authorize the caller's access to
+that owner separately; never take a program catalog or arbitrary owner capability from
+a client. Use original compatible server definitions, not projected discovery objects.
+Matching IDs cannot prove code-version compatibility, and checking an adapter's declared
+identity cannot prove where its methods send writes. The binder must not create a
+replacement execution, acquire a Guest or deliver effects.
+
+The result is connection-bound. Rebuild the resolution wiring after reopening storage;
+old methods do not follow a new connection. Resolution is not a lease or an atomic tree
+snapshot. Answer acceptance must still recheck authority after validation suspends.
+Host ingress middleware does not run implicitly on this direct path.
