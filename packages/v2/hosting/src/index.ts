@@ -41,3 +41,6 @@ export type { ActivationDecision, ActivationYield, ChildHostingResult } from "./
 
 export type { ChildBlockingReason } from "./contracts.ts";
 export { childHostingResult, joinChildHostingResults } from "./child-result.ts";
+
+export { createJournalTreeStream } from "./journal-tree-stream.ts";
+export type { JournalTreeObservation } from "./contracts.ts";

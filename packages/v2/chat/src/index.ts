@@ -14,6 +14,7 @@ export { runChat, streamChat } from "./loop.ts";
 export type {
   ChatLoopEvent,
   ChatLoopTool,
+  ChatToolResult,
   ChatLoopRequest,
   ChatLoopSample,
   ChatLoopOptions,

@@ -367,6 +367,17 @@ export type JournalPresentationState<R, Q> = { readonly revision: number } & (
   | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string }
 );
 
+/** One trusted observation in an owned tree, not an atomic cross-journal frontier.
+ * Program identifies the contract the application must use to decode unknown payloads.
+ * No live-owner state, answer authority, authentication or redaction is inferred.
+ */
+export interface JournalTreeObservation {
+  readonly execution: string;
+  readonly program: string;
+  readonly parent?: { readonly execution: string; readonly requestId: string };
+  readonly state: JournalPresentationState<unknown, unknown>;
+}
+
 /** Bounded accepted data plus state observed at one read. Receipts identify entries
  * for idempotent application; live token deltas are deliberately absent. */
 export interface JournalPresentationPage<R, Q, V, E> {

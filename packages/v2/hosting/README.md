@@ -382,7 +382,21 @@ surrounds resume/cancel in both paths.
 
 ## Participant answer ingress
 
-Install effect-aware answer middleware in the ingress scope:
+Answer-only consumers can compose the existing operations without a Host:
+
+```ts
+const request = yield * journal.interactions.request(resolutionGrant);
+const outcome = yield * grantedEffects.respond(request, { ok: true, value: rawAnswer });
+const receipt = yield * journal.interactions.answer(resolutionGrant, { ok: true, value: outcome });
+```
+
+The application must resolve the intended execution and select its original effect
+declarations. Projected contracts are discovery data, not grant authority. This direct
+composition does not invoke Host middleware; authorization and routing remain explicit
+application responsibilities. Validation may suspend, so the final answer operation
+must recheck authority atomically. No Guest acquisition is needed.
+
+For an existing Host, install effect-aware answer middleware in the ingress scope:
 
 ```ts
 const answers = yield * installEffectAnswers(host, grantedEffects, journal.interactions);
@@ -392,7 +406,8 @@ yield * answers.answer(resolutionGrant, { ok: true, value: rawAnswer });
 ```
 
 Use the returned answer view within its installation scope or descendants. It accepts
-raw authored Outcomes while preserving the journal's transport error type.
+raw authored Outcomes while preserving the journal's transport error type. Acceptance
+continues through the remaining Host middleware chain.
 
 The resolution grant selects the stored request; callers do not supply a separate
 effect key or schema. The granted effect's response schema validates the successful
@@ -402,7 +417,7 @@ adds no coercion. Authored failure Outcomes bypass the success schema, as they d
 handler delivery. Schema failures leave the exchange unanswered.
 
 No handler executes and request context is not reparsed on this path. Generic journal
-acceptance still takes prepared transport Outcomes. Middleware supplies that envelope
+acceptance still takes prepared transport Outcomes. The middleware supplies that envelope
 and delegates; final acceptance rechecks resolution authority atomically after schema
 validation. The earlier request lookup is not a lease. Intentional middleware bypass
 remains trusted assembly policy, not a remote authentication mechanism.
@@ -923,3 +938,48 @@ history in pages. It is not a generic descendant index or a constant-cost lookup
 registrations, child links and compatible program/schema bindings must remain available;
 pruning and contract-version migration need explicit product policy. No envelope receipt
 store, schema migration or new journal primitive was introduced.
+
+## Read-only tree streams
+
+`createJournalTreeStream(owner, root)` observes a known owned execution tree through
+`JournalReader`. It returns `Stream<JournalTreeObservation, void, Y>` and acquires no
+Guest, installs no result bindings, and performs no journal writes. Subscription itself
+performs no reads; each pull observes one node in depth-first preorder, following
+persisted child declaration order. It uses one snapshot per node and loads no accepted
+history pages. Single-journal presentation shares the same internal state projection.
+
+```ts
+const nodes = yield * createJournalTreeStream(runtime.composition, root);
+while (true) {
+  const item = yield * nodes.next();
+  if (item.done) {
+    break;
+  }
+  const { execution, program, parent, state } = item.value;
+  // Application: decode by pinned program, authorize and project state.
+}
+```
+
+Each observation contains execution/program identity, optional parent execution/request
+identity, and `JournalPresentationState<unknown, unknown>`. It includes the root and
+terminal children still linked by a running parent. It follows active links captured
+at each read; it does not enumerate historical ownership after a terminal root.
+Historical answer routing remains a separate command assembly.
+
+The stream has one controlling subscription and belongs to the supplied owner. Exit
+releases traversal state; escaped subscriptions and concurrent pulls reject under the
+existing pull-stream contract. Early exit opens no unvisited children. Open/read errors
+fail the stream, so earlier emitted nodes are a partial observation. The caller owns
+the storage connection and must create a fresh reader and stream after reopening.
+
+Each node carries its own revision. Completion means captured paths were visited, not
+that the tree was observed atomically or is settled. A changing tree can keep exposing
+new descendants; no constant memory or bounded traversal time is promised. An empty
+interaction projection does not prove completion. Running state does not establish a
+live driver, and a read cannot make a yielded branch register its next interaction.
+
+Both the Lua tree-frontier and authored-tool/chat applications now use this stream.
+Their schema lookup, role filtering, JSON projection, answer validation, edge envelopes
+and historical command routes remain local. The focused suites cover 76 tree cases
+across memory/SQLite and both runtimes, plus 16 chat cases. Additional type evidence
+checks unknown node payloads and preservation of the runtime yield type.

@@ -9,6 +9,7 @@ import type {
   ChatLoopOptions,
   ChatLoopResult,
   ChatStreamOptions,
+  ChatToolResult,
 } from "./contracts.ts";
 import { assertCompleteHistory } from "./history.ts";
 
@@ -47,7 +48,8 @@ export function streamChat(
         }
       }
       let round = 0;
-      let phase: "sample" | "tools" | "call" = "sample";
+      let phase: "sample" | "tools" | "call" | "batch" | "batch-results" = "sample";
+      let batchResults: readonly ChatToolResult[] = [];
       let response: ModelResponse;
       let calls: ChatToolCall[] = [];
       let index = 0;
@@ -104,14 +106,45 @@ export function streamChat(
               phase = "sample";
               continue;
             }
+            if (options.executeTools) {
+              phase = "batch";
+              return {
+                done: false,
+                value: { type: "tool-batch-started", round, calls: structuredClone(calls) },
+              };
+            }
             phase = "call";
             return {
               done: false,
               value: { type: "tool-started", round, call: structuredClone(calls[index]!) },
             };
           }
+          if (phase === "batch") {
+            const results = yield* options.executeTools!(structuredClone(calls));
+            const expected = new Set(calls.map((call) => call.id));
+            const byId = new Map<string, ChatToolResult>();
+            for (const result of results) {
+              if (!expected.has(result.toolCallId) || byId.has(result.toolCallId)) {
+                throw new Error("Unknown or duplicate batch result identity");
+              }
+              byId.set(result.toolCallId, structuredClone(result));
+            }
+            if (byId.size !== calls.length) {
+              throw new Error("Missing batch result identity");
+            }
+            batchResults = calls.map((call) => byId.get(call.id)!);
+            phase = "batch-results";
+          }
           const call = calls[index]!;
-          const result = yield* catalog.get(call.name)!.call(structuredClone(call));
+          const batched = phase === "batch-results";
+          function* invoke() {
+            const tool = catalog.get(call.name)!;
+            if (!("call" in tool)) {
+              throw new Error("Sequential tool callback missing");
+            }
+            return yield* tool.call(structuredClone(call));
+          }
+          const result = batched ? batchResults[index]! : yield* invoke();
           history.push({
             role: "tool",
             toolCallId: call.id,
@@ -120,7 +153,10 @@ export function streamChat(
             isError: result.isError,
           });
           index++;
-          phase = "tools";
+          phase = batched && index < calls.length ? "batch-results" : "tools";
+          if (index === calls.length) {
+            batchResults = [];
+          }
           return {
             done: false,
             value: {

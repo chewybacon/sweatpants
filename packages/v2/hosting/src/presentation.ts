@@ -1,10 +1,7 @@
 import type { Operation } from "@standard-durability/core";
+import { projectJournalState } from "./presentation-state.ts";
 import type { Journal } from "@sweatpan.ts/durable";
-import type {
-  JournalPresentationPage,
-  JournalPresentationState,
-  PresentationCursor,
-} from "./contracts.ts";
+import type { JournalPresentationPage, PresentationCursor } from "./contracts.ts";
 
 /** Internal reader: only journal reads, bounded history access and cursor verification. */
 export function* readJournalPresentation<R, Q, V, E, S, Y>(
@@ -33,25 +30,7 @@ export function* readJournalPresentation<R, Q, V, E, S, Y>(
   const entries = yield* snapshot.history.read(position, limit);
   const last = entries.at(-1);
   const next = last ? last.sequence + 1 : position;
-  const state: JournalPresentationState<R, Q> =
-    snapshot.status === "completed"
-      ? { status: "completed", revision: snapshot.revision, value: snapshot.value }
-      : snapshot.status === "cancelled"
-        ? {
-            status: "cancelled",
-            revision: snapshot.revision,
-            reason: snapshot.reason,
-            failure: snapshot.failure,
-          }
-        : {
-            status: "running",
-            revision: snapshot.revision,
-            cancellation: snapshot.cancellation,
-            cancellationRequested: snapshot.cancellationRequested,
-            pending: snapshot.pending,
-            children: snapshot.children,
-            interaction: snapshot.interaction,
-          };
+  const state = projectJournalState(snapshot);
   return {
     entries,
     after: { execution: journal.id, position: next, receipt: last?.receipt ?? anchor },

@@ -131,7 +131,8 @@ The SDK-boundary context journey also prepares through this API before dispatch.
 `streamChat(scope, { history, tools, sample })` is the primary
 implementation: a single-owner pull stream of `ChatLoopEvent` values ending in a
 `ChatLoopResult`. Pass the Guest's logical scope; acquisition registers invalidation
-there. It runs sequential model/tool rounds only as the consumer pulls.
+there. It runs model rounds only as the consumer pulls, using sequential tool callbacks
+by default or an explicit batch executor.
 
 ```ts
 return (
@@ -298,7 +299,7 @@ changed model/preparation policy. These are in-process journeys on both runtimes
 
 The stream returns detached `ChatLoopEvent` values; the optional runner callback receives
 those same values: `assistant`,
-`tool-started`, and `tool-completed`. Assistant messages retain model provenance and
+`tool-started`, `tool-batch-started`, and `tool-completed`. Assistant messages retain model provenance and
 all content, including reasoning and media. They are trusted application data, not
 automatically safe public UI frames. Apply explicit projection/access policy before
 publication.
@@ -323,7 +324,7 @@ Direct I/O in it can repeat; yielding a recorded capability makes accepted handl
 replay-safe. Adding or removing the callback changes the program's replay contract.
 Its failures propagate and prevent subsequent orchestration. Tool start records intent
 before calling the tool, not proof of external delivery. Completion follows the tool's
-returned authored result; thrown delivery errors emit no completion. Malformed batches
+returned authored result; thrown delivery errors emit no completion. Malformed model call sets
 emit no progress; a budget-denied sample produces no normal progress or tool starts. Live provider deltas remain separate provisional output.
 
 Acceptance reopens SQLite while the second tool is waiting, reads the same accepted
@@ -344,18 +345,14 @@ projection use `projectToolContract`; answer validation uses the original declar
 elicits through `installEffectAnswers`. Reading the frontier uses `openChild` and
 journal presentation, without acquiring tool Guests or installing result bindings.
 
-Batch execution remains an application experiment. `streamChat` invokes callbacks
-sequentially. The local sample callback retains the model's validated call descriptors;
-the first tool callback yields one recorded owned-batch request. Child hosts run
-independently, and the parent receives ordered results only when every child settles.
-Later callbacks consume those replay-reconstructed results by call identity. The next
-model round receives both correlated tool messages. No new chat API was extracted.
-
-This composition does not turn chat's sequential `tool-started`/`tool-completed` events
-into an accurate concurrent execution timeline: the batch can start later tools before
-their callbacks are visited. A future batch boundary must specify progress semantics
-before promotion. The model-call batch, not UI demand, owns advancement; observation
-can discover all already-registered child waits while the batch remains unsettled.
+Batch dispatch is now explicit through `executeTools(calls)`. The application yields
+one recorded owned-batch request, binds child hosts and drives them independently.
+Chat validates the returned call identities and appends results in model-call order
+before the next model round. The first-callback workaround and its local sample/result
+cache have been removed. `tool-batch-started` records dispatch intent; per-tool completion
+events follow only after the joined batch returns. They are not a live execution timeline.
+The model-call batch, not UI demand, owns advancement; observation can discover all
+already-registered child waits while the batch remains unsettled.
 
 Four additional journeys cover either answer order under both runtimes with SQLite
 connection reopen. They verify body/cleanup schema projection, malformed and misrouted
@@ -363,3 +360,73 @@ answer rejection, duplicate answers, unchanged sibling grants, delayed next mode
 and no redispatch of accepted model/inspection/release effects. Terminal reopening
 acquires no tools. The protocol peer simulates model and resource services; this is not
 a production authorization layer, deployed provider test or OS-crash guarantee.
+
+## Explicit tool-batch execution
+
+`ChatStreamOptions` and `ChatLoopOptions` support two modes:
+
+- Default: catalog entries include `definition` and `call`. Chat invokes each call in
+  model order and emits the existing per-tool start/completion events.
+- Explicit executor: catalog entries need only `definition`, and `executeTools(calls)`
+  receives the complete nonempty model call set after call-ID and catalog validation.
+  Tool input schemas and invocation authority still belong to the executor/Host assembly.
+  Any per-tool callbacks present on reused entries are ignored in this mode.
+
+The executor returns `Operation<readonly ChatToolResult[], CapabilityRequest>`:
+
+```ts
+type ChatToolResult = {
+  readonly toolCallId: string;
+  readonly content: ChatContent;
+  readonly isError: boolean;
+};
+```
+
+It may choose sequential or owned-concurrent work through domain capabilities. It
+cannot yield native Host operations directly. Exactly one result is required for each
+call ID; return order may differ. Duplicate, foreign and missing IDs reject the entire
+result set before any tool-history append or completion event. Authored error content
+(`isError: true`) remains ordinary correlated model input; thrown execution errors do
+not become fabricated tool results. An empty model call set ends the loop without
+invoking the executor or emitting a batch-start event.
+
+Progress in explicit mode is `assistant` → `tool-batch-started` → executor → one
+`tool-completed` per result in original call order. Batch start means the next pull will
+invoke the executor, not proof that work started physically. Completion means the joined
+executor returned that result, not its real-time settlement order. While a batch is
+parked, use the independently observed execution tree for individual waits and cleanup
+state. If the executor throws or returns invalid correlation, no completions are emitted.
+
+The implementation remains inside `streamChat`; `runChat` drains that same stream.
+Record progress through domain effects when it must survive replay. Executor mode and
+callback/event ordering are part of the pinned program contract: the migrated fixture
+uses `chat-frontier-batch-v2` rather than silently changing an existing journal program.
+Switching modes is not a transparent migration of persisted workflows.
+
+Focused evidence includes correlated reordered results, authored errors, malformed
+result IDs, empty batches, unknown model tools, occupied delivery after reopen, accepted
+progress replay, and ordinary/cleanup interactions in concurrent authored tools. Existing
+sequential event-order journeys are unchanged. These are simulated protocol and SQLite
+reopen journeys, not a scheduler or an automatic safe retry policy.
+
+### Chat edge composition
+
+The authored-tool/chat journey also composes acceptance, driving and observation in one
+owned edge invocation. It accepts multiple exact-grant answers with per-entry receipts,
+drives the explicit tool batch and subsequent model turn, then reads the next frontier
+through `createJournalTreeStream`. Invalid entries do not erase successful siblings.
+Acceptance and drive results remain separate; an exception is conservatively unconfirmed,
+not evidence of rollback. This envelope is still application-local.
+
+The command path resolves active or historical batch ownership using retained parent
+requests/accepted receipts, so a lost terminal edge response can be retried after reopen.
+Original elicitation declarations still validate responses; conflicting repair evidence
+rejects while valid duplicate siblings acknowledge their original receipts. The journey
+checks unchanged terminal history, revision and activation intent, no Guest acquisition,
+and no repeated resource/model effects or progress publication.
+
+The same simulated application covers either answer order, both answers together, and
+partial acceptance followed by correction. Its cooperative iteration budget is per host,
+not a time bound or a global scheduler limit. Historical lookup scans retained application
+history; authentication, public error projection, archival retention and HTTP delivery
+remain product work. No additional framework abstraction was needed for this composition.

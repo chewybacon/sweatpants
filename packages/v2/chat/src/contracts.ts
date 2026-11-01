@@ -64,6 +64,13 @@ export interface ChatLoopTool {
   ): Operation<{ readonly content: ChatContent; readonly isError: boolean }, CapabilityRequest>;
 }
 
+/** One completed batch member, correlated by model call identity. */
+export interface ChatToolResult {
+  readonly toolCallId: string;
+  readonly content: ChatContent;
+  readonly isError: boolean;
+}
+
 /** A domain sampling request, before host-side preparation. */
 export interface ChatLoopRequest {
   /** Zero-based round within this invocation; not a mutable middleware counter. */
@@ -79,12 +86,18 @@ export interface ChatLoopSample {
 }
 
 /** Semantic loop progress. Application policy selects which fields may reach clients.
- * Tool start means orchestration reached the call, not that external delivery occurred. */
+ * Tool/batch start records dispatch intent, not external delivery. Batch-mode tool
+ * completions are observed after joining, in model-call order, not execution order. */
 export type ChatLoopEvent =
   | {
       readonly type: "assistant";
       readonly round: number;
       readonly message: ChatAssistantMessage & { readonly model: ModelSelection };
+    }
+  | {
+      readonly type: "tool-batch-started";
+      readonly round: number;
+      readonly calls: readonly ChatToolCall[];
     }
   | { readonly type: "tool-started"; readonly round: number; readonly call: ChatToolCall }
   | {
@@ -96,15 +109,31 @@ export type ChatLoopEvent =
     };
 
 /** Guest orchestration inputs. Pin catalog and consumption order; sampling policy lives on the Host. */
-export interface ChatStreamOptions {
+export type ChatStreamOptions = {
   readonly history: readonly ChatHistoryMessage[];
-  readonly tools: readonly ChatLoopTool[];
   /** Yield a domain exchange, not native runtime/API work. The host prepares/counts
    * context, consumes the provider and accepts the response or policy denial with provenance. */
   sample(
     request: ChatLoopRequest,
   ): Operation<Outcome<ChatLoopSample, ChatSamplingError>, CapabilityRequest>;
-}
+} & (
+  | {
+      readonly tools: readonly ChatLoopTool[];
+      readonly executeTools?: never;
+    }
+  | {
+      readonly tools: readonly Pick<ChatLoopTool, "definition">[];
+      /** Run the entire nonempty validated call set through domain exchanges.
+       * Choose sequential or owned-concurrent execution in assembly. Return exactly
+       * one result per call ID; return order may differ. No per-tool callbacks run
+       * in this mode. Unknown/duplicate/missing IDs reject before publishing any
+       * completion or appending tool history. A throw is not an authored result.
+       */
+      executeTools(
+        calls: readonly ChatToolCall[],
+      ): Operation<readonly ChatToolResult[], CapabilityRequest>;
+    }
+);
 
 /** Terminal response and complete logical history, including all correlated tool results. */
 export interface ChatLoopResult {
@@ -114,12 +143,12 @@ export interface ChatLoopResult {
 }
 
 /** Convenience runner options; runChat drains streamChat through this callback. */
-export interface ChatLoopOptions extends ChatStreamOptions {
+export type ChatLoopOptions = ChatStreamOptions & {
   /** Optional domain callback receiving detached progress data. For recoverable
    * presentation, yield a recorded effect; direct side effects repeat on replay.
    * Failures propagate. Pin callback presence/order as part of the program contract. */
   event?(event: ChatLoopEvent): Operation<void, CapabilityRequest>;
-}
+};
 
 /** An expected sampling policy rejection, accepted as data rather than a delivery failure. */
 export interface ChatSamplingError {
