@@ -14,3 +14,6 @@ export { projectToolContract } from "./contract.ts";
 
 export { resolveToolExecution } from "./execution.ts";
 export type { ToolExecution, ToolExecutionResolution } from "./contracts.ts";
+
+export { createToolInteractionStream } from "./interaction-stream.ts";
+export type { ToolInteraction, ToolInteractionContract } from "./contracts.ts";

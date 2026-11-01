@@ -362,6 +362,19 @@ export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never>
     program: string,
   ): Operation<OwnedChildInteractions<CQ, CV, CE, Y>, Y>;
   /**
+   * Open only request/answer authority for an existing descendant at any depth.
+   * In one transaction, verify every persisted parent edge back to this owner;
+   * reject unrelated, missing, cyclic or inconsistent ancestry and the owner itself.
+   * Uses stored links, not caller paths or active-frontier caches. Historical children
+   * remain reachable while ownership evidence is retained. Installs no projections.
+   * Payloads are unknown: trusted application code must check the returned program
+   * and decode requests before accepting input. No caller authentication is implied.
+   * The returned narrow handle remains tied to the current storage connection.
+   */
+  openDescendantInteractions(
+    execution: string,
+  ): Operation<OwnedChildInteractions<unknown, unknown, unknown, Y>, Y>;
+  /**
    * Atomically acquire a nonempty ordered sibling group at one pending boundary.
    * Reacquisition checks count, order, programs and inputs, retaining the original
    * projection within this open assembly. A fresh assembly supplies fresh bindings.

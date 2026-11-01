@@ -204,3 +204,56 @@ The result is connection-bound. Rebuild the resolution wiring after reopening st
 old methods do not follow a new connection. Resolution is not a lease or an atomic tree
 snapshot. Answer acceptance must still recheck authority after validation suspends.
 Host ingress middleware does not run implicitly on this direct path.
+
+## Discover answerable tool interactions
+
+`createToolInteractionStream(owner, rootReader, contracts)` exposes registered tool
+questions as a read-only pull stream. Projected tool contracts supply the discovery
+catalog; neither a Host nor an executable tool body is needed.
+
+```ts
+const contract = projectToolContract(investigate);
+const questions =
+  yield *
+  createToolInteractionStream(runtime.composition, rootReader, new Map([[contract.id, contract]]));
+const next = yield * questions.next();
+if (!next.done) {
+  const question = next.value;
+  // Apply application visibility before rendering/encoding raw question.input.
+  // question.declaration contains the context and optional response schemas.
+  // question.grant identifies the stored interaction for separate answer ingress.
+}
+```
+
+Each `ToolInteraction` retains execution/program identity, parent identity, revision,
+exact grant, matching declaration, raw input, scope boundary and local cancellation
+facts. Heterogeneous input remains `unknown`. Discovery does not parse context, execute
+schemas, encode JSON Schema, grant answer authority or apply participant authorization.
+Declarations and schemas are retained by reference; prefer projected contracts and
+explicitly encode the fields intended for a client. This is not a safe wire envelope.
+
+Only running nodes with registered waiting interactions are emitted. Their grants must
+match the pending request, and their persisted program/effect must resolve to a declared
+elicitation. Missing or inconsistent waiting contracts fail the stream. Multiple aliases
+for one effect ID are allowed only when their context and response schema references
+are identical; otherwise discovery fails as ambiguous. Equivalent aliases emit one
+question using the first matching declaration. There is no structural schema comparison.
+Keep the trusted catalog and its objects stable during traversal.
+
+The stream is pull-only, with one subscription owned by the supplied scope. Repeated
+acquisition and concurrent reads reject; owner exit invalidates the subscription and
+releases traversal. No producer task, Guest or journal mutation occurs. Completion and
+failures are retained; a failure after earlier values leaves only partial observations.
+Create a fresh stream and reader after reopening storage.
+
+Traversal follows the existing depth-first tree stream, reading separate snapshots.
+An empty result does not establish completion: occupied, yielded and other non-waiting
+work belongs in the execution view. Cancellation fields describe the observed journal,
+not its ancestors or whole-tree status. Already-accepted answers disappear from discovery
+even before advancement. A subsequently submitted answer must still pass current journal
+authority checks; discovery is not a lease or an atomic frontier.
+
+The chat journeys use this public stream for body and cleanup waits, visibility policy,
+cancellation during cleanup, partial discovery failure and terminal reopen. They also
+cover equivalent/conflicting aliases, repeat acquisition and owner exit. Lua's different
+request protocol is not decoded by this authored-tool capability.

@@ -1,6 +1,7 @@
 import type { Operation } from "@standard-durability/core";
 import type {
   Accepted,
+  ChildLink,
   AcceptedHistory,
   JournalRecords,
   JournalBackend,
@@ -61,26 +62,20 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         ),
       );
     }
-    function* ownedLink(childId: string) {
-      return yield* invoke(function* (_tree, records) {
-        const child = yield* records.get(childId);
-        const link = child?.parent;
-        if (!link || link.parentId !== id || link.childId !== childId) {
-          throw new Error("Not a direct owned child");
-        }
-        const request = yield* records.request(id, link.requestId);
-        const stored = request?.children?.find((entry) => entry.childId === childId);
-        if (
-          !stored ||
-          stored.parentId !== id ||
-          stored.requestId !== link.requestId ||
-          stored.program !== link.program ||
-          child.snapshot.program !== link.program
-        ) {
-          throw new Error("Inconsistent owned child link");
-        }
-        return link;
-      });
+    function ownedLink(childId: string) {
+      return invoke((_tree, records) => readOwnedLink(records, id, childId));
+    }
+    function interactionBinding<CQ, CV, CE>(
+      link: ChildLink,
+    ): OwnedChildInteractions<CQ, CV, CE, Y> {
+      const child = bind<unknown, CQ, CV, CE, unknown>(link.childId, link.program);
+      return {
+        link,
+        journal: {
+          id: child.id,
+          interactions: { request: child.interactions.request, answer: child.interactions.answer },
+        },
+      };
     }
     return {
       id,
@@ -99,17 +94,32 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         if (link.program !== expectedProgram) {
           throw new Error("Journal program mismatch");
         }
-        const child = bind<unknown, CQ, CV, CE, unknown>(childId, link.program);
-        return {
-          link,
-          journal: {
-            id: child.id,
-            interactions: {
-              request: child.interactions.request,
-              answer: child.interactions.answer,
-            },
-          },
-        };
+        return interactionBinding<CQ, CV, CE>(link);
+      },
+      *openDescendantInteractions(execution) {
+        const link = yield* invoke(function* (_tree, records) {
+          let current = execution;
+          let leaf: ChildLink | undefined;
+          const visited = new Set<string>();
+          while (current !== id) {
+            if (visited.has(current)) {
+              throw new Error("Cyclic owned ancestry");
+            }
+            visited.add(current);
+            const record = yield* records.get(current);
+            if (!record?.parent) {
+              throw new Error("Execution outside this owned subtree");
+            }
+            const edge = yield* readOwnedLink(records, record.parent.parentId, current);
+            leaf ??= edge;
+            current = edge.parentId;
+          }
+          if (!leaf) {
+            throw new Error("Owner is not its own descendant");
+          }
+          return leaf;
+        });
+        return interactionBinding<unknown, unknown, unknown>(link);
       },
       *admit(program, input) {
         return yield* command((journal) => journal.admit(program, input));
@@ -217,4 +227,29 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
     };
   }
   return bind<R, Q, V, E, S>(identity, options.program);
+}
+
+/** Verify both directions of one persisted edge in the caller's transaction. */
+function* readOwnedLink<Y>(
+  records: JournalRecords<Y>,
+  parentId: string,
+  childId: string,
+): Operation<ChildLink, Y> {
+  const child = yield* records.get(childId);
+  const link = child?.parent;
+  if (!link || link.parentId !== parentId || link.childId !== childId) {
+    throw new Error("Not a direct owned child");
+  }
+  const request = yield* records.request(parentId, link.requestId);
+  const stored = request?.children?.find((entry) => entry.childId === childId);
+  if (
+    !stored ||
+    stored.parentId !== parentId ||
+    stored.requestId !== link.requestId ||
+    stored.program !== link.program ||
+    child.snapshot.program !== link.program
+  ) {
+    throw new Error("Inconsistent owned child link");
+  }
+  return link;
 }

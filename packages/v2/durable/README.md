@@ -322,3 +322,38 @@ reader-free advancement, observation during an in-flight cleanup effect, fresh-r
 reopen, either answer order, occupied/yielded siblings, cancellation, invalid ownership
 navigation, and historical child reads. SQLite evidence is in-process connection
 reopen; no process-crash, cross-journal snapshot or external-service guarantee is added.
+
+## Descendant answer ingress
+
+`owner.openDescendantInteractions(executionId)` opens only request/answer methods for
+an existing descendant at any depth. It walks persisted reverse parent links back to
+the supplied owner, verifying every edge against the retained parent's child entry and
+the child's pinned program in one transaction. It rejects missing, unrelated, cyclic
+or inconsistent ancestry, and rejects the owner itself. Use `owner.interactions` for
+that execution's own questions.
+
+The return shape is `OwnedChildInteractions<unknown, unknown, unknown, Y>`. Its link
+provides the stored program; the application must check that program against its
+interaction catalog, decode the request, authorize the participant and validate input.
+No caller-supplied path or program selects the stored authority. Possession of an
+execution ID alone does not authorize access: the caller must first be authorized to
+use the owner capability. A child owner can reach its descendants, not siblings or
+ancestors.
+
+Unlike `openChildInteractions<Q, V, E>(id, expectedProgram)`, this operation supports
+arbitrary depth and does not assert a typed child protocol. Both return only narrow
+request/answer authority, never an executable child journal or recursive mutation API.
+`JournalReader` exposes neither opener. All handles remain connection-bound.
+
+The ancestry walk costs O(depth) record/link lookups, not a scan of accepted parent
+history. It creates no child, installs no result projection and performs no Guest work.
+Historical answers remain reachable while retained ownership evidence exists. Missing
+or pruned evidence fails; there is no fallback to a frontend frontier or cached path.
+Ancestry validation and later answer acceptance are separate transactions; the exact
+resolution grant is still rechecked when the answer is submitted.
+
+The nested Lua consumer uses this operation after reopen and after completed/cancelled
+settlement. Its prior history scan and projection reconstruction were removed from
+answer ingress. Program contracts, role checks and schema parsing remain application
+policy. Memory/SQLite journeys exercise subtree boundaries and projection-free answers;
+a scripted storage peer supplies inconsistent/cyclic evidence to verify rejection.

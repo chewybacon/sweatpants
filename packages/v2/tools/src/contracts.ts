@@ -2,7 +2,15 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
-import type { OwnedChild, ChildLink, Interactions, JournalReader } from "@sweatpan.ts/durable";
+import type {
+  OwnedChild,
+  ChildLink,
+  Interactions,
+  JournalReader,
+  PendingRequest,
+  ResolutionGrant,
+  RootCancellation,
+} from "@sweatpan.ts/durable";
 import type { EffectCapabilities, EffectGrant, ChildHostingResult } from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
@@ -189,4 +197,29 @@ export interface ToolExecutionResolution<Tool extends { readonly id: string }, E
     },
     Y
   >;
+}
+
+/** Authored-tool discovery metadata; original or projected declarations are accepted.
+ * Schemas remain trusted local objects. No executable body or response handler is needed.
+ */
+export interface ToolInteractionContract {
+  readonly id: string;
+  readonly elicits: Readonly<Record<string, Pick<EffectDefinition, "id" | "context" | "response">>>;
+}
+
+/** One observed, registered question. Not a lease, wire envelope or whole-tree status. */
+export interface ToolInteraction {
+  readonly execution: string;
+  readonly program: string;
+  readonly parent: { readonly execution: string; readonly requestId: string } | undefined;
+  readonly revision: number;
+  readonly grant: ResolutionGrant;
+  /** Matching declaration retained by reference; use original definitions for answer grants. */
+  readonly declaration: ToolInteractionContract["elicits"][string];
+  /** Unparsed request input. Program lookup does not establish a static payload type. */
+  readonly input: unknown;
+  readonly scope: PendingRequest<unknown>["scope"];
+  /** Local journal control facts; does not aggregate ancestor cancellation. */
+  readonly cancellation: RootCancellation<unknown> | undefined;
+  readonly cancellationRequested: RootCancellation<unknown> | undefined;
 }

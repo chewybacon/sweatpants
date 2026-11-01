@@ -24,7 +24,12 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   identity: string,
 ): Omit<
   OwnedJournal<R, Q, V, E, S, Y>,
-  "ensureChild" | "ensureChildren" | "openChild" | "openChildInteractions" | "read"
+  | "ensureChild"
+  | "ensureChildren"
+  | "openChild"
+  | "openChildInteractions"
+  | "openDescendantInteractions"
+  | "read"
 > & {
   read(): Operation<
     JournalSnapshot<R, Q, S> & { readonly interaction?: InteractionRegistration },
