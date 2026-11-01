@@ -23,6 +23,10 @@ tests do not establish v2 coverage.
 Follow README.md for package names, exports and file responsibilities.
 Keep contracts public, shared implementation types internal and entry points
 explicit. Port behavior and its acceptance evidence together.
+Every package retains contracts.ts, apis.ts, middleware.ts and types.ts scaffolds.
+Reusable scoped policies belong in middleware.ts; application-specific policy stays
+with its application. Required assembly middleware must be explicitly installed and
+documented; core correctness must not depend on remembering an optional installer.
 
 ## Stream-first authoring
 

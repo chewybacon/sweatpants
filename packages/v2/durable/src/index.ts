@@ -5,7 +5,8 @@ export type {
   Recovered,
   RecoveryMethods,
 } from "./contracts.ts";
-export { createRecovery, createCheckpointMiddleware } from "./recovery.ts";
+export { createRecovery } from "./recovery.ts";
+export { createCheckpointMiddleware } from "./middleware.ts";
 export type { Journal, JournalSnapshot, PendingRequest, Activation } from "./contracts.ts";
 export { activateJournal, advanceJournal } from "./activation.ts";
 export type { RetrySafety, AttemptGrant, Acceptance, Attempts } from "./contracts.ts";

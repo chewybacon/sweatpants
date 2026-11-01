@@ -10,14 +10,18 @@ are implemented with acceptance journeys; other packages remain scaffolds.
 
 - `src/apis.ts`: scoped API factories and default-driver wiring. Substantial behavior
   stays in focused implementation siblings rather than accumulating in this file.
+- `src/middleware.ts`: reusable scoped middleware factories and `install*` policy
+  installers. Put public options in `contracts.ts`; export public entry points from
+  `index.ts`. Keep substantial shared algorithms in focused implementation siblings.
 - `src/contracts.ts`: public capability interfaces, options, results and type aliases.
 - `src/types.ts`: internal implementation types shared across local modules.
 - `src/index.ts`: explicit public exports and intentional re-exports; no wildcard
   exports, initialization side effects or implementation logic.
 - Implementations live in focused sibling files (for example `hosting.ts`,
-  `admission.ts`, and `routing.ts`). Behavioral factories may remain with the
+  `admission.ts`, and `recovery-history.ts`). Behavioral factories may remain with the
   implementation they own. File-local helper types stay with their implementation.
-- Every package keeps `src/contracts.ts`, `src/apis.ts`, and `src/types.ts`, including
+- Every package keeps `src/contracts.ts`, `src/apis.ts`, `src/middleware.ts`, and
+  `src/types.ts`, including
   intentional comment-only placeholders where that role is not implemented yet.
   Do not invent declarations to fill a scaffold. `apis.ts` is not a second export
   barrel; `index.ts` remains the explicit package entry point.
@@ -33,6 +37,15 @@ are implemented with acceptance journeys; other packages remain scaffolds.
 - Higher-level entry points may re-export lower-level public contracts and portable
   helpers. Concrete adapters remain explicit choices; a facade must not load every
   runtime, database or evaluator.
+
+Middleware may be optional or required by a particular assembly. Document that
+requirement and installation order on its defining declaration; the assembly installs
+it explicitly on the same capability instance its consumers invoke. Core invariants
+such as journal authority and cursor validity remain in their owning implementations.
+A middleware module has no installation side effects and is not another export barrel.
+Package-owned policies belong there; application-specific policies stay in applications.
+Instance-bound middleware such as effect-grant admission stays with the capability that
+owns its state rather than becoming a second independently constructed policy.
 
 Core owns framework exchange declarations (defineEffect); hosting owns scoped effect
 installation, grants and delivery. Core imports no runtime, journal or storage implementation.

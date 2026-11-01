@@ -27,4 +27,4 @@ export type {
   ChatSamplingDriver,
   ChatSamplingError,
 } from "./contracts.ts";
-export { limitChatRounds } from "./sampling-policy.ts";
+export { limitChatRounds } from "./middleware.ts";
