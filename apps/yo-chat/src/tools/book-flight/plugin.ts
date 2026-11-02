@@ -6,7 +6,7 @@
  * a React component and returns the user's selection.
  */
 import { makePlugin } from "@sweatpants/react-chat";
-import { bookFlightTool } from "./tool";
+import { bookFlightTool } from "./tool.ts";
 import { FlightList } from "./components/FlightList";
 import { SeatPicker } from "./components/SeatPicker";
 

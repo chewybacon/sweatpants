@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { ensure } from "effection";
 import { z } from "zod";
 export const holds = createDurableTool("captured-holds", { version: "1" })

@@ -1,145 +1,69 @@
-# Execution vocabulary and the episode analogy
+# Execution vocabulary
 
-This records the vocabulary agreed during the October 18, 2026 design discussion.
-Activation names a host's episode of driving durable work. Execution names a
-live computation used during that episode. Accepted work survives replacement of
-both. This is a curated account of the discussion, not a verbatim transcript.
+These names describe the current source during the framework rewrite. They do not
+imply that every retained adapter implements the same capabilities.
 
-## Collaborators and responsibilities
+## Computation and interpretation
 
-| Collaborator | Responsibility |
-| --- | --- |
-| Task | Identifies durable work and its eventual outcome. |
-| Journal authority | Accepts commands and results, authorizes advancement, and establishes accepted history. |
-| Host | Coordinates advancement of a task during an activation. |
-| Program driver | Connects the host's durable protocol to an attached computation, preserving command and receipt rules. |
-| Backend | Connects evaluator requests to the host's effect runtime. |
-| Kernel | Evaluates program semantics and supplies evaluator-specific capture and restore mechanics. |
-| Executor | The capability to start a program and obtain a live execution and its initial boundary. A kernel implements this role. |
-| Execution | The live capability to resume, cancel, and dispose a computation. Kernel executions also support capture. |
-| Boundary | Reports a suspension, completion, program failure, or cancellation. |
-| Transport | Carries commands and responses across a placement boundary. |
+- **Operation<T, Y>** is an iterable computation that yields `Y` and returns `T`.
+  It does not itself select a scheduler, create a scope or persist anything.
+  Foundation re-exports this contract as `IterableOperation`.
+- **Work<T, Y>** is a function that produces an Operation. Calling it creates the
+  computation; advancing the iterator executes its body.
+- **Handler<Request, Y, Reply>** interprets a request using the host's yielded
+  protocol and returns a reply. Journal handlers return `Outcome` data.
+- **Outcome<Value, Error>** is `{ ok: true, value }` or `{ ok: false, error }`.
+  A returned failure is distinct from a thrown defect or lost transport.
+- **Composition<Y>** supplies scoped API/context bindings, middleware and cleanup.
+  Plain `yield*` composes operations without creating another scope.
+- **Runtime<Y>** runs operations using a particular native protocol. Its
+  `RuntimeExecution.result` settles after owned work and cleanup finish;
+  `cancel()` requests native cancellation and waits for cleanup.
 
-Principal and operative describe the two roles at a transport boundary: the
-principal requests advancement; the operative owns the live computation. These
-roles do not require extra layers in the local call stack.
-
-## Identity and lifetime
-
-A task can span many host activations. A host activation can drive multiple live
-executions; the relationship is not necessarily one-to-one. Restoring computation
-creates a fresh execution handle. It does not reactivate a disposed handle.
-
-`ExecutionState` is the returned pair `{ execution, boundary }`.
-`WorkflowExecutionState` specializes it with a snapshot-capable execution. These
-are live values, not durable identities or serialized snapshots. The boundary in
-the pair is the boundary at that return point; it does not update automatically
-when the handle advances. The pair has no separate lifecycle; it is not another
-collaborator called an activation.
-
-The existing qualified term **Durable Execution** in journal and execution-tree
-contracts refers to durable work. It must not be confused with the live
-`Execution` interface. This vocabulary decision does not rename those authority
-contracts or change their persistence semantics.
-
-## Verbs
-
-| Verb | Meaning |
-| --- | --- |
-| Activate | Begin a host episode of advancing durable work. |
-| Start | Create fresh computation and evaluate to its first boundary. |
-| Restore | Create fresh computation from captured evaluator state. |
-| Replay | Reconstruct progress using accepted history, possibly after a checkpoint. |
-| Recover | Bring fresh computation to the accepted position using restore, replay, or both. |
-| Resume | Supply a reply to the current suspension and advance to the next boundary. |
-| Suspend | Reach an evaluator boundary that requires something from the caller. |
-| Park | Leave durable work waiting so its compute can be released. |
-| Capture | Obtain evaluator state suitable for a snapshot. |
-| Cancel | Initiate logical unwinding, which may suspend for cleanup requests. |
-| Dispose | Release compute without promising logical cleanup or cancelling the durable task. |
-
-Recovery uses resume operations internally to deliver recorded answers. The
-distinction is their purpose: reconstructing accepted progress versus delivering
-a newly accepted answer. Neither operation gives compute authority to rewrite
-history.
-
-## A request through the collaborators
+The meaning of the yield channel depends on the layer:
 
 ```text
-Host activation begins
-  → Journal authority supplies authorized work and accepted recovery position
-  → Program driver attaches
-    → Backend opens computation
-      → Scoped Executor.start
-        → Recovery middleware selects Kernel.start or Kernel.restore
-        → Accepted suffix is replayed when needed
-      ← ExecutionState: live execution + current boundary
-    → Backend presents the suspended request to the host effect runtime
-  → Journal authority accepts the request
-  → Recovery policy requests Execution.capture when supported
-  → Driver and authority associate the snapshot with accepted protocol history
-  → Host parks the task and disposes compute
-Host activation ends
-
-An authorized reply is accepted
-  → A fresh host activation recovers the task
-  → Execution.resume delivers the accepted reply
-  ← Another suspension or terminal boundary
-  → Journal authority accepts progress
-  → Compute is disposed when the episode ends
+Authored iterator tool: yields JournalRequest; returns its inferred Result.
+Guest method:           yields native scheduler/transport work; returns a Turn.
+Journal handler:        yields native work; returns an Outcome.
 ```
 
-Snapshot acceleration is optional. Journal authority and recovery validation
-remain mandatory. Startup middleware surrounds both fresh and restored execution.
+Effection's `Operation` fixes a native scheduling protocol. It is not another name
+for an authored iterator tool's domain requests. Effect adapters likewise need
+matching native capabilities; switching a runtime does not translate operations.
 
-## How the analogy developed
+## Advancement and lifetime
 
-The conversation explored a series, season, and episode to distinguish ongoing
-identity from occurrences of work. A conversation or workflow instance is like
-a series; a durable task is like a season; a host activation is like an episode.
-The host coordinates production and executions provide replaceable compute.
-These are explanatory comparisons, not proposed literal API names.
+- **Guest<Result, Request, Y, Value, Error>** retains a live continuation. `start()`
+  and `resume(outcome)` return a `Turn`; `close()` releases its resources.
+- **GuestWork** acquires a Guest. Acquisition must not advance the authored body.
+- **Turn** is either `{ kind: "suspended", request }` or
+  `{ kind: "completed", value }`. Suspension alone is not durable acceptance.
+- **Execution** is the richer foundation capability for correlated resume and
+  logical cancellation. Its boundaries can also express failure and cancellation.
+- **Checkpointing** adds capture of portable execution state. Ordinary JS generator
+  Guests do not acquire this capability merely by using a journal.
+- **Close/dispose** releases compute. **Logical cancellation** is an execution
+  command and can itself suspend while cleanup requests are handled.
 
-The user suggested that suspension is like an **ad break**: the story has not
-ended, but continuation waits. Parking goes a step further by releasing the
-production resources while the durable story waits.
+Guest and Execution share enforcement through the execution discipline. They are
+not one oversized interface: checkpoint capture and correlated cancellation remain
+explicit capabilities.
 
-**Audience** exposed two separate roles: observers watch the broadcast, while
-authorized participants can answer a particular elicitation. Watching does not
-grant permission to alter the story. **Broadcast** suggests live event delivery;
-**syndication** suggests distributing recorded content to other consumers. Those
-were useful exploratory terms, not new transport contracts or delivery guarantees.
+## Persistence
 
-The user compared replay with a recap episode, or a streaming service that makes
-you watch the recap instead of offering **Skip recap**:
+An **activation** acquires compute, replays accepted outcomes and advances until
+completion or parking. **Parking** records a pending request and releases compute.
+A subsequent activation reconstructs an iterator continuation through replay.
+A Flowmode checkpoint can instead restore kernel state, under a host-owned journal
+and recovery policy.
 
-```text
-Full replay:          beginning → recorded answers → accepted position
-Checkpoint + replay: saved position → short recap → accepted position
-Resume:              current suspension + answer → next scene
-```
+An **attempt** records that dispatch is starting. **Acceptance** records the
+outcome that subsequent replay will use. With `retrySafety.mode: "unsafe"`, an
+attempt lacking an accepted outcome causes `outcome_unknown`; it is not permission
+to repeat the action. `repeatable` allows redispatch under that policy.
 
-The checkpoint lets recovery skip reconstructing a prefix. Accepted history
-determines what happened. Runtime replay reconstructs computation with recorded
-outcomes; it is not merely rebroadcasting events or repeating settled effects.
-
-## Why the host keeps activation
-
-We compared both assignments: host activation with live execution, and host
-turn or episode with program activation. Either could describe two distinct
-lifetimes, but the final decision reserves activation for the host. We keep
-execution for the live computation; no computation-side activate operation or
-reactivation of a disposed handle is implied.
-
-The resulting sentence is: the host begins an activation, starts or restores
-executions, drives the task, and disposes its compute when the activation ends.
-
-## Decisions to carry forward
-
-- Reserve unqualified activation for the host's episode of work.
-- Use execution for the live computation and execution state for its handle/boundary pair.
-- Keep cancel and dispose distinct: conclude the work through unwinding versus release compute.
-- Keep recovery policy composable through scoped middleware, with capture and restore mechanics owned by the evaluator.
-- Do not infer a strict object hierarchy or a new API from the television analogy.
-
-See [Shared execution boundary](./execution-boundary.md) for implementation details.
+Sources: [composition contracts](../packages/standard-durability/src/contracts.ts),
+[Guest and runtime contracts](../packages/foundation/src/computation.ts),
+[execution discipline](../packages/foundation/src/execution-discipline.ts),
+[journal activation](../packages/primitive-journal/src/activation.ts).

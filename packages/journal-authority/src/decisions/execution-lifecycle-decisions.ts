@@ -1,7 +1,8 @@
 import { CrankError, encodeInlineJson, type ProgramStep } from "@sweatpants/durable-execution";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
 import { stableTupleHash, digestCanonicalJson, sha256 } from "@sweatpants/foundation";
-import type { PullState } from "../contract/authority-contract.ts";
+import { currentForkGroupRevision } from "../forest/forest-replay.ts";
+import type { OrphanFence, PullState } from "../contract/authority-contract.ts";
 import type { DecisionDraft } from "./decision-draft.ts";
 import {
   pullActionIndex,
@@ -219,6 +220,36 @@ export function abandonAttempt(
     attemptId: request.attemptId,
     reason: request.reason ?? "revoked",
   });
+}
+
+/** All guards precede mutable access and are reevaluated by the ordinary CAS loop. */
+export function orphanIfCurrent(
+  draft: DecisionDraft,
+  request: { readonly fence: OrphanFence; readonly reason: "replay_diverged" },
+): { status: "orphaned" | "stale" } {
+  const { fence } = request;
+  const session = draft.state.sessions.get(fence.address.sessionId);
+  const task = session?.execution.tasks.get(fence.address.taskId);
+  if (
+    !session ||
+    !task ||
+    task.turnId !== fence.address.turnId ||
+    task.program.artifact.id !== fence.program.id ||
+    task.program.artifact.version !== fence.program.version ||
+    task.program.artifact.digest !== fence.program.digest ||
+    task.execution.epoch !== fence.executionEpoch ||
+    currentForkGroupRevision(session, task.taskId) !== fence.forkGroupRevision ||
+    task.lifecycle.status !== "active" ||
+    task.execution.liveLease !== undefined
+  ) {
+    return { status: "stale" };
+  }
+  forceOrphan(draft, {
+    sessionId: fence.address.sessionId,
+    taskId: fence.address.taskId,
+    reason: request.reason,
+  });
+  return { status: "orphaned" };
 }
 
 export function forceOrphan(

@@ -1,5 +1,15 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 
+/** Enable the real switch without relying on a moving server panel's click coordinates. */
+export async function enableInspectorConnection(page: Page) {
+  const serverSwitch = page.getByRole("switch", { name: /Connect or disconnect/ });
+  if (!(await serverSwitch.isChecked())) {
+    await expect(serverSwitch).toBeEnabled();
+    await serverSwitch.focus();
+    await serverSwitch.press("Space");
+  }
+}
+
 /**
  * Page object for interacting with the MCP Inspector UI.
  *

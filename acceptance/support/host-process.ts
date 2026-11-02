@@ -7,12 +7,13 @@ export function createHostProcess(
   context: TestApplicationFactoryContext,
   database: string,
   effectLog: string,
+  fixturePath = "__tests__/host-crash/fixtures/host.ts",
 ) {
   let current: Awaited<ReturnType<typeof start>> | undefined;
   const children = new Set<ReturnType<typeof fork>>();
   async function start() {
     let diagnostics = "";
-    const child = fork(resolve("__tests__/host-crash/fixtures/host.ts"), [], {
+    const child = fork(resolve(fixturePath), [], {
       execArgv: ["--import", "tsx"],
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });

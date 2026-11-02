@@ -34,7 +34,11 @@ import {
   nextResolutionQueryNonce,
   signResolutionCapability,
 } from "../decisions/resolution-capability.ts";
-import { planForestReplay } from "../forest/forest-replay.ts";
+import {
+  observeAcceptedExtension,
+  observeRecordRecovery,
+  planForestReplay,
+} from "../forest/forest-replay.ts";
 import { parseRegisteredSchema } from "../contract/schema-registry.ts";
 import {
   identityConflict,
@@ -72,6 +76,12 @@ export function queryAuthorityState<Q extends AuthorityQuery>(
       result = sortedStrings(
         [...state.sessions].filter(([, session]) => session.control.runnable).map(([id]) => id),
       );
+      break;
+    case "task.record-recovery-observation":
+      result = observeRecordRecovery(state, query.sessionId, query.taskId, context.nowMs);
+      break;
+    case "task.accepted-extension":
+      result = observeAcceptedExtension(state, query.request, context.nowMs);
       break;
     case "forest.replay-plan":
       result = planForestReplay(
@@ -408,7 +418,13 @@ function resolutionCapabilityFor(
 ): string {
   const task = taskFor(state, sessionId, taskId);
   const pull = pullById(task, pullId);
-  if (pull.resolutionAuthority.kind !== "attempt" && pull.resolutionAuthority.capability) {
+  if (pull.resolutionAuthority.kind === "attempt") {
+    throw new CrankError(
+      "invalid_resolution_capability",
+      "Attempt-owned pulls require authenticated reservation authority",
+    );
+  }
+  if (pull.resolutionAuthority.capability) {
     return pull.resolutionAuthority.capability;
   }
   return signResolutionCapability({

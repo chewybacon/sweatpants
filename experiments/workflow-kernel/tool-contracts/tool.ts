@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { z } from "zod";
 
 export const pickSeat = createDurableTool("pick_seat", { version: "1" })

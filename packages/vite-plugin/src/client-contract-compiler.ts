@@ -148,6 +148,7 @@ export function generateClientContractModule(
 ): string {
   const ast = parseSource(source, filename);
   let executeTerminals = 0;
+  const executionHelpers = new Set<string>();
   traverse(ast, {
     CallExpression(path) {
       const callee = path.node.callee;
@@ -155,6 +156,10 @@ export function generateClientContractModule(
         return;
       }
       if (callee.property.name === "effects") {
+        const effects = path.node.arguments[0];
+        if (t.isIdentifier(effects)) {
+          executionHelpers.add(effects.name);
+        }
         path.node.arguments = [t.objectExpression([])];
         return;
       }
@@ -166,6 +171,10 @@ export function generateClientContractModule(
           "client_contract_not_static",
           `${filename}: executable builder terminal must have exactly one authored implementation`,
         );
+      }
+      const implementation = path.node.arguments[0];
+      if (t.isIdentifier(implementation)) {
+        executionHelpers.add(implementation.name);
       }
       path.node.arguments = [contractTerminal()];
       executeTerminals += 1;
@@ -217,6 +226,29 @@ export function generateClientContractModule(
   }
   traverse(ast, {
     Program(path) {
+      path.scope.crawl();
+      // A named implementation can also serve server-side callers. Its export
+      // must not retain execution in the client variant requested by makePlugin.
+      // Repeat after removing a body whose type annotation references effects.
+      for (const name of [...executionHelpers].reverse()) {
+        path.scope.crawl();
+        const binding = path.scope.getBinding(name);
+        if (!binding || requestedExports.includes(name)) {
+          continue;
+        }
+        const references = binding.referencePaths.filter(
+          (reference) => !reference.isExportNamedDeclaration(),
+        );
+        if (references.length === 0 && binding.path.isFunctionDeclaration()) {
+          if (binding.path.parentPath.isExportNamedDeclaration()) {
+            binding.path.parentPath.remove();
+          } else {
+            binding.path.remove();
+          }
+        } else if (references.length === 0 && binding.path.isVariableDeclarator()) {
+          binding.path.remove();
+        }
+      }
       path.scope.crawl();
     },
   });

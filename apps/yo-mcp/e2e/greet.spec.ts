@@ -1,3 +1,4 @@
+import { enableInspectorConnection } from "./fixtures/inspector.ts";
 import { test, expect, type Page } from "@playwright/test";
 
 /**
@@ -10,11 +11,8 @@ import { test, expect, type Page } from "@playwright/test";
 
 // Helper to connect to server
 async function connectToServer(page: Page) {
-  const serverSwitch = page.getByRole("switch");
-  await expect(serverSwitch).toBeVisible({ timeout: 10000 });
-  if (!(await serverSwitch.isChecked())) {
-    await serverSwitch.click({ force: true });
-  }
+  await expect(page.getByRole("switch")).toBeVisible({ timeout: 10000 });
+  await enableInspectorConnection(page);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10000 });
   await page.locator('label[for$="-Tools"]').click();
 }

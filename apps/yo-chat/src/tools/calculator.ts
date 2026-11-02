@@ -1,13 +1,13 @@
-import { createTool } from "@sweatpants/agent-sdk";
-import { z } from "zod";
+import { CalculatorParametersSchema } from "./schemas/calculator.ts";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 
-export const calculator = createTool("calculator")
+export const calculator = createDurableTool("calculator", {
+  version: "1",
+})
   .description("Evaluate a mathematical expression")
-  .parameters(
-    z.object({
-      expression: z.string().describe("The mathematical expression to evaluate"),
-    }),
-  )
+  .parameters(CalculatorParametersSchema)
+  .effects({})
+  .elicits({})
   .execute(function* (params) {
     try {
       const sanitized = params.expression.replace(/[^0-9+\-*/().%\s]/g, "");

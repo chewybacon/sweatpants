@@ -75,7 +75,7 @@ describe("client contract compiler", () => {
 
   it("removes durable program execution while retaining its contract builder", () => {
     const generated = generateClientContractModule(
-      `import { createDurableTool } from "@sweatpants/agent-sdk";
+      `import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
        import { z } from "zod";
        export const tool = createDurableTool("durable-contract").parameters(z.object({}))
          .identity({ version: "1", digest: "${"a".repeat(64)}" })

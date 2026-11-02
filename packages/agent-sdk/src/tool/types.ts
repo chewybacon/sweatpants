@@ -1,9 +1,9 @@
+import type { ToolDefinition } from "./definition.ts";
 import type { DocumentSlots, ElicitDocumentSlots } from "./documents.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { Json } from "@sweatpants/foundation";
 import type { SchemaBinding, PortableSchemaDescriptor } from "@sweatpants/foundation/schema";
-import type { ToolInteractionBindings } from "./interaction-binding.ts";
 import type {
   ChatAssistantMessage,
   ChatMessage,
@@ -523,40 +523,9 @@ export interface ToolExtension<
   apply?(state: TState): TState | void;
 }
 
-export interface ToolDefinition<
-  TName extends string = string,
-  TParams = unknown,
-  TResult = unknown,
-  TElicits extends ElicitsMap = {},
-  TSamples extends SamplesMap | true | undefined = undefined,
-> {
-  (ctx: ToolCtx<TElicits, TSamples>): Operation<(input: TParams) => Operation<TResult>>;
-  /** Ordinary definitions execute through a callable Effection factory. */
-  readonly execution: "ordinary";
-  readonly name: TName;
-  readonly description: string;
-  readonly parameters: StandardSchemaV1<unknown, TParams>;
-  readonly output?: StandardSchemaV1<unknown, TResult>;
-  readonly elicits: NormalizedElicitsMap<TElicits>;
-  readonly samples: TSamples extends SamplesMap
-    ? NormalizedSamplesMap<TSamples>
-    : Readonly<Record<string, never>>;
-  readonly schemas: {
-    readonly input: StandardSchemaV1<unknown, TParams>;
-    readonly output?: StandardSchemaV1<unknown, TResult>;
-  };
-  /** Retained portable schema projections and digest-keyed validator catalog. */
-  readonly artifacts: ToolSchemaArtifacts;
-  readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
-  readonly annotations: Readonly<Record<string, unknown>>;
-  readonly extensions: readonly ToolExtensionMetadata[];
-  /** Complete execution-neutral identity and compiled interaction addresses. */
-  readonly interfaceDigest: string;
-  readonly bindings: ToolInteractionBindings;
-}
-
 /** Wire-boundary erased tool with its authored sample-schema evidence retained. */
-export type RuntimeTool = ToolDefinition<string, any, any, any, any> & {
+export type RuntimeTool = ToolDefinition<StandardSchemaV1<any, any>, any, any, any> & {
+  readonly execution: "ordinary";
   readonly elicits: Readonly<Record<string, NormalizedElicitDefinition<unknown, unknown, unknown>>>;
   readonly samples: Readonly<Record<string, SampleDefinition<StandardSchemaV1 | undefined>>>;
 };
@@ -618,10 +587,15 @@ export interface CreateToolBuilderWithParams<
   execute<TResult extends TOutput extends undefined ? unknown : TOutput>(
     fn: (input: TInput, ctx: ToolCtx<TElicits, TSamples>) => Operation<TResult>,
   ): ToolDefinition<
-    TName,
-    TInput,
+    StandardSchemaV1<unknown, TInput>,
     TOutput extends undefined ? TResult : TOutput,
-    TElicits extends ElicitsMap ? TElicits : {},
-    TSamples
-  >;
+    NormalizedElicitsMap<TElicits extends ElicitsMap ? TElicits : {}>,
+    {},
+    TName
+  > & {
+    readonly execution: "ordinary";
+    readonly samples: TSamples extends SamplesMap
+      ? NormalizedSamplesMap<TSamples>
+      : Readonly<Record<string, never>>;
+  };
 }

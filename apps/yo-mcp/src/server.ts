@@ -1,6 +1,7 @@
 import { createMcpApp } from "@sweatpants/agent-host/mcp";
 import { serve } from "@sweatpants/agent-host/node";
-import { local } from "@sweatpants/tool-runtime-local";
+import { drawCardEffect } from "./tools/pick-card.js";
+import { z } from "zod";
 import { allTools } from "./tools/index.js";
 
 export function createYoMcpApp() {
@@ -9,11 +10,11 @@ export function createYoMcpApp() {
     version: "0.1.0",
     secret: "yo-mcp-local-development-continuation-secret",
     tools: allTools,
-    execution: local({
-      worker: new URL("./tool-worker.mjs", import.meta.url),
-      isDev: false,
-      execArgv: ["--conditions=development", "--import", "tsx"],
-    }),
+    effects: {
+      *"pick_card.draw"(input) {
+        return yield* drawCardEffect(z.object({ count: z.number() }).parse(input));
+      },
+    },
     *authenticate() {
       return "local-demo";
     },

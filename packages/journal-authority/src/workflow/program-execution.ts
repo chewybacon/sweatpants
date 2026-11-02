@@ -1,3 +1,4 @@
+import type { Effect } from "effection";
 import type { Operation } from "effection";
 import type { Json, Execution, ExecutionBoundary, ExecutionState } from "@sweatpants/foundation";
 import type { OperationOutcome } from "@sweatpants/durable-effects";
@@ -15,7 +16,7 @@ export type ProgramReply =
   | { kind: "record"; outcome: OperationOutcome }
   | { kind: "emission"; value: Json };
 export type ProgramExecutionState = ExecutionState<
-  Execution<ProgramRequest, ProgramReply, Json>,
+  Execution<ProgramRequest, ProgramReply, Json, unknown, Effect<unknown>>,
   ExecutionBoundary<ProgramRequest, Json>
 >;
 

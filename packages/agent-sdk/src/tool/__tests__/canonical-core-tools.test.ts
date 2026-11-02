@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
@@ -31,7 +32,7 @@ describe("canonical core createTool builder", () => {
     expect(Tool.annotations["mcp"]).toEqual({ title: "Analyze" });
     expect(Tool.extensions[0]?.namespace).toBe("test");
 
-    const invoke = yield* Tool(
+    const invoke = yield* toolFactory(Tool)(
       baseCtx as ToolCtx<{}, { classify: { output: z.ZodObject<{ label: z.ZodString }> } }>,
     );
     expect(yield* invoke({ text: "hello" })).toEqual({ ok: true });
@@ -46,7 +47,7 @@ describe("canonical core createTool builder", () => {
         return { ok: "nope" } as unknown as { ok: boolean };
       });
 
-    const invoke = yield* Tool(baseCtx);
+    const invoke = yield* toolFactory(Tool)(baseCtx);
     try {
       yield* invoke({});
       throw new Error("expected output validation failure");

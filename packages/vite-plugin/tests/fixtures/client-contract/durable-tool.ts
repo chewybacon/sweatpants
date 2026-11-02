@@ -1,4 +1,4 @@
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { z } from "zod";
 import { durableServerEffect, durableServerExecute } from "./server-only.ts";
 

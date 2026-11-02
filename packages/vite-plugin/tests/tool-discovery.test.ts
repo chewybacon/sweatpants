@@ -37,7 +37,8 @@ function canonicalToolSource(content: string): string {
   if (/\bdefineTool\s*\(/.test(content)) {
     return `import { defineTool } from "@sweatpants/agent-sdk";\n${content}`;
   }
-  return `import { createTool, createDurableTool } from "@sweatpants/agent-sdk";\n${content}`;
+  return `import { createTool} from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";\n${content}`;
 }
 
 function discoverTools(content: string, file = "/project/src/tools/my-tool.ts") {

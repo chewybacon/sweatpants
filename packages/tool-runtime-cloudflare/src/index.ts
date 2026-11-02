@@ -14,7 +14,10 @@ import {
   type ProgramDriver,
   type ProgramStep,
 } from "@sweatpants/durable-execution";
-import { isChatDurableTool, type ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import {
+  isChatDurableTool,
+  type RetainedToolExecutionAdapter,
+} from "@sweatpants/tool-session/execution";
 import type {
   AttachmentMetadata,
   ExecutorResult,
@@ -114,7 +117,7 @@ export function cloudflare(options: {
   worker?: ToolExecutorEntrypoint;
   executors?: ToolExecutorNamespace;
   sessions?: ToolSessionNamespace;
-}): ToolExecutionAdapter {
+}): RetainedToolExecutionAdapter {
   if (options.worker && options.executors) {
     throw new Error("Choose either a worker entrypoint or an executors DO binding");
   }

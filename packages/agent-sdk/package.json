@@ -54,6 +54,27 @@
         "types": "./dist/transport/worker.d.ts",
         "default": "./dist/transport/worker.js"
       }
+    },
+    "./legacy": {
+      "development": {
+        "import": "./src/legacy.ts",
+        "types": "./src/legacy.ts"
+      },
+      "import": {
+        "types": "./dist/legacy.d.ts",
+        "default": "./dist/legacy.js"
+      },
+      "default": "./src/legacy.ts"
+    },
+    "./internal/tool-execution": {
+      "development": {
+        "import": "./src/tool/execution.ts",
+        "types": "./src/tool/execution.ts"
+      },
+      "import": {
+        "types": "./dist/tool/execution.d.ts",
+        "default": "./dist/tool/execution.js"
+      }
     }
   },
   "scripts": {
@@ -77,6 +98,8 @@
     "@sweatpants/model-decision": "workspace:*",
     "@sweatpants/model-provider": "workspace:*",
     "@sweatpants/model-sampling": "workspace:*",
+    "@sweatpants/standard-durability": "workspace:*",
+    "@sweatpants/standard-durability-effection": "workspace:*",
     "base64-js": "1.5.1",
     "effection": "catalog:",
     "zod": "catalog:"

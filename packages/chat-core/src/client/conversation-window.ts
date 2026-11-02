@@ -72,6 +72,7 @@ interface PublicProjectionRootBase {
 export interface PublicMessageRoot extends PublicProjectionRootBase {
   readonly kind: "message";
   readonly message: Message;
+  readonly reasoning?: string;
   readonly placement: PublicMessagePlacement;
 }
 
@@ -411,11 +412,21 @@ export function decodePublicProjectionRoot(value: unknown, path = "$.root"): Pub
     ...(executionId === undefined ? {} : { executionId }),
   };
   if (input["kind"] === "message") {
-    exactKeys(input, [...commonRequired, "message", "placement"], commonOptional, path);
+    exactKeys(
+      input,
+      [...commonRequired, "message", "placement"],
+      [...commonOptional, "reasoning"],
+      path,
+    );
+    if (input["reasoning"] !== undefined && typeof input["reasoning"] !== "string") {
+      return invalid(`${path}.reasoning must be a string`);
+    }
     return {
       ...common,
       kind: "message",
       message: decodeMessage(input["message"], `${path}.message`),
+      // CONDITIONAL-SPREAD: decoded persisted JSON omits absent reasoning rather than storing undefined.
+      ...(typeof input["reasoning"] === "string" ? { reasoning: input["reasoning"] } : {}),
       placement: decodePlacement(input["placement"], `${path}.placement`),
     };
   }

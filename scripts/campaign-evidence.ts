@@ -211,15 +211,8 @@ const checks: readonly RegisteredCheck[] = [
       detail: `package present=${pkg}, park record=${parked}, re-audit condition=${reaudit}`,
     };
   }),
-  check("E5", ["REQ-010"], () => {
-    const shell = exists("apps/lambda-microvm-sandbox/package.json");
-    const ledger = readLedger();
-    const recorded = /\|\s*`apps\/lambda-microvm-sandbox`\s*\|\s*parked\s*\|/.test(ledger);
-    return {
-      passed: shell && recorded,
-      detail: `shell present=${shell}, ledger record=${recorded}`,
-    };
-  }),
+  // The former REQ-010 deployment-shell retention check was superseded by
+  // removal of inactive apps during the framework rewrite (see apps/README.md).
   check("E9", ["REQ-002", "REQ-013"], () => {
     const srcTrees = [
       ...listFiles(join(repoRoot, "packages")),
@@ -293,7 +286,7 @@ const checks: readonly RegisteredCheck[] = [
   check("E8a", ["REQ-017"], () => {
     const renamed =
       exists("acceptance/__tests__/application-composition/command-retries.acceptance.test.ts") &&
-      exists("apps/yo-chat/acceptance/book-flight-ephemeral-invariance.acceptance.test.ts");
+      exists("acceptance/__tests__/application-composition/yo-chat-worker.acceptance.test.ts");
     const old =
       exists("apps/yo-chat/acceptance/foreign-stale-elicit.acceptance.test.ts") ||
       exists("apps/yo-chat/acceptance/book-flight-foreign-invariance.acceptance.test.ts");

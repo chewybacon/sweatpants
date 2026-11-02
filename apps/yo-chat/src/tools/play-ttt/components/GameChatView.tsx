@@ -134,7 +134,6 @@ export function GameChatView({
   moveHistory,
   board,
   userSymbol,
-  modelSymbol,
   lastMove,
   winningLine,
   gameOver,

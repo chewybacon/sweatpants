@@ -1,8 +1,8 @@
-import { createTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk";
 import { z } from "zod";
 
-/** Multiple interactions and revision, all within one ordinary tool invocation. */
-export const planTripTool = createTool("plan_trip")
+/** Multiple interactions and revision, all within one journal invocation. */
+export const planTripTool = createDurableTool("plan_trip", { version: "1" })
   .description(
     "Plan a day trip together: choose a destination and activity, then review or revise. Does not book anything.",
   )
@@ -11,17 +11,22 @@ export const planTripTool = createTool("plan_trip")
       traveler: z.string().min(1).default("Traveler").describe("Who the day trip is for"),
     }),
   )
+  .effects({})
   .elicits({
-    destination: z.object({ city: z.string().min(1).describe("City to visit") }),
-    activity: z.object({
-      activity: z.enum(["museum", "food tour", "park"]).describe("Activity for the day trip"),
-    }),
-    review: z.object({
-      confirmed: z
-        .boolean()
-        .default(false)
-        .describe("Confirm this plan; leave unchecked to choose another activity"),
-    }),
+    destination: { response: z.object({ city: z.string().min(1).describe("City to visit") }) },
+    activity: {
+      response: z.object({
+        activity: z.enum(["museum", "food tour", "park"]).describe("Activity for the day trip"),
+      }),
+    },
+    review: {
+      response: z.object({
+        confirmed: z
+          .boolean()
+          .default(false)
+          .describe("Confirm this plan; leave unchecked to choose another activity"),
+      }),
+    },
   })
   .execute(function* ({ traveler }, ctx) {
     const destination = yield* ctx.elicit("destination", {

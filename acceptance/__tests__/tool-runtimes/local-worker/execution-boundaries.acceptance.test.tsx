@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { call, spawn } from "effection";
 import { describe, expect, it } from "vitest";
 import { local, type LocalToolInvocationResourceFactory } from "@sweatpants/tool-runtime-local";
-import type { ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import type { RetainedToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 import { withTestScenario } from "@sweatpants/test-rig";
 import { createApplication } from "../../../fixtures/application.ts";
 import { bookTrip } from "../../../fixtures/book-trip.ts";
@@ -17,7 +17,7 @@ function observedOrdinaryExecution() {
     worker: resolve("__tests__/tool-runtimes/local-worker/fixtures/tool-worker.mjs"),
   });
   let resources: LocalToolInvocationResourceFactory | undefined;
-  const execution: ToolExecutionAdapter = {
+  const execution: RetainedToolExecutionAdapter = {
     prepare(tools, routeId) {
       const prepared = placement.prepare(tools, routeId);
       const createResources = prepared.createResources!;

@@ -23,7 +23,7 @@ import {
 } from "@sweatpants/model-provider";
 import type { DurableEffectRegistration } from "@sweatpants/durable-effects";
 import { prepareChatTools } from "./tool-execution.ts";
-import type { ChatTool, ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import type { ChatTool, RetainedToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 import { createModelSamplingProvider } from "./model-sampling.ts";
 export { createModelSamplingProvider } from "./model-sampling.ts";
 export { inProcess, installChatTools } from "./tool-execution.ts";
@@ -279,7 +279,7 @@ type WithoutSetup<T> = T extends unknown ? Omit<T, "setup" | "programs"> : never
 export type ChatAppConfig = WithoutSetup<DurableChatHandlerConfig> & {
   /** One authored inventory; execution kind stays on each tool definition. */
   tools?: readonly ChatTool[];
-  execution?: ToolExecutionAdapter;
+  execution?: RetainedToolExecutionAdapter;
   effects?: readonly DurableEffectRegistration[];
   /** Default inherited by chat and tool sampling. Chat setup may override in its child scope. */
   model?: ChatModel;

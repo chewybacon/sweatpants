@@ -2,14 +2,15 @@
 import { describe, expect, it } from "vitest";
 import { run, scoped } from "effection";
 import { z } from "zod";
-import { createTool, createDurableTool, defineEffect } from "@sweatpants/agent-sdk";
+import { createTool, defineEffect } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { createDurableEffectRegistration } from "@sweatpants/durable-effects";
 import { ToolInventoryApi, ToolRuntimeApi } from "@sweatpants/tool-runtime";
 import { ProgramDriverNativeToolsContext } from "@sweatpants/durable-chat-runtime/durable-handler";
 import type { ToolInvocationResource } from "@sweatpants/tool-session";
 import { createChatApp, inProcess, installChatTools } from "../index.ts";
 import { local } from "@sweatpants/tool-runtime-local";
-import { routeTools, type ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import { routeTools, type RetainedToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 
 import { agentCore } from "@sweatpants/tool-runtime-agentcore";
 
@@ -62,7 +63,7 @@ function placement(
   label: string,
   calls: string[],
   saved = new Map<string, ToolInvocationResource>(),
-): ToolExecutionAdapter {
+): RetainedToolExecutionAdapter {
   return {
     prepare() {
       return {
