@@ -43,13 +43,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const unavailable = new Set<string>();
     const observations: Visit[] = [];
     let loseCheckpointFor: string | undefined;
+    let budget = 2;
     let cleanup: (() => Operation<void, Y>) | undefined;
     function assemble() {
       const db = rig.database;
       db.exec(`
         CREATE TABLE IF NOT EXISTS consumer_catalog (id TEXT PRIMARY KEY, program TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS consumer_sweep (singleton INTEGER PRIMARY KEY CHECK(singleton=1), after_id TEXT);
-        INSERT OR IGNORE INTO consumer_sweep VALUES (1, NULL);
+        CREATE TABLE IF NOT EXISTS consumer_sweep (singleton INTEGER PRIMARY KEY CHECK(singleton=1), after_id TEXT, end_id TEXT);
+        INSERT OR IGNORE INTO consumer_sweep VALUES (1, NULL, NULL);
         CREATE TABLE IF NOT EXISTS consumer_backoff (id TEXT PRIMARY KEY, token TEXT NOT NULL, until_tick INTEGER NOT NULL);
       `);
       function store(id: string, program = PROGRAM) {
@@ -83,126 +84,167 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         );
         return yield* admission.operations.admit(input);
       }
-      function* tick(now: number, deadline = new AbortController().signal): Operation<Tick, Y> {
-        if (!Number.isSafeInteger(now) || now < 0) {
-          throw new Error("Invalid scheduler tick");
-        }
-        const after = db
-          .prepare("SELECT after_id FROM consumer_sweep WHERE singleton=1")
-          .get()!.after_id;
-        const row = db
-          .prepare(
-            "SELECT id, program FROM consumer_catalog WHERE (? IS NULL OR id > ?) ORDER BY id LIMIT 1",
-          )
-          .get(after as string | null, after as string | null);
-        if (!row) {
-          db.prepare("UPDATE consumer_sweep SET after_id=NULL WHERE singleton=1").run();
-          return { state: "wrapped" };
-        }
-        const id = row.id as string;
-        let observedToken: string | undefined;
-        const visit: Visit = yield* runtime.composition.catchError(
-          function* (): Operation<Visit, Y> {
-            const bound = store(id, row.program as string);
-            const journal = bound.open();
-            const snapshot = yield* journal.read(); // Also checks the persisted program binding.
-            if (snapshot.status === "running" && !snapshot.admission) {
-              return { id, state: "unadmitted" };
-            }
-            const intents = createActivationIntents(
-              runtime.composition,
-              `intents:${id}`,
-              bound.activations,
-            );
+      function createVisit(id: string, program: string, deadline: AbortSignal) {
+        const bound = store(id, program);
+        return {
+          id,
+          program,
+          deadline,
+          journal: bound.open(),
+          intents: createActivationIntents(runtime.composition, `intents:${id}`, bound.activations),
+        };
+      }
+      const scheduling = runtime.composition.createApi("root-scheduling", {
+        *visit(input: ReturnType<typeof createVisit>): Operation<Visit, Y> {
+          const { id, program, deadline, journal, intents } = input;
+          return yield* runtime.composition.catchError(
+            function* (): Operation<Visit, Y> {
+              const snapshot = yield* journal.read(); // Also checks the persisted program binding.
+              const pending = yield* intents.operations.read();
+              if (!pending) {
+                return { id, state: "idle" };
+              }
+              if (snapshot.status === "running" && !snapshot.admission) {
+                return { id, state: "unadmitted" };
+              }
+              const report = yield* runtime.withSignal(deadline, function* () {
+                let settled = 0;
+                const recovery = createHostedRecovery(runtime, {
+                  name: `sweep-recovery:${id}`,
+                  program,
+                  matches: isDeepStrictEqual,
+                  *acquire() {
+                    // Resolve only when evaluation is needed. Terminal roots do not require code.
+                    if (program !== PROGRAM || unavailable.has(id)) {
+                      throw new Error("Pinned executable unavailable");
+                    }
+                    const input = z.string().parse(snapshot.admission?.input);
+                    acquisitions.set(id, (acquisitions.get(id) ?? 0) + 1);
+                    return createScopedGuest(function* () {
+                      const answer: unknown = yield `sample:${input}`;
+                      const approved: unknown = yield "approval";
+                      return `${String(answer)}:${String(approved)}`;
+                    });
+                  },
+                });
+                const host = createHosting(runtime.composition, {
+                  name: `sweep-host:${id}`,
+                  journal,
+                  recovery: recovery.operations,
+                  attempts: journal.attempts,
+                  interactions: journal.interactions,
+                  *handle(request: string): Operation<Outcome<string, string>, Y> {
+                    if (cleanup) {
+                      yield* runtime.composition.ensure(cleanup);
+                    }
+                    const response = yield* runtime.fromPromise((signal) =>
+                      peer.send({ id, token: request }, signal),
+                    );
+                    return { ok: true, value: response.body };
+                  },
+                });
+                yield* host.around({
+                  *continuation() {
+                    return settled >= budget
+                      ? { action: "yield", reason: "sweep budget" }
+                      : { action: "continue" };
+                  },
+                  *deliveryMode([request]) {
+                    return request === "approval" ? "wait" : "execute";
+                  },
+                });
+                yield* host.attempts.around({
+                  *settle(args, next) {
+                    const accepted = yield* next(...args);
+                    settled++;
+                    return accepted;
+                  },
+                });
+                const reconciler = createActivationReconciler(runtime.composition, `sweep:${id}`, {
+                  intents,
+                  run: host.operations.run,
+                });
+                return yield* reconciler.operations.reconcile();
+              });
+              return { id, state: "driven", report };
+            },
+            function* (error) {
+              return { id, state: "failed" as const, error };
+            },
+          );
+        },
+      });
+      function* installBackoff(now: number, delay = 10) {
+        yield* scheduling.around({
+          *visit([input], next) {
+            const { id, intents } = input;
+            // Capture scheduling intent before dispatch; never acknowledge or replace it here.
             const pending = yield* intents.operations.read();
-            if (!pending) {
-              return { id, state: "idle" };
-            }
-            observedToken = pending.token;
             const backoff = db
               .prepare("SELECT token, until_tick FROM consumer_backoff WHERE id=?")
               .get(id);
-            if (backoff?.token === pending.token && Number(backoff.until_tick) > now) {
+            if (pending && backoff?.token === pending.token && Number(backoff.until_tick) > now) {
               return { id, state: "backoff" };
             }
-            const report = yield* runtime.withSignal(deadline, function* () {
-              let settled = 0;
-              const recovery = createHostedRecovery(runtime, {
-                name: `sweep-recovery:${id}`,
-                program: row.program as string,
-                matches: isDeepStrictEqual,
-                *acquire() {
-                  // Resolve only when evaluation is needed. Terminal roots do not require code.
-                  if (row.program !== PROGRAM || unavailable.has(id)) {
-                    throw new Error("Pinned executable unavailable");
-                  }
-                  const input = z.string().parse(snapshot.admission?.input);
-                  acquisitions.set(id, (acquisitions.get(id) ?? 0) + 1);
-                  return createScopedGuest(function* () {
-                    const answer: unknown = yield `sample:${input}`;
-                    const approved: unknown = yield "approval";
-                    return `${String(answer)}:${String(approved)}`;
-                  });
-                },
-              });
-              const host = createHosting(runtime.composition, {
-                name: `sweep-host:${id}`,
-                journal,
-                recovery: recovery.operations,
-                attempts: journal.attempts,
-                interactions: journal.interactions,
-                *handle(request: string): Operation<Outcome<string, string>, Y> {
-                  if (cleanup) {
-                    yield* runtime.composition.ensure(cleanup);
-                  }
-                  const response = yield* runtime.fromPromise((signal) =>
-                    peer.send({ id, token: request }, signal),
-                  );
-                  return { ok: true, value: response.body };
-                },
-              });
-              yield* host.around({
-                *continuation() {
-                  return settled >= 2
-                    ? { action: "yield", reason: "sweep budget" }
-                    : { action: "continue" };
-                },
-                *deliveryMode([request]) {
-                  return request === "approval" ? "wait" : "execute";
-                },
-              });
-              yield* host.attempts.around({
-                *settle(args, next) {
-                  const accepted = yield* next(...args);
-                  settled++;
-                  return accepted;
-                },
-              });
-              const reconciler = createActivationReconciler(runtime.composition, `sweep:${id}`, {
-                intents,
-                run: host.operations.run,
-              });
-              return yield* reconciler.operations.reconcile();
-            });
-            return { id, state: "driven", report };
+            const visit = yield* next(input);
+            // Failures are uncertain observations; this policy never infers rollback.
+            if (
+              pending &&
+              (visit.state === "failed" ||
+                visit.state === "unadmitted" ||
+                (visit.state === "driven" &&
+                  visit.report.state === "driven" &&
+                  ["occupied", "invalidated", "yielded"].includes(visit.report.result.state)))
+            ) {
+              db.prepare(
+                "INSERT INTO consumer_backoff VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token=excluded.token, until_tick=excluded.until_tick",
+              ).run(id, pending.token, now + delay);
+            }
+            return visit;
           },
-          function* (error) {
-            return { id, state: "failed" as const, error };
+        });
+      }
+      function* tick(
+        now: number,
+        deadline = new AbortController().signal,
+        installPolicy: () => Operation<void, Y> = () => installBackoff(now),
+      ): Operation<Tick, Y> {
+        return yield* runtime.composition.scoped(function* () {
+          yield* installPolicy();
+          return yield* sweepOnce(now, deadline);
+        });
+      }
+      function* sweepOnce(now: number, deadline: AbortSignal): Operation<Tick, Y> {
+        if (!Number.isSafeInteger(now) || now < 0) {
+          throw new Error("Invalid scheduler tick");
+        }
+        const checkpoint = db
+          .prepare("SELECT after_id, end_id FROM consumer_sweep WHERE singleton=1")
+          .get()!;
+        const after = checkpoint.after_id as string | null;
+        let end = checkpoint.end_id as string | null;
+        if (end === null) {
+          end = db.prepare("SELECT MAX(id) AS id FROM consumer_catalog").get()!.id as string | null;
+          db.prepare("UPDATE consumer_sweep SET end_id=? WHERE singleton=1").run(end);
+        }
+        const row = db
+          .prepare(
+            "SELECT id, program FROM consumer_catalog WHERE (? IS NULL OR id > ?) AND id <= ? ORDER BY id LIMIT 1",
+          )
+          .get(after, after, end);
+        if (!row) {
+          db.prepare(
+            "UPDATE consumer_sweep SET after_id=NULL, end_id=NULL WHERE singleton=1",
+          ).run();
+          return { state: "wrapped" };
+        }
+        const id = row.id as string;
+        const visit = yield* runtime.composition.catchError(
+          () => scheduling.operations.visit(createVisit(id, row.program as string, deadline)),
+          function* (error): Operation<Visit, Y> {
+            return { id, state: "failed", error };
           },
         );
-        // Errors are uncertain observations: do not infer whether intent deletion committed.
-        // Backoff references only the PRE-drive token; a newer token always bypasses it.
-        if (
-          observedToken &&
-          (visit.state === "failed" ||
-            (visit.state === "driven" &&
-              visit.report.state === "driven" &&
-              ["occupied", "invalidated"].includes(visit.report.result.state)))
-        ) {
-          db.prepare(
-            "INSERT INTO consumer_backoff VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token=excluded.token, until_tick=excluded.until_tick",
-          ).run(id, observedToken, now + 10);
-        }
         if (loseCheckpointFor === id) {
           loseCheckpointFor = undefined;
           throw new Error("Process stopped before checkpoint and observation");
@@ -212,7 +254,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         observations.push(visit); // Advisory only; journal status is authoritative.
         return visit;
       }
-      return { store, enroll, submit, tick };
+      return { store, enroll, submit, tick, scheduling, installBackoff };
     }
     return {
       rig,
@@ -221,6 +263,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       unavailable,
       observations,
       assemble,
+      set budget(value: number) {
+        budget = value;
+      },
       set loseCheckpointFor(id: string | undefined) {
         loseCheckpointFor = id;
       },
@@ -234,6 +279,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const scenario = application();
     let app = scenario.assemble();
     app.enroll("a");
+    app.enroll("b");
+    app.enroll("c");
     await start(app.store("a").activations.request); // Intent is NOT admission authority.
     scenario.rig.reopen();
     app = scenario.assemble();
@@ -267,7 +314,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       throw new Error("Sweep failed to reach root");
     }
-    expect(await visit("a")).toEqual({ id: "a", state: "unadmitted" });
+    expect(await visit("a")).toEqual({ id: "a", state: "backoff" });
     const stable = await visit("b");
     expect(
       stable.state === "driven" && stable.report.state === "driven" && stable.report.acknowledged,
@@ -299,6 +346,55 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(start(() => app.store("b", "wrong").open().read())).rejects.toThrow(
       "Journal program mismatch",
     );
+  });
+
+  it(`${runtime.name}: finite sweep frontier survives restart and revisits old intent during enrollment`, async () => {
+    const scenario = application();
+    let app = scenario.assemble();
+    scenario.budget = 0;
+    await start(() => app.submit("a", "question"));
+    app.enroll("b");
+    const first = await start(() => app.tick(0));
+    expect(
+      first.state === "driven" && first.report.state === "driven" && first.report.result.state,
+    ).toBe("yielded");
+    scenario.rig.reopen();
+    app = scenario.assemble();
+    app.enroll("c");
+    expect(await start(() => app.tick(5))).toEqual({ id: "b", state: "idle" });
+    app.enroll("d");
+    expect(await start(() => app.tick(5))).toEqual({ state: "wrapped" });
+    app.enroll("e");
+    expect(await start(() => app.tick(5))).toEqual({ id: "a", state: "backoff" });
+    await start(app.store("a").activations.request);
+    // Each tick adds a higher ID, but this sweep must still finish at its persisted end.
+    for (const id of ["f", "g", "h", "i", "j"]) {
+      app.enroll(id);
+      await start(() => app.tick(5));
+    }
+    const renewed = await start(() => app.tick(5));
+    expect(
+      renewed.state === "driven" &&
+        renewed.report.state === "driven" &&
+        renewed.report.result.state,
+    ).toBe("yielded");
+    // Replace delay policy for one invocation; scope exit restores the default.
+    await start(app.store("a").activations.request);
+    async function visitA(installPolicy?: () => Operation<void, Y>): Promise<Visit> {
+      for (let count = 0; count < 11; count++) {
+        const result = await start(() => app.tick(5, undefined, installPolicy));
+        if ("id" in result && result.id === "a") {
+          return result;
+        }
+      }
+      throw new Error("Missing a");
+    }
+    const immediate = await visitA(() => app.installBackoff(5, 0));
+    expect(immediate.state).toBe("driven");
+    // Its zero delay permits the next visit, whose default middleware persists ten ticks.
+    expect((await visitA()).state).toBe("driven");
+    expect(await visitA()).toEqual({ id: "a", state: "backoff" });
+    expect(scenario.peer.requests).toHaveLength(0);
   });
 
   it(`${runtime.name}: cooperative deadline failure advances traversal, and new intent bypasses old-token backoff`, async () => {
@@ -348,6 +444,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         occupied.report.state === "driven" &&
         occupied.report.result.state,
     ).toBe("occupied");
+    scenario.rig.reopen();
+    app = scenario.assemble();
     const visits = scenario.acquisitions.get("a");
     expect(await visitA(5)).toEqual({ id: "a", state: "backoff" });
     expect(scenario.acquisitions.get("a")).toBe(visits);

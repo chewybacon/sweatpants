@@ -16,6 +16,7 @@ import {
   createToolAcquisition,
   createToolAdmission,
   defineTool,
+  projectToolContract,
   installElicitHandlers,
   type ElicitHandlers,
 } from "@sweatpan.ts/tools";
@@ -49,34 +50,92 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let acquisitions = 0;
       let disposals = 0;
       let records = 0;
+      let stamped = 0;
+      let defaultAnswers = 0;
       let clientCalls = 0;
       let contextParses = 0;
       let responseParses = 0;
-      const approval = defineEffect({
-        key: "streamed.approval",
-        context: textSchema((question) => {
-          contextParses++;
-          return { question };
-        }),
-        response: textSchema((answer) => {
-          responseParses++;
-          return { approved: answer === "yes" };
-        }),
-      });
+      const stamp = defineEffect(
+        { key: "streamed.stamp", context: textSchema((value) => value) },
+        function* (value) {
+          stamped++;
+          return { ok: true as const, value };
+        },
+      );
+      const approval = defineEffect(
+        {
+          key: "streamed.approval",
+          context: textSchema((question) => {
+            contextParses++;
+            return { question };
+          }),
+          response: textSchema((answer) => {
+            responseParses++;
+            return { approved: answer === "yes" };
+          }),
+        },
+        function* () {
+          defaultAnswers++;
+          return { ok: true as const, value: "yes" };
+        },
+      );
       const tool = defineTool("streamed-tool")
         .parameters(textSchema((value) => ({ topic: value })))
+        .capabilities({ stamp })
         .elicits({ approval })
         .execute(function* (input, ctx) {
           const token = yield* ctx.record(function* () {
             records++;
             return { ok: true as const, value: "recorded-token" };
           });
+          const marked = yield* ctx.capabilities.stamp(token.value);
+          if (!marked.ok) {
+            throw new Error("Stamp failed");
+          }
           const answer = yield* ctx.elicit("approval", `Approve ${input.topic}?`);
           if (!answer.ok) {
             throw new Error("Declined");
           }
-          return { token: token.value, approved: answer.value.approved };
+          return { token: marked.value, approved: answer.value.approved };
         });
+      const authored = { ...tool, serverOnly: "not public" };
+      const contract = projectToolContract(authored);
+      expect(Object.keys(contract).sort()).toEqual([
+        "call",
+        "capabilities",
+        "context",
+        "elicits",
+        "id",
+        "response",
+      ]);
+      for (const definition of [contract.capabilities.stamp, contract.elicits.approval]) {
+        expect(Object.keys(definition).sort()).toEqual(["call", "context", "id", "response"]);
+        expect(Object.isFrozen(definition)).toBe(true);
+      }
+      expect(Object.isFrozen(contract)).toBe(true);
+      expect(Object.isFrozen(contract.capabilities)).toBe(true);
+      expect(Object.isFrozen(contract.elicits)).toBe(true);
+      expect(contract.context).toBe(tool.context);
+      expect(contract.call).toBe(tool.call);
+      expect(contract.capabilities.stamp).not.toBe(stamp);
+      expect(contract.elicits.approval).not.toBe(approval);
+      expect(contract.elicits.approval.context).toBe(approval.context);
+      expect(contract.elicits.approval.response).toBe(approval.response);
+      expect({
+        acquisitions,
+        records,
+        stamped,
+        defaultAnswers,
+        contextParses,
+        responseParses,
+      }).toEqual({
+        acquisitions: 0,
+        records: 0,
+        stamped: 0,
+        defaultAnswers: 0,
+        contextParses: 0,
+        responseParses: 0,
+      });
       type Input = StandardSchemaV1.InferOutput<typeof tool.context>;
       type Result = { token: string; approved: boolean };
       type Ask = {
@@ -139,6 +198,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           handle: acquisition.handle,
         });
         function* run() {
+          yield* effects.install(stamp);
           yield* host.around(acquisition.admission);
           yield* installElicitHandlers(host, effects, tool);
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
@@ -192,8 +252,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
 
       // Client registration is independent of mount. This concrete one-effect tracer
-      // uses the declaration only for dispatch and context validation, never its body.
-      function onElicit(handlers: ElicitHandlers<typeof tool.elicits, Y>) {
+      // receives only the projected contract for dispatch and context validation.
+      function onElicit(
+        view: typeof contract,
+        handlers: ElicitHandlers<typeof contract.elicits, Y>,
+      ) {
         const replies = new Map<string, Outcome<string, unknown>>();
         const handler = createElicitationHandler<{ question: string }, string, unknown, Y>(
           runtime.composition,
@@ -205,14 +268,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         );
         return async (frame: Ask) => {
-          if (frame.tool !== tool.id || frame.effect !== approval.id) {
+          if (frame.tool !== view.id || frame.effect !== view.elicits.approval.id) {
             throw new Error("Unknown client interaction");
           }
           const prior = replies.get(frame.grant.resolutionId);
           if (prior) {
             return prior;
           }
-          const parsed = await approval.context["~standard"].validate(frame.input);
+          const parsed = await view.elicits.approval.context["~standard"].validate(frame.input);
           if (parsed.issues) {
             throw new Error("Invalid client context");
           }
@@ -228,7 +291,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           return value;
         };
       }
-      const client = onElicit({
+      const client = onElicit(contract, {
         *approval(context) {
           expectTypeOf(context).toEqualTypeOf<{ question: string }>();
           expect(context.question).toBe("Approve deploy?");
@@ -305,6 +368,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         contextParses: 1,
         responseParses: 2,
       });
+      expect(stamped).toBe(1); // Original server default runs once, never during projection or replay.
+      expect(defaultAnswers).toBe(0); // Participant policy does not install the elicitation default.
       expect(acquisitions).toBe(disposals);
     });
   }

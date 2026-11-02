@@ -13,6 +13,7 @@ import {
   type ChatLoopOptions,
   type ChatLoopResult,
   type ChatLoopEvent,
+  type ChatToolResult,
 } from "@sweatpan.ts/chat";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createScopedGuest, type ScopeInstruction } from "@sweatpan.ts/execution";
@@ -529,4 +530,188 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(s.assemble().run(10)).rejects.toThrow("round limit reached");
     expect(s.counts).toMatchObject({ samples: 1, alpha: 0, beta: 0, events: 0 });
   });
+});
+
+forEachRuntime(<Y>(runtime: Runtime<Y>) => {
+  it.each([
+    "ordered",
+    "missing",
+    "duplicate",
+    "foreign",
+    "delivery-error",
+    "unknown-call",
+    "empty",
+  ] as const)(
+    `${runtime.name}: explicit chat batch validates complete correlated results (%s)`,
+    async (mode) => {
+      const executeBatch = defineEffect({
+        key: "loop.execute-batch",
+        context: z.custom<readonly ChatToolCall[]>(),
+        response: z.custom<readonly ChatToolResult[]>(),
+      });
+      const store = createSqliteJournalRig<
+        ChatLoopResult,
+        CapabilityRequest,
+        unknown,
+        string,
+        unknown,
+        Y
+      >({
+        program: `batch-contract:${mode}`,
+        equals: isDeepStrictEqual,
+      });
+      onTestFinished(() => store.close());
+      let journal = store.open();
+      const counts = { samples: 0, batches: 0 };
+      const events: ChatLoopEvent[] = [];
+      function run() {
+        const task = runtime.start(function* () {
+          const effects = createEffectCapabilities(runtime, "batch-contract");
+          const granted = effects.grant({ sample, executeBatch, progress });
+          yield* effects.install(sample, function* (request) {
+            counts.samples++;
+            if (request.round > 0) {
+              expect(request.history.filter((message) => message.role === "tool")).toEqual([
+                { role: "tool", toolCallId: "a", name: "alpha", content: "A", isError: false },
+                { role: "tool", toolCallId: "b", name: "beta", content: "B denied", isError: true },
+              ]);
+            }
+            return {
+              ok: true,
+              value: {
+                model,
+                response: response({
+                  text: "batch",
+                  calls:
+                    request.round > 0 || mode === "empty"
+                      ? []
+                      : [
+                          { id: "a", name: "alpha", input: "A" },
+                          {
+                            id: "b",
+                            name: mode === "unknown-call" ? "foreign" : "beta",
+                            input: "B",
+                          },
+                        ],
+                }),
+              },
+            };
+          });
+          yield* effects.install(progress, function* (event) {
+            events.push(structuredClone(event));
+            return { ok: true, value: null };
+          });
+          yield* effects.install(executeBatch, function* (calls) {
+            counts.batches++;
+            expect(events.map((event) => event.type)).toEqual(["assistant", "tool-batch-started"]);
+            expect(calls.map((call) => call.id)).toEqual(["a", "b"]);
+            if (mode === "delivery-error") {
+              throw new Error("Uncertain batch delivery");
+            }
+            const results: ChatToolResult[] = [
+              { toolCallId: "b", content: "B denied", isError: true },
+              { toolCallId: "a", content: "A", isError: false },
+            ];
+            if (mode === "missing") {
+              results.pop();
+            }
+            if (mode === "duplicate") {
+              results[1] = results[0]!;
+            }
+            if (mode === "foreign") {
+              results[1] = { ...results[1]!, toolCallId: "outside" };
+            }
+            return { ok: true, value: results };
+          });
+          const recovery = createHostedRecovery<
+            ChatLoopResult,
+            CapabilityRequest,
+            Y,
+            unknown,
+            string
+          >(runtime, {
+            name: "batch-contract-recovery",
+            program: `batch-contract:${mode}`,
+            matches: isDeepStrictEqual,
+            *acquire() {
+              return createScopedGuest((scope) =>
+                runChat(scope, {
+                  history: [{ role: "user", content: "Run two tools" }],
+                  tools: ["alpha", "beta"].map((name) => ({
+                    definition: { name, description: name, parameters: { type: "string" } },
+                  })),
+                  *sample(request) {
+                    const outcome = yield* granted.capabilities.sample(request);
+                    if (!outcome.ok) {
+                      throw new Error("Sample failed");
+                    }
+                    return outcome;
+                  },
+                  *executeTools(calls) {
+                    const outcome = yield* granted.capabilities.executeBatch(calls);
+                    if (!outcome.ok) {
+                      throw new Error("Batch failed");
+                    }
+                    return outcome.value;
+                  },
+                  *event(event) {
+                    const outcome = yield* granted.capabilities.progress(event);
+                    if (!outcome.ok) {
+                      throw new Error("Progress failed");
+                    }
+                  },
+                }),
+              );
+            },
+          });
+          const host = createHosting(runtime.composition, {
+            name: "batch-contract-host",
+            journal,
+            recovery: recovery.operations,
+            attempts: journal.attempts,
+            handle: granted.handle,
+          });
+          yield* host.around(granted.admission);
+          return yield* host.operations.run();
+        });
+        void task.result.catch(() => undefined);
+        onTestFinished(() => task.cancel());
+        return task.result;
+      }
+      if (mode === "ordered" || mode === "empty") {
+        expect((await run()).state).toBe("completed");
+        expect(events.map((event) => event.type)).toEqual(
+          mode === "empty"
+            ? ["assistant"]
+            : ["assistant", "tool-batch-started", "tool-completed", "tool-completed", "assistant"],
+        );
+        expect(counts).toEqual({
+          samples: mode === "empty" ? 1 : 2,
+          batches: mode === "empty" ? 0 : 1,
+        });
+        journal = store.reopen();
+        expect((await run()).state).toBe("completed");
+      } else {
+        const message =
+          mode === "delivery-error"
+            ? "Uncertain batch delivery"
+            : mode === "unknown-call"
+              ? "not in chat catalog"
+              : "batch result identity";
+        await expect(run()).rejects.toThrow(message);
+        expect(events.map((event) => event.type)).toEqual(
+          mode === "unknown-call" ? [] : ["assistant", "tool-batch-started"],
+        );
+        const before = { ...counts };
+        journal = store.reopen();
+        if (mode === "delivery-error") {
+          expect((await run()).state).toBe("occupied");
+        } else {
+          await expect(run()).rejects.toThrow(message);
+        }
+        expect(counts).toEqual(before);
+        expect(events.some((event) => event.type === "tool-completed")).toBe(false);
+      }
+    },
+  );
 });

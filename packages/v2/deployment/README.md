@@ -102,8 +102,16 @@ Two application-local consumers exercise this API without new framework ports:
 [finite request commands](../acceptance/__tests__/applications/request-consumer.acceptance.test.ts)
 and a [persisted SQLite sweep](../acceptance/__tests__/applications/sweep-consumer.acceptance.test.ts).
 Both reconcile directly in their invocation scope. Request output uses a captured
-accepted-history endpoint; the sweep persists admission-gated traversal and backoff
-keyed by intent token. Neither reader demand nor advisory report delivery authorizes
+accepted-history endpoint; the sweep persists admission-gated traversal with a finite sweep endpoint and backoff
+keyed by intent token. Oversized request entries become explicit receipt-bearing
+markers so pagination and interactions remain accessible; the journal retains the value. Neither reader demand nor advisory report delivery authorizes
 effects. See the [acceptance limits](../acceptance/__tests__/README.md#concrete-activation-consumers)
 for transport, containment and recovery boundaries. These are executable assembly
 examples, not shipped HTTP or platform scheduler adapters.
+
+The concrete sweep installs backoff around its application-local scheduling API, outside
+the reconciler. That layer can skip a visit before Host acquisition and record token-aware
+delays afterward. Reconciliation retains its one-pass acknowledgement semantics. Host
+continuation middleware separately controls cooperative yielding within an active pass.
+The request example likewise installs wire-projection middleware above journal presentation;
+transport encoding and its final size limit stay with the consumer.

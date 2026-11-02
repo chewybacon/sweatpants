@@ -2,9 +2,21 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
 import { createEffectCapabilities, type Hosting } from "@sweatpan.ts/hosting";
-import type { OwnedJournal } from "@sweatpan.ts/durable";
-import type { Runtime } from "@sweatpan.ts/runtime";
-import { defineTool, admitTool, installElicitHandlers } from "@sweatpan.ts/tools";
+import type { OwnedJournal, JournalReader } from "@sweatpan.ts/durable";
+import type { Runtime, Stream } from "@sweatpan.ts/runtime";
+import {
+  defineTool,
+  createToolInteractionStream,
+  type ToolInteraction,
+  resolveToolExecution,
+  type ToolExecution,
+  type ToolExecutionResolution,
+  admitTool,
+  installElicitHandlers,
+  projectToolContract,
+  type ToolContract,
+  type ElicitHandlers,
+} from "@sweatpan.ts/tools";
 
 // Non-executed consumer checked against source and emitted declarations.
 export function toolInference<Y>(
@@ -117,4 +129,140 @@ export function elicitHandlerInference<Y>(
     },
   });
   return installElicitHandlers(host, effects, tool);
+}
+
+// Independently compiled against both development source and built package declarations.
+export function toolContractInference(schema: StandardSchemaV1<string, { text: string }>) {
+  const read = defineEffect({ key: "contract.read", context: schema }, function* (input) {
+    return input.text
+      ? { ok: true as const, value: input.text }
+      : { ok: false as const, error: "empty" as const };
+  });
+  const question = defineEffect({ key: "contract.question", context: schema, response: schema });
+  const tool = defineTool("contract-tool")
+    .parameters(schema)
+    .capabilities({ read })
+    .elicits({ question })
+    .execute(function* (input) {
+      return { length: input.text.length };
+    });
+  const contract = projectToolContract(tool);
+  const publicView: ToolContract<
+    typeof schema,
+    { read: typeof read },
+    { question: typeof question },
+    { length: number }
+  > = contract;
+  const call: Operation<Outcome<{ length: number }, never>, CapabilityRequest> = contract.call(
+    "query",
+  );
+  const effect: Operation<
+    Outcome<string, "empty">,
+    CapabilityRequest
+  > = contract.capabilities.read.call("query");
+  const reply: Operation<
+    Outcome<{ text: string }, unknown>,
+    CapabilityRequest
+  > = contract.elicits.question.call("question");
+  const parameters: typeof schema = contract.context;
+  const response: StandardSchemaV1<string, { text: string }> | undefined =
+    contract.elicits.question.response;
+  // @ts-expect-error Projected contracts expose no body.
+  void contract.body;
+  // @ts-expect-error Nested defaults are stripped, not merely hidden by a broad declaration.
+  void contract.capabilities.read.implementation;
+  // @ts-expect-error Only declared aliases survive projection.
+  void contract.elicits.missing;
+  // @ts-expect-error Callers supply raw schema input, not normalized output.
+  contract.call({ text: "query" });
+  // @ts-expect-error The inferred result survives projection.
+  const wrong: Operation<Outcome<number, never>, CapabilityRequest> = contract.call("query");
+  // @ts-expect-error Projected maps are readonly.
+  contract.capabilities.read = read;
+  const handlers: ElicitHandlers<typeof contract.elicits, never> = {
+    *question(context) {
+      return { ok: true, value: context.text };
+    },
+  };
+  const invalid: ElicitHandlers<typeof contract.elicits, never> = {
+    // @ts-expect-error Answers supply response-schema input; normalized output belongs to the Guest.
+    *question() {
+      return { ok: true, value: { text: "yes" } };
+    },
+  };
+  const empty = projectToolContract(
+    defineTool("empty-contract")
+      .parameters(schema)
+      .execute(function* () {
+        return 1;
+      }),
+  );
+  // @ts-expect-error Empty declaration groups stay empty.
+  void empty.capabilities.read;
+  return { publicView, call, effect, reply, parameters, response, wrong, handlers, invalid, empty };
+}
+
+// Resolution preserves the catalog's exact definition type, transport error and runtime yield.
+export function resolveToolConsumer<Tool extends { readonly id: string }, E, Y>(
+  resolution: ToolExecutionResolution<Tool, E, Y>,
+  execution: string,
+): Operation<ToolExecution<Tool, E, Y>, Y> {
+  return resolveToolExecution(resolution, execution);
+}
+
+export function* resolvedToolSurface<E, Y>(
+  base: Omit<ToolExecutionResolution<{ readonly id: string }, E, Y>, "programs">,
+  schema: StandardSchemaV1<string, string>,
+  execution: string,
+) {
+  const approval = defineEffect({ key: "resolved.approval", context: schema, response: schema });
+  const tool = defineTool("resolved-tool")
+    .parameters(schema)
+    .elicits({ approval })
+    .execute(function* (input, ctx) {
+      return yield* ctx.elicit("approval", input);
+    });
+  const bound = yield* resolveToolExecution(
+    { ...base, programs: new Map([[tool.id, tool]]) },
+    execution,
+  );
+  const original: typeof tool = bound.tool;
+  const response: StandardSchemaV1<string, string> | undefined =
+    bound.tool.elicits.approval.response;
+  // @ts-expect-error Ingress does not expose registration authority.
+  void bound.interactions.register;
+  // @ts-expect-error Ingress does not expose journal mutation or execution.
+  void bound.journal;
+  return { original, response };
+}
+
+export function* toolInteractionConsumer<Y>(
+  runtime: Runtime<Y>,
+  reader: JournalReader<unknown, unknown, unknown, unknown, unknown, Y>,
+  schema: StandardSchemaV1<string, string>,
+) {
+  const question = defineEffect({ key: "discovery.question", context: schema, response: schema });
+  const tool = defineTool("discovery-tool")
+    .parameters(schema)
+    .elicits({ question })
+    .execute(function* (input, ctx) {
+      return yield* ctx.elicit("question", input);
+    });
+  const contract = projectToolContract(tool);
+  const source: Stream<ToolInteraction, void, Y> = createToolInteractionStream(
+    runtime.composition,
+    reader,
+    new Map([[contract.id, contract]]),
+  );
+  const stream = yield* source;
+  const next = yield* stream.next();
+  if (!next.done) {
+    const schema: StandardSchemaV1 | undefined = next.value.declaration.response;
+    // @ts-expect-error Dynamic program lookup does not statically decode the payload.
+    const input: string = next.value.input;
+    // @ts-expect-error Discovery does not grant answer authority.
+    void next.value.interactions;
+    return { schema, input };
+  }
+  return undefined;
 }

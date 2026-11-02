@@ -1,5 +1,78 @@
 # Hosted chat execution
 
+## Recorded chat programs
+
+`defineChatProgram` supplies the ordinary recorded sampling/tool-batch protocol so an
+application can declare its history and formatting policies without writing effects,
+nested transport Outcomes or positional call/result correlation:
+
+```ts
+const program = defineChatProgram({
+  id: "file-chat-v2",
+  history(admitted) {
+    return [{ role: "user", content: chatInput.parse(admitted).prompt }];
+  },
+  toolResult(value) {
+    return { content: z.string().parse(value), isError: false };
+  },
+  result(completed) {
+    return completed.response.message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+  },
+});
+
+// Persist program.id when creating/admitting the journal.
+const chat = program.bind(runtime, { journal, tools, sampling, recovery, matches });
+const report = yield * chat.run();
+```
+
+The complete [file-chat application](../acceptance/examples/file-chat.ts) uses this
+surface. Its one-question, ten-question and asymmetric body/cleanup journeys all use
+the same declaration and binding recipe.
+
+Declaration is immutable and starts no work. `program.id` includes the framework
+protocol suffix `/recorded-chat/v1`; it is the identity to persist, not just the
+application ID passed to the factory. The sampling and tool effects derive their IDs
+from that full identity. Changing application projections, catalog meaning or other
+replay behavior requires a new application ID. Future framework protocol changes need
+a new protocol revision. This does not migrate earlier custom chat journals.
+
+Binding delegates to `createChatExecution`. It installs sampling on the same effect
+grant used by the generated Guest, records the complete accepted sampling outcome,
+and sends model tool calls through owned sibling execution. It verifies result count,
+formats each tool value with `toolResult(value, call)`, assigns the original call ID,
+and leaves final result-set checks to the existing chat loop. It does not implement a
+second loop or a scheduler. Tool formatting may explicitly return `isError: true`;
+delivery exceptions do not become fabricated model tool results.
+
+Fresh Guest acquisition requires admission and passes its persisted input to `history`.
+The callbacks are synchronous, pure application projections: do not load mutable client
+state, perform side effects or depend on changing provider policy inside them. Tool
+formatting and final projection can run again during replay. Already-accepted work is
+not rolled back when a projection throws. Return the whole `completed` value to retain
+`ChatLoopResult` instead of a text response; its inferred result type is retained by
+the bound execution and journal.
+
+Sampling remains the existing typed `ChatSampling` capability. The internal schemas
+check local envelopes: round/arrays, nonempty model identity and assistant content
+array, batch identities and result arrays. They are not a complete provider message,
+media, JSON or security validator. The sampling adapter must decode external input
+and honor its typed contract. A malformed success envelope fails before journal
+acceptance and leaves uncertain delivery occupied. An expected sampling denial is
+accepted as data; the current chat loop then throws its diagnostic. Reopen replays
+that denial without another provider call. Neither behavior introduces a durable
+failed-terminal state.
+
+Optional `bind` configuration receives the root Host for existing continuation/retry
+policies. Child policies belong to the tool bindings. This protocol drains `streamChat`
+through `runChat` without recording separate progress effects. For a custom recorded
+progress or sampling/batch protocol, use the lower-level binding below and a distinct
+program identity. There is no hidden UI stream or client-session lifetime.
+
+## Custom execution bindings
+
 `createChatExecution(runtime, options)` binds one open root journal, its pinned
 Guest program and one tool catalog. It exposes independent `run`, `answer` and
 `interactions` operations. It constructs no task or Guest until invoked. The

@@ -46,7 +46,7 @@ interface Page {
   revision: number;
   state: string;
   report: string | null;
-  entries: { sequence: number; receipt: string; value: string }[];
+  entries: { sequence: number; receipt: string; value?: string; omitted?: "oversized" }[];
   after: PresentationCursor;
   end: PresentationCursor;
   more: boolean;
@@ -64,9 +64,31 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let acquisitions = 0;
     let loseAnswerResponse = false;
     let cleanup: (() => Operation<void, Y>) | undefined;
+    // Application wire projection, deliberately separate from accepted journal presentation.
+    const projection = runtime.composition.createApi("response-projection", {
+      *entries(page: Page): Operation<Page["entries"], Y> {
+        return page.entries;
+      },
+    });
+    function* installBoundedProjection() {
+      yield* projection.around({
+        *entries([page], next) {
+          const entries = yield* next(page);
+          if (new TextEncoder().encode(JSON.stringify({ ...page, entries })).byteLength <= 2048) {
+            return entries;
+          }
+          return entries.map(({ sequence, receipt }) => ({
+            sequence,
+            receipt,
+            omitted: "oversized" as const,
+          }));
+        },
+      });
+    }
     async function request(
       body: unknown,
       signal = new AbortController().signal,
+      installProjection: () => Operation<void, Y> = installBoundedProjection,
     ): Promise<Response> {
       const incoming = new Request("http://local.test/execution", {
         method: "POST",
@@ -75,6 +97,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       const task = runtime.start(() =>
         runtime.withSignal(incoming.signal, function* () {
+          yield* installProjection();
           const raw = yield* runtime.fromPromise(() => incoming.json());
           const parsed = commandSchema.parse(raw);
           const journal = store.open();
@@ -218,7 +241,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 ? page.state.interaction.grant
                 : undefined,
           };
-          const encoded = JSON.stringify(response);
+          // Encoding and the hard cap remain transport invariants even with another policy.
+          const projected = yield* projection.operations.entries(response);
+          const encoded = JSON.stringify({ ...response, entries: projected });
           if (new TextEncoder().encode(encoded).byteLength > 2048) {
             throw new Error("Response too large");
           }
@@ -234,6 +259,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       store,
       peer,
       request,
+      projection,
       get acquisitions() {
         return acquisitions;
       },
@@ -356,9 +382,49 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     void task.catch(() => undefined);
     await app.peer.waitForRequests(1);
     app.peer.reply("sample", { status: 200, body: "x".repeat(4096) });
-    await expect(task).rejects.toThrow("Response too large");
+    const response = await task;
+    const encoded = await response.text();
+    expect(new TextEncoder().encode(encoded).byteLength).toBeLessThanOrEqual(2048);
+    const waiting = JSON.parse(encoded) as Page;
+    expect(waiting.entries[0]?.omitted).toBe("oversized");
+    expect(waiting.after.position).toBe(1);
+    expect(waiting.interaction).toBeDefined();
     app.store.reopen();
-    await expect(app.request({ kind: "observe" })).rejects.toThrow("Response too large");
+    const retained = await runtime.start(function* () {
+      const snapshot = yield* app.store.open().read();
+      return { end: snapshot.history.end, entry: yield* snapshot.history.at(0) };
+    }).result;
+    expect(retained.end.position).toBe(1);
+    expect(retained.entry?.outcome).toEqual({ ok: true, value: "x".repeat(4096) });
+    const observed = await page(app.request({ kind: "observe" }));
+    expect(observed.entries[0]?.omitted).toBe("oversized");
+    expect(observed.interaction).toEqual(waiting.interaction);
+    // A different scoped policy may summarize; the next request restores the default.
+    const summarized = await page(
+      app.request({ kind: "observe" }, undefined, function* () {
+        yield* app.projection.around({
+          *entries([input], next) {
+            const entries = yield* next(input);
+            return entries.map(({ sequence, receipt }) => ({
+              sequence,
+              receipt,
+              value: "summary",
+            }));
+          },
+        });
+      }),
+    );
+    expect(summarized.entries[0]?.value).toBe("summary");
+    expect(summarized.after).toEqual(observed.after);
+    expect(summarized.interaction).toEqual(observed.interaction);
+    await expect(app.request({ kind: "observe" }, undefined, function* () {})).rejects.toThrow(
+      "Response too large",
+    );
+    expect((await page(app.request({ kind: "observe" }))).entries[0]?.omitted).toBe("oversized");
+    await page(app.request({ kind: "answer", grant: observed.interaction, answer: "yes" }));
+    const suffix = await page(app.request({ kind: "observe", after: observed.after }));
+    expect(suffix.entries.map((entry) => entry.value)).toEqual(["yes"]);
+    expect(suffix.more).toBe(false);
     expect(app.peer.requests).toHaveLength(1);
   });
 });

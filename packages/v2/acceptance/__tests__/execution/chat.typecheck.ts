@@ -5,6 +5,7 @@ import {
   runChat,
   streamChat,
   type ChatLoopEvent,
+  type ChatToolResult,
   type ChatStreamOptions,
   type ChatLoopOptions,
   type ChatLoopResult,
@@ -127,4 +128,31 @@ export function* chatSamplingConsumer<Y>(
   });
   yield* sampling.around(limitChatRounds(3));
   return yield* sampling.operations.sample({ round: 0, history: [], tools: [] });
+}
+
+/** Batch mode needs declarations, not throwaway per-tool callbacks. */
+export function batchChatConsumer(
+  scope: LogicalScope,
+  sample: ChatStreamOptions["sample"],
+  executeTools: (
+    calls: readonly import("@sweatpan.ts/providers").ChatToolCall[],
+  ) => Operation<readonly ChatToolResult[], import("@sweatpan.ts/core").CapabilityRequest>,
+) {
+  const tools = [{ definition: { name: "read", description: "Read", parameters: {} } }];
+  const batch: ChatStreamOptions = { history: [], tools, sample, executeTools };
+  const wrongExecutor: ChatStreamOptions = {
+    history: [],
+    tools,
+    sample,
+    // @ts-expect-error Batch execution must return domain Operations, not native promises.
+    executeTools: async () => [],
+  };
+  void wrongExecutor;
+  // @ts-expect-error Declaration-only catalogs require an explicit executor.
+  const missing: ChatStreamOptions = { history: [], tools, sample };
+  void missing;
+  // @ts-expect-error Every batch result needs the original model call ID.
+  const uncorrelated: ChatToolResult = { content: "value", isError: false };
+  void uncorrelated;
+  return runChat(scope, batch);
 }

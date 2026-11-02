@@ -19,6 +19,46 @@ import type {
 import type { ChatToolDefinition } from "@sweatpan.ts/providers";
 import type { Stream } from "@sweatpan.ts/runtime";
 import type { ToolInteraction, ToolInteractionContract } from "@sweatpan.ts/tools";
+import type {
+  ChatHistoryMessage,
+  ChatLoopResult,
+  ChatSampling,
+  ChatToolResult,
+} from "@sweatpan.ts/chat";
+import type { ChatToolCall } from "@sweatpan.ts/providers";
+import type { Runtime } from "@sweatpan.ts/runtime";
+
+/** Immutable application policy around the versioned recorded chat protocol.
+ * All projections are synchronous, pure and replay-stable. Bump id when changing
+ * their meaning, the tool catalog or other authored behavior for existing journals. */
+export interface ChatProgramOptions<R> {
+  readonly id: string;
+  /** Validate/project already-admitted input; never read mutable client state. */
+  history(admittedInput: unknown): readonly ChatHistoryMessage[];
+  /** Format a terminal tool value for the model. Correlation is supplied internally. */
+  toolResult(value: unknown, call: ChatToolCall): Pick<ChatToolResult, "content" | "isError">;
+  /** Application result projection; use identity to retain the complete chat result. */
+  result(result: ChatLoopResult): R;
+}
+
+/** Per-connection infrastructure. Sampling adapters own provider wire validation. */
+export interface ChatProgramBinding<R, Y> {
+  readonly journal: OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>;
+  readonly tools: readonly ChatToolBinding<Y>[];
+  readonly recovery: ChatRecoveryFactory<Y>;
+  readonly sampling: ChatSampling<Y>;
+  readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
+  /** Optional root policy; child policy belongs to each tool binding. */
+  configure?(host: Hosting<R, CapabilityRequest, unknown, string, Y>): Operation<void, Y>;
+}
+
+/** Recorded sampling and owned tool-batch protocol, shared by every binding/reopen. */
+export interface ChatProgram<R> {
+  /** Persist this complete ID, including the framework protocol revision, at admission. */
+  readonly id: string;
+  /** Pure connection-bound assembly. Creates no Guest or native task until run. */
+  bind<Y>(runtime: Runtime<Y>, options: ChatProgramBinding<R, Y>): ChatExecution<R, Y>;
+}
 
 /** Explicit recovery/placement adapter. Must retain the supplied program, equality
  * and acquisition semantics; no testing package or concrete codec is selected here. */

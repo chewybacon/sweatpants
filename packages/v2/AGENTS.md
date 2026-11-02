@@ -2,6 +2,10 @@
 
 ## Assembly-driven API design
 
+Read [FOOTGUNS.md](./FOOTGUNS.md) when designing or promoting a capability. Record
+newly discovered complexity traps there with the supported boundary and author
+responsibility; do not turn every unsupported edge case into framework scope.
+
 The current work is capability assembly: discovering the APIs and compositions that
 make concrete applications straightforward to build from the existing foundation.
 Do not assume every missing feature requires a new primitive, or that every useful

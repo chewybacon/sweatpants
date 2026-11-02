@@ -339,14 +339,28 @@ through direct request-scoped reconciliation and returns finite projected JSON.
 Observe reads accepted presentation without acquiring a Guest. Receipt-bearing
 pagination stops at a captured accepted-history endpoint, independently of later
 writes. One entry and a 2048-byte encoded response cap bound each response, not the
-memory required to decode an individually large stored value. Lost responses,
+memory required to decode an individually large stored value. If a value exceeds the
+response cap, an explicit oversized-entry marker retains its sequence and receipt
+and advances the cursor. The full accepted value remains in the journal; this consumer
+does not offer separate value retrieval. Approval and later history remain accessible.
+If envelope metadata alone exceeds the cap, publication still fails. Lost responses,
 concurrent Resume, abort cleanup and occupied recovery run under both runtimes.
+Interrupting an unsafe effect can leave its attempt occupied after cleanup; Resume
+never authorizes retry. An authorized operator decision or application-owned execution
+is needed where request disconnection must not strand delivery. Cooperative iteration
+budgets do not prevent interruption during an unsafe effect.
 These are in-process Request/Response objects, not a live HTTP adapter. Live output,
 production authorization and nested interaction routing remain application work.
 
 `applications/sweep-consumer.acceptance.test.ts` owns application SQLite catalog,
 cursor and token-keyed backoff tables. One designated owner visits one root per tick,
-gates execution on admission, and rebuilds assembly after connection reopen. It proves
+gates execution on admission, and rebuilds assembly after connection reopen. A persisted
+upper ID bounds each sweep so newly enrolled higher IDs cannot postpone wraparound.
+Failures, occupied, invalidated, yielded and unadmitted pending intent receive a ten-tick
+delay keyed by the pre-drive token; new intent bypasses the old delay. Each tick still
+visits at most one root; the caller owns recurring cadence. Unadmitted roots without
+intent are cheap idle visits. Catalog retention and capacity remain application policy.
+It proves
 discovery without prompt wakeups, traversal across restart, answer recovery, advisory
 telemetry loss, and new-token bypass of old backoff without unsafe redispatch.
 Deadline signals exercise cooperative interruption and joined cleanup; they do not
@@ -354,3 +368,19 @@ contain synchronous hangs or nonterminating cleanup. A recurring deployed trigge
 concurrent sweep ownership and process-loss supervision remain platform work.
 The reusable `createSqliteDatabaseRig` owns only the temporary database lifecycle;
 consumer policy stays in these application journeys.
+
+Projection and scheduling policy are now scoped middleware on application-local APIs.
+The request assembly constructs one projection facade; its default returns wire entries
+unchanged. The installed bounded-projection middleware can replace oversized values
+with markers, or another request scope can install a summary policy. The consumer owns
+endpoint validation, cursor advancement, JSON encoding and the final byte cap regardless
+of installed projection policy. Journal presentation still exposes accepted outcomes.
+
+The sweep assembly constructs one scheduling facade. Each visit supplies the same intent
+API to scheduling middleware and reconciliation. Backoff middleware reads the pre-drive
+token, suppresses matching delayed work and records a delay after uncertain/yielded or
+unadmitted results. A tick owns a child scope for its installed policy; alternate delays
+leave no middleware installed on the next tick. The consumer owns admission checks,
+finite traversal and checkpointing, including failed middleware observations. Reopening
+reconstructs the facades bound to the new connection. These contracts remain local until
+another consumer demonstrates shared semantics; neither policy changes delivery authority.

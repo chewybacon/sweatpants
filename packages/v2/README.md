@@ -8,6 +8,9 @@ are implemented with acceptance journeys; other packages remain scaffolds.
 
 ## Package conventions
 
+See [FOOTGUNS.md](./FOOTGUNS.md) for design traps, explicit failure boundaries and
+application responsibilities that should remain visible as these packages evolve.
+
 - `src/apis.ts`: scoped API factories and default-driver wiring. Substantial behavior
   stays in focused implementation siblings rather than accumulating in this file.
 - `src/middleware.ts`: reusable scoped middleware factories and `install*` policy
