@@ -38,6 +38,16 @@ export interface NotificationRig {
   readonly subscriptions: number;
   subscribe(key: string): { readonly signal: AbortSignal; close(): void };
   publish(key: string): void;
+  /** Keys published so far, including dropped publications. */
+  readonly published: readonly string[];
+  /**
+   * Attempt-notification driver bound to this rig. Subscriptions close with the
+   * acquiring scope. Structural so testing does not depend on hosting.
+   */
+  driver<Y>(runtime: Runtime<Y>): {
+    subscribe(grant: { readonly attemptId: string }): Operation<AbortSignal, Y>;
+    publish(grant: { readonly attemptId: string }): Operation<void, Y>;
+  };
 }
 
 /** Scripted in-process response stream. Frames are cloned; disconnect loses transport, not journal state. */

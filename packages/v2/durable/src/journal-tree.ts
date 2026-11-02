@@ -2,6 +2,8 @@ import { JournalConflict } from "./conflict.ts";
 import { requestJournalCancellation, settleOwnedChild } from "./transitions.ts";
 import type { Outcome, Operation } from "@standard-durability/core";
 import type {
+  AttemptGrant,
+  AttemptRevocation,
   ChildLink,
   JournalSnapshot,
   PendingRequest,
@@ -29,9 +31,16 @@ function* record<Y>(records: JournalRecords<Y>, id: string): Operation<JournalRe
 }
 
 /** Fence every eligible descendant in the same transaction before publishing cancellation. */
-function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, reason: string) {
+function* cancel<Y>(
+  records: JournalRecords<Y>,
+  revocations: AttemptRevocation[],
+  id: string,
+  requestId: string,
+  reason: string,
+) {
   const pending: { id: string; boundary?: string }[] = [{ id, boundary: requestId }];
   let root: ReturnType<typeof requestJournalCancellation> | undefined;
+  const descendants: AttemptGrant[] = [];
   while (pending.length) {
     const item = pending.pop()!;
     const current = yield* record(records, item.id);
@@ -61,6 +70,9 @@ function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, r
       reason,
       request?.grant,
     );
+    if (root && decision.revoke && decision.cancellation.attempt) {
+      descendants.push(decision.cancellation.attempt);
+    }
     root ??= decision;
     current.snapshot = decision.snapshot;
     yield* records.set(item.id, current);
@@ -71,6 +83,7 @@ function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, r
     ) {
       if (decision.cancellation.attempt && request.revoked === undefined) {
         request.revoked = reason;
+        revocations.push({ execution: item.id, grant: decision.cancellation.attempt });
       }
       if (request.registration?.state === "waiting") {
         request.registration = { state: "invalidated", grant: request.registration.grant, reason };
@@ -84,7 +97,18 @@ function* cancel<Y>(records: JournalRecords<Y>, id: string, requestId: string, r
   if (!root) {
     throw new Error("Missing cancellation boundary");
   }
-  return root.cancellation;
+  if (!descendants.length) {
+    return root.cancellation;
+  }
+  const current = yield* record(records, id);
+  const snapshot = current.snapshot;
+  if (snapshot.status !== "running" || !snapshot.cancellationRequested) {
+    return root.cancellation;
+  }
+  const cancellation = { ...snapshot.cancellationRequested, descendants };
+  current.snapshot = { ...snapshot, cancellationRequested: cancellation };
+  yield* records.set(id, current);
+  return cancellation;
 }
 
 /** Transaction-local ownership decisions; bindings are supplied by the open assembly. */
@@ -92,6 +116,7 @@ export function createJournalTree<Y>(
   options: JournalBindingOptions,
   records: JournalRecords<Y>,
   bindings: ChildBindings,
+  revocations: AttemptRevocation[],
 ) {
   function* settle(records: JournalRecords<Y>, next: JournalRecord) {
     const link = next.parent;
@@ -129,7 +154,7 @@ export function createJournalTree<Y>(
           continue;
         }
         if (state.pending) {
-          yield* cancel(records, sibling.childId, state.pending.id, "Race lost");
+          yield* cancel(records, revocations, sibling.childId, state.pending.id, "Race lost");
         } else {
           loser.queuedStop ??= "Race lost";
           yield* records.set(sibling.childId, loser);
@@ -147,7 +172,7 @@ export function createJournalTree<Y>(
           "An independently cancelled protected child requires explicit outcome reconciliation",
         );
       }
-      yield* cancel(records, link.parentId, link.requestId, next.snapshot.reason);
+      yield* cancel(records, revocations, link.parentId, link.requestId, next.snapshot.reason);
       parent = yield* record(records, link.parentId);
     }
     if (parent.snapshot.status !== "running" || !parent.snapshot.children) {
@@ -212,6 +237,9 @@ export function createJournalTree<Y>(
   }
 
   return {
+    observeRevocation(execution: string, grant: AttemptGrant) {
+      revocations.push({ execution, grant });
+    },
     // This is the sole heterogeneous record boundary. Typed handles are bound by
     // trusted program assembly, not inferred or validated from stored bytes.
     *read<R, Q, S>(id: string): Operation<JournalRecord<R, Q, S>, Y> {
@@ -227,7 +255,7 @@ export function createJournalTree<Y>(
       return result;
     },
     *cancel(id: string, requestId: string, reason: string) {
-      return yield* cancel(records, id, requestId, reason);
+      return yield* cancel(records, revocations, id, requestId, reason);
     },
     *park<R, Q, S>(id: string, snapshot: JournalSnapshot<R, Q, S>, pending: PendingRequest<Q>) {
       const current = yield* record(records, id);
@@ -240,7 +268,7 @@ export function createJournalTree<Y>(
         const reason = current.queuedStop;
         current.queuedStop = undefined;
         yield* records.set(id, current);
-        yield* cancel(records, id, pending.id, reason);
+        yield* cancel(records, revocations, id, pending.id, reason);
         return undefined;
       }
       return pending;

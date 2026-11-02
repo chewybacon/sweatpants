@@ -46,8 +46,10 @@ export function* installAttemptCancellation<R, Q, V, E, Y>(
     },
     *cancel(args, next) {
       const result = yield* next(...args);
-      if (result.attempt) {
-        yield* notifications.operations.publish(result.attempt);
+      for (const attempt of [result.attempt, ...(result.descendants ?? [])]) {
+        if (attempt) {
+          yield* notifications.operations.publish(attempt);
+        }
       }
       return result;
     },

@@ -1,5 +1,8 @@
 # Hosted effect execution
 
+See [advancement and cancellation ownership](./OWNERSHIP.md) for the primitive
+boundaries, environment assembly obligations, relay targeting and current limits.
+
 `createHosting(composition, { name, recovery, journal, attempts, handle })` composes
 journal activation with an effect handler. Call `host.operations.run()` in a native
 runtime scope. The result is inferred completion, an occupied attempt, or a registered
@@ -268,9 +271,11 @@ explicit outcome reconciliation policy; settlement rejects instead of inventing 
 domain failure. Cancellation-sensitive TypeScript cleanup uses registered ensure
 callbacks; arbitrary finally blocks in abandoned bodies do not run.
 
-Parent cancellation fences live body attempts, but does not yet publish child abort
-notifications through the parent's notification middleware. Losing or omitting those
-notifications cannot admit a revoked result; it can leave physical IO live. Cleanup
+Parent cancellation fences live body attempts in the same transaction and records
+their grants as `descendants` on the parent's cancellation. The parent's
+`installAttemptCancellation` publishes each one; a child host subscribed through the
+same transport aborts its physical IO. Losing or omitting those notifications cannot
+admit a revoked result; it can leave physical IO live. Cleanup
 attempts are intentionally retained and should not receive these abort notifications.
 
 The owned-call journeys cover both runtime adapters, disposal/recovery, next-call
@@ -536,8 +541,19 @@ returning the winner; a protected parent still requires explicit reconciliation.
 Parent cancellation takes priority over returning a winner.
 
 Race shares all's replay reconstruction and local-closure placement restrictions.
-Hosting reactivates typed pre-delivery conflicts. Race adds no physical abort
-notification or handler retry policy.
+Hosting reactivates typed pre-delivery conflicts. Race adds no handler retry policy.
+Configure journal `revocations` on every committing store assembly to enqueue
+exact `{ execution, grant }` targets after confirmed commit, including nested losers.
+Supply an assembly-owned `runtime.createSignal<AttemptRevocation>()` as the
+producer; the journal's contract exposes only its `send` capability. A separately owned relay subscribes before enabling writers and publishes
+to the transport used by each handler's subscription. Relay scope exit unsubscribes;
+values sent with no subscriber are dropped, not retained for a future relay.
+This works before the winning host returns and does not depend on the losing group
+advancing. The producer performs only nonthrowing local bookkeeping, never remote IO.
+Delivery is best effort; loss leaves IO live but cannot admit a late result. Repeated
+commands do not re-emit observer events; retained cancellation facts remain available
+for explicit reconciliation/retry. Physical relay lifetime and routing are assembly
+responsibilities. See [ownership](./OWNERSHIP.md).
 
 ## Two researchers, each racing sources
 

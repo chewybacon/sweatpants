@@ -155,6 +155,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
         }
         const request = (yield* records.request(identity, grant.requestId))!;
         yield* records.setRequest(identity, grant.requestId, { ...request, revoked: reason });
+        tree.observeRevocation(identity, grant);
         const { snapshot } = yield* read();
         return yield* commit(
           { ...snapshot, revision: snapshot.revision + 1 },

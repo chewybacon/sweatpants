@@ -152,7 +152,12 @@ export function createOwnedGroup<C, I, Y>(
                   return true;
                 }
                 const settled = yield* runtime.all(
-                  children.map((child, index) => () => run(child, factories[index]!, index)),
+                  children.map(
+                    (child, index) =>
+                      function* () {
+                        return yield* run(child, factories[index]!, index);
+                      },
+                  ),
                 );
                 // Join every child before releasing replay-reconstructed factories. A yield
                 // is not terminal settlement and must reach the owning parent Host.

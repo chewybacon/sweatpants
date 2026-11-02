@@ -2,6 +2,7 @@ import type { NotificationRig } from "./contracts.ts";
 
 /** Simulate duplicate or dropped wakeups without changing authoritative storage. */
 export function createNotificationRig(): NotificationRig {
+  const published: string[] = [];
   const listeners = new Map<string, Set<AbortController>>();
   return {
     drop: false,
@@ -23,7 +24,24 @@ export function createNotificationRig(): NotificationRig {
         },
       };
     },
+    published,
+    driver(runtime) {
+      const rig = this;
+      return {
+        *subscribe(grant) {
+          const subscription = rig.subscribe(grant.attemptId);
+          yield* runtime.composition.ensure(function* () {
+            subscription.close();
+          });
+          return subscription.signal;
+        },
+        *publish(grant) {
+          rig.publish(grant.attemptId);
+        },
+      };
+    },
     publish(key) {
+      published.push(key);
       if (!this.drop) {
         for (const controller of listeners.get(key) ?? []) {
           controller.abort(new Error("Attempt invalidated"));

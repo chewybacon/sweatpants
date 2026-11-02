@@ -20,7 +20,7 @@ import type { SqliteJournalOptions, SqliteJournalStore } from "./contracts.ts";
 export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
   options: SqliteJournalOptions<Y>,
 ): SqliteJournalStore<R, Q, V, E, S, Y> {
-  const { database: db, serialization, program, equals } = options;
+  const { database: db, serialization, program, equals, revocations } = options;
   const id = options.id ?? crypto.randomUUID();
   db.exec(`
     CREATE TABLE IF NOT EXISTS sweatpants_activations (
@@ -181,6 +181,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
         return acknowledgeIntent.run(id, observed.token).changes !== 0;
       },
     },
-    open: () => createJournalBinding<R, Q, V, E, S, Y>({ program, equals }, backend, id),
+    open: () =>
+      createJournalBinding<R, Q, V, E, S, Y>({ program, equals, revocations }, backend, id),
   };
 }

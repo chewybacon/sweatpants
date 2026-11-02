@@ -119,18 +119,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               return turn;
             },
           });
-          yield* installAttemptCancellation(runtime, host, journal.attemptControl, {
-            *subscribe(grant) {
-              const subscription = notifications.subscribe(grant.attemptId);
-              yield* runtime.composition.ensure(function* () {
-                subscription.close();
-              });
-              return subscription.signal;
-            },
-            *publish(grant) {
-              notifications.publish(grant.attemptId);
-            },
-          });
+          yield* installAttemptCancellation(
+            runtime,
+            host,
+            journal.attemptControl,
+            notifications.driver(runtime),
+          );
           yield* host.around({
             *deliveryMode([request]) {
               return request === "release" || (request === "approve" && !liveApproval)
@@ -298,7 +292,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           await Promise.race([s.peer.waitForRequests(3), cleanup.result]);
           const cleanupGrant = s.grants[2]!;
           expect(cleanupGrant.requestId).not.toBe(approval.requestId);
+          expect(cleanupGrant.attemptId).not.toBe(approval.attemptId);
+          // A relay may deliver the original cancellation only after a new owner
+          // has started cleanup. Exact-attempt routing must leave that owner alone.
+          s.notifications.drop = false;
+          const aborted = [...s.peer.aborted];
+          s.notifications.publish(approval.attemptId);
+          s.notifications.publish(approval.attemptId);
           await s.cancel(approval.requestId, "again");
+          expect(s.peer.aborted).toEqual(aborted);
+          expect(s.notifications.subscriptions).toBe(1);
           expect(
             (await start(() => s.journal.attemptControl.inspect(cleanupGrant)).result).state,
           ).toBe("active");

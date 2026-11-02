@@ -24,6 +24,7 @@ export type { Recovery } from "./contracts.ts";
 export type { ChildLink } from "./contracts.ts";
 export type {
   JournalBindingOptions,
+  AttemptRevocation,
   OwnedChildOptions,
   OwnedChildrenOptions,
   OwnedJournal,

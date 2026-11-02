@@ -2,6 +2,7 @@ import { childHostingResult } from "@sweatpan.ts/hosting";
 import {
   createHostedRecovery as createRecovery,
   readJournal,
+  createNotificationRig,
   createProtocolRig,
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
@@ -11,7 +12,12 @@ import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
 import { type ChildLink, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest, type LogicalScope } from "@sweatpan.ts/execution";
-import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
+import {
+  createHosting,
+  installAttemptCancellation,
+  type HostedResult,
+  type Hosting,
+} from "@sweatpan.ts/hosting";
 import type { OwnedChild, OwnedJournal } from "@sweatpan.ts/durable";
 
 import type { Runtime } from "@sweatpan.ts/runtime";
@@ -39,12 +45,40 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       liveApproval?: boolean;
       call?: "body" | "cleanup" | "critical";
       liveCleanup?: boolean;
+      notify?: boolean;
     } = {},
   ) {
-    const { count = 1, liveApproval = false, call = "body", liveCleanup = false } = options;
+    const {
+      count = 1,
+      liveApproval = false,
+      call = "body",
+      liveCleanup = false,
+      notify = false,
+    } = options;
+    const revocations: { execution: string; grant: { attemptId: string } }[] = [];
+    const notifications = createNotificationRig();
+    function* installNotifications<R, Q, V, E>(
+      host: Hosting<R, Q, V, E, Y>,
+      journal: { attemptControl: Parameters<typeof installAttemptCancellation<R, Q, V, E, Y>>[2] },
+    ): Operation<void, Y> {
+      if (!notify) {
+        return;
+      }
+      yield* installAttemptCancellation(
+        runtime,
+        host,
+        journal.attemptControl,
+        notifications.driver(runtime),
+      );
+    }
     const store = createSqliteJournalRig<string[], string, string, string, unknown, Y>({
       program: "parent",
       equals: isDeepStrictEqual,
+      revocations: {
+        send: (target) => {
+          revocations.push(target);
+        },
+      },
     });
     onTestFinished(() => store.close());
     let parent = store.open();
@@ -100,6 +134,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           return { ok: true, value: reply.body };
         },
       });
+      yield* installNotifications(host, child.journal);
       yield* host.around({
         *deliveryMode([request]) {
           return (liveApproval && request === "approval") ||
@@ -116,6 +151,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return childHostingResult(result);
     }
     function run() {
+      return assemble((host) => host.operations.run());
+    }
+    function cancel(requestId: string, reason: string) {
+      return assemble((host) => host.operations.cancel(requestId, reason)).result;
+    }
+    function assemble<T>(
+      drive: (host: Hosting<string[], string, unknown, unknown, Y>) => Operation<T, Y>,
+    ) {
       const generation = assembly;
       return start(function* () {
         const recovery = createRecovery(runtime, {
@@ -192,7 +235,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return { id: child.link.childId, run: () => runChild(child) };
           },
         });
-        return yield* host.operations.run();
+        yield* installNotifications(host, parent);
+        return yield* drive(host);
       });
     }
     async function begin() {
@@ -232,7 +276,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       links,
       children,
       waits,
+      notifications,
+      revocations,
       run,
+      cancel,
       begin,
       answer,
       finish,
@@ -621,6 +668,63 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(live.result).rejects.toThrow("revoked");
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
+    });
+
+    it("aborts a live child attempt when parent cancellation publishes notifications", async () => {
+      const s = scenario({ liveApproval: true, notify: true });
+      const live = s.run();
+      await Promise.race([s.peer.waitForRequests(1), live.result]);
+      s.peer.reply("reserve", { status: 200, body: "reserved" });
+      await Promise.race([s.peer.waitForRequests(2), live.result]);
+      const link = s.links[0]!;
+      await s.cancel(link.requestId, "deadline");
+      const cancellation = await start(() => readJournal(s.parent)).result;
+      const revoked =
+        cancellation.status === "running" ? cancellation.cancellationRequested?.descendants : [];
+      expect(revoked).toHaveLength(1);
+      expect(s.notifications.published).toContain(revoked![0]!.attemptId);
+      expect(s.revocations).toEqual([{ execution: s.links[0]!.childId, grant: revoked![0]! }]);
+      // Physical IO stops without a late reply; durable fencing remains authoritative.
+      expect(s.peer.aborted).toContain("approval");
+      await expect(live.result).rejects.toThrow();
+      expect((await s.run().result).state).toBe("child");
+      expect(s.waits.get(link.childId)!.request).toBe("child-close");
+      await s.answer(link.childId, "closed");
+      expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
+    });
+
+    it("fences a live child attempt when its abort notification is dropped", async () => {
+      const s = scenario({ liveApproval: true, notify: true });
+      s.notifications.drop = true;
+      const live = s.run();
+      await Promise.race([s.peer.waitForRequests(1), live.result]);
+      s.peer.reply("reserve", { status: 200, body: "reserved" });
+      await Promise.race([s.peer.waitForRequests(2), live.result]);
+      const link = s.links[0]!;
+      await s.cancel(link.requestId, "deadline");
+      expect(s.notifications.published).toHaveLength(1);
+      expect(s.peer.aborted).not.toContain("approval");
+      s.peer.reply("approval", { status: 200, body: "late" });
+      await expect(live.result).rejects.toThrow("revoked");
+      expect((await s.run().result).state).toBe("child");
+      await s.answer(link.childId, "closed");
+      expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
+    });
+
+    it("does not abort a live child attempt owned by a critical parent boundary", async () => {
+      const s = scenario({ call: "critical", liveApproval: true, notify: true });
+      const live = s.run();
+      await Promise.race([s.peer.waitForRequests(1), live.result]);
+      s.peer.reply("reserve", { status: 200, body: "reserved" });
+      await Promise.race([s.peer.waitForRequests(2), live.result]);
+      const link = s.links[0]!;
+      const cancellation = await s.cancel(link.requestId, "deadline");
+      expect(cancellation.descendants).toBeUndefined();
+      expect(s.notifications.published).toEqual([]);
+      expect(s.revocations).toEqual([]);
+      expect(s.peer.aborted).not.toContain("approval");
+      s.peer.reply("approval", { status: 200, body: "approved" });
+      expect((await live.result).state).toBe("child");
     });
 
     it("pins the original projection when the caller mutates acquisition options", async () => {

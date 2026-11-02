@@ -1,3 +1,4 @@
+import type { Signal } from "@sweatpan.ts/runtime";
 import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { Execution, ScopeBoundary, RestoredGuest } from "@sweatpan.ts/execution";
 
@@ -266,6 +267,8 @@ export interface RootCancellation<Q> {
   readonly failure?: string;
   /** Revoked delivery, retained so repeated commands can retry notification. */
   readonly attempt?: AttemptGrant;
+  /** Live descendant deliveries revoked in the same transaction, retained for notification retry. */
+  readonly descendants?: readonly AttemptGrant[];
 }
 
 /** Root cancellation at an observed parked request, bound to this journal. */
@@ -287,10 +290,30 @@ export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y,
   readonly execution: Execution<R, Q, Y, V, E>;
 }
 
+/** An exact attempt revoked by committed cancellation or explicit invalidation. */
+export interface AttemptRevocation {
+  readonly execution: string;
+  readonly grant: AttemptGrant;
+}
+
 /** Trusted journal assembly. Equality defines duplicate domain delivery. */
 export interface JournalBindingOptions {
   readonly program: string;
   readonly equals: (left: unknown, right: unknown) => boolean;
+  /**
+   * Producer-only connection for committed revocations; send must be synchronous
+   * nonthrowing local bookkeeping. The journal neither subscribes nor closes it.
+   * Supply an assembly-owned Signal here; subscription and relay lifetimes
+   * belong to that assembly. Establish subscribers before writers; no replay is supplied.
+   * Ordinary cancellation preserves critical/cleanup attempts; explicit invalidation
+   * can revoke them and is reported. Includes race losers and owned descendants;
+   * excludes participant waits and repeatable replacement. Repeated commands do not re-emit.
+   * Configure on every committing store assembly. The producer connection belongs to the writer,
+   * not the live attempt owner. Route using execution identity plus the exact grant.
+   * Do not perform remote IO here. This observation is not a durable outbox or replay
+   * feed. Producer failure is a post-commit defect and cannot roll back authority.
+   */
+  readonly revocations?: Pick<Signal<AttemptRevocation, unknown, unknown>, "send">;
 }
 
 /** Owned call assembly; program/input are compared on reacquisition. */

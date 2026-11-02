@@ -12,7 +12,12 @@ import {
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Api, Work, Operation, Outcome } from "@standard-durability/core";
-import { type AttemptGrant, type Attempts, type RetrySafety } from "@sweatpan.ts/durable";
+import {
+  type AttemptGrant,
+  type AttemptRevocation,
+  type Attempts,
+  type RetrySafety,
+} from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import {
   createHosting,
@@ -38,6 +43,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       liveCancellation = false,
       serialization?: { resolve(): Operation<Serializer, Y> },
     ) {
+      const revocations: AttemptRevocation[] = [];
       const store = createSqliteJournalRig<
         { reservation: string },
         string,
@@ -48,6 +54,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       >({
         program: "reservation",
         equals: isDeepStrictEqual,
+        revocations: {
+          send: (target) => {
+            revocations.push(target);
+          },
+        },
         serialization,
       });
       onTestFinished(() => store.close());
@@ -271,6 +282,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         wait,
         invalidate,
         notifications,
+        revocations,
         notificationCalls,
         afterInspect(work: Work<void, Y>) {
           afterInspect = work;
@@ -469,6 +481,37 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(s.peer.requests).toHaveLength(2);
       });
 
+      it("stopping an execution preserves occupancy and its escaped handle cannot stop a successor", async () => {
+        const s = scenario(true);
+        const first = s.run("repeatable");
+        await s.wait(1, first.result);
+        const original = s.grants[0]!;
+        await first.cancel();
+        await expect(first.result).rejects.toBeDefined();
+        expect(s.peer.aborted).toEqual([original.attemptId]);
+        expect(s.notifications.subscriptions).toBe(0);
+        expect(s.notifications.published).toEqual([]);
+        expect(await start(() => s.journal.attemptControl.inspect(original)).result).toEqual({
+          state: "active",
+        });
+        expect(await s.run("repeatable").result).toEqual({ state: "occupied", grant: original });
+
+        // Resumption is an explicit repeatable replacement, not authority inferred from shutdown.
+        const successor = s.run("repeatable", original);
+        await s.wait(2, successor.result);
+        const replacement = s.grants[1]!;
+        expect(replacement.attemptId).not.toBe(original.attemptId);
+        await first.cancel();
+        expect(s.peer.aborted).toEqual([original.attemptId]);
+        expect(s.notifications.subscriptions).toBe(1);
+        s.peer.reply(replacement.attemptId, { status: 200, body: "resumed" });
+        await expect(successor.result).resolves.toEqual({
+          state: "completed",
+          value: { reservation: "resumed" },
+        });
+        expect(s.notifications.subscriptions).toBe(0);
+      });
+
       for (const live of [false, true]) {
         it(`fences late outcomes when cancellation notification is unavailable (middleware: ${live})`, async () => {
           const s = scenario(live);
@@ -484,6 +527,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             state: "invalidated",
             reason: "deadline",
           });
+          expect(s.revocations).toEqual([{ execution: s.journal.id, grant }]);
           s.reopen();
           expect(s.peer.aborted).toEqual([]);
           s.peer.reply(grant.attemptId, { status: 200, body: "too late" });

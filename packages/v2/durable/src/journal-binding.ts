@@ -1,6 +1,7 @@
 import type { Operation } from "@standard-durability/core";
 import type {
   Accepted,
+  AttemptRevocation,
   ChildLink,
   AcceptedHistory,
   JournalRecords,
@@ -40,7 +41,16 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
         if ((yield* records.get(id))?.snapshot.program !== program) {
           throw new Error("Journal program mismatch");
         }
-        const tree = createJournalTree(options, records, staged);
+        const revocations: AttemptRevocation[] = [];
+        if (options.revocations) {
+          const producer = options.revocations;
+          yield* transaction.onCommit(() => {
+            for (const target of revocations) {
+              producer.send({ execution: target.execution, grant: { ...target.grant } });
+            }
+          });
+        }
+        const tree = createJournalTree(options, records, staged, revocations);
         return yield* work(tree, records);
       });
     }

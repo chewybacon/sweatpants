@@ -3,6 +3,24 @@
 This is a record of design traps and the boundaries that keep them manageable.
 It is not a backlog of edge cases the framework must automatically handle.
 Entries describe design constraints; they do not declare unimplemented APIs complete.
+
+## FG-009 — Treating an attempt notification as ownership of a host
+
+A delayed cancellation for a body attempt arrives after another run has started
+logical cleanup. Aborting "the current host" can stop work whose authority was
+never revoked. A local group failure can also interrupt physically nested siblings.
+
+**Boundary:** Durable tree ownership, attempt settlement authority and native task
+lifetime are distinct. Relay committed revocations to exact attempt subscriptions.
+Physical stop addresses a particular execution; it does not confer retry authority.
+Neither notification transport nor an activation driver establishes a global lease.
+
+**Author responsibility:** Assemble scope lifetimes and signal routing explicitly,
+handle interrupted runs, and arrange further advancement for logical cleanup. Use
+an incarnation-specific address if introducing remote whole-execution stop. Preserve
+protected attempt authority even when physical shutdown interrupts its IO.
+
+See [hosting ownership](./hosting/OWNERSHIP.md) for evidence and unresolved race wiring.
 Keep IDs stable and add a concrete example when recording a new trap.
 
 ## FG-001 — Making every race succeed

@@ -8,7 +8,7 @@ import {
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
-import { type ResolutionGrant } from "@sweatpan.ts/durable";
+import { type AttemptRevocation, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
@@ -32,9 +32,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return execution;
   }
   function scenario() {
+    const revocations: AttemptRevocation[] = [];
     const journal = createMemoryJournal<{ id: string }, string, string, string>({
       program: "critical-acquire",
       equals: isDeepStrictEqual,
+      revocations: {
+        send: (target) => {
+          revocations.push(target);
+        },
+      },
     });
     const peer = createProtocolRig();
     const notifications = createNotificationRig();
@@ -89,23 +95,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return request === "confirm" || request === "seal" ? "wait" : "execute";
           },
         });
-        yield* installAttemptCancellation(runtime, host, journal.attemptControl, {
-          *subscribe(grant) {
-            const subscription = notifications.subscribe(grant.attemptId);
-            yield* runtime.composition.ensure(function* () {
-              subscription.close();
-            });
-            return subscription.signal;
-          },
-          *publish(grant) {
-            notifications.publish(grant.attemptId);
-          },
-        });
+        yield* installAttemptCancellation(
+          runtime,
+          host,
+          journal.attemptControl,
+          notifications.driver(runtime),
+        );
         return yield* work(host);
       });
     }
     return {
       journal,
+      revocations,
       peer,
       notifications,
       run: () => invoke((host) => host.operations.run()),
@@ -208,6 +209,30 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         reason: "deadline",
         failure: "Confirmation rejected",
       });
+    });
+    it("reports explicit invalidation of a critical attempt while ordinary cancellation preserves it", async () => {
+      const s = scenario();
+      const live = s.run();
+      await Promise.race([s.peer.waitForRequests(1), live.result]);
+      const snapshot = await start(() => readJournal(s.journal)).result;
+      if (snapshot.status !== "running" || !snapshot.pending) {
+        throw new Error("Expected acquisition");
+      }
+      expect(snapshot.pending.scope?.critical).toBeDefined();
+      const occupied = await s.run().result;
+      if (occupied.state !== "occupied") {
+        throw new Error("Expected occupied attempt");
+      }
+      await s.cancel(snapshot.pending.id);
+      expect(s.revocations).toEqual([]);
+      await start(() =>
+        s.journal.attemptControl.invalidate(occupied.grant, "operator invalidation"),
+      ).result;
+      expect(s.revocations).toEqual([{ execution: s.journal.id, grant: occupied.grant }]);
+      await start(() => s.journal.attemptControl.invalidate(occupied.grant, "again")).result;
+      expect(s.revocations).toHaveLength(1);
+      s.peer.reply("reserve", { status: 200, body: "late" });
+      await expect(live.result).rejects.toThrow("revoked");
     });
     it("allows physical host shutdown while leaving a critical unsafe attempt occupied", async () => {
       const s = scenario();
