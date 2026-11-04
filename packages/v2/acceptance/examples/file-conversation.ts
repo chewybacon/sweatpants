@@ -161,9 +161,9 @@ export function createFileConversation<Y>(
     turns() {
       return db
         .prepare(
-          "SELECT execution, ordinal, command FROM file_chat_turns WHERE conversation = ? ORDER BY ordinal",
+          "SELECT execution, ordinal, command, prompt FROM file_chat_turns WHERE conversation = ? ORDER BY ordinal",
         )
-        .all(conversation);
+        .all(conversation) as Pick<Turn, "execution" | "ordinal" | "command" | "prompt">[];
     },
     read(execution: string) {
       return journal(execution).read();

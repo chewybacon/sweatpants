@@ -459,3 +459,41 @@ leave no middleware installed on the next tick. The consumer owns admission chec
 finite traversal and checkpointing, including failed middleware observations. Reopening
 reconstructs the facades bound to the new connection. These contracts remain local until
 another consumer demonstrates shared semantics; neither policy changes delivery authority.
+
+## Reconnecting a conversation viewer
+
+`applications/conversation-reconnect.acceptance.test.ts` moves observation and
+answer submission through a minimal headless client backed by the existing
+`examples/file-conversation.ts` assembly. `examples/file-conversation-view.ts`
+contains provisional application projection and client state, not a new framework
+session or transport API. The simulated boundary JSON-round-trips requests and
+responses. Advancement remains an explicit, independently owned server action.
+
+A finite observation captures the current turn catalog, reads each root's accepted
+history prefix, and separately discovers waiting descendant questions. It projects
+user prompts, accepted assistant text and tool-call labels, plus allowlisted file
+question context. It excludes reasoning, tool arguments, raw failures and executable
+schema objects. Assistant IDs combine root identity with accepted receipts; question
+IDs combine descendant identity with the exact resolution grant. Each turn projects
+only its own accepted samples, avoiding duplication of cumulative model history.
+
+Both runtimes demonstrate disconnect during sampling without stopping its owner,
+reopen while a tool waits, fresh-client reconstruction without Guest acquisition,
+wrong-conversation/root rejection, answer acceptance followed by acknowledgement
+loss, duplicate receipt recovery and conflicting answer rejection. Reconnect removes
+the accepted question before further advancement and still reports the root running.
+An older delayed refresh cannot overwrite a newer observed view. Explicit advancement
+then completes chat; repeated reads, reopen and a second turn preserve message identity
+without duplicates or resampling on observation.
+
+The caller authorizes conversation access; grant identifiers are correlation, not
+credentials. Child discovery and root history are separate snapshots, not an atomic
+whole-tree view or an authority lease. A displayed question can become stale; answer
+validation remains server-side. Empty questions do not imply completion. Full refresh
+replaces client state; there is no cursor protocol, pagination, automatic reconnect,
+optimistic answer acceptance or transport retry. Projection of tool results/media,
+byte limits and archival retention remain product work. The view is coupled to this
+application's pinned recorded-chat/v1 protocol, not a generic journal decoder.
+
+Evidence is a serialized in-process peer and real SQLite connection reopen, not a
+browser, React hook, deployed HTTP service or OS-process crash test.
