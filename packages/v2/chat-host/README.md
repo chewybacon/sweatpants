@@ -204,3 +204,30 @@ subscriptions. Physical owner cancellation joins both in-flight tool deliveries;
 preserves occupied attempts without redispatch. Type fixtures check heterogeneous tool
 results against source and emitted declarations. These are in-process protocol/reopen
 journeys, not live provider, OS-crash or deployment guarantees.
+
+The [flight-choice journey](../acceptance/__tests__/applications/flight-chat.acceptance.test.ts)
+reconstructs a v1 tool behavior: an outer model calls an authored tool, the tool asks
+for a flight and seat, then requests a travel tip before returning its result to the
+outer chat. In the next model round it calls a different authored tool to confirm and
+persist that itinerary. SQLite reopens after the second tool's answer and before its
+capability delivery; replay retains both model call IDs, executes the save once and
+supplies both correlated results to the final model round. The
+[tool bodies](../acceptance/examples/flight-chat.ts) use ordinary declarations. The
+`travelTip` handler uses the existing scoped model selection, inference preparation and
+provider stream; no native work enters the Guest body.
+
+Nested inference deliberately supplies one prompt, no tools, and a scoped model
+override. The same sampling facade serves both calls, while the outer chat retains
+its model and catalog. `round: 0` is this application's one-shot sampling policy,
+not a nested chat loop or a shared round budget. The accepted tip contains text and
+model provenance; the child journal records it through the ordinary effect boundary.
+No `ctx.sample` API or new sampling primitive is introduced.
+
+Both runtimes reopen SQLite at each question, after nested sample acceptance and between
+the two sequential tool completions.
+An interrupted acknowledgement replays the accepted tip under changed model policy
+without another inference. Provider failure and physical stop leave the unsafe child
+attempt occupied; explicit subsequent runs do not fabricate a tool result or retry
+the provider. Every advancement is caller-invoked. Booking services are simulated;
+structured output, progress projection, MCP delegation and scheduling remain outside
+this experiment.

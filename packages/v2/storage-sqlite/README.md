@@ -1,8 +1,16 @@
-# Node SQLite journal
+# SQLite journal
 
-`createSqliteJournalStore<R, Q, V, E, S, Y>({ database, id, program, equals,
+`createSqliteJournalStore<R, Q, V, E, S, Y>({ connection, id, program, equals,
 serialization })` binds the shared durable journal implementation to a caller-owned
-Node `DatabaseSync` connection. `store.open()` starts fresh projection bindings;
+synchronous `SqliteConnection`. Two connections are provided:
+
+- `createDurableObjectSqliteConnection(ctx.storage)` from the root entry, using
+  `transactionSync` (Durable Objects reject SQL `BEGIN`/`SAVEPOINT`).
+- `createNodeSqliteConnection(database)` and `v8Serializer` from
+  `@sweatpan.ts/storage-sqlite/node`, using `BEGIN IMMEDIATE` on `DatabaseSync`.
+
+Journal work inside a transaction must not suspend. Asynchronous drivers such as D1
+or libSQL do not fit this contract and would need a different transaction boundary. `store.open()` starts fresh projection bindings;
 reopen a connection with the same root `id` and pinned `program`, then rebind owned
 calls through `ensureChild`. Root creation is lazy at the first journal operation.
 Caller owns connection disposal and must not wrap these operations in another
@@ -10,11 +18,11 @@ transaction on the same connection.
 
 `serialization` is an existing scoped API facade with
 `resolve(): Operation<Serializer, Y>`. There is no new serializer helper framework.
-Resolution runs before `BEGIN IMMEDIATE`; it may suspend. Current authority and
+Resolution runs before the transaction begins; it may suspend. Current authority and
 ownership are read after the lock is acquired, so cancellation or replacement that
 wins during resolution fences the later settlement. Encoding and the decision do
 not suspend inside the transaction. Errors roll back all uncommitted records. After
-COMMIT, the shared transaction interpreter runs registered local publications
+commit, the shared transaction interpreter runs registered local publications
 synchronously before returning or allowing
 another command in the assembly to begin; losing the caller acknowledgement cannot
 replace an already committed projection.
@@ -81,3 +89,7 @@ serializing journal payloads. These commands never advance a Guest or authorize
 retry. Bind a fresh store after closing a connection. The platform retains root IDs
 and arranges discovery/reconciliation; no global scan or background process is
 started by this adapter. See [deployment reconciliation](../deployment/README.md).
+
+Acceptance: `hosting/durable-object-journal.acceptance.test.ts` runs a parked
+approval in a Miniflare Durable Object under both runtimes, restarts workerd with
+persisted storage, answers, and completes without redelivering the executed effect.

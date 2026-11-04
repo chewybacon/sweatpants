@@ -1,5 +1,5 @@
-import { v8Serializer } from "@sweatpan.ts/storage-sqlite";
 import { childHostingResult, type ChildHostingResult } from "@sweatpan.ts/hosting";
+import { v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
 import {
   createHostedRecovery as createRecovery,
   createNotificationRig,

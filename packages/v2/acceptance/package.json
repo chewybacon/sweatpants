@@ -39,6 +39,7 @@
     "@sweatpan.ts/execution": "workspace:*",
     "@sweatpan.ts/execution-worker": "workspace:*",
     "@sweatpan.ts/hosting": "workspace:*",
+    "@sweatpan.ts/hosting-cloudflare": "workspace:*",
     "@sweatpan.ts/providers": "workspace:*",
     "@sweatpan.ts/providers-pi-ai": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",
@@ -52,6 +53,8 @@
     "@types/node": "catalog:",
     "effect": "catalog:",
     "effection": "catalog:",
+    "esbuild": "0.27.2",
+    "miniflare": "5.20261001.0-alpha",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

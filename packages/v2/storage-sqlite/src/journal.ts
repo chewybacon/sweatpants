@@ -11,16 +11,27 @@ import {
 import type { Serializer } from "@sweatpan.ts/storage";
 import type { SqliteJournalOptions, SqliteJournalStore } from "./contracts.ts";
 
+/** Step a nonsuspending operation inside a synchronous connection transaction. */
+function runSynchronously<T>(operation: { [Symbol.iterator](): Iterator<unknown, T, unknown> }): T {
+  const iterator = operation[Symbol.iterator]();
+  const step = iterator.next();
+  if (!step.done) {
+    iterator.return?.();
+    throw new Error("SQLite journal transactions cannot suspend");
+  }
+  return step.value;
+}
+
 /**
  * Atomic colocated authority with exact request/receipt reads and append-only history.
- * Serializer resolution precedes locking. Native SQLite I/O is synchronous; the
- * portable transaction port supports yielding adapters. Caller owns the connection.
+ * Serializer resolution precedes locking. The connection is synchronous, so journal work
+ * inside a transaction must not suspend. Caller owns the connection.
  * Experimental schema: no compatibility or migration of older databases.
  */
 export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
   options: SqliteJournalOptions<Y>,
 ): SqliteJournalStore<R, Q, V, E, S, Y> {
-  const { database: db, serialization, program, equals, revocations } = options;
+  const { connection: db, serialization, program, equals, revocations } = options;
   const id = options.id ?? crypto.randomUUID();
   db.exec(`
     CREATE TABLE IF NOT EXISTS sweatpants_activations (
@@ -40,43 +51,34 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
       PRIMARY KEY (tree, execution, sequence), UNIQUE (tree, execution, receipt)
     );
   `);
-  const readIntent = db.prepare("SELECT token FROM sweatpants_activations WHERE tree = ?");
-  const requestIntent = db.prepare(
-    "INSERT INTO sweatpants_activations VALUES (?, ?) ON CONFLICT(tree) DO UPDATE SET token=excluded.token",
-  );
-  const acknowledgeIntent = db.prepare(
-    "DELETE FROM sweatpants_activations WHERE tree = ? AND token = ?",
-  );
-  const select = db.prepare(
-    "SELECT format, payload FROM sweatpants_executions WHERE tree = ? AND id = ?",
-  );
-  const request = db.prepare(
-    "SELECT format, payload FROM sweatpants_requests WHERE tree = ? AND execution = ? AND request = ?",
-  );
-  const receipt = db.prepare(
-    "SELECT format, payload FROM sweatpants_history WHERE tree = ? AND execution = ? AND receipt = ?",
-  );
-  const history = db.prepare(
-    "SELECT format, payload FROM sweatpants_history WHERE tree = ? AND execution = ? AND sequence >= ? AND sequence < ? ORDER BY sequence LIMIT ?",
-  );
-  const set = db.prepare(
-    "INSERT INTO sweatpants_executions VALUES (?, ?, ?, ?) ON CONFLICT(tree,id) DO UPDATE SET format=excluded.format,payload=excluded.payload",
-  );
-  const setRequest = db.prepare(
-    "INSERT INTO sweatpants_requests VALUES (?, ?, ?, ?, ?) ON CONFLICT(tree,execution,request) DO UPDATE SET format=excluded.format,payload=excluded.payload",
-  );
-  const append = db.prepare("INSERT INTO sweatpants_history VALUES (?, ?, ?, ?, ?, ?)");
+  const readIntent = "SELECT token FROM sweatpants_activations WHERE tree = ?";
+  const requestIntent =
+    "INSERT INTO sweatpants_activations VALUES (?, ?) ON CONFLICT(tree) DO UPDATE SET token=excluded.token";
+  const acknowledgeIntent = "DELETE FROM sweatpants_activations WHERE tree = ? AND token = ?";
+  const select = "SELECT format, payload FROM sweatpants_executions WHERE tree = ? AND id = ?";
+  const request =
+    "SELECT format, payload FROM sweatpants_requests WHERE tree = ? AND execution = ? AND request = ?";
+  const receipt =
+    "SELECT format, payload FROM sweatpants_history WHERE tree = ? AND execution = ? AND receipt = ?";
+  const history =
+    "SELECT format, payload FROM sweatpants_history WHERE tree = ? AND execution = ? AND sequence >= ? AND sequence < ? ORDER BY sequence LIMIT ?";
+  const set =
+    "INSERT INTO sweatpants_executions VALUES (?, ?, ?, ?) ON CONFLICT(tree,id) DO UPDATE SET format=excluded.format,payload=excluded.payload";
+  const setRequest =
+    "INSERT INTO sweatpants_requests VALUES (?, ?, ?, ?, ?) ON CONFLICT(tree,execution,request) DO UPDATE SET format=excluded.format,payload=excluded.payload";
+  const append = "INSERT INTO sweatpants_history VALUES (?, ?, ?, ?, ?, ?)";
   function decode(serializer: Serializer, row: Record<string, unknown>): unknown {
     if (row.format !== serializer.format) {
       throw new Error("Unsupported stored serialization format");
     }
-    return serializer.decode(row.payload as Uint8Array);
+    const payload = row.payload;
+    return serializer.decode(
+      payload instanceof ArrayBuffer ? new Uint8Array(payload) : (payload as Uint8Array),
+    );
   }
   const backend: JournalBackend<Y> = {
     *transact(work) {
       const serializer = yield* serialization.resolve();
-      db.exec("BEGIN IMMEDIATE");
-      let committed = false;
       let changed = false;
       const transaction = createJournalTransaction<Y>();
       try {
@@ -88,7 +90,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             if (cached) {
               return cached;
             }
-            const row = select.get(id, key);
+            const row = db.get(select, id, key);
             // Private trusted storage boundary; domain types are bound by journal assembly.
             const value = row
               ? (decode(serializer, row) as JournalRecord)
@@ -104,7 +106,7 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             if (activation !== "preserve") {
               changed = true;
             }
-            set.run(id, key, serializer.format, serializer.encode(value));
+            db.run(set, id, key, serializer.format, serializer.encode(value));
             cache.set(key, value);
           },
           *request(execution, requestId) {
@@ -112,25 +114,33 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             if (requests.has(key)) {
               return requests.get(key);
             }
-            const row = request.get(id, execution, requestId);
+            const row = db.get(request, id, execution, requestId);
             const value = row ? (decode(serializer, row) as RequestRecord) : undefined;
             requests.set(key, value);
             return value;
           },
           *setRequest(execution, requestId, value) {
             changed = true;
-            setRequest.run(id, execution, requestId, serializer.format, serializer.encode(value));
+            db.run(
+              setRequest,
+              id,
+              execution,
+              requestId,
+              serializer.format,
+              serializer.encode(value),
+            );
             requests.set(JSON.stringify([execution, requestId]), value);
           },
           *accepted(execution, requestId) {
-            const row = receipt.get(id, execution, requestId);
+            const row = db.get(receipt, id, execution, requestId);
             return row
               ? (decode(serializer, row) as Accepted<unknown, unknown, unknown>)
               : undefined;
           },
           *append(execution, entry) {
             changed = true;
-            append.run(
+            db.run(
+              append,
               id,
               execution,
               entry.sequence,
@@ -140,25 +150,23 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
             );
           },
         };
-        const result = yield* transaction.run(rows, work);
-        if (changed) {
-          requestIntent.run(id, crypto.randomUUID());
-        }
-        db.exec("COMMIT");
-        committed = true;
+        const result = db.transaction(() => {
+          const value = runSynchronously(transaction.run(rows, work));
+          if (changed) {
+            db.run(requestIntent, id, crypto.randomUUID());
+          }
+          return value;
+        });
         transaction.publish();
         return result;
       } finally {
         transaction.close();
-        if (!committed) {
-          db.exec("ROLLBACK");
-        }
       }
     },
     *history(execution, from, end, limit) {
       const serializer = yield* serialization.resolve();
-      return history
-        .all(id, execution, from, end, limit)
+      return db
+        .all(history, id, execution, from, end, limit)
         .map((row) => decode(serializer, row) as Accepted<unknown, unknown, unknown>);
     },
   };
@@ -166,19 +174,19 @@ export function createSqliteJournalStore<R, Q, V, E, S = unknown, Y = never>(
     id,
     activations: {
       *read() {
-        const row = readIntent.get(id);
+        const row = db.get(readIntent, id);
         return row ? { execution: id, token: row.token as string } : undefined;
       },
       *request() {
         const intent = { execution: id, token: crypto.randomUUID() };
-        requestIntent.run(id, intent.token);
+        db.run(requestIntent, id, intent.token);
         return intent;
       },
       *acknowledge(observed) {
         if (observed.execution !== id) {
           throw new Error("Foreign activation intent");
         }
-        return acknowledgeIntent.run(id, observed.token).changes !== 0;
+        return db.run(acknowledgeIntent, id, observed.token).changes !== 0;
       },
     },
     open: () =>

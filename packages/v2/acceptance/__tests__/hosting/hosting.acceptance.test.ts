@@ -1,4 +1,5 @@
 import { createAttemptNotifications } from "@sweatpan.ts/hosting";
+import { v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
 import { createAttempts } from "@sweatpan.ts/durable";
 import {
   createHostedRecovery as createRecovery,
@@ -27,7 +28,7 @@ import {
 } from "@sweatpan.ts/hosting";
 
 import type { Serializer } from "@sweatpan.ts/storage";
-import { v8Serializer } from "@sweatpan.ts/storage-sqlite";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 

@@ -2779,6 +2779,9 @@ importers:
       '@sweatpan.ts/hosting':
         specifier: workspace:*
         version: link:../hosting
+      '@sweatpan.ts/hosting-cloudflare':
+        specifier: workspace:*
+        version: link:../hosting-cloudflare
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../providers
@@ -2818,6 +2821,12 @@ importers:
       effection:
         specifier: 4.2.0
         version: 4.2.0
+      esbuild:
+        specifier: 0.27.2
+        version: 0.27.2
+      miniflare:
+        specifier: 5.20261001.0-alpha
+        version: 5.20261001.0-alpha(@types/node@22.19.5)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3110,6 +3119,22 @@ importers:
         version: 7.0.2
 
   packages/v2/hosting-cloudflare:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@sweatpan.ts/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@sweatpan.ts/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
     devDependencies:
       typescript:
         specifier: 'catalog:'

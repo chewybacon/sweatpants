@@ -115,3 +115,12 @@ delays afterward. Reconciliation retains its one-pass acknowledgement semantics.
 continuation middleware separately controls cooperative yielding within an active pass.
 The request example likewise installs wire-projection middleware above journal presentation;
 transport encoding and its final size limit stay with the consumer.
+
+The [file-chat sweep journey](../acceptance/__tests__/applications/file-chat-sweep.acceptance.test.ts)
+uses the same application-local persisted catalog traversal with `createFileChat`.
+Accepted descendant answers survive lost request responses without a direct drive or
+wakeup. Later caller-owned sweep invocations resume the root across SQLite reopen,
+preserve unanswered cleanup and complete the chat without repeated sampling. An
+interrupted unsafe sample stays occupied. This establishes composition with hosted
+chat, not an autonomous scheduler; invocation cadence and failure/backoff policy remain
+application responsibilities.

@@ -23,6 +23,13 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/hosting-cloudflare",
     "format:check": "cd ../../.. && oxfmt packages/v2/hosting-cloudflare --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/storage": "workspace:*",
+    "@sweatpan.ts/storage-sqlite": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

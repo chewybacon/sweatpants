@@ -1,3 +1,6 @@
+import { createPersistedSweep } from "../../examples/persisted-sweep.ts";
+import { createSqliteJournalStore } from "@sweatpan.ts/storage-sqlite";
+import { createNodeSqliteConnection, v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, it, onTestFinished } from "vitest";
@@ -7,7 +10,7 @@ import { createActivationReconciler, type ActivationReconciliation } from "@swea
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createToolAdmission } from "@sweatpan.ts/tools";
-import { createSqliteJournalStore, v8Serializer } from "@sweatpan.ts/storage-sqlite";
+
 import {
   createSqliteDatabaseRig,
   createHostedRecovery,
@@ -47,15 +50,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let cleanup: (() => Operation<void, Y>) | undefined;
     function assemble() {
       const db = rig.database;
+      const sweep = createPersistedSweep(db);
       db.exec(`
-        CREATE TABLE IF NOT EXISTS consumer_catalog (id TEXT PRIMARY KEY, program TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS consumer_sweep (singleton INTEGER PRIMARY KEY CHECK(singleton=1), after_id TEXT, end_id TEXT);
-        INSERT OR IGNORE INTO consumer_sweep VALUES (1, NULL, NULL);
         CREATE TABLE IF NOT EXISTS consumer_backoff (id TEXT PRIMARY KEY, token TEXT NOT NULL, until_tick INTEGER NOT NULL);
       `);
       function store(id: string, program = PROGRAM) {
         return createSqliteJournalStore<string, string, string, string, unknown, Y>({
-          database: db,
+          connection: createNodeSqliteConnection(db),
           id,
           program,
           equals: isDeepStrictEqual,
@@ -67,12 +68,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
       }
       function enroll(id: string, program = PROGRAM) {
-        db.prepare("INSERT OR IGNORE INTO consumer_catalog VALUES (?, ?)").run(id, program);
-        if (
-          db.prepare("SELECT program FROM consumer_catalog WHERE id=?").get(id)?.program !== program
-        ) {
-          throw new Error("Catalog binding is immutable");
-        }
+        sweep.enroll(id, program);
       }
       function* submit(id: string, input: string) {
         enroll(id); // Membership is persisted BEFORE admission; no wakeup callback follows.
@@ -218,41 +214,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (!Number.isSafeInteger(now) || now < 0) {
           throw new Error("Invalid scheduler tick");
         }
-        const checkpoint = db
-          .prepare("SELECT after_id, end_id FROM consumer_sweep WHERE singleton=1")
-          .get()!;
-        const after = checkpoint.after_id as string | null;
-        let end = checkpoint.end_id as string | null;
-        if (end === null) {
-          end = db.prepare("SELECT MAX(id) AS id FROM consumer_catalog").get()!.id as string | null;
-          db.prepare("UPDATE consumer_sweep SET end_id=? WHERE singleton=1").run(end);
+        const result = yield* sweep.tick(function* (id, program) {
+          const visit = yield* runtime.composition.catchError(
+            () => scheduling.operations.visit(createVisit(id, program, deadline)),
+            function* (error): Operation<Visit, Y> {
+              return { id, state: "failed", error };
+            },
+          );
+          if (loseCheckpointFor === id) {
+            loseCheckpointFor = undefined;
+            throw new Error("Process stopped before checkpoint and observation");
+          }
+          return visit;
+        });
+        if (result.state !== "wrapped") {
+          observations.push(result); // Advisory only; journal status is authoritative.
         }
-        const row = db
-          .prepare(
-            "SELECT id, program FROM consumer_catalog WHERE (? IS NULL OR id > ?) AND id <= ? ORDER BY id LIMIT 1",
-          )
-          .get(after, after, end);
-        if (!row) {
-          db.prepare(
-            "UPDATE consumer_sweep SET after_id=NULL, end_id=NULL WHERE singleton=1",
-          ).run();
-          return { state: "wrapped" };
-        }
-        const id = row.id as string;
-        const visit = yield* runtime.composition.catchError(
-          () => scheduling.operations.visit(createVisit(id, row.program as string, deadline)),
-          function* (error): Operation<Visit, Y> {
-            return { id, state: "failed", error };
-          },
-        );
-        if (loseCheckpointFor === id) {
-          loseCheckpointFor = undefined;
-          throw new Error("Process stopped before checkpoint and observation");
-        }
-        // All skip, failure, backoff and successful outcomes advance this single owner's cursor.
-        db.prepare("UPDATE consumer_sweep SET after_id=? WHERE singleton=1").run(id);
-        observations.push(visit); // Advisory only; journal status is authoritative.
-        return visit;
+        return result;
       }
       return { store, enroll, submit, tick, scheduling, installBackoff };
     }

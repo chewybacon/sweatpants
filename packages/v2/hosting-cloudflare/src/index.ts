@@ -1,2 +1,11 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export { createDurableObjectHost } from "./durable-object-host.ts";
+export { installAlarmRetryLimit } from "./middleware.ts";
+export type {
+  AlarmInvocation,
+  AlarmOutcome,
+  AlarmRun,
+  DurableObjectHost,
+  DurableObjectHostMethods,
+  DurableObjectHostOptions,
+  DurableObjectHostStorage,
+} from "./contracts.ts";

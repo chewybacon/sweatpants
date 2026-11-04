@@ -1,8 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
+import { createSqliteJournalStore } from "@sweatpan.ts/storage-sqlite";
+import { createNodeSqliteConnection, v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSqliteJournalStore, v8Serializer } from "@sweatpan.ts/storage-sqlite";
+
 import type { JournalBindingOptions } from "@sweatpan.ts/durable";
 import type { Operation } from "@standard-durability/core";
 import type { Serializer } from "@sweatpan.ts/storage";
@@ -21,7 +23,7 @@ export function createSqliteJournalRig<R, Q, V, E, S = unknown, Y = never>(
     const store = createSqliteJournalStore<R, Q, V, E, S, Y>({
       ...options,
       id,
-      database,
+      connection: createNodeSqliteConnection(database),
       serialization: options.serialization ?? {
         *resolve() {
           return v8Serializer;

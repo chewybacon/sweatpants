@@ -1,10 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
+import { createSqliteJournalStore } from "@sweatpan.ts/storage-sqlite";
+import { createNodeSqliteConnection, v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
 import type { DatabaseSync } from "node:sqlite";
 import type { Operation } from "@standard-durability/core";
 import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { ChatHistoryMessage, ChatLoopResult } from "@sweatpan.ts/chat";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createSqliteJournalStore, v8Serializer } from "@sweatpan.ts/storage-sqlite";
+
 import {
   createFileConversationTurn,
   fileConversationProgram,
@@ -63,7 +65,7 @@ export function createFileConversation<Y>(
     }
     return createSqliteJournalStore<ChatLoopResult, CapabilityRequest, unknown, string, unknown, Y>(
       {
-        database: db,
+        connection: createNodeSqliteConnection(db),
         id: execution,
         program: fileConversationProgram,
         equals: isDeepStrictEqual,

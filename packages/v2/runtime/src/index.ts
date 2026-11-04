@@ -16,3 +16,4 @@ export { createBufferedSignal } from "./buffered-signal.ts";
 
 export type { PullStreamScope } from "./contracts.ts";
 export { createPullStream } from "./pull-stream.ts";
+export { createReadableStream } from "./readable-stream.ts";

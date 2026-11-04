@@ -326,6 +326,64 @@ to retarget an initialized incarnation. Lost/invalid initialization acknowledgem
 termination without resolving an artifact or starting a Guest. Existing application
 replay/restore journeys use the server-owned resolver and check detached invocation data.
 
+## Tool revision ownership experiment
+
+`applications/tool-revisions.acceptance.test.ts` keeps logical tool naming separate
+from an exact executable/contract/evaluator reference. Two authored definitions have
+the same logical ID but different bodies, input transforms and approval schemas.
+The application selects a deployment default only for a new invocation and persists
+that selection before journal admission. The journal pins the reference and normalized
+input. A reservation surviving interruption before admission retains its revision on
+retry, even after the default changes. This is an application-local reservation, not a
+new journal primitive or a shared admission transaction.
+
+On both runtimes, the old tool parks, the default changes, and a new invocation uses
+the replacement. SQLite reopen preserves the old reference, input and question grant.
+Recovery uses `createProgramExecution` to reject a mismatched resolver result before
+acquisition; missing artifacts fail without falling back to the current default.
+Answer ingress independently selects the original contract: the replacement's valid
+answer is invalid for the old question, and vice versa. Accepted reads are not repeated.
+An application read of a completed journal needs no executable; answering still needs
+the pinned contract, so code removal is not a universal retention policy.
+
+The responsibility split explored here is: authors name and declare tools; build
+tooling identifies executable and contract artifacts; deployment chooses defaults
+and retains an exact-reference inventory; admission pins the selection; recovery and
+answer ingress resolve that pinned reference. Fixture references are SHA-256 digests of
+deterministic package-manifest bytes covering the entry point, contracts, evaluator and
+declared dependency identities. Every nonterminal lookup verifies those bytes before
+returning the acceptance-local executable. The fixture still does not serialize or
+independently reconstruct arbitrary JavaScript closures. Dependency acquisition,
+schema-transform implementation identity, build reproducibility and migration
+compatibility remain open. Changed host policy is not silently included in the digest.
+
+The same file also exercises hosted chat through an acceptance-local build adapter.
+It creates a separate executable declaration with `defineTool(artifactReference)`,
+retaining the authored schemas, capabilities, elicits and body. It does not mutate
+the author's definition or replace only its `id` while leaving an incompatible call
+builder. The authored logical name and model-facing name remain stable. Existing
+`createChatToolBinding`, interaction discovery and `resolveToolExecution` consume the
+executable declaration, whose ID matches the child's persisted program. No production
+contract change was needed for this composition.
+
+Trusted chat admission pins the selected catalog reference in root input before the
+first model response or child creation. Each resumed chat rebuilds its catalog from
+that input, never from the current deployment default. This policy pins the catalog
+for the whole chat execution; it does not select newer revisions between tool batches
+of that execution. A chat admitted before deployment but first run afterward still
+uses its original catalog. New chats select the replacement.
+
+Both runtimes prove old/new child program identity, schema-correct discovery and
+answers, wrong-owner rejection, unchanged normalized inputs and accepted effects,
+correlated final model results, and duplicate answers after terminal reopen. Missing
+or digest-mismatched artifacts fail run/discovery/answer resolution without acquisition
+or provider delivery. Direct `resolveToolExecution` rejects an inventory entry carrying
+the wrong executable ID. Terminal reads can return accepted results without code;
+answer/discovery assembly still requires retained contracts. A real bundler/loader,
+dependency acquisition and rewriting (including nested tool calls), independently
+loadable schema code and contract-only retention remain unproven. No generic versioning
+API, migration or automatic advancement is introduced.
+
 ## Package shape
 
 The package retains the standard `contracts.ts`, `apis.ts`, and `types.ts`
@@ -368,6 +426,23 @@ contain synchronous hangs or nonterminating cleanup. A recurring deployed trigge
 concurrent sweep ownership and process-loss supervision remain platform work.
 The reusable `createSqliteDatabaseRig` owns only the temporary database lifecycle;
 consumer policy stays in these application journeys.
+
+`applications/file-chat-sweep.acceptance.test.ts` connects the existing file-chat
+assembly to activation reconciliation and persisted catalog traversal. The shared
+application-local `examples/persisted-sweep.ts` also drives the original sweep
+consumer; it owns only catalog enrollment and a finite, one-root-per-tick cursor.
+Backoff remains with the original consumer, and a designated caller owns invocation
+cadence. Neither example supplies concurrent sweep ownership or a deployed trigger.
+
+On both runtimes, a nested file answer is accepted and its response lost without
+driving chat or sending a wakeup. After SQLite reopen, later sweep invocations find
+the root, advance the answered branch and retain its sibling's cleanup question.
+Answering that question through another lost response lets a fresh sweep complete
+the chat. Duplicate answers retain their receipts, sampling is not redelivered, and
+terminal acknowledgement/idle visits acquire no Guest. A physically interrupted
+sampling attempt remains occupied on the next sweep, with pending intent and no
+redispatch. This is local assembly/reopen evidence, not process-crash recovery,
+autonomous scheduling, a transport adapter or a new production primitive.
 
 Projection and scheduling policy are now scoped middleware on application-local APIs.
 The request assembly constructs one projection facade; its default returns wire entries
