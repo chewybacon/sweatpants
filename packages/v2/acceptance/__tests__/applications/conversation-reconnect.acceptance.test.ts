@@ -1,3 +1,5 @@
+import { conversationText } from "@sweatpan.ts/chat-client";
+import { createConversationViewer } from "../../examples/conversation-viewer.ts";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
 import type { Work } from "@standard-durability/core";
@@ -13,7 +15,6 @@ import {
 import { createFileConversation } from "../../examples/file-conversation.ts";
 import {
   createFileConversationView,
-  createConversationViewer,
   type ConversationView,
 } from "../../examples/file-conversation-view.ts";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -153,9 +154,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     ).result;
     let viewer = connect();
     await viewer.refresh();
-    expect(viewer.view?.turns[0]?.messages.map((message) => message.text)).toEqual([
-      "Read my file.",
-    ]);
+    expect(
+      viewer.view?.turns[0]?.messages.map((message) => conversationText(message.parts)),
+    ).toEqual(["Read my file."]);
     expect(acquisitions).toBe(0);
     expect(peer.requests).toHaveLength(0);
 
@@ -178,11 +179,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const question = waiting.questions[0]!;
     expect(waiting.questions).toHaveLength(1);
     expect(question.context).toEqual({ path: "first.txt", step: "read" });
-    expect(waiting.turns[0]?.messages.map((message) => message.text)).toEqual([
+    expect(waiting.turns[0]?.messages.map((message) => conversationText(message.parts))).toEqual([
       "Read my file.",
       "I need the file.",
     ]);
-    expect(waiting.turns[0]?.messages[1]?.calls).toEqual([{ id: "read-first", name: "read_file" }]);
+    expect(waiting.turns[0]?.messages[1]?.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tool-call", callId: "read-first", name: "read_file" }),
+      ]),
+    );
     expect(JSON.stringify(waiting)).not.toContain("private-signature");
     expect(JSON.stringify(waiting)).not.toContain("private-reasoning");
     expect(JSON.stringify(waiting)).not.toContain("declaration");
@@ -234,7 +239,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     viewer = connect();
     await viewer.refresh();
     expect(viewer.view?.questions).toEqual([]);
-    expect(viewer.view?.turns[0]?.messages).toEqual(waiting.turns[0]?.messages);
+    expect(viewer.view?.turns[0]?.messages.map((message) => message.id)).toEqual(
+      waiting.turns[0]?.messages.map((message) => message.id),
+    );
     const duplicate = await viewer.answer(question, "accepted file");
     expect(duplicate.duplicate).toBe(true);
     expect((await viewer.answer(question, "accepted file")).receipt).toBe(duplicate.receipt);
@@ -252,12 +259,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await viewer.refresh();
     const completed = wire(viewer.view!);
     expect(completed.turns[0]?.status).toBe("completed");
-    expect(completed.turns[0]?.messages.map((message) => message.text)).toEqual([
+    expect(completed.turns[0]?.messages.map((message) => conversationText(message.parts))).toEqual([
       "Read my file.",
       "I need the file.",
       "File handled.",
     ]);
-    expect(completed.turns[0]?.messages.slice(0, 2)).toEqual(waiting.turns[0]?.messages);
+    expect(completed.turns[0]?.messages.slice(0, 2).map((message) => message.id)).toEqual(
+      waiting.turns[0]?.messages.map((message) => message.id),
+    );
     await viewer.refresh();
     expect(viewer.view).toEqual(completed);
     viewer.close();
@@ -281,7 +290,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(final.turns).toHaveLength(2);
     expect(final.turns[0]).toEqual(completed.turns[0]);
     const messages = final.turns.flatMap((turn) => turn.messages);
-    expect(messages.map((message) => message.text)).toEqual([
+    expect(messages.map((message) => conversationText(message.parts))).toEqual([
       "Read my file.",
       "I need the file.",
       "File handled.",

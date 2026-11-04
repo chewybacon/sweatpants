@@ -1,21 +1,37 @@
+import type { QuestionContract, QuestionAnswer } from "@sweatpan.ts/chat-client";
 import { z } from "zod";
+import type { Operation, Outcome } from "@standard-durability/core";
+import {
+  materializeConversation,
+  type ConversationPart,
+  type ConversationNode,
+} from "@sweatpan.ts/chat-client";
+import type { JournalReader } from "@sweatpan.ts/durable";
+import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { ResolutionGrant } from "@sweatpan.ts/durable";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { fileConversationProgram } from "./file-chat.ts";
 import type { createFileConversation } from "./file-conversation.ts";
 
-export interface ConversationMessage {
-  readonly id: string;
-  readonly role: "user" | "assistant";
-  readonly text: string;
-  readonly calls: readonly { readonly id: string; readonly name: string }[];
+export type FileQuestionContext = {
+  readonly path: string;
+  readonly step: "read" | "confirm" | "repair";
+};
+export interface FileQuestionContract extends QuestionContract {
+  readonly kind: "file";
+  readonly context: FileQuestionContext;
+  readonly response: string;
 }
+export type ConversationMessage = Extract<
+  ConversationPart<FileQuestionContract>,
+  { type: "message" }
+>;
 export interface ConversationQuestion {
   readonly id: string;
   readonly root: string;
   readonly execution: string;
   readonly grant: ResolutionGrant;
-  readonly context: { readonly path: string; readonly step: "read" | "confirm" | "repair" };
+  readonly context: FileQuestionContract["context"];
 }
 export interface ConversationView {
   readonly conversation: string;
@@ -32,7 +48,7 @@ export interface ConversationAnswer {
   readonly root: string;
   readonly execution: string;
   readonly grant: ResolutionGrant;
-  readonly text: string;
+  readonly text: QuestionAnswer<FileQuestionContract, never>["value"];
 }
 export interface ConversationAnswerReceipt {
   readonly receipt: string;
@@ -75,48 +91,163 @@ export function createFileConversationView<Y>(
         const questions: ConversationQuestion[] = [];
         const catalog = conversation.turns();
         for (const row of catalog) {
-          const state = yield* conversation.read(row.execution);
-          const messages: ConversationMessage[] = [
-            {
-              id: JSON.stringify([row.execution, "user"]),
-              role: "user",
-              text: row.prompt,
-              calls: [],
-            },
-          ];
-          // Use each turn's own accepted samples, never its cumulative terminal
-          // transcript: otherwise a second turn duplicates the predecessor's messages.
-          for (let offset = 0; offset < state.history.end.position; ) {
-            const entries = yield* state.history.read(offset, 128);
-            if (!entries.length) {
-              throw new Error("Incomplete accepted conversation prefix");
+          const reader = conversation.reader(row.execution);
+          const state = yield* reader.read();
+          const nodes: ConversationNode<FileQuestionContract>[] = [];
+          const userId = JSON.stringify([row.execution, "user"]);
+          nodes.push({ type: "message", id: userId, parentId: null, order: 0, role: "user" });
+          nodes.push({
+            type: "text",
+            id: `${userId}:text`,
+            parentId: userId,
+            order: 0,
+            text: row.prompt,
+          });
+          function* collect(
+            source: JournalReader<unknown, unknown, unknown, unknown, unknown, Y>,
+            parentId: string | null,
+          ): Operation<void, Y> {
+            const snapshot = yield* source.read();
+            const history = [];
+            for (let offset = 0; offset < snapshot.history.end.position; ) {
+              const page = yield* snapshot.history.read(offset, 128);
+              if (!page.length) {
+                throw new Error("Incomplete accepted conversation prefix");
+              }
+              history.push(...page);
+              offset = page.at(-1)!.sequence + 1;
             }
-            for (const entry of entries) {
-              if (
-                entry.request.effect !== `${fileConversationProgram}/sample` ||
-                !entry.outcome.ok
-              ) {
-                continue;
-              }
-              const result = sample.safeParse(entry.outcome.value);
-              if (!result.success) {
-                throw new Error("Unsupported accepted conversation sample");
-              }
-              const content = result.data.value.response.message.content;
-              messages.push({
-                id: JSON.stringify([row.execution, entry.receipt]),
-                role: "assistant",
-                text: content
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text ?? "")
-                  .join(""),
-                calls: content.flatMap((part) =>
-                  part.type === "tool-call" && part.toolCall ? [part.toolCall] : [],
-                ),
+            const entries: {
+              id: string;
+              sequence: number;
+              request: CapabilityRequest;
+              outcome?: Outcome<unknown, unknown>;
+            }[] = history.map((entry) => ({
+              id: entry.receipt,
+              sequence: entry.sequence,
+              request: entry.request as CapabilityRequest,
+              outcome: entry.outcome,
+            }));
+            if (snapshot.status === "running" && snapshot.pending) {
+              entries.push({
+                id: snapshot.pending.id,
+                sequence: snapshot.pending.sequence,
+                request: snapshot.pending.request as CapabilityRequest,
+                outcome: undefined,
               });
             }
-            offset = entries.at(-1)!.sequence + 1;
+            const calls = new Map<
+              string,
+              Extract<ConversationNode<FileQuestionContract>, { type: "tool-call" }>
+            >();
+            for (const entry of entries) {
+              const id = JSON.stringify([source.id, entry.id]);
+              const order = entry.sequence + 1;
+              if (
+                entry.request.effect === `${fileConversationProgram}/sample` &&
+                entry.outcome?.ok
+              ) {
+                const content = sample.parse(entry.outcome.value).value.response.message.content;
+                calls.clear();
+                nodes.push({ type: "message", id, parentId, order, role: "assistant" });
+                for (const [index, part] of content.entries()) {
+                  if (part.type === "text") {
+                    nodes.push({
+                      type: "text",
+                      id: `${id}:${index}`,
+                      parentId: id,
+                      order: index,
+                      text: part.text ?? "",
+                    });
+                  } else if (part.type === "tool-call" && part.toolCall) {
+                    const node = {
+                      type: "tool-call" as const,
+                      id: `${id}:${index}`,
+                      parentId: id,
+                      order: index,
+                      callId: part.toolCall.id,
+                      name: part.toolCall.name,
+                      state: "pending" as const,
+                    };
+                    nodes.push(node);
+                    calls.set(part.toolCall.id, node);
+                  }
+                }
+              } else if (entry.request.effect === `${fileConversationProgram}/tools`) {
+                const batch = z
+                  .array(z.object({ id: z.string(), name: z.string() }))
+                  .parse(entry.request.input);
+                const links = yield* source.readChildren(entry.id);
+                if (links.length !== 0 && links.length !== batch.length) {
+                  throw new Error("Incomplete conversation child placement");
+                }
+                for (const [index, link] of links.entries()) {
+                  const call = batch[index]!;
+                  const node = calls.get(call.id);
+                  if (!node || node.name !== call.name) {
+                    throw new Error("Missing conversation tool parent");
+                  }
+                  const child = yield* source.openChild(link.childId);
+                  const childState = yield* child.read();
+                  const replacement = {
+                    ...node,
+                    state: childState.status,
+                    output:
+                      childState.status === "completed"
+                        ? z.string().parse(childState.value)
+                        : undefined,
+                  };
+                  nodes[nodes.indexOf(node)] = replacement;
+                  yield* collect(child, node.id);
+                }
+              } else if (entry.request.effect === "file-chat.answer-v1") {
+                const question = context.parse(entry.request.input);
+                const response = entry.outcome?.ok
+                  ? z
+                      .object({ ok: z.literal(true), value: z.string() })
+                      .safeParse(entry.outcome.value)
+                  : undefined;
+                const placement = {
+                  type: "question" as const,
+                  kind: "file" as const,
+                  id,
+                  parentId,
+                  order,
+                  question,
+                };
+                if (response?.success) {
+                  nodes.push({ ...placement, state: "answered", response: response.data.value });
+                } else if (entry.outcome) {
+                  throw new Error("Unsupported file answer outcome");
+                } else {
+                  nodes.push({
+                    ...placement,
+                    state: snapshot.interaction?.state === "invalidated" ? "cancelled" : "pending",
+                  });
+                }
+              } else if (entry.request.effect === "file-review.sample-v1" && entry.outcome?.ok) {
+                const result = z
+                  .object({ ok: z.literal(true), value: z.object({ text: z.string() }) })
+                  .parse(entry.outcome.value);
+                nodes.push({ type: "message", id, parentId, order, role: "assistant" });
+                nodes.push({
+                  type: "text",
+                  id: `${id}:text`,
+                  parentId: id,
+                  order: 0,
+                  text: result.value.text,
+                });
+              }
+            }
           }
+          yield* collect(reader, null);
+          const roots = materializeConversation<FileQuestionContract>(nodes);
+          const messages = roots.map((part) => {
+            if (part.type !== "message") {
+              throw new Error("Conversation root is not a message");
+            }
+            return part;
+          });
           turns.push({
             execution: row.execution,
             ordinal: row.ordinal,
@@ -138,11 +269,7 @@ export function createFileConversationView<Y>(
               throw new Error("Unsupported conversation question");
             }
             questions.push({
-              id: JSON.stringify([
-                question.execution,
-                question.grant.requestId,
-                question.grant.resolutionId,
-              ]),
+              id: JSON.stringify([question.execution, question.grant.requestId]),
               root: row.execution,
               execution: question.execution,
               grant: { ...question.grant },
@@ -166,51 +293,6 @@ export function createFileConversationView<Y>(
         receipt: accepted.entry.receipt,
         duplicate: accepted.duplicate,
       } satisfies ConversationAnswerReceipt;
-    },
-  };
-}
-
-/** Minimal headless consumer. No optimistic answer acceptance or implicit advancement.
- * Repeated refresh replaces a complete view; late refreshes cannot overwrite newer
- * ones. Disposal forgets display state but does not cancel server-owned execution. */
-export function createConversationViewer(transport: {
-  observe(): Promise<ConversationView>;
-  answer(command: ConversationAnswer): Promise<ConversationAnswerReceipt>;
-}) {
-  let view: ConversationView | undefined;
-  let generation = 0;
-  let closed = false;
-  function check() {
-    if (closed) {
-      throw new Error("Conversation viewer is closed");
-    }
-  }
-  return {
-    get view() {
-      return view;
-    },
-    async refresh() {
-      check();
-      const request = ++generation;
-      const observed = await transport.observe();
-      if (!closed && request === generation) {
-        view = observed;
-      }
-      return view;
-    },
-    answer(question: ConversationQuestion, text: string) {
-      check();
-      return transport.answer({
-        root: question.root,
-        execution: question.execution,
-        grant: { ...question.grant },
-        text,
-      });
-    },
-    close() {
-      closed = true;
-      generation++;
-      view = undefined;
     },
   };
 }

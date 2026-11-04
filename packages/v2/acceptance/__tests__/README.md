@@ -465,8 +465,8 @@ another consumer demonstrates shared semantics; neither policy changes delivery 
 `applications/conversation-reconnect.acceptance.test.ts` moves observation and
 answer submission through a minimal headless client backed by the existing
 `examples/file-conversation.ts` assembly. `examples/file-conversation-view.ts`
-contains provisional application projection and client state, not a new framework
-session or transport API. The simulated boundary JSON-round-trips requests and
+contains provisional application projection; `examples/conversation-viewer.ts`
+contains browser-safe client state. Neither is a new framework session or transport API. The simulated boundary JSON-round-trips requests and
 responses. Advancement remains an explicit, independently owned server action.
 
 A finite observation captures the current turn catalog, reads each root's accepted
@@ -474,7 +474,8 @@ history prefix, and separately discovers waiting descendant questions. It projec
 user prompts, accepted assistant text and tool-call labels, plus allowlisted file
 question context. It excludes reasoning, tool arguments, raw failures and executable
 schema objects. Assistant IDs combine root identity with accepted receipts; question
-IDs combine descendant identity with the exact resolution grant. Each turn projects
+IDs combine descendant identity with the durable request ID; answer commands retain
+the exact resolution grant separately. Each turn projects
 only its own accepted samples, avoiding duplication of cumulative model history.
 
 Both runtimes demonstrate disconnect during sampling without stopping its owner,
@@ -497,3 +498,175 @@ application's pinned recorded-chat/v1 protocol, not a generic journal decoder.
 
 Evidence is a serialized in-process peer and real SQLite connection reopen, not a
 browser, React hook, deployed HTTP service or OS-process crash test.
+
+## Typed file-question UI
+
+`applications/file-question-ui.acceptance.test.tsx` mounts the application-local
+`examples/file-question-ui.tsx` in React StrictMode over that headless viewer.
+The file control submits typed text against the exact displayed question. It
+prevents concurrent submissions and holds the first value for identical retries.
+Only a server receipt displays “Answer accepted.” A failed or lost response stays
+unconfirmed; retry recovers the receipt or delivers the previously unsent answer.
+Reconnect replaces the projection. A disappearing question removes the form but
+never invents an accepted status, and an empty question list does not mean completion.
+
+Eight journeys across Effect and Effection cover the pending/submitting/accepted
+states, failure before delivery, lost acknowledgement with retry or reconnect,
+SQLite reopen and fresh mount, and unmount during independently owned sampling.
+The caller owns the viewer; UI unmount neither closes it nor stops server work.
+Advancement and reconnect are explicit. The DOM environment preserves Node's abort
+and byte-array constructors for the real host running in the same test process.
+
+This establishes React DOM behavior with simulated transport and model peers, not
+visual browser validation, deployed HTTP/authentication, automatic recovery or a
+generic tool-component registry. The UI remains an acceptance example; it does not
+promote the `react-chat` scaffold or change production runtime APIs.
+
+### Browser entry and ownership
+
+`examples/file-conversation-client.tsx` exports `createFileConversationClient`.
+The embedding application supplies a DOM container and a transport already bound
+to one authorized conversation:
+
+```ts
+const client = createFileConversationClient(container, {
+  observe: () => transport.observe(),
+  answer: (command) => transport.answer(command),
+});
+// On navigation or application shutdown:
+client.dispose();
+```
+
+The entry creates the viewer and React root and starts the initial observation.
+Dispose is idempotent: it unmounts the UI and closes that viewer. Dispose before
+reusing its container; a fresh client reconstructs the current view. Already-issued
+requests may still complete, but late reads cannot update the disposed client.
+Disposal does not close the supplied transport or stop server execution, and cannot
+undo an answer already sent. Transport ownership remains with the embedding app.
+
+The eight DOM journeys now run through this entry rather than test-owned React
+mounting, including repeated disposal and container reuse while an old read is
+still in flight. This is a browser entry module, not a standalone web service:
+HTML hosting, authenticated HTTP routes, turn submission and advancement scheduling
+remain host assembly responsibilities. There is no automatic provider or DB startup.
+
+## Portable nested conversation projection
+
+`@sweatpan.ts/chat-client` supplies a framework-independent `messages[].parts`
+shape: text, nested messages, tool calls, and retained questions. Its normalized
+input has stable IDs, explicit parents and sibling positions. Materialization rejects
+missing parents, duplicate IDs/positions, invalid parents and unreachable cycles.
+It never guesses a parent from event arrival order. React renders this same data;
+no HTML, React nodes, schemas, provider reasoning or arbitrary tool arguments are in it.
+
+The file conversation decoder uses accepted receipts and persisted child links.
+`JournalReader.readChildren(requestId)` exposes stored direct-child declaration order,
+including completed boundaries addressed by accepted receipt. It creates no child,
+installs no execution binding, performs no Guest work and adds no storage schema.
+This is a missing observation capability over existing ownership evidence, not a
+new chronological log. The file conversation catalog is versioned to v2 when adding
+`review_file`; the original standalone file-chat catalog remains unchanged.
+
+The additional two DOM journeys run on Effect and Effection. Two tools overlap;
+the second obtains a typed file answer and performs nested model sampling while the
+first still waits. The second completes first but retains its declared sibling
+position. Reopen reconstructs its answered question, nested message and result;
+completion and another reopen retain the full tree without acquiring Guests.
+A non-React traversal round-trips the same tree through reversed normalized input,
+and removing a parent fails explicitly. Existing reconnect and answer-loss journeys
+now use recursive rendering too. Memory/SQLite frontier journeys also exercise the
+new read-only child lookup while observing execution.
+
+Ordering means turn order, accepted request order within an execution, and model
+content/tool declaration order within a message. It does not claim a global clock,
+completion ordering across siblings, atomic tree reads or durable streamed deltas.
+The projection remains application-local: file-specific context and string replies,
+string tool results, two pinned sample envelopes, no generic activity/media rendering,
+no pagination, and no general cancellation-history projection. The separate pending
+question index carries answer targets; the tree retains presentation history after
+those targets disappear. UI-local submitting state is not durable acceptance.
+The shared tree/client contracts and React subscription are now package exports;
+the application decoders remain local. See the correlated-question promotion below.
+
+## Flight pressure test: data, authority, and frontend bindings
+
+The existing flight journey now also consumes `examples/flight-conversation-view.ts`
+through `createChatClient` from `@sweatpan.ts/chat-client`.
+The client exposes `getSnapshot`, `subscribe`, `refresh`, `answer`, and `close`.
+Snapshots distinguish observation status (`idle/loading/ready/error/closed`) from
+execution state inside the view. Refresh failure preserves the last view; obsolete
+successes and failures cannot replace a newer observation. Subscribers share stable
+snapshot references between changes. The view is caller-supplied readonly data;
+only the snapshot wrapper is frozen. This is not a streaming or pagination protocol.
+
+The file viewer now delegates to the same client instead of maintaining a separate
+refresh state machine. `useChat(client)` from `@sweatpan.tsx/chat` is a subscription-only React binding over
+an externally owned client. Neither hook unmount nor the plain DOM binding's disposal
+closes the client or server work. The file entry still owns its viewer explicitly.
+Initialization/refresh and client shutdown remain embedding-application decisions.
+
+`FlightCommand` is a discriminated union of structured selections and confirmation.
+Compile-time acceptance rejects mismatched kinds/values. The server also checks the
+kind against the stored request before adapting objects to the existing authored
+scalar answer schemas. Those pinned tool programs and their execution contracts are
+unchanged. This proves a typed public command adapter, not new object-valued durable
+elicit schemas. Exact execution/grant targets remain separate from presentation IDs.
+The portable tree derives question context and response from one correlated contract
+union, with a separate tool-result type. File replies stay strings; flight retains objects.
+
+The flight acceptance file runs in the DOM environment and retains its prior model
+protocol, interruption, physical-stop, failure and SQLite reopen evidence. React and
+an independent plain DOM subscriber render the same tree identities and structured
+booking/itinerary results. Commands are exercised through both bindings. Reconnect
+during live nested sampling neither acquires another provider nor cancels it, and
+one subscriber can leave while the other continues. Obsolete refresh failure cannot
+overwrite a newer snapshot; a current failure retains renderable history.
+
+Two additional cancellation cases (one per runtime) cancel a displayed flight
+question, reject its stale UI answer, retain a cancelled historical question with
+the same identity, and remove its actionable target after refresh. Reopen preserves
+that view and the old grant remains invalid. Cancellation is projected from retained
+control evidence, never converted into a fabricated failed answer.
+
+**Design result:** `messages[].parts` is a useful derived rendering view, not the
+execution journal or the sole source of answer authority. The common boundary is
+an observable client over typed public view data and commands, with application
+projection policy below and frontend rendering above. No new runtime primitive was
+needed in this extension. The flight decoder and frontend presentation remain application experiments.
+
+**Still open:** general activity,
+media, partial updates, pagination and merged cross-execution chronology remain
+unproven. The DOM binding replaces its subtree and is not a production focus/keyed
+reconciliation implementation; its controls choose the first declared option.
+Neither Vue/Svelte/native integration nor SSR/hydration has been validated. These
+are in-process DOM/SQLite journeys with simulated peers, not deployed browser proof.
+
+## Correlated-question promotion
+
+File and flight now import the observable client, tree types/materializer and
+question contract helpers from `@sweatpan.ts/chat-client`, and the external-client
+hook from `@sweatpan.tsx/chat`. Superseded local implementations were removed.
+Each application declares one union of kind/context/response. Display contexts,
+historical questions and submission commands derive from it. Narrow `kind` and
+`state` on a history node to read its precise response; answered nodes require that
+response and pending/cancelled nodes cannot claim one. The materializer preserves
+that union while handling only identity/placement. Its internal type erasure does
+not reinterpret payload fields; all producer and consumer boundaries stay typed.
+
+The real flight renderers read correlated selections without casts. Compile-time
+acceptance rejects a seat question with a flight response, incorrect context,
+answered history without a response, pending history with a response, and malformed
+normalized records and commands. Both source and emitted declaration checks include
+these consumers. File ingress still uses its ergonomic text command wrapper, with
+its text type derived from the same file question contract.
+
+This promotion adds no automatic transport, owned-hook lifecycle, runtime schema
+registry or server policy. Commands stay on the externally owned client; the hook
+returns observation state. Public package READMEs describe the complete small surface
+and its ownership/validation boundaries. Application decoders, UI choices, typed
+flight-to-tool adaptation and all actual rendering remain in the acceptance examples.
+
+Flight React consumers now use a typed `createChatContext` declaration, with separate
+message and question components subscribing through `useChat()`. The same SQLite
+journey covers StrictMode, nested providers, client replacement and unmount without
+closing either externally owned client. Typed context actions retain command correlation.

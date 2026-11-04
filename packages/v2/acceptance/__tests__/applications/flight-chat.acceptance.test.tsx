@@ -1,3 +1,14 @@
+import { act, fireEvent, render, within, waitFor } from "@testing-library/react";
+import { createChatClient } from "@sweatpan.ts/chat-client";
+import { createFlightConversationView } from "../../examples/flight-conversation-view.ts";
+import { StrictMode } from "react";
+import { ChatProvider, FlightMessages, FlightPanel } from "../../examples/flight-view-ui.tsx";
+import { createFlightDomView } from "../../examples/flight-view-dom.ts";
+import type {
+  FlightView,
+  FlightCommand,
+  FlightReceipt,
+} from "../../examples/flight-view-contract.ts";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
@@ -20,6 +31,7 @@ import {
 import { createPullStream, type Runtime } from "@sweatpan.ts/runtime";
 import {
   createHostedRecovery,
+  createLatch,
   createSqliteJournalRig,
   createProtocolRig,
 } from "@sweatpan.ts/testing";
@@ -84,9 +96,10 @@ const itinerary = response([
 ]);
 const final = response([{ type: "text", text: "Your flight choices are ready." }]);
 
-forEachRuntime(<Y>(runtime: Runtime<Y>) => {
+forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
   for (const mode of [
     "normal",
+    "cancelled",
     "accepted-interruption",
     "provider-failure",
     "physical-stop",
@@ -189,7 +202,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       function bind() {
-        const recovery = <R>(
+        const recovery = <R,>(
           options: Parameters<
             typeof createHostedRecovery<R, CapabilityRequest, Y, unknown, string>
           >[1],
@@ -316,6 +329,71 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           }
         }).result;
       }
+      const wire = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+      let nextRead:
+        | {
+            ready: ReturnType<typeof createLatch<void>>;
+            release: ReturnType<typeof createLatch<void>>;
+          }
+        | undefined;
+      const client = createChatClient<FlightView, FlightCommand, FlightReceipt>({
+        transport: {
+          async observe() {
+            const delay = nextRead;
+            nextRead = undefined;
+            const view = wire(
+              await task(() => createFlightConversationView(runtime, journal, chat).observe())
+                .result,
+            );
+            if (delay) {
+              delay.ready.resolve();
+              await delay.release.promise;
+              throw new Error("Delayed observation failed");
+            }
+            return view;
+          },
+          async answer(command) {
+            return wire(
+              await task(() =>
+                createFlightConversationView(runtime, journal, chat).answer(wire(command)),
+              ).result,
+            );
+          },
+        },
+      });
+      const react = render(
+        <StrictMode>
+          <FlightPanel client={client} />
+        </StrictMode>,
+      );
+      expect(client.getSnapshot().status).toBe("idle");
+      const reactUI = within(react.container);
+      const element = document.createElement("div");
+      document.body.append(element);
+      let dom = createFlightDomView(element, client);
+      const native = within(element);
+      onTestFinished(() => {
+        react.unmount();
+        dom.dispose();
+        client.close();
+        element.remove();
+      });
+      async function refresh() {
+        await act(async () => {
+          await client.refresh();
+        });
+      }
+      function sameNodes() {
+        expect(
+          [...react.container.querySelectorAll("[data-node]")].map((node) =>
+            node.getAttribute("data-node"),
+          ),
+        ).toEqual(
+          [...element.querySelectorAll("[data-node]")].map((node) =>
+            node.getAttribute("data-node"),
+          ),
+        );
+      }
       await task(() => journal.admit(flightChat.id, { prompt: "Help choose my flight." })).result;
       const beginning = task(chat.run);
       await Promise.race([peer.waitForRequests(1), beginning.result]);
@@ -328,7 +406,43 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         { id: "flight-1", airline: "SkyHigh" },
         { id: "flight-2", airline: "CloudAir" },
       ]);
-      await task(() => chat.answer(flight!, { ok: true, value: "flight-1" })).result;
+      await refresh();
+      sameNodes();
+      const stale = client.getSnapshot().view!.questions[0]!;
+      if (mode === "cancelled") {
+        await task(function* () {
+          const state = yield* journal.read();
+          if (state.status !== "running" || !state.pending) {
+            throw new Error("Expected active batch");
+          }
+          yield* journal.cancellation!.request(state.pending.id, "Trip cancelled");
+        }).result;
+        fireEvent.click(reactUI.getByRole("button", { name: "Answer flight" }));
+        await reactUI.findByRole("alert");
+        expect(client.getSnapshot().view!.questions).toHaveLength(1); // Stale display grants no authority.
+        await task(chat.run).result;
+        await refresh();
+        expect(client.getSnapshot().view!.questions).toEqual([]);
+        expect(reactUI.getByText("flight: cancelled")).toBeTruthy();
+        expect(native.getByText("flight: cancelled")).toBeTruthy();
+        const cancelled = client.getSnapshot().view;
+        reopen();
+        await refresh();
+        expect(client.getSnapshot().view).toEqual(cancelled);
+        await expect(
+          client.answer({ kind: "flight", target: stale, value: { flight: "flight-1" } }),
+        ).rejects.toThrow();
+        expect(peer.requests).toHaveLength(1);
+        sameNodes();
+        return;
+      }
+      if (mode === "normal") {
+        fireEvent.click(reactUI.getByRole("button", { name: "Answer flight" }));
+        await waitFor(() => expect(client.getSnapshot().view!.questions).toEqual([]));
+        expect(native.getByText("flight: answered (flight-1)")).toBeTruthy();
+      } else {
+        await task(() => chat.answer(flight!, { ok: true, value: "flight-1" })).result;
+      }
       expect(await task(chat.run).result).toMatchObject({ state: "child", reason: "waiting" });
       reopen();
       const [seat] = await questions();
@@ -336,7 +450,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(
         task(() => chat.answer(seat!, { ok: true, value: "99Z" })).result,
       ).rejects.toThrow();
-      await task(() => chat.answer(seat!, { ok: true, value: "2A" })).result;
+      await refresh();
+      // Envelope kind and exact durable request are checked together on the server.
+      await expect(
+        client.answer({
+          kind: "flight",
+          target: client.getSnapshot().view!.questions[0]!,
+          value: { flight: "flight-1" },
+        }),
+      ).rejects.toThrow("Question kind");
+      if (mode === "normal") {
+        fireEvent.click(native.getByRole("button", { name: "Answer seat" }));
+        await waitFor(() => expect(client.getSnapshot().view!.questions).toEqual([]));
+        expect(reactUI.getByText("seat: answered (2A)")).toBeTruthy();
+      } else {
+        await task(() => chat.answer(seat!, { ok: true, value: "2A" })).result;
+      }
       expect(peer.requests).toHaveLength(1); // Answers never start advancement.
       reopen();
       const nested = task(chat.run);
@@ -352,6 +481,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       expect(requests[1]!.request.context.messages).toHaveLength(1);
+      const count = acquired;
+      await refresh();
+      expect(acquired).toBe(count);
+      sameNodes();
+      expect(client.getSnapshot().view!.status).toBe("running");
+      expect(client.getSnapshot().view!.questions).toEqual([]);
+      dom.dispose();
+      expect(peer.aborted).not.toContain("model-1");
+      dom = createFlightDomView(element, client);
       if (mode === "provider-failure" || mode === "physical-stop") {
         if (mode === "provider-failure") {
           peer.fail("model-1", new Error("Provider connection lost"));
@@ -412,7 +550,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         program: saveItinerary.id,
         input: { flight: "flight-1", seat: "2A" },
       });
-      await task(() => chat.answer(confirmation!, { ok: true, value: "save" })).result;
+      await refresh();
+      expect(reactUI.getByText("Booked flight: flight-1, seat: 2A")).toBeTruthy();
+      expect(native.getByText("Take the airport shuttle.")).toBeTruthy();
+      sameNodes();
+      if (mode === "normal") {
+        fireEvent.click(reactUI.getByRole("button", { name: "Answer save" }));
+        await waitFor(() => expect(client.getSnapshot().view!.questions).toEqual([]));
+      } else {
+        await task(() => chat.answer(confirmation!, { ok: true, value: "save" })).result;
+      }
       expect(saves).toBe(0);
       reopen();
       const completed = task(chat.run);
@@ -438,6 +585,132 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(searches).toBe(1);
       expect(saves).toBe(1);
       expect(released).toBe(acquired);
+      await refresh();
+      expect(reactUI.getByText("Saved itinerary: flight-1:2A")).toBeTruthy();
+      expect(native.getByText("Saved itinerary: flight-1:2A")).toBeTruthy();
+      sameNodes();
+      const restored = client.getSnapshot().view;
+      const booking = restored!.messages
+        .flatMap((message) => ("parts" in message ? message.parts : []))
+        .find((part) => part.type === "tool-call" && part.callId === "booking");
+      expect(booking).toMatchObject({
+        output: { flight: "flight-1", seat: "2A" },
+        parts: expect.arrayContaining([
+          expect.objectContaining({
+            type: "question",
+            kind: "flight",
+            response: { flight: "flight-1" },
+          }),
+          expect.objectContaining({
+            type: "question",
+            kind: "seat",
+            response: { seat: "2A" },
+          }),
+        ]),
+      });
+      if (mode === "normal") {
+        const delay = { ready: createLatch<void>(), release: createLatch<void>() };
+        onTestFinished(() => delay.release.resolve());
+        nextRead = delay;
+        let older: ReturnType<typeof client.refresh>;
+        act(() => {
+          older = client.refresh();
+        });
+        await delay.ready.promise;
+        await refresh();
+        const latest = client.getSnapshot();
+        await act(async () => {
+          delay.release.resolve();
+          await older;
+        });
+        expect(client.getSnapshot()).toBe(latest); // Obsolete failure cannot overwrite newer state.
+        const failed = { ready: createLatch<void>(), release: createLatch<void>() };
+        onTestFinished(() => failed.release.resolve());
+        nextRead = failed;
+        await act(async () => {
+          const read = client.refresh();
+          failed.release.resolve();
+          await expect(read).rejects.toThrow("Delayed observation failed");
+        });
+        expect(client.getSnapshot()).toMatchObject({ status: "error", view: restored });
+        expect(native.getByText("Saved itinerary: flight-1:2A")).toBeTruthy();
+      }
+      reopen();
+      await refresh();
+      expect(client.getSnapshot().view).toEqual(restored);
+      expect(client.getSnapshot()).toBe(client.getSnapshot());
+      react.unmount();
+      await client.refresh(); // Remaining DOM subscriber survives React disposal.
+      expect(native.getByText("Saved itinerary: flight-1:2A")).toBeTruthy();
+
+      // A nested provider selects another session without starting observation.
+      const second = createChatClient<FlightView, FlightCommand, FlightReceipt>({
+        transport: {
+          async observe() {
+            return wire(
+              await task(() => createFlightConversationView(runtime, journal, chat).observe())
+                .result,
+            );
+          },
+          answer: (command) => client.answer(command),
+        },
+      });
+      onTestFinished(() => second.close());
+      const sessions = render(
+        <StrictMode>
+          <ChatProvider client={client}>
+            <section aria-label="Original session">
+              <FlightMessages />
+            </section>
+            <ChatProvider client={second}>
+              <section aria-label="Second session">
+                <FlightMessages />
+              </section>
+            </ChatProvider>
+          </ChatProvider>
+        </StrictMode>,
+      );
+      onTestFinished(() => sessions.unmount());
+      expect(
+        within(sessions.getByLabelText("Original session")).getByText(
+          "Saved itinerary: flight-1:2A",
+        ),
+      ).toBeTruthy();
+      expect(sessions.getByLabelText("Second session").textContent).toBe("");
+      expect(second.getSnapshot().status).toBe("idle");
+      await act(async () => {
+        await second.refresh();
+      });
+      expect(
+        within(sessions.getByLabelText("Second session")).getByText("Saved itinerary: flight-1:2A"),
+      ).toBeTruthy();
+      // Replacing a provider's client switches subscriptions. Closing the old one
+      // must not erase the replacement's retained view.
+      sessions.rerender(
+        <StrictMode>
+          <ChatProvider client={second}>
+            <section aria-label="Original session">
+              <FlightMessages />
+            </section>
+            <ChatProvider client={second}>
+              <section aria-label="Second session">
+                <FlightMessages />
+              </section>
+            </ChatProvider>
+          </ChatProvider>
+        </StrictMode>,
+      );
+      await act(async () => {
+        client.close();
+      });
+      expect(
+        within(sessions.getByLabelText("Original session")).getByText(
+          "Saved itinerary: flight-1:2A",
+        ),
+      ).toBeTruthy();
+      sessions.unmount();
+      expect(second.getSnapshot().status).toBe("ready");
+      await second.refresh();
     });
   }
 });

@@ -26,6 +26,7 @@ export function createJournalCommands<R, Q, V, E, S, Y>(
   OwnedJournal<R, Q, V, E, S, Y>,
   | "ensureChild"
   | "ensureChildren"
+  | "readChildren"
   | "openChild"
   | "openChildInteractions"
   | "openDescendantInteractions"

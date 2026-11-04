@@ -1,2 +1,3 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export { useChat } from "./use-chat.ts";
+export { createChatContext } from "./chat-context.ts";
+export type { ChatProviderProps, ChatState } from "./contracts.ts";

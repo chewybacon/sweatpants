@@ -165,6 +165,15 @@ export function createFileConversation<Y>(
         )
         .all(conversation) as Pick<Turn, "execution" | "ordinal" | "command" | "prompt">[];
     },
+    reader(execution: string) {
+      const owned = journal(execution);
+      return {
+        id: owned.id,
+        read: owned.read,
+        readChildren: owned.readChildren,
+        openChild: owned.openChild,
+      };
+    },
     read(execution: string) {
       return journal(execution).read();
     },

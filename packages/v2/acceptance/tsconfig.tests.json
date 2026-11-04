@@ -4,8 +4,15 @@
     "noEmit": true,
     "types": ["node"],
     "customConditions": ["development"],
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "__tests__/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "__tests__/**/*.ts",
+    "vitest.config.ts",
+    "jsdom-with-node-runtime.ts",
+    "__tests__/**/*.tsx"
+  ],
   "exclude": ["dist", "node_modules"]
 }

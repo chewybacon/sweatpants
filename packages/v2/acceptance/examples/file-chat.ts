@@ -50,6 +50,28 @@ const readFile = defineTool("file-reader-v1")
     return answer.value;
   });
 
+// A second concrete tool exposes nested sampling in the public projection.
+export const fileReviewSample = defineEffect({
+  key: "file-review.sample-v1",
+  context: z.object({ text: z.string() }),
+  response: z.object({ text: z.string() }),
+});
+const reviewFile = defineTool("file-reviewer-v1")
+  .parameters(z.object({ path: z.string() }))
+  .capabilities({ sample: fileReviewSample })
+  .elicits({ file: fileAnswer })
+  .execute(function* ({ path }, ctx) {
+    const answer = yield* ctx.elicit("file", { path, step: "read" });
+    if (!answer.ok) {
+      throw new Error("File was not supplied");
+    }
+    const review = yield* ctx.capabilities.sample({ text: answer.value });
+    if (!review.ok) {
+      throw new Error("Review unavailable");
+    }
+    return review.value.text;
+  });
+
 const program = defineChatProgram({
   id: "file-chat-v2",
   history(admitted) {
@@ -105,7 +127,7 @@ const turnInput = z.object({
   history: z.custom<readonly ChatHistoryMessage[]>(Array.isArray),
 });
 const conversationTurn = defineChatProgram({
-  id: "file-conversation-turn-v1",
+  id: "file-conversation-turn-v2",
   history(admitted) {
     const input = turnInput.parse(admitted);
     return [...input.history, { role: "user", content: input.prompt }];
@@ -127,7 +149,43 @@ export function createFileConversationTurn<Y>(
 ) {
   return conversationTurn.bind(runtime, {
     journal,
-    tools: [fileTool(runtime, dependencies)],
+    tools: [
+      fileTool(runtime, dependencies),
+      createChatToolBinding(runtime, reviewFile, {
+        definition: {
+          name: "review_file",
+          description: "Review supplied file contents.",
+          parameters: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+        recovery: dependencies.recovery,
+        matches: dependencies.matches,
+        *configure({ effects }) {
+          yield* effects.install(fileReviewSample, function* ({ text }) {
+            const sampled = yield* dependencies.sampling.sample({
+              round: 0,
+              history: [{ role: "user", content: text }],
+              tools: [],
+            });
+            if (!sampled.ok) {
+              return sampled;
+            }
+            return {
+              ok: true as const,
+              value: {
+                text: sampled.value.response.message.content
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join(""),
+              },
+            };
+          });
+        },
+      }),
+    ],
     ...dependencies,
   });
 }

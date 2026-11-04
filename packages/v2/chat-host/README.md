@@ -205,7 +205,7 @@ preserves occupied attempts without redispatch. Type fixtures check heterogeneou
 results against source and emitted declarations. These are in-process protocol/reopen
 journeys, not live provider, OS-crash or deployment guarantees.
 
-The [flight-choice journey](../acceptance/__tests__/applications/flight-chat.acceptance.test.ts)
+The [flight-choice journey](../acceptance/__tests__/applications/flight-chat.acceptance.test.tsx)
 reconstructs a v1 tool behavior: an outer model calls an authored tool, the tool asks
 for a flight and seat, then requests a travel tip before returning its result to the
 outer chat. In the next model round it calls a different authored tool to confirm and

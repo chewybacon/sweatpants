@@ -357,3 +357,15 @@ settlement. Its prior history scan and projection reconstruction were removed fr
 answer ingress. Program contracts, role checks and schema parsing remain application
 policy. Memory/SQLite journeys exercise subtree boundaries and projection-free answers;
 a scripted storage peer supplies inconsistent/cyclic evidence to verify rejection.
+
+### Retained child discovery
+
+`JournalReader.readChildren(requestId)` returns direct child links in persisted
+caller declaration order. Pass a current pending request ID or an accepted history
+receipt to find active or historical children, then `openChild` to observe them.
+Unknown boundaries and boundaries without children return an empty list. Every
+returned link is checked against its stored child and parent request. The lookup
+is connection-bound and read-only: no child creation, Guest acquisition, activation,
+result-projection installation, or new storage schema. Returned inputs are trusted
+storage data, not a redacted public view. Reads of different children are separate
+snapshots and their declaration order is not a cross-child completion timeline.

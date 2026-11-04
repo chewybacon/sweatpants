@@ -301,6 +301,20 @@ for (const storage of ["memory", "sqlite"] as const) {
       function* observeWork() {
         const intent = yield* store.activations.read();
         const nodes: Node[] = [];
+        const snapshot = yield* parent.read();
+        expect(yield* parent.readChildren("unknown-boundary")).toEqual([]);
+        if (snapshot.status === "running" && snapshot.pending && snapshot.children) {
+          expect(yield* parent.readChildren(snapshot.pending.id)).toEqual(snapshot.children);
+        }
+        const history = yield* snapshot.history.read(0, snapshot.history.end.position || 1);
+        for (const entry of history) {
+          for (const link of yield* parent.readChildren(entry.receipt)) {
+            expect(link.parentId).toBe(parent.id);
+            expect(link.requestId).toBe(entry.receipt);
+            const child = yield* parent.openChild(link.childId);
+            expect((yield* child.read()).program).toBe(link.program);
+          }
+        }
         const stream = yield* createJournalTreeStream(runtime.composition, parent);
         while (true) {
           const item = yield* stream.next();
@@ -554,6 +568,7 @@ for (const storage of ["memory", "sqlite"] as const) {
       function tracked(reader: Reader): Reader {
         return {
           id: reader.id,
+          readChildren: reader.readChildren,
           *read() {
             reads.push(reader.id);
             const snapshot = yield* reader.read();
@@ -575,7 +590,7 @@ for (const storage of ["memory", "sqlite"] as const) {
           *openChild(id) {
             opens.push(id);
             const child = yield* reader.openChild(id);
-            expect(Object.keys(child).sort()).toEqual(["id", "openChild", "read"]);
+            expect(Object.keys(child).sort()).toEqual(["id", "openChild", "read", "readChildren"]);
             return tracked(child);
           },
         };
@@ -621,6 +636,7 @@ for (const storage of ["memory", "sqlite"] as const) {
       const escaped = await start(function* () {
         const subscription = yield* createJournalTreeStream(runtime.composition, {
           id: reader.id,
+          readChildren: reader.readChildren,
           read: reader.read,
           *openChild(id) {
             opens++;
@@ -661,6 +677,7 @@ for (const storage of ["memory", "sqlite"] as const) {
       await start(function* () {
         const subscription = yield* createJournalTreeStream(runtime.composition, {
           id: reader.id,
+          readChildren: reader.readChildren,
           read: reader.read,
           *openChild() {
             attempts++;

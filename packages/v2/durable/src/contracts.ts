@@ -347,6 +347,10 @@ export interface JournalReader<R, Q, V, E, S = unknown, Y = never> extends Pick<
   "read"
 > {
   readonly id: string;
+  /** Read persisted direct children in declaration order for a pending request ID
+   * or accepted receipt. Unknown/non-child boundaries return an empty list. Retained
+   * links survive completion; this neither creates children nor advances execution. */
+  readChildren(requestId: string): Operation<readonly ChildLink[], Y>;
   /** Open an existing direct child, including a retained historical child.
    * Rejects unrelated/missing identities. Creates no child, installs no result
    * projection, and acquires no Guest. Reopen through a fresh parent after closing

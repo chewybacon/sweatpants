@@ -89,12 +89,31 @@ export function createJournalBinding<R, Q, V, E, S = unknown, Y = never>(
     }
     return {
       id,
+      *readChildren(requestId) {
+        return yield* invoke(function* (_tree, records) {
+          const links = (yield* records.request(id, requestId))?.children ?? [];
+          const verified: ChildLink[] = [];
+          for (const link of links) {
+            const owned = yield* readOwnedLink(records, id, link.childId);
+            if (owned.requestId !== requestId) {
+              throw new Error("Inconsistent child boundary");
+            }
+            verified.push(owned);
+          }
+          return verified;
+        });
+      },
       *openChild(
         childId,
       ): Operation<JournalReader<unknown, unknown, unknown, unknown, unknown, Y>, Y> {
         const link = yield* ownedLink(childId);
         const child = bind<unknown, unknown, unknown, unknown, unknown>(childId, link.program);
-        return { id: child.id, read: child.read, openChild: child.openChild };
+        return {
+          id: child.id,
+          read: child.read,
+          readChildren: child.readChildren,
+          openChild: child.openChild,
+        };
       },
       *openChildInteractions<CQ, CV, CE>(
         childId: string,

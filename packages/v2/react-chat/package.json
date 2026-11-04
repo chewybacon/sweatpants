@@ -23,7 +23,15 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/react-chat",
     "format:check": "cd ../../.. && oxfmt packages/v2/react-chat --check"
   },
+  "dependencies": {
+    "@sweatpan.ts/chat-client": "workspace:*"
+  },
   "devDependencies": {
+    "@types/react": "catalog:",
+    "react": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
   }
 }
