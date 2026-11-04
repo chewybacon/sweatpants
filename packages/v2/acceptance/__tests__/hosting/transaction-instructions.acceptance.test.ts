@@ -10,9 +10,7 @@ import { type TransactionInstruction } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -46,7 +44,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     return { run: () => start(() => host.operations.run()), journal };
   }
-
   it(`${runtime.name}: hosted transaction infers its result and composes lazy commit registrations`, async () => {
     const storage = createJournalStorageRig(runtime, "data");
     const events: string[] = [];
@@ -56,13 +53,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const tx = {
           ...transaction,
           onCommit: composeOperation(transaction.onCommit, [
-            function* ([publish], next) {
-              events.push("register");
-              yield* next(() => {
-                events.push("wrapped");
-                publish();
-              });
-            },
+            (next) =>
+              function* (publish) {
+                events.push("register");
+                yield* next(() => {
+                  events.push("wrapped");
+                  publish();
+                });
+              },
           ]),
         };
         // Construction alone must not register or enter middleware.
@@ -82,7 +80,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         events.push("body");
         return { revision: root.snapshot.revision, source: "data" as const };
       });
-      expectTypeOf(result).toEqualTypeOf<{ revision: number; source: "data" }>();
+      expectTypeOf(result).toEqualTypeOf<{
+        revision: number;
+        source: "data";
+      }>();
       events.push("acknowledged");
       return result.source;
     });
@@ -98,7 +99,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       "acknowledged",
     ]);
   });
-
   it(`${runtime.name}: native storage failure discards instruction publications and leaves the hosted attempt occupied`, async () => {
     const storage = createJournalStorageRig(runtime, "data");
     const transactions = storage.backend;
@@ -122,7 +122,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect((await s.run().result).state).toBe("occupied");
     expect((await start(() => s.journal.read()).result).frontier.position).toBe(0);
   });
-
   it(`${runtime.name}: hosted transaction rejects an instruction belonging to another live transaction`, async () => {
     const first = createJournalStorageRig(runtime, "first");
     const second = createJournalStorageRig(runtime, "second");
@@ -146,7 +145,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(second.events).toContain("released");
     expect((await s.run().result).state).toBe("occupied");
   });
-
   it(`${runtime.name}: a retained registration operation cannot enter a later hosted transaction`, async () => {
     const storage = createJournalStorageRig(runtime, "data");
     const transactions = storage.backend;

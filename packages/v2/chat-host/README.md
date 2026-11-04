@@ -87,10 +87,9 @@ const approval = createChatToolBinding(runtime, approvalTool, {
   *configure({ host, effects }) {
     // Install this tool's native capability handlers and optional policies.
     yield* effects.install(inspect, inspectHandler);
-    yield* host.around(continuationPolicy());
+    yield* host.around({ operations: continuationPolicy() });
   },
 });
-
 const execution = createChatExecution(runtime, {
   name: "chat",
   program: pinnedProgram,
@@ -107,7 +106,6 @@ const execution = createChatExecution(runtime, {
   },
   configure: installChatHandlers,
 });
-
 const report = yield * execution.run();
 const questions = yield * execution.interactions();
 const question = yield * questions.next();

@@ -7,7 +7,6 @@ import { createSqliteJournalRig, createWorkerGuestRig, readJournal } from "@swea
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { Work } from "@standard-durability/core";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -67,7 +66,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(worker.terminations).toBe(1);
     });
   }
-
   for (const fault of ["lost", "invalid"] as const) {
     it(`${runtime.name}: ${fault} bootstrap acknowledgement abandons the incarnation and joins termination`, async () => {
       const failure = new AbortController();
@@ -115,7 +113,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(worker.terminations).toBe(1);
     });
   }
-
   it(`${runtime.name}: failed connection acquisition still joins worker termination`, async () => {
     const failure = new AbortController();
     failure.abort(new Error("already disconnected"));
@@ -133,7 +130,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(worker.terminations).toBe(1);
     expect(worker.commands).toEqual([]);
   });
-
   it(`${runtime.name}: independent failure releases a lost close acknowledgement during finalization`, async () => {
     const failure = new AbortController();
     let dropped!: () => void;
@@ -184,7 +180,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(logicalCleanups).toBe(0);
     expect(worker.commands.map((command) => command.action)).toEqual(["start", "close"]);
   });
-
   it(`${runtime.name}: overlapping next command is discarded while advancement is in flight`, async () => {
     const failure = new AbortController();
     let entered!: () => void;
@@ -252,7 +247,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(worker.responses).toEqual([]);
     expect(worker.terminations).toBe(1);
   });
-
   for (const cancel of [false, true]) {
     it(`${runtime.name}: serialized Guest recovers after lost resume response and ${cancel ? "cancels with joined cleanup" : "completes"}`, async () => {
       const store = createSqliteJournalRig<unknown, string, unknown, string, unknown, Y>({
@@ -319,8 +313,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function* install() {
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
           yield* host.around({
-            *deliveryMode([request]) {
-              return request === "reserve" ? "execute" : "wait";
+            operations: {
+              deliveryMode: () =>
+                function* (request) {
+                  return request === "reserve" ? "execute" : "wait";
+                },
             },
           });
         }

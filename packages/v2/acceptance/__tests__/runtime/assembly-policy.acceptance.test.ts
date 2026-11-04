@@ -3,46 +3,53 @@ import type { Middleware, Operations } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "./assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
-  type Reads = { read(id: string): string };
+  type Reads = {
+    read(id: string): string;
+  };
   describe(`${runtime.name}: behavior belongs to the assembled stack`, () => {
     for (const cacheFirst of [false, true]) {
       it(`deliberately controls cache interception through assembly order (cache first: ${cacheFirst})`, async () => {
         const peer = createProtocolRig();
         const trace: string[] = [];
-        const api = runtime.composition.createApi<Reads>("assembled-cache", {
-          *read(id) {
-            const reply = yield* runtime.fromPromise((signal) =>
-              peer.send({ id: `read:${id}`, token: "store" }, signal),
-            );
-            return reply.body;
+        const api = runtime.composition.createApi<Operations<Reads, Y>>("assembled-cache", {
+          operations: {
+            *read(id) {
+              const reply = yield* runtime.fromPromise((signal) =>
+                peer.send({ id: `read:${id}`, token: "store" }, signal),
+              );
+              return reply.body;
+            },
           },
         });
         const authorize: Middleware<Reads, Y> = {
-          *read([id], next) {
-            trace.push(`authorize:${id}`);
-            const reply = yield* runtime.fromPromise((signal) =>
-              peer.send({ id: `authorize:${id}`, token: "policy" }, signal),
-            );
-            if (reply.status !== 200) {
-              return "denied";
-            }
-            return yield* next(id);
-          },
+          read: (next) =>
+            function* (id) {
+              trace.push(`authorize:${id}`);
+              const reply = yield* runtime.fromPromise((signal) =>
+                peer.send({ id: `authorize:${id}`, token: "policy" }, signal),
+              );
+              if (reply.status !== 200) {
+                return "denied";
+              }
+              return yield* next(id);
+            },
         };
         const cache: Middleware<Reads, Y> = {
-          *read([id], next) {
-            trace.push(`cache:${id}`);
-            if (id === "cached") {
-              return "cached value";
-            }
-            return yield* next(id);
-          },
+          read: (next) =>
+            function* (id) {
+              trace.push(`cache:${id}`);
+              if (id === "cached") {
+                return "cached value";
+              }
+              return yield* next(id);
+            },
         };
         const execution = runtime.start(function* () {
           for (const layer of cacheFirst ? [cache, authorize] : [authorize, cache]) {
-            yield* api.around(layer);
+            yield* api.around({
+              operations: layer,
+            });
           }
           const cached = yield* api.operations.read("cached");
           const live = yield* api.operations.read("live");
@@ -77,7 +84,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
       });
     }
-
     it("replaces a context capability with a wrapped raw implementation and restores the facade", async () => {
       const peer = createProtocolRig();
       const trace: string[] = [];
@@ -89,21 +95,28 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       const raw = driver("raw");
-      const api = runtime.composition.createApi<Reads>("replaceable-reader", raw);
+      const api = runtime.composition.createApi<Operations<Reads, Y>>("replaceable-reader", {
+        operations: raw,
+      });
       // Capturing the facade does not bind it to the scope where it was obtained.
       const captured = api.operations;
       const execution = runtime.start(function* () {
         yield* capability.set(captured);
         yield* api.around({
-          *read(args, next) {
-            trace.push(`intercept:${args[0]}`);
-            return yield* next(...args);
+          operations: {
+            read: (next) =>
+              function* (...args) {
+                trace.push(`intercept:${args[0]}`);
+                return yield* next(...args);
+              },
           },
         });
         const parentClient = yield* capability.expect();
         const parent = yield* parentClient.read("parent");
         const child = yield* runtime.composition.scoped(function* () {
-          yield* api.install(driver("child"));
+          yield* api.install({
+            operations: driver("child"),
+          });
           yield* capability.set({
             *read(id) {
               trace.push(`replacement:${id}`);
@@ -150,40 +163,49 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       // A fresh root has no capability binding from the disposed execution.
       expect(await runtime.start(() => capability.get()).result).toBeUndefined();
     });
-
     it("keeps nested capabilities and finalizer calls inside their assembled scope", async () => {
       const peer = createProtocolRig();
       const trace: string[] = [];
       const token = runtime.composition.createContext<string>("nested-token");
-      const transport = runtime.composition.createApi<Reads>("nested-transport", {
-        *read(id) {
-          const credential = yield* token.expect();
-          const reply = yield* runtime.fromPromise((signal) =>
-            peer.send({ id, token: credential }, signal),
-          );
-          return reply.body;
+      const transport = runtime.composition.createApi<Operations<Reads, Y>>("nested-transport", {
+        operations: {
+          *read(id) {
+            const credential = yield* token.expect();
+            const reply = yield* runtime.fromPromise((signal) =>
+              peer.send({ id, token: credential }, signal),
+            );
+            return reply.body;
+          },
         },
       });
       const dependency = runtime.composition.createContext<Operations<Reads, Y>>("nested-client");
-      const service = runtime.composition.createApi<Reads>("nested-service", {
-        *read(id) {
-          const client = yield* dependency.expect();
-          return yield* client.read(id);
+      const service = runtime.composition.createApi<Operations<Reads, Y>>("nested-service", {
+        operations: {
+          *read(id) {
+            const client = yield* dependency.expect();
+            return yield* client.read(id);
+          },
         },
       });
       const execution = runtime.start(function* () {
         yield* token.set("parent");
         yield* dependency.set(transport.operations);
         yield* transport.around({
-          *read(args, next) {
-            trace.push(`transport:${args[0]}`);
-            return yield* next(...args);
+          operations: {
+            read: (next) =>
+              function* (...args) {
+                trace.push(`transport:${args[0]}`);
+                return yield* next(...args);
+              },
           },
         });
         yield* service.around({
-          *read(args, next) {
-            trace.push(`service:${args[0]}`);
-            return yield* next(...args);
+          operations: {
+            read: (next) =>
+              function* (...args) {
+                trace.push(`service:${args[0]}`);
+                return yield* next(...args);
+              },
           },
         });
         yield* runtime.composition.scoped(function* () {

@@ -24,7 +24,6 @@ import {
 import { createProtocolRig, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 let compiled: Promise<WebAssembly.Module> | undefined;
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -77,7 +76,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let starts = 0;
         let resumes = 0;
         let restores = 0;
-        const ranges: { from: number; end: number }[] = [];
+        const ranges: {
+          from: number;
+          end: number;
+        }[] = [];
         function run(stopAfterFirst = false) {
           const stored = store.open();
           const journal: typeof stored = {
@@ -189,41 +191,56 @@ return { hold = hold.value.text, approval = approval.error.code }
           });
           delivery = host.delivery;
           const execution = runtime.start(function* () {
-            yield* host.around(ctx.admission);
+            yield* host.around({
+              operations: ctx.admission,
+            });
             if (lifetime === "retain") {
               yield* installGuestRetention(runtime.composition, host, recovery, journal);
             }
             yield* host.around({
-              *child([pending], next) {
-                admissions++;
-                return yield* next(pending);
+              operations: {
+                child: (next) =>
+                  function* (pending) {
+                    admissions++;
+                    return yield* next(pending);
+                  },
               },
             });
             yield* effects.install(reserve);
             yield* effects.install(approve);
             for (const definition of [reserve, approve]) {
               yield* effects.api(definition).around({
-                *handle([input], next) {
-                  handlerMiddleware++;
-                  expectTypeOf(input).toEqualTypeOf<{ binding: string; hold: string }>();
-                  return yield* next(input);
+                operations: {
+                  handle: (next) =>
+                    function* (input) {
+                      handlerMiddleware++;
+                      expectTypeOf(input).toEqualTypeOf<{
+                        binding: string;
+                        hold: string;
+                      }>();
+                      return yield* next(input);
+                    },
                 },
               });
             }
             yield* recovery.execution.around({
-              *start(args, next) {
-                starts++;
-                return yield* next(...args);
-              },
-              *resume([outcome], next) {
-                resumes++;
-                expectTypeOf(outcome).toEqualTypeOf<Outcome<unknown, unknown>>();
-                return yield* next(outcome);
+              operations: {
+                start: (next) =>
+                  function* (...args) {
+                    starts++;
+                    return yield* next(...args);
+                  },
+                resume: (next) =>
+                  function* (outcome) {
+                    resumes++;
+                    expectTypeOf(outcome).toEqualTypeOf<Outcome<unknown, unknown>>();
+                    return yield* next(outcome);
+                  },
               },
             });
             if (checkpoints) {
-              yield* recovery.around(
-                createCheckpointMiddleware({
+              yield* recovery.around({
+                operations: createCheckpointMiddleware({
                   execution: recovery.execution,
                   program: "booking",
                   adapter: {
@@ -240,7 +257,7 @@ return { hold = hold.value.text, approval = approval.error.code }
                   },
                   matches: isDeepStrictEqual,
                 }),
-              );
+              });
             }
             expect(yield* host.delivery.get()).toBeUndefined();
             const result = yield* host.operations.run();
@@ -275,7 +292,13 @@ return { hold = hold.value.text, approval = approval.error.code }
         peer.reply("approve", { status: 200, body: "declined" });
         const result = await execution.result;
         expectTypeOf(result).toEqualTypeOf<
-          HostedResult<{ hold: string; approval: string }, CapabilityRequest>
+          HostedResult<
+            {
+              hold: string;
+              approval: string;
+            },
+            CapabilityRequest
+          >
         >();
         expect(result).toEqual({
           state: "completed",

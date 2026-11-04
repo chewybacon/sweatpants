@@ -27,7 +27,6 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string, T> {
   return {
     "~standard": {
@@ -41,7 +40,6 @@ function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string
     },
   };
 }
-
 // Mount, frames and client attachment below are provisional application composition,
 // not public framework APIs. A transport frame carries data, never a reply closure.
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
@@ -137,7 +135,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         responseParses: 0,
       });
       type Input = StandardSchemaV1.InferOutput<typeof tool.context>;
-      type Result = { token: string; approved: boolean };
+      type Result = {
+        token: string;
+        approved: boolean;
+      };
       type Ask = {
         kind: "elicitation";
         tool: string;
@@ -145,7 +146,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         grant: ResolutionGrant;
         input: unknown;
       };
-      type Frame = Ask | { kind: "completed"; value: Result };
+      type Frame =
+        | Ask
+        | {
+            kind: "completed";
+            value: Result;
+          };
       const store = createSqliteJournalRig<Result, CapabilityRequest, unknown, string, unknown, Y>({
         program: tool.id,
         equals: isDeepStrictEqual,
@@ -162,7 +168,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         onTestFinished(() => value.disconnect());
         return value;
       }
-
       function mount() {
         const journal = store.open();
         const presentation = createJournalPresentation(
@@ -199,7 +204,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         function* run() {
           yield* effects.install(stamp);
-          yield* host.around(acquisition.admission);
+          yield* host.around({
+            operations: acquisition.admission,
+          });
           yield* installElicitHandlers(host, effects, tool);
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
           return yield* host.operations.run();
@@ -250,7 +257,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         };
       }
-
       // Client registration is independent of mount. This concrete one-effect tracer
       // receives only the projected contract for dispatch and context validation.
       function onElicit(
@@ -258,15 +264,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         handlers: ElicitHandlers<typeof contract.elicits, Y>,
       ) {
         const replies = new Map<string, Outcome<string, unknown>>();
-        const handler = createElicitationHandler<{ question: string }, string, unknown, Y>(
-          runtime.composition,
-          "client-approval",
+        const handler = createElicitationHandler<
           {
-            *handle() {
-              throw new Error("Client handler not installed");
-            },
+            question: string;
           },
-        );
+          string,
+          unknown,
+          Y
+        >(runtime.composition, "client-approval", {
+          *handle() {
+            throw new Error("Client handler not installed");
+          },
+        });
         return async (frame: Ask) => {
           if (frame.tool !== view.id || frame.effect !== view.elicits.approval.id) {
             throw new Error("Unknown client interaction");
@@ -284,7 +293,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           }
           const handle = handlers.approval;
           const value = await start(function* () {
-            yield* handler.install({ handle });
+            yield* handler.install({
+              operations: { handle },
+            });
             return yield* handler.operations.handle(parsed.value);
           }).result;
           replies.set(frame.grant.resolutionId, value);
@@ -293,7 +304,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       const client = onElicit(contract, {
         *approval(context) {
-          expectTypeOf(context).toEqualTypeOf<{ question: string }>();
+          expectTypeOf(context).toEqualTypeOf<{
+            question: string;
+          }>();
           expect(context.question).toBe("Approve deploy?");
           clientCalls++;
           return { ok: true, value: "yes" };

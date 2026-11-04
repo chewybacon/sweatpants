@@ -13,10 +13,14 @@ import {
 import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { Operation } from "@standard-durability/core";
 import type { HostedResult } from "@sweatpan.ts/hosting";
-
 export function chatProgramInference<Y>(
   runtime: Runtime<Y>,
-  binding: ChatProgramBinding<{ summary: string }, Y>,
+  binding: ChatProgramBinding<
+    {
+      summary: string;
+    },
+    Y
+  >,
 ) {
   const program = defineChatProgram({
     id: "summary-v1",
@@ -32,7 +36,12 @@ export function chatProgramInference<Y>(
   });
   const execution = program.bind(runtime, binding);
   const operation: Operation<
-    HostedResult<{ summary: string }, CapabilityRequest>,
+    HostedResult<
+      {
+        summary: string;
+      },
+      CapabilityRequest
+    >,
     Y
   > = execution.run();
   // @ts-expect-error Application result projection is retained, not erased to unknown/string.
@@ -42,7 +51,6 @@ export function chatProgramInference<Y>(
   void operation;
   void wrong;
 }
-
 // Checked through both source and emitted public declarations; never executed.
 export function chatHostInference<Y>(
   runtime: Runtime<Y>,
@@ -68,16 +76,19 @@ export function chatHostInference<Y>(
       matches: () => true,
       *configure({ host }) {
         yield* host.around({
-          *run(args, next) {
-            const result = yield* next(...args);
-            if (result.state === "completed") {
-              const value: number = result.value;
-              void value;
-              // @ts-expect-error This tool completes with a number.
-              const wrong: string = result.value;
-              void wrong;
-            }
-            return result;
+          operations: {
+            run: (next) =>
+              function* (...args) {
+                const result = yield* next(...args);
+                if (result.state === "completed") {
+                  const value: number = result.value;
+                  void value;
+                  // @ts-expect-error This tool completes with a number.
+                  const wrong: string = result.value;
+                  void wrong;
+                }
+                return result;
+              },
           },
         });
       },

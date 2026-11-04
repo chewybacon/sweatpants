@@ -31,7 +31,6 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -54,15 +53,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const provider = createModelProvider(runtime.composition, "provider", driver("parent"));
     const task = start(function* () {
       yield* provider.around({
-        *stream([request], next) {
-          const reader = yield* next(request);
-          return {
-            *next() {
-              const item = yield* reader.next();
-              observed.push(item.value);
-              return item;
+        operations: {
+          stream: (next) =>
+            function* (request) {
+              const reader = yield* next(request);
+              return {
+                *next() {
+                  const item = yield* reader.next();
+                  observed.push(item.value);
+                  return item;
+                },
+              };
             },
-          };
         },
       });
       const parent = yield* provider.operations.stream("request");
@@ -71,7 +73,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           (label) =>
             function* () {
               return yield* runtime.composition.scoped(function* () {
-                yield* provider.install(driver(label));
+                yield* provider.install({
+                  operations: driver(label),
+                });
                 const reader = yield* provider.operations.stream("request");
                 const value = yield* reader.next();
                 return value.value;
@@ -88,7 +92,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(observed.slice(0, 2).sort()).toEqual(["left", "right"]);
     expect(observed.slice(2)).toEqual(["parent", "parent"]);
   });
-
   it(`${runtime.name}: one program binding resolves sibling scoped drivers and restores its parent`, async () => {
     function driver(label: string) {
       return {
@@ -117,7 +120,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           (label) =>
             function* () {
               return yield* runtime.composition.scoped(function* () {
-                yield* resolver.install(driver(label));
+                yield* resolver.install({
+                  operations: driver(label),
+                });
                 const guest = yield* bound.acquire();
                 yield* runtime.composition.ensure(() => guest.close());
                 return yield* guest.start();
@@ -135,7 +140,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     await task.result;
   });
-
   it(`${runtime.name}: admission policies isolate concurrent callers and denial precedes schema or storage`, async () => {
     let validations = 0;
     const tool = {
@@ -156,11 +160,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const task = start(function* () {
       yield* allowed.set(false);
       yield* admission.around({
-        *admit([input], next) {
-          if (!(yield* allowed.expect())) {
-            throw new Error("Admission denied");
-          }
-          return yield* next(input);
+        operations: {
+          admit: (next) =>
+            function* (input) {
+              if (!(yield* allowed.expect())) {
+                throw new Error("Admission denied");
+              }
+              return yield* next(input);
+            },
         },
       });
       yield* runtime.composition.catchError(
@@ -198,7 +205,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect((await read.result).admission?.input).toBe("input");
     expect(validations).toBe(1);
   });
-
   it(`${runtime.name}: response source/cursor policy is scoped and cannot retarget an existing reader`, async () => {
     const sources = new Map<string, BufferedSignal<string, string, Y>>();
     for (const name of ["a", "b"]) {
@@ -224,11 +230,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       yield* selected.set("a");
       yield* access.set(false);
       yield* outputs.around({
-        *subscribe(args, next) {
-          if (!(yield* access.expect())) {
-            throw new Error("Output denied");
-          }
-          return yield* next(...args);
+        operations: {
+          subscribe: (next) =>
+            function* (...args) {
+              if (!(yield* access.expect())) {
+                throw new Error("Output denied");
+              }
+              return yield* next(...args);
+            },
         },
       });
       yield* runtime.composition.catchError(
@@ -271,7 +280,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await task.result;
     expect(subscriptions).toBe(3);
   });
-
   it(`${runtime.name}: client handler replacement restores after scope exit and pending UI cancels independently`, async () => {
     const peer = createProtocolRig();
     const handler = createElicitationHandler<string, string, string, Y>(
@@ -290,8 +298,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             function* () {
               return yield* runtime.composition.scoped(function* () {
                 yield* handler.install({
-                  *handle(context) {
-                    return { ok: true as const, value: `${label}:${context}` };
+                  operations: {
+                    *handle(context) {
+                      return { ok: true as const, value: `${label}:${context}` };
+                    },
                   },
                 });
                 return yield* handler.operations.handle("question");
@@ -311,11 +321,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await task.result;
     const pending = start(function* () {
       yield* handler.install({
-        *handle(context) {
-          const reply = yield* runtime.fromPromise((signal) =>
-            peer.send({ id: "ui", token: context }, signal),
-          );
-          return { ok: true as const, value: reply.body };
+        operations: {
+          *handle(context) {
+            const reply = yield* runtime.fromPromise((signal) =>
+              peer.send({ id: "ui", token: context }, signal),
+            );
+            return { ok: true as const, value: reply.body };
+          },
         },
       });
       return yield* handler.operations.handle("question");
@@ -328,7 +340,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       value: "parent:question",
     });
   });
-
   it(`${runtime.name}: notification driver replacement keeps each grant signal and subscription owner isolated`, async () => {
     const a = createNotificationRig();
     const b = createNotificationRig();
@@ -355,7 +366,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const task = start(function* () {
       const parent = yield* notifications.operations.subscribe(grant);
       yield* runtime.composition.scoped(function* () {
-        yield* notifications.install(driver(b));
+        yield* notifications.install({
+          operations: driver(b),
+        });
         const child = yield* notifications.operations.subscribe(grant);
         yield* notifications.operations.publish(grant);
         expect(child.aborted).toBe(true);
@@ -369,7 +382,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await task.result;
     expect(a.subscriptions).toBe(0);
   });
-
   it(`${runtime.name}: a nested tool catalog denies routing before child creation and restores the parent`, async () => {
     let validations = 0;
     let runs = 0;
@@ -411,9 +423,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await start(function* () {
       yield* catalog.set(parent.admission);
       yield* host.around({
-        *child(args, next) {
-          const admission = yield* catalog.expect();
-          return yield* admission.child(args, next);
+        operations: {
+          child: (next) =>
+            function* (...args) {
+              const admission = yield* catalog.expect();
+              return yield* admission.child(next)(...args);
+            },
         },
       });
       yield* installToolRouting(runtime, host, journal, {
@@ -446,7 +461,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(validations).toBe(1);
     }).result;
   });
-
   it(`${runtime.name}: counting sees the full prepared request and over-budget requests never reach the provider`, async () => {
     const model: ModelInfo = {
       id: "tiny",

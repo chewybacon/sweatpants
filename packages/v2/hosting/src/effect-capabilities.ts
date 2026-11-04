@@ -4,10 +4,10 @@ import { recordDefinition } from "./record-definition.ts";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
 import type { EffectCapabilities, EffectGrant } from "./contracts.ts";
-
 type EffectImplementation<C, R, E, Y> = (context: C) => Operation<Outcome<R, E>, Y>;
-type EffectMethods<C, R, E, Y> = { handle(context: C): Operation<Outcome<R, E>, Y> };
-
+type EffectMethods<C, R, E, Y> = {
+  handle(context: C): Operation<Outcome<R, E>, Y>;
+};
 /** Check the result envelope once at delivery; payloads remain application-owned. */
 function assertOutcome(value: unknown): asserts value is Outcome<unknown, unknown> {
   if (
@@ -20,7 +20,6 @@ function assertOutcome(value: unknown): asserts value is Outcome<unknown, unknow
     throw new Error("Effect work must return an Outcome");
   }
 }
-
 /**
  * Create host-owned effect installation, middleware and grants.
  * Grants are trusted assembly, not remote credentials. Install admission before routing.
@@ -40,7 +39,6 @@ export function createEffectCapabilities<Y>(
       respond(outcome: Outcome<unknown, unknown>): Operation<Outcome<unknown, unknown>, Y>;
     }
   >();
-
   function* parse<S extends StandardSchemaV1>(
     schema: S,
     input: unknown,
@@ -51,7 +49,6 @@ export function createEffectCapabilities<Y>(
     }
     return result.value;
   }
-
   function prepare(definition: EffectDefinition) {
     const existing = definitions.get(definition.id);
     if (existing) {
@@ -63,8 +60,10 @@ export function createEffectCapabilities<Y>(
     const api = runtime.composition.createApi<EffectMethods<unknown, unknown, unknown, Y>>(
       `${name}:${definition.id}`,
       {
-        *handle() {
-          throw new Error("Effect handler is not installed");
+        operations: {
+          *handle() {
+            throw new Error("Effect handler is not installed");
+          },
         },
       },
     );
@@ -86,7 +85,6 @@ export function createEffectCapabilities<Y>(
     definitions.set(definition.id, prepared);
     return prepared;
   }
-
   /** Host-owned scoped API for this declaration; rejects conflicting objects with the same key. */
   function api<C, R, I, O, E>(
     definition: EffectDefinition<C, R, I, O, E>,
@@ -95,7 +93,6 @@ export function createEffectCapabilities<Y>(
     // Identity checks ensure this API always belongs to this exact declaration.
     return prepare(definition).api as Api<EffectMethods<C, O, E, Y>, Y>;
   }
-
   /** Install a compatible default or replacement in the current scope, never on the definition. */
   function install<C, R, I, O, E>(
     definition: EffectDefinition<C, R, I, O, E> & {
@@ -115,16 +112,21 @@ export function createEffectCapabilities<Y>(
     if (!handler) {
       throw new Error("Effect implementation is required");
     }
-    yield* api(definition).install({ handle: handler });
+    yield* api(definition).install({
+      operations: { handle: handler },
+    });
   }
-
   function bindRecordedWork() {
     let slot = 0;
     let installed = false;
     let active = false;
     let executing = false;
     let pending:
-      | { key: string; sequence: number; work: () => Operation<Outcome<unknown, unknown>, Y> }
+      | {
+          key: string;
+          sequence: number;
+          work: () => Operation<Outcome<unknown, unknown>, Y>;
+        }
       | undefined;
     return {
       *install(): Operation<void, Y> {
@@ -163,7 +165,9 @@ export function createEffectCapabilities<Y>(
       },
       *call<Result extends Outcome<unknown, unknown>>(
         work: () => Operation<Result, Y>,
-        options: { readonly key?: string } = {},
+        options: {
+          readonly key?: string;
+        } = {},
       ): Operation<Result, CapabilityRequest> {
         if (!active) {
           throw new Error("Record binding is not live");
@@ -194,19 +198,22 @@ export function createEffectCapabilities<Y>(
       },
     };
   }
-
   /** Bind selected declarations to this host. Local record permission is explicit and per Guest. */
   function grant<const D extends Record<string, EffectDefinition>>(selected: D): EffectGrant<D, Y>;
   function grant<const D extends Record<string, EffectDefinition>>(
     selected: D,
-    local: { record: true },
+    local: {
+      record: true;
+    },
   ): EffectGrant<D, Y> & {
     record: ReturnType<typeof bindRecordedWork>["call"];
     install: ReturnType<typeof bindRecordedWork>["install"];
   };
   function grant<const D extends Record<string, EffectDefinition>>(
     selected: D,
-    local?: { record: true },
+    local?: {
+      record: true;
+    },
   ) {
     const permitted = new Map<string, ReturnType<typeof prepare>>();
     const facade: Record<string, unknown> = {};
@@ -227,16 +234,19 @@ export function createEffectCapabilities<Y>(
       return handler;
     }
     return {
-      capabilities: Object.freeze(facade) as { readonly [K in keyof D]: D[K]["call"] },
+      capabilities: Object.freeze(facade) as {
+        readonly [K in keyof D]: D[K]["call"];
+      },
       record: recorded?.call,
       install: recorded?.install,
       admission: {
-        *child<P extends { readonly request: CapabilityRequest }, R>(
-          [pending]: [P],
+        child<P extends { readonly request: CapabilityRequest }, R>(
           next: (pending: P) => Operation<R, Y>,
-        ): Operation<R, Y> {
-          resolve(pending.request);
-          return yield* next(pending);
+        ): (pending: P) => Operation<R, Y> {
+          return function* (pending: P) {
+            resolve(pending.request);
+            return yield* next(pending);
+          };
         },
       },
       *respond(

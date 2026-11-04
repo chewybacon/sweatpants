@@ -3,7 +3,6 @@ import {
   readJournal,
   createProtocolRig,
 } from "@sweatpan.ts/testing";
-
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -11,12 +10,20 @@ import { type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
-
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
-type Request = { kind: "register" } | { kind: "approve"; ticket: string };
-type Result = { ticket: string; approval: string };
+type Request =
+  | {
+      kind: "register";
+    }
+  | {
+      kind: "approve";
+      ticket: string;
+    };
+type Result = {
+  ticket: string;
+  approval: string;
+};
 function* ask(request: Request): Operation<string, Request> {
   const answer: unknown = yield request;
   if (typeof answer !== "string") {
@@ -92,8 +99,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const host = assemble();
       return run(function* () {
         yield* host.around({
-          *deliveryMode([request]) {
-            return mode ?? (request.kind === "approve" ? "wait" : "execute");
+          operations: {
+            deliveryMode: () =>
+              function* (request) {
+                return mode ?? (request.kind === "approve" ? "wait" : "execute");
+              },
           },
         });
         return yield* host.operations.run();
@@ -108,7 +118,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       counts: () => ({ deliveries, attempts, closed, logicalCleanup }),
     };
   }
-
   it(`${runtime.name}: registers a local elicitation once without an executing attempt`, async () => {
     const s = scenario();
     const parked = await s.activate();
@@ -137,7 +146,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(s.counts().deliveries).toBe(0);
     expect(s.counts().logicalCleanup).toBe(1);
   });
-
   for (const winner of ["answer", "invalidation"] as const) {
     it(`${runtime.name}: atomically resolves answer versus external invalidation (${winner} wins)`, async () => {
       const s = scenario();
@@ -189,7 +197,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.counts().attempts).toBe(0);
     });
   }
-
   it(`${runtime.name}: rejects foreign authority and prevents changing a registered wait into execution`, async () => {
     const s = scenario();
     const parked = await s.activate();
@@ -207,7 +214,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(await s.activate()).toEqual(parked);
     expect(s.counts().deliveries).toBe(0);
   });
-
   it(`${runtime.name}: composes external registration with participant waiting without repeating creation`, async () => {
     const s = scenario(true);
     const activation = s.activate();

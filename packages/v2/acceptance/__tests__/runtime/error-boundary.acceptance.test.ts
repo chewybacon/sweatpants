@@ -2,7 +2,6 @@ import { expect, it, onTestFinished } from "vitest";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "./assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const cancel of [false, true]) {
     it(`${runtime.name}: error recovery crosses scoped APIs and preserves interruption (${cancel})`, async () => {
@@ -11,9 +10,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let released = false;
       let recovered = false;
       const api = runtime.composition.createApi("fallible-call", {
-        *read() {
-          yield* runtime.fromPromise((signal) => peer.send({ id: "read", token: "ready" }, signal));
-          throw failure;
+        operations: {
+          *read() {
+            yield* runtime.fromPromise((signal) =>
+              peer.send({ id: "read", token: "ready" }, signal),
+            );
+            throw failure;
+          },
         },
       });
       const task = runtime.start(() =>

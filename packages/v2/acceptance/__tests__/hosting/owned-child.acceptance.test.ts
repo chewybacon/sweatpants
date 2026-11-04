@@ -6,7 +6,6 @@ import {
   createProtocolRig,
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
-
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -19,10 +18,8 @@ import {
   type Hosting,
 } from "@sweatpan.ts/hosting";
 import type { OwnedChild, OwnedJournal } from "@sweatpan.ts/durable";
-
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function* ask(request: string): Operation<string, string> {
   const reply: unknown = yield request;
   if (typeof reply !== "string") {
@@ -30,7 +27,6 @@ function* ask(request: string): Operation<string, string> {
   }
   return reply;
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -55,11 +51,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       liveCleanup = false,
       notify = false,
     } = options;
-    const revocations: { execution: string; grant: { attemptId: string } }[] = [];
+    const revocations: {
+      execution: string;
+      grant: {
+        attemptId: string;
+      };
+    }[] = [];
     const notifications = createNotificationRig();
     function* installNotifications<R, Q, V, E>(
       host: Hosting<R, Q, V, E, Y>,
-      journal: { attemptControl: Parameters<typeof installAttemptCancellation<R, Q, V, E, Y>>[2] },
+      journal: {
+        attemptControl: Parameters<typeof installAttemptCancellation<R, Q, V, E, Y>>[2];
+      },
     ): Operation<void, Y> {
       if (!notify) {
         return;
@@ -87,9 +90,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const peer = createProtocolRig();
     const children = new Map<
       string,
-      OwnedChild<{ approval: string }, string, string, string, unknown, Y>
+      OwnedChild<
+        {
+          approval: string;
+        },
+        string,
+        string,
+        string,
+        unknown,
+        Y
+      >
     >();
-    const waits = new Map<string, { grant: ResolutionGrant; request: string }>();
+    const waits = new Map<
+      string,
+      {
+        grant: ResolutionGrant;
+        request: string;
+      }
+    >();
     const links: ChildLink[] = [];
     let rejectProjection = false;
     let unencodableProjection = false;
@@ -111,7 +129,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return { approval: yield* ask("approval") };
     }
     function* runChild(
-      child: OwnedChild<{ approval: string }, string, string, string, unknown, Y>,
+      child: OwnedChild<
+        {
+          approval: string;
+        },
+        string,
+        string,
+        string,
+        unknown,
+        Y
+      >,
     ) {
       const recovery = createRecovery(runtime, {
         name: "child-recovery",
@@ -136,15 +163,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       yield* installNotifications(host, child.journal);
       yield* host.around({
-        *deliveryMode([request]) {
-          return (liveApproval && request === "approval") ||
-            (liveCleanup && request === "child-close")
-            ? "execute"
-            : "wait";
+        operations: {
+          deliveryMode: () =>
+            function* (request) {
+              return (liveApproval && request === "approval") ||
+                (liveCleanup && request === "child-close")
+                ? "execute"
+                : "wait";
+            },
         },
       });
       const result = yield* host.operations.run();
-      expectTypeOf(result).toEqualTypeOf<HostedResult<{ approval: string }, string>>();
+      expectTypeOf(result).toEqualTypeOf<
+        HostedResult<
+          {
+            approval: string;
+          },
+          string
+        >
+      >();
       if (result.state === "waiting") {
         waits.set(child.link.childId, { grant: result.grant, request: result.pending.request });
       }
@@ -204,35 +241,42 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *child([pending], next) {
-            if (!pending.request.startsWith("call:")) {
-              return yield* next(pending);
-            }
-            const definition = {
-              program: "child",
-              input: pending.request,
-              outcome(value: { approval: string }): Outcome<string, string> {
-                projectedAssemblies.push(generation);
-                return projection(value);
+          operations: {
+            child: (next) =>
+              function* (pending) {
+                if (!pending.request.startsWith("call:")) {
+                  return yield* next(pending);
+                }
+                const definition = {
+                  program: "child",
+                  input: pending.request,
+                  outcome(value: { approval: string }): Outcome<string, string> {
+                    projectedAssemblies.push(generation);
+                    return projection(value);
+                  },
+                };
+                const child = yield* parent.ensureChild<
+                  {
+                    approval: string;
+                  },
+                  string,
+                  string,
+                  string
+                >(pending.id, definition);
+                if (options.mutateProjection) {
+                  definition.outcome = () => ({ ok: true, value: "replaced" });
+                }
+                if (!children.has(child.link.childId)) {
+                  children.set(child.link.childId, child);
+                  if (!links.some((link) => link.childId === child.link.childId)) {
+                    links.push(child.link);
+                  }
+                }
+                if (beforeChild) {
+                  yield* beforeChild();
+                }
+                return { id: child.link.childId, run: () => runChild(child) };
               },
-            };
-            const child = yield* parent.ensureChild<{ approval: string }, string, string, string>(
-              pending.id,
-              definition,
-            );
-            if (options.mutateProjection) {
-              definition.outcome = () => ({ ok: true, value: "replaced" });
-            }
-            if (!children.has(child.link.childId)) {
-              children.set(child.link.childId, child);
-              if (!links.some((link) => link.childId === child.link.childId)) {
-                links.push(child.link);
-              }
-            }
-            if (beforeChild) {
-              yield* beforeChild();
-            }
-            return { id: child.link.childId, run: () => runChild(child) };
           },
         });
         yield* installNotifications(host, parent);
@@ -294,7 +338,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
-
   describe(`${runtime.name}: SQLite sequential owned calls`, () => {
     it("reacquires the same child after disposal, settles once, and assigns a new child to the next call", async () => {
       const s = scenario({ count: 2 });
@@ -338,7 +381,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       expect(s.peer.requests).toHaveLength(2);
     });
-
     for (const failCleanup of [false, true]) {
       it(`holds parent cancellation behind recoverable child cleanup (cleanup failure: ${failCleanup})`, async () => {
         const s = scenario();
@@ -390,7 +432,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(snapshot).not.toHaveProperty("cancellationRequested");
       });
     }
-
     it("preserves a normal child cleanup request when parent cancellation arrives after the body returned", async () => {
       const s = scenario();
       await s.begin();
@@ -410,7 +451,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const after = await start(() => readJournal(s.children.get(link.childId)!.journal)).result;
       expect(after.history.map((entry) => entry.request)).toEqual(["approval", "child-close"]);
     });
-
     it("joins a child owned by cleanup without cancelling that child's body", async () => {
       const s = scenario({ call: "cleanup" });
       await s.begin();
@@ -427,7 +467,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
     });
-
     it("accepts the existing live cleanup attempt after parent cancellation changes the result", async () => {
       const s = scenario({ liveCleanup: true });
       await s.begin();
@@ -445,7 +484,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       s.peer.reply("release", { status: 200, body: "released" });
       expect(await live.result).toEqual({ state: "cancelled", reason: "deadline" });
     });
-
     it("joins a child called inside critical without cancelling its body", async () => {
       const s = scenario({ call: "critical" });
       await s.begin();
@@ -466,7 +504,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const after = await start(() => readJournal(s.parent)).result;
       expect(after.history.map((entry) => entry.request)).toEqual(["reserve", "call:0", "release"]);
     });
-
     it("reopens participant authority and historical ownership with freshly bound projections", async () => {
       const s = scenario();
       await s.begin();
@@ -486,7 +523,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.projectedAssemblies).toEqual([2]);
       s.reopen();
       const historical = await start(() =>
-        s.parent.ensureChild<{ approval: string }, string, string, string>(link.requestId, {
+        s.parent.ensureChild<
+          {
+            approval: string;
+          },
+          string,
+          string,
+          string
+        >(link.requestId, {
           program: link.program,
           input: link.input,
           outcome: (value) => ({ ok: true, value: value.approval }),
@@ -503,7 +547,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       ).toBe(true);
       expect(await s.run().result).toEqual({ state: "completed", value: ["approved"] });
     });
-
     it("reopens queued cancellation before the child's first boundary without delivering its body", async () => {
       const s = scenario();
       s.beforeChild = function* () {
@@ -521,7 +564,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
       expect(s.projectedAssemblies).toEqual([]);
     });
-
     it("queues cancellation before a child has its first boundary and never delivers its body request", async () => {
       const s = scenario();
       s.beforeChild = function* () {
@@ -534,7 +576,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(child.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "stop before child starts" });
     });
-
     for (const failure of ["throw", "encode"]) {
       it(`leaves both journals unchanged when terminal projection fails (${failure}), then retries settlement through recovery`, async () => {
         const s = scenario();
@@ -557,7 +598,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await s.finish()).toEqual({ state: "completed", value: ["approved"] });
       });
     }
-
     it("fences a three-level owned tree before returning and drains cleanup from leaf to root", async () => {
       const store = createSqliteJournalRig<string, string, string, string, unknown, Y>({
         program: "level:0",
@@ -568,7 +608,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const journals = new Map<number, OwnedJournal<string, string, string, string, unknown, Y>>([
         [0, root],
       ]);
-      const waits = new Map<number, { request: string; grant: ResolutionGrant }>();
+      const waits = new Map<
+        number,
+        {
+          request: string;
+          grant: ResolutionGrant;
+        }
+      >();
       function* runLevel(
         depth: number,
         journal: OwnedJournal<string, string, string, string, unknown, Y>,
@@ -597,26 +643,33 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *deliveryMode() {
-            return "wait";
-          },
-          *child([pending], next) {
-            if (pending.request !== "call") {
-              return yield* next(pending);
-            }
-            const child = yield* journal.ensureChild<string, string, string, string>(pending.id, {
-              program: `level:${depth + 1}`,
-              input: depth + 1,
-              outcome: (value) => ({ ok: true, value }),
-            });
-            journals.set(depth + 1, child.journal);
-            return {
-              id: child.link.childId,
-              *run() {
-                const result = yield* runLevel(depth + 1, child.journal);
-                return childHostingResult(result);
+          operations: {
+            deliveryMode: () =>
+              function* () {
+                return "wait";
               },
-            };
+            child: (next) =>
+              function* (pending) {
+                if (pending.request !== "call") {
+                  return yield* next(pending);
+                }
+                const child = yield* journal.ensureChild<string, string, string, string>(
+                  pending.id,
+                  {
+                    program: `level:${depth + 1}`,
+                    input: depth + 1,
+                    outcome: (value) => ({ ok: true, value }),
+                  },
+                );
+                journals.set(depth + 1, child.journal);
+                return {
+                  id: child.link.childId,
+                  *run() {
+                    const result = yield* runLevel(depth + 1, child.journal);
+                    return childHostingResult(result);
+                  },
+                };
+              },
           },
         });
         const result = yield* host.operations.run();
@@ -653,7 +706,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       // A retained older handle observes the same terminal record as reacquired handles.
       expect((await start(() => readJournal(leaf)).result).status).toBe("cancelled");
     });
-
     it("fences a live child's late settlement when parent cancellation has no abort notification", async () => {
       const s = scenario({ liveApproval: true });
       const live = s.run();
@@ -669,7 +721,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
     });
-
     it("aborts a live child attempt when parent cancellation publishes notifications", async () => {
       const s = scenario({ liveApproval: true, notify: true });
       const live = s.run();
@@ -692,7 +743,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
     });
-
     it("fences a live child attempt when its abort notification is dropped", async () => {
       const s = scenario({ liveApproval: true, notify: true });
       s.notifications.drop = true;
@@ -710,7 +760,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await s.answer(link.childId, "closed");
       expect(await s.finish()).toEqual({ state: "cancelled", reason: "deadline" });
     });
-
     it("does not abort a live child attempt owned by a critical parent boundary", async () => {
       const s = scenario({ call: "critical", liveApproval: true, notify: true });
       const live = s.run();
@@ -726,7 +775,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       s.peer.reply("approval", { status: 200, body: "approved" });
       expect((await live.result).state).toBe("child");
     });
-
     it("pins the original projection when the caller mutates acquisition options", async () => {
       const s = scenario({ mutateProjection: true });
       await s.begin();
@@ -737,7 +785,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.finish()).toEqual({ state: "completed", value: ["original"] });
       expect(s.projectedAssemblies).toEqual([0]);
     });
-
     it("rejects alternate delivery species and a changed program/input for the owned call", async () => {
       const s = scenario();
       await s.begin();

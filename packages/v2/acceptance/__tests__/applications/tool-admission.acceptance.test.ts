@@ -21,7 +21,6 @@ import { createLatch, createProtocolRig, createSqliteJournalRig } from "@sweatpa
 import { createMemoryJournalStore } from "@sweatpan.ts/storage-memory";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string, T> {
   return {
     "~standard": {
@@ -35,7 +34,6 @@ function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string
     },
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -43,7 +41,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => execution.cancel());
     return execution;
   }
-
   for (const automatic of [false, true]) {
     for (const storage of ["memory", "sqlite"] as const) {
       it(`${runtime.name}: ${storage} ${automatic ? "automatic" : "participant"} root tool admission pins transformed input through recording, answers and reopen`, async () => {
@@ -85,7 +82,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return { text, approved: answer.value };
           });
         type Input = StandardSchemaV1.InferOutput<typeof tool.context>;
-        type Result = { text: string; approved: boolean };
+        type Result = {
+          text: string;
+          approved: boolean;
+        };
         const options = { program: tool.id, equals: isDeepStrictEqual };
         const store =
           storage === "sqlite"
@@ -121,7 +121,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const admittedValidations = validations;
         expect(acquisitions).toBe(0);
         store.reopen(); // Admission survives even before the first Guest exists.
-
         function assemble() {
           const journal = store.open();
           const effects = createEffectCapabilities(runtime, "admitted-effects");
@@ -152,7 +151,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           return {
             run() {
               return start(function* () {
-                yield* host.around(acquisition.admission);
+                yield* host.around({
+                  operations: acquisition.admission,
+                });
                 // Outer scope parks all declared elicits; an inner scope may override it.
                 yield* installElicitHandlers(host, effects, tool);
                 yield* installGuestRetention(runtime.composition, host, recovery, journal);
@@ -160,15 +161,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   const result = yield* runtime.composition.scoped(function* () {
                     yield* installElicitHandlers(host, effects, tool, {
                       *question(context) {
-                        expectTypeOf(context).toEqualTypeOf<{ question: string }>();
+                        expectTypeOf(context).toEqualTypeOf<{
+                          question: string;
+                        }>();
                         expect(context).toEqual({ question: "auth" });
                         handlerCalls++;
                         return { ok: true, value: "yes" };
                       },
                     });
                     yield* effects.api(question).around({
-                      *handle([context], next) {
-                        return yield* next(context);
+                      operations: {
+                        handle: (next) =>
+                          function* (context) {
+                            return yield* next(context);
+                          },
                       },
                     });
                     return yield* host.operations.run();
@@ -224,7 +230,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
     }
   }
-
   it(`${runtime.name}: concurrent root admission selects one normalized input across SQLite connections`, async () => {
     const store = createSqliteJournalRig<unknown, CapabilityRequest, unknown, string, unknown, Y>({
       program: "admission-race",
@@ -234,7 +239,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const ready = createLatch<void>();
     const release = createLatch<void>();
     let validations = 0;
-    const schema: StandardSchemaV1<string, { text: string }> = {
+    const schema: StandardSchemaV1<
+      string,
+      {
+        text: string;
+      }
+    > = {
       "~standard": {
         version: 1,
         vendor: "race",

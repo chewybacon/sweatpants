@@ -9,7 +9,6 @@ import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import { createLatch, createProtocolRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: sibling hosts inherit middleware, isolate Guest drivers and dispose exact incarnations`, async () => {
     const owner = runtime.composition.createContext<string>("execution-owner");
@@ -45,18 +44,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const execution = runtime.start(function* () {
       yield* owner.set("parent");
       yield* recovery.execution.around({
-        *start(args, next) {
-          calls.push(`start:${yield* owner.expect()}`);
-          return yield* next(...args);
-        },
-        *resume([outcome], next) {
-          expectTypeOf(outcome).toEqualTypeOf<Outcome<unknown, unknown>>();
-          calls.push(`resume:${yield* owner.expect()}`);
-          return yield* next(outcome);
-        },
-        *close(args, next) {
-          facadeCloses++;
-          return yield* next(...args);
+        operations: {
+          start: (next) =>
+            function* (...args) {
+              calls.push(`start:${yield* owner.expect()}`);
+              return yield* next(...args);
+            },
+          resume: (next) =>
+            function* (outcome) {
+              expectTypeOf(outcome).toEqualTypeOf<Outcome<unknown, unknown>>();
+              calls.push(`resume:${yield* owner.expect()}`);
+              return yield* next(outcome);
+            },
+          close: (next) =>
+            function* (...args) {
+              facadeCloses++;
+              return yield* next(...args);
+            },
         },
       });
       const results = yield* runtime.all(
@@ -66,19 +70,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               yield* owner.set(label);
               if (label === "a") {
                 yield* recovery.execution.around({
-                  resume(args, next) {
-                    // next resolves the driver where it executes, without redispatching
-                    // this middleware. The enclosing incarnation still owns its disposal.
-                    return runtime.composition.scoped(function* () {
-                      yield* recovery.execution.install(acquire("override"));
-                      yield* captured.start();
-                      return yield* next(...args);
-                    });
+                  operations: {
+                    resume: (next) =>
+                      function (...args) {
+                        // next resolves the driver where it executes, without redispatching
+                        // this middleware. The enclosing incarnation still owns its disposal.
+                        return runtime.composition.scoped(function* () {
+                          yield* recovery.execution.install(acquire("override"));
+                          yield* captured.start();
+                          return yield* next(...args);
+                        });
+                      },
                   },
                 });
               }
               const journal = createMemoryJournal<
-                { owner: string; value: string },
+                {
+                  owner: string;
+                  value: string;
+                },
                 string,
                 string,
                 string
@@ -112,7 +122,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     peer.reply("a", { status: 200, body: "A" });
     const results = await execution.result;
     expectTypeOf(results).toEqualTypeOf<
-      readonly HostedResult<{ owner: string; value: string }, string>[]
+      readonly HostedResult<
+        {
+          owner: string;
+          value: string;
+        },
+        string
+      >[]
     >();
     expect(results).toEqual([
       { state: "completed", value: { owner: "override", value: "A" } },
@@ -129,7 +145,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       "Execution driver is not installed",
     );
   });
-
   it(`${runtime.name}: cancelling a restricted sibling drains its cleanup without disposing shared provider access`, async () => {
     const peer = createProtocolRig();
     const approval = createLatch<void>();
@@ -137,15 +152,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const aSettled = createLatch<void>();
     const credentials = runtime.composition.createContext<string>("shared-provider-credentials");
     const provider = runtime.composition.createApi("shared-provider", {
-      *exchange(
-        owner: "a" | "b" | "parent",
-        action: "probe" | "read" | "release",
-      ): Operation<Outcome<string, string>, Y> {
-        const token = yield* credentials.expect();
-        const reply = yield* runtime.fromPromise((signal) =>
-          peer.send({ id: `${owner}:${action}`, token }, signal),
-        );
-        return { ok: true, value: reply.body };
+      operations: {
+        *exchange(
+          owner: "a" | "b" | "parent",
+          action: "probe" | "read" | "release",
+        ): Operation<Outcome<string, string>, Y> {
+          const token = yield* credentials.expect();
+          const reply = yield* runtime.fromPromise((signal) =>
+            peer.send({ id: `${owner}:${action}`, token }, signal),
+          );
+          return { ok: true, value: reply.body };
+        },
       },
     });
     const access = runtime.composition.createContext<typeof provider.operations>("provider-access");
@@ -160,11 +177,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       if (owner === "a") {
         yield* credentials.set("restricted-a");
         yield* provider.around({
-          *exchange([requestedOwner, action], next) {
-            if (requestedOwner !== "a") {
-              return { ok: false, error: "Sibling access denied" };
-            }
-            return yield* next(requestedOwner, action);
+          operations: {
+            exchange: (next) =>
+              function* (requestedOwner, action) {
+                if (requestedOwner !== "a") {
+                  return { ok: false, error: "Sibling access denied" };
+                }
+                return yield* next(requestedOwner, action);
+              },
           },
         });
         const shared = yield* access.expect();
@@ -175,9 +195,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const nested = yield* runtime.composition.scoped(function* () {
           yield* credentials.set("nested-a");
           yield* provider.around({
-            *exchange(args, next) {
-              const reply = yield* next(...args);
-              return reply.ok ? { ok: true, value: reply.value.toUpperCase() } : reply;
+            operations: {
+              exchange: (next) =>
+                function* (...args) {
+                  const reply = yield* next(...args);
+                  return reply.ok ? { ok: true, value: reply.value.toUpperCase() } : reply;
+                },
             },
           });
           return yield* shared.exchange("a", "probe");
@@ -186,7 +209,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(nested).toEqual({ ok: true, value: "NESTED" });
         expect(yield* credentials.expect()).toBe("restricted-a");
       }
-      const journal = createMemoryJournal<{ text: string }, string, string, string>({
+      const journal = createMemoryJournal<
+        {
+          text: string;
+        },
+        string,
+        string,
+        string
+      >({
         program: `shared-provider-${owner}`,
         equals: isDeepStrictEqual,
       });
@@ -222,12 +252,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       yield* host.around({
-        *deliveryMode([request]) {
-          return request === "approval" ? "wait" : "execute";
+        operations: {
+          deliveryMode: () =>
+            function* (request) {
+              return request === "approval" ? "wait" : "execute";
+            },
         },
       });
       const first = yield* host.operations.run();
-      expectTypeOf(first).toEqualTypeOf<HostedResult<{ text: string }, string>>();
+      expectTypeOf(first).toEqualTypeOf<
+        HostedResult<
+          {
+            text: string;
+          },
+          string
+        >
+      >();
       if (owner === "b") {
         return first;
       }
@@ -315,7 +355,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(peer.requests.find(({ id }) => id === "b:read")?.token).toBe("shared");
     peer.reply("provider:close", { status: 200, body: "closed" });
     const results = await execution.result;
-    expectTypeOf(results).toEqualTypeOf<readonly HostedResult<{ text: string }, string>[]>();
+    expectTypeOf(results).toEqualTypeOf<
+      readonly HostedResult<
+        {
+          text: string;
+        },
+        string
+      >[]
+    >();
     expect(results).toEqual([
       { state: "cancelled", reason: "stop a" },
       { state: "completed", value: { text: "b" } },

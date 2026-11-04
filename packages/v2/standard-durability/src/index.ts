@@ -10,6 +10,12 @@ export type {
   Around,
   OperationMiddleware,
   Api,
+  Decorator,
+  ApiMiddleware,
+  ApiDefinition,
+  ApiDefaults,
+  OperationMethods,
+  SyncMiddleware,
   Context,
   Composition,
 } from "./contracts.ts";

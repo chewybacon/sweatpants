@@ -17,7 +17,6 @@ import {
 import { defineTool, createToolAcquisition } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -94,7 +93,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         return start(function* () {
-          yield* host.around(acquisition.admission);
+          yield* host.around({
+            operations: acquisition.admission,
+          });
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
           return yield* host.operations.run();
         });
@@ -116,13 +117,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       );
     });
   }
-
   // Both interruptions happen after the callback ran. Only one has an accepted value.
   for (const failed of [false, true]) {
     for (const accepted of [true, false]) {
       it(`${runtime.name}: recorded ${failed ? "failure" : "success"} ${accepted ? "replays accepted values" : "keeps an unaccepted attempt occupied"} after reopen`, async () => {
         const store = createSqliteJournalRig<
-          { roll: Outcome<number, { code: string }>; card: { suit: string; rank: number } },
+          {
+            roll: Outcome<
+              number,
+              {
+                code: string;
+              }
+            >;
+            card: {
+              suit: string;
+              rank: number;
+            };
+          },
           CapabilityRequest,
           unknown,
           string,
@@ -137,7 +148,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const events: string[] = [];
         let rollCalls = 0;
         let cardCalls = 0;
-
         function assemble(pause: boolean, recordKey = "roll-dice") {
           const effects = createEffectCapabilities(runtime, "recording");
           const journal = store.open();
@@ -158,7 +168,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               if (roll.ok) {
                 expectTypeOf(roll.value).toEqualTypeOf<number>();
               } else {
-                expectTypeOf(roll.error).toEqualTypeOf<{ code: string }>();
+                expectTypeOf(roll.error).toEqualTypeOf<{
+                  code: string;
+                }>();
               }
               const card = yield* ctx.record(
                 function* () {
@@ -168,7 +180,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
                 { key: "pick-card" },
               );
-              expectTypeOf(card.value).toEqualTypeOf<{ suit: string; rank: number }>();
+              expectTypeOf(card.value).toEqualTypeOf<{
+                suit: string;
+                rank: number;
+              }>();
               return { roll, card: card.value };
             });
           const acquisition = createToolAcquisition(runtime, effects, tool, "draw-acquisition");
@@ -214,12 +229,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             handle: acquisition.handle,
           });
           return start(function* () {
-            yield* host.around(acquisition.admission);
+            yield* host.around({
+              operations: acquisition.admission,
+            });
             yield* installGuestRetention(runtime.composition, host, recovery, journal);
             return yield* host.operations.run();
           });
         }
-
         const first = assemble(true);
         await Promise.race([peer.waitForRequests(1), first.result]);
         expect(events).toEqual(accepted ? ["granted", "roll", "accepted"] : ["granted", "roll"]);
@@ -256,7 +272,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const peer = createProtocolRig();
     const acknowledgement = createProtocolRig();
     const store = createSqliteJournalRig<
-      { path: string; text: string },
+      {
+        path: string;
+        text: string;
+      },
       CapabilityRequest,
       unknown,
       string,
@@ -268,7 +287,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let choices = 0;
     let transformations = 0;
     let reads = 0;
-
     function assemble(delay: boolean) {
       const effects = createEffectCapabilities(runtime, "file-exchanges");
       const choose = defineEffect({
@@ -309,7 +327,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           if (!file.ok) {
             throw new Error("Unexpected read failure");
           }
-          expectTypeOf(file.value).toEqualTypeOf<{ path: string; text: string }>();
+          expectTypeOf(file.value).toEqualTypeOf<{
+            path: string;
+            text: string;
+          }>();
           return file.value;
         });
       const acquisition = createToolAcquisition(runtime, effects, tool, "file-acquisition");
@@ -341,7 +362,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         handle: acquisition.handle,
       });
       return start(function* () {
-        yield* host.around(acquisition.admission);
+        yield* host.around({
+          operations: acquisition.admission,
+        });
         yield* effects.install(read);
         yield* effects.install(choose, function* ({ paths }) {
           choices++;

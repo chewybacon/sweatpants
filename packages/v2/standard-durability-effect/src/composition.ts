@@ -3,14 +3,23 @@ import { Context as NativeContext, Effect, Scope, Cause } from "effect";
 import {
   composeOperation,
   type Api,
+  type ApiDefaults,
+  type OperationMethods,
   type Composition,
   type Context,
-  type OperationMiddleware,
   type Work,
 } from "@standard-durability/core";
-
+import {
+  describeSync,
+  assertSynchronous,
+  readMember,
+  bindMembers,
+  synchronousDecorator,
+  mergeDriver,
+  type RawInvoke,
+} from "@standard-durability/core/internal";
 import type { CompositionScope, EffectYield } from "./contracts.ts";
-import type { Around, Frame, Invoke } from "./types.ts";
+import type { Decoration, Frame, Invoke } from "./types.ts";
 
 // Frames contain bindings only. Effect owns fibers, interruption and finalization.
 class CompositionFrame extends NativeContext.Service<CompositionScope, Frame>()(
@@ -129,68 +138,104 @@ export const effect: Composition<EffectYield> = {
         }),
     };
   },
-  createApi<Methods extends object>(name: string, defaults: Methods): Api<Methods, EffectYield> {
-    if (Object.values(defaults).some((value) => typeof value !== "function")) {
-      throw new TypeError("API declarations must contain only operation methods");
+  createApi<O extends OperationMethods<O, EffectYield> = {}, S extends object = {}>(
+    name: string,
+    defaults: ApiDefaults<O, S>,
+  ): Api<O, EffectYield, S> {
+    const members = describeSync(defaults.sync);
+    function driver(frame: Frame) {
+      return (
+        ancestors(frame)
+          .reverse()
+          .find((ancestor) => ancestor.drivers.has(name))
+          ?.drivers.get(name) ?? defaults
+      );
     }
-    // Erasure is confined to dynamic dispatch; the public mapped types retain each
-    // method's argument/result relation, as in the reference adapter.
-    const core = defaults as unknown as Record<string, Invoke>;
+    function layers(frame: Frame) {
+      const all = ancestors(frame).flatMap((current) => current.middleware.get(name) ?? []);
+      return [
+        ...all.filter((entry) => entry.at === "max"),
+        ...all.filter((entry) => entry.at === "min").reverse(),
+      ];
+    }
+    function invokeSync(frame: Frame, key: string, args: unknown[]) {
+      const terminal: RawInvoke = (...input) =>
+        assertSynchronous(readMember(driver(frame).sync ?? {}, key, input, members.get(key)!));
+      const invoke = composeOperation(
+        terminal,
+        layers(frame).map((entry) => {
+          const layer = entry.sync[key];
+          return layer && synchronousDecorator(layer);
+        }),
+      );
+      return assertSynchronous(invoke(...args));
+    }
     const operations = Object.fromEntries(
-      Object.keys(defaults).map((key) => [
+      Object.keys(defaults.operations ?? {}).map((key) => [
         key,
         (...args: unknown[]) =>
           Effect.flatMap(CompositionFrame, (frame) => {
-            const chain = ancestors(frame);
-            const all = chain.flatMap((current) => current.middleware.get(name) ?? []);
-            // Middleware may enter a child scope before invoking its continuation.
-            // Resolve only the terminal core there, without redispatching wrappers.
+            // next() remains lazy so a decorator can enter a child before driving it.
             const terminal: Invoke = (...input) =>
-              Effect.flatMap(CompositionFrame, (current) => {
-                const target =
-                  ancestors(current)
-                    .reverse()
-                    .find((ancestor) => ancestor.drivers.has(name))
-                    ?.drivers.get(name) ?? core;
-                return execute(() => Reflect.apply(target[key]!, target, input));
-              });
-            const ordered = [
-              ...all.filter((entry) => entry.at === "max"),
-              ...all.filter((entry) => entry.at === "min").reverse(),
-            ];
+              Effect.flatMap(CompositionFrame, (current) =>
+                execute(
+                  () =>
+                    readMember(
+                      driver(current).operations ?? {},
+                      key,
+                      input,
+                      "method",
+                    ) as ReturnType<Invoke>,
+                ),
+              );
             const invoke = composeOperation(
               terminal,
-              ordered.map((entry) => entry.methods[key]),
+              layers(frame).map(
+                (entry) => entry.operations[key] as ((next: Invoke) => Invoke) | undefined,
+              ),
             );
             return execute(() => invoke(...args));
           }),
       ]),
-    ) as unknown as Methods;
-    function decorate(
-      frame: Frame,
-      methods: Record<string, Around | undefined>,
-      at: "min" | "max",
-    ) {
-      check(frame);
-      const entries = frame.middleware.get(name) ?? [];
-      // Snapshot method selection at installation, matching native decoration.
-      entries.push({ at, methods: { ...methods } });
-      frame.middleware.set(name, entries);
-    }
+    ) as unknown as O;
     return {
       operations,
-      around: (middleware: OperationMiddleware<Methods>, options) =>
+      around: (middleware, options) =>
         Effect.map(CompositionFrame, (frame) => {
-          decorate(frame, middleware as Record<string, Around | undefined>, options?.at ?? "max");
+          check(frame);
+          const entries = frame.middleware.get(name) ?? [];
+          entries.push({
+            at: options?.at ?? "max",
+            operations: { ...middleware.operations },
+            sync: { ...middleware.sync },
+          } as Decoration);
+          frame.middleware.set(name, entries);
         }),
-      install: (driver) =>
+      install: (replacement) =>
         Effect.map(CompositionFrame, (frame) => {
           check(frame);
           if (frame.drivers.has(name)) {
             throw new Error(`Driver already installed in this scope: ${name}`);
           }
-          frame.drivers.set(name, driver as unknown as Record<string, Invoke>);
+          frame.drivers.set(name, mergeDriver(driver(frame), replacement));
         }),
+      *[Symbol.iterator]() {
+        const frame = yield* CompositionFrame;
+        check(frame);
+        let active = true;
+        yield* Scope.addFinalizer(
+          frame.scope,
+          Effect.sync(() => {
+            active = false;
+          }),
+        );
+        return bindMembers(members, (key, args) => {
+          if (!active) {
+            throw new Error("API access scope is closed");
+          }
+          return invokeSync(frame, key, args);
+        }) as Readonly<S>;
+      },
     };
   },
 };

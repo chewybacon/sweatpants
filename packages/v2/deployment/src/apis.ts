@@ -5,7 +5,6 @@ import type {
   ActivationReconciliationMethods,
 } from "./contracts.ts";
 import { reconcileActivation } from "./reconciliation.ts";
-
 /** Bind one known execution tree to scoped reconciliation policy, without a scheduler or lease. */
 export function createActivationReconciler<R, Q, Y>(
   composition: Composition<Y>,
@@ -14,7 +13,9 @@ export function createActivationReconciler<R, Q, Y>(
 ): ActivationReconciler<R, Q, Y> {
   const { intents } = options;
   const api = composition.createApi<ActivationReconciliationMethods<R, Q, Y>>(name, {
-    reconcile: () => reconcileActivation(intents.operations, () => options.run()),
+    operations: {
+      reconcile: () => reconcileActivation(intents.operations, () => options.run()),
+    },
   });
   return { ...api, intents };
 }

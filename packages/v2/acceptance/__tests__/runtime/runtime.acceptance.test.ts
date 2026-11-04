@@ -4,14 +4,12 @@ import type { RuntimeExecution } from "@sweatpan.ts/runtime";
 import { createApplication } from "./application.ts";
 import type { ReadOutcome } from "./application.ts";
 import { forEachRuntime } from "./assembly.ts";
-
 function own<T>(execution: RuntimeExecution<T>) {
   // Observe native failures immediately, even when the scenario first awaits a barrier.
   void execution.result.catch(() => undefined);
   onTestFinished(() => execution.cancel());
   return execution;
 }
-
 forEachRuntime((runtime, createClient) => {
   describe(`${runtime.name}: portable application over a simulated protocol`, () => {
     it("runs typed concurrent calls, preserves input order and awaits resource release", async () => {
@@ -53,7 +51,6 @@ forEachRuntime((runtime, createClient) => {
       await execution.cancel();
       expect(events).toHaveLength(2);
     });
-
     it("resolves captured facades in child scopes and restores parent bindings", async () => {
       const rig = createProtocolRig();
       const app = createApplication(runtime);
@@ -63,9 +60,12 @@ forEachRuntime((runtime, createClient) => {
         runtime.start(function* () {
           yield* app.install(createClient(rig));
           yield* app.repository.around({
-            *read(args, next) {
-              events.push(`before:${args[0]}`);
-              return yield* next(...args);
+            operations: {
+              read: (next) =>
+                function* (...args) {
+                  events.push(`before:${args[0]}`);
+                  return yield* next(...args);
+                },
             },
           });
           yield* runtime.composition.scoped(function* () {
@@ -87,7 +87,6 @@ forEachRuntime((runtime, createClient) => {
       rig.reply("parent", { status: 200, body: "parent result" });
       expect(await execution.result).toEqual({ ok: true, value: { body: "parent result" } });
     });
-
     it("keeps concurrent child context overrides isolated", async () => {
       const rig = createProtocolRig();
       const app = createApplication(runtime);
@@ -120,7 +119,6 @@ forEachRuntime((runtime, createClient) => {
       rig.reply("parent", { status: 200, body: "parent" });
       await execution.result;
     });
-
     it("keeps expected failures as data and creates fresh work on every start", async () => {
       const rig = createProtocolRig();
       const app = createApplication(runtime);

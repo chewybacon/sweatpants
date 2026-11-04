@@ -205,9 +205,8 @@ export type EffectGrant<D extends Record<string, EffectDefinition>, Y> = {
   readonly admission: {
     /** Check membership before routing or delivery authority; performs no schema parsing. */
     child<P extends { readonly request: CapabilityRequest }, R>(
-      args: [P],
       next: (pending: P) => Operation<R, Y>,
-    ): Operation<R, Y>;
+    ): (pending: P) => Operation<R, Y>;
   };
   /**
    * Validate/transform an already received authored Outcome using the granted request's

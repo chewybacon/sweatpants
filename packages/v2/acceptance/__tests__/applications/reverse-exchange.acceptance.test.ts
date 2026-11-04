@@ -18,15 +18,31 @@ import {
   createHosting,
   installEffectAnswers,
 } from "@sweatpan.ts/hosting";
-
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
-type Callback = { kind: "callback"; request: CapabilityRequest; grant: ResolutionGrant };
+type Callback = {
+  kind: "callback";
+  request: CapabilityRequest;
+  grant: ResolutionGrant;
+};
 type Command =
-  | { kind: "invoke" }
-  | { kind: "answer"; grant: ResolutionGrant; outcome: Outcome<unknown, unknown> };
-type Step = Callback | { kind: "accepted" } | { kind: "completed"; value: string };
+  | {
+      kind: "invoke";
+    }
+  | {
+      kind: "answer";
+      grant: ResolutionGrant;
+      outcome: Outcome<unknown, unknown>;
+    };
+type Step =
+  | Callback
+  | {
+      kind: "accepted";
+    }
+  | {
+      kind: "completed";
+      value: string;
+    };
 function schema<T>(parse: (text: string) => T): StandardSchemaV1<string, T> {
   return {
     "~standard": {
@@ -40,7 +56,6 @@ function schema<T>(parse: (text: string) => T): StandardSchemaV1<string, T> {
     },
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const mode of ["live", "handoff"] as const) {
     for (const scenario of ["complete", "lost-ack", "ungranted"] as const) {
@@ -102,10 +117,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               interactions: journal.interactions,
               handle: grant.handle,
             });
-            yield* host.around(grant.admission);
             yield* host.around({
-              *deliveryMode() {
-                return "wait";
+              operations: grant.admission,
+            });
+            yield* host.around({
+              operations: {
+                deliveryMode: () =>
+                  function* () {
+                    return "wait";
+                  },
               },
             });
             const answers = yield* installEffectAnswers(host, grant, journal.interactions);

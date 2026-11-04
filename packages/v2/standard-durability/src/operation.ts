@@ -1,15 +1,9 @@
-import type { Around } from "./contracts.ts";
+import type { Decorator } from "./contracts.ts";
 
-/**
- * Decorate one callable. First layer is outermost; construction executes no work.
- * No scope is captured or created. Bind receiver-dependent methods at the call site.
- */
-export function composeOperation<Args extends unknown[], Returned>(
-  operation: (...args: Args) => Returned,
-  middleware: readonly (Around<Args, Returned> | undefined)[],
-): (...args: Args) => Returned {
-  return middleware.reduceRight(
-    (next, around) => (around ? (...args) => around(args, next) : next),
-    operation,
-  );
+/** Decorate one callable. First layer is outermost; no scope or owner is created. */
+export function composeOperation<F extends (...args: never[]) => unknown>(
+  operation: F,
+  middleware: readonly (Decorator<F> | undefined)[],
+): F {
+  return middleware.reduceRight((next, decorate) => (decorate ? decorate(next) : next), operation);
 }

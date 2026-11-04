@@ -23,9 +23,7 @@ import {
 } from "@sweatpan.ts/hosting";
 import { createToolAcquisition, defineTool, type ToolDefinition } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 // Provisional authored sugar and routing remain local to this executable tracer.
 const group = defineEffect({
   key: "tracer.owned-all",
@@ -59,16 +57,19 @@ function* all<const C extends readonly ChildCall<unknown>[]>(
   CapabilityRequest
 > {
   if (!calls.length) {
-    return [] as unknown as { -readonly [K in keyof C]: C[K][typeof resultType] };
+    return [] as unknown as {
+      -readonly [K in keyof C]: C[K][typeof resultType];
+    };
   }
   const outcome = yield* group.call([...calls]);
   if (!outcome.ok) {
     throw new Error("Owned group admission failed");
   }
   // The trusted router binds each slot to the tool identified by its descriptor.
-  return outcome.value as { -readonly [K in keyof C]: C[K][typeof resultType] };
+  return outcome.value as {
+    -readonly [K in keyof C]: C[K][typeof resultType];
+  };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -128,7 +129,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       .capabilities({ sample })
       .elicits({ approval })
       .execute(function* (input, ctx): Operation<
-        Outcome<{ p95: number }, { code: "unavailable" }>,
+        Outcome<
+          {
+            p95: number;
+          },
+          {
+            code: "unavailable";
+          }
+        >,
         CapabilityRequest
       > {
         const sampled = yield* ctx.capabilities.sample(input.budget);
@@ -152,7 +160,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           child(performance, mode === "invalid-input" ? Number.NaN : 500),
         );
         expectTypeOf(tuple).toEqualTypeOf<
-          [{ findings: string[] }, Outcome<{ p95: number }, { code: "unavailable" }>]
+          [
+            {
+              findings: string[];
+            },
+            Outcome<
+              {
+                p95: number;
+              },
+              {
+                code: "unavailable";
+              }
+            >,
+          ]
         >();
         return tuple;
       });
@@ -165,9 +185,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => store.close());
     let journal = store.open();
     let children: readonly Child[] = [];
-    let wait: { child: Child; grant: ResolutionGrant } | undefined;
+    let wait:
+      | {
+          child: Child;
+          grant: ResolutionGrant;
+        }
+      | undefined;
     let deferPerformance = false;
-
     function run() {
       return start(function* () {
         const effects = createEffectCapabilities(runtime, "owned-tool-all");
@@ -209,10 +233,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             interactions: bound.journal.interactions,
             handle: acquisition.handle,
           });
-          yield* host.around(acquisition.admission);
           yield* host.around({
-            *deliveryMode([request], next) {
-              return request.effect === approval.id ? "wait" : yield* next(request);
+            operations: acquisition.admission,
+          });
+          yield* host.around({
+            operations: {
+              deliveryMode: (next) =>
+                function* (request) {
+                  return request.effect === approval.id ? "wait" : yield* next(request);
+                },
             },
           });
           yield* installGuestRetention(runtime.composition, host, recovery, bound.journal);
@@ -256,76 +285,81 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             throw new Error("Owned group must route to children");
           },
         });
-        yield* host.around(caller.admission);
         yield* host.around({
-          *child([pending], next) {
-            if (pending.request.effect !== group.id) {
-              return yield* next(pending);
-            }
-            const request = group.context["~standard"].validate(pending.request.input);
-            const parsed = yield* runtime.fromPromise(async () => request);
-            if (parsed.issues) {
-              throw new Error("Invalid group request");
-            }
-            const descriptors = parsed.value;
-            const definitions = descriptors.map((call) => {
-              const definition = catalog.get(call.effect);
-              if (!definition) {
-                throw new Error("Child tool is not granted");
-              }
-              return definition;
-            });
-            const state = yield* journal.read();
-            const links = state.status === "running" ? state.children : undefined;
-            if (
-              links &&
-              (links.length !== descriptors.length ||
-                links.some((link, index) => link.program !== descriptors[index]!.effect))
-            ) {
-              throw new Error("Group identity differs from stored call");
-            }
-            const inputs: unknown[] = [];
-            for (const [index, definition] of definitions.entries()) {
-              if (links) {
-                inputs.push(links[index]!.input);
-                continue;
-              }
-              const raw = descriptors[index]!.input;
-              const result = yield* runtime.fromPromise(async () =>
-                definition.context["~standard"].validate(raw),
-              );
-              if (result.issues) {
-                throw new Error("Invalid child input");
-              }
-              inputs.push(result.value);
-            }
-            children = yield* journal.ensureChildren(pending.id, {
-              children: descriptors.map((call, index) => ({
-                program: call.effect,
-                input: inputs[index],
-              })),
-              outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
-            });
-            return {
-              id: pending.id,
-              *run() {
-                const settled = yield* runtime.all(
-                  children.map(
-                    (owned) =>
-                      function* () {
-                        if (owned.link.program === security.id) {
-                          return yield* runTool(security, owned);
-                        }
-                        if (deferPerformance) {
-                          return false;
-                        }
-                        return yield* runTool(performance, owned);
-                      },
-                  ),
-                );
-                return joinChildHostingResults(settled);
+          operations: caller.admission,
+        });
+        yield* host.around({
+          operations: {
+            child: (next) =>
+              function* (pending) {
+                if (pending.request.effect !== group.id) {
+                  return yield* next(pending);
+                }
+                const request = group.context["~standard"].validate(pending.request.input);
+                const parsed = yield* runtime.fromPromise(async () => request);
+                if (parsed.issues) {
+                  throw new Error("Invalid group request");
+                }
+                const descriptors = parsed.value;
+                const definitions = descriptors.map((call) => {
+                  const definition = catalog.get(call.effect);
+                  if (!definition) {
+                    throw new Error("Child tool is not granted");
+                  }
+                  return definition;
+                });
+                const state = yield* journal.read();
+                const links = state.status === "running" ? state.children : undefined;
+                if (
+                  links &&
+                  (links.length !== descriptors.length ||
+                    links.some((link, index) => link.program !== descriptors[index]!.effect))
+                ) {
+                  throw new Error("Group identity differs from stored call");
+                }
+                const inputs: unknown[] = [];
+                for (const [index, definition] of definitions.entries()) {
+                  if (links) {
+                    inputs.push(links[index]!.input);
+                    continue;
+                  }
+                  const raw = descriptors[index]!.input;
+                  const result = yield* runtime.fromPromise(async () =>
+                    definition.context["~standard"].validate(raw),
+                  );
+                  if (result.issues) {
+                    throw new Error("Invalid child input");
+                  }
+                  inputs.push(result.value);
+                }
+                children = yield* journal.ensureChildren(pending.id, {
+                  children: descriptors.map((call, index) => ({
+                    program: call.effect,
+                    input: inputs[index],
+                  })),
+                  outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
+                });
+                return {
+                  id: pending.id,
+                  *run() {
+                    const settled = yield* runtime.all(
+                      children.map(
+                        (owned) =>
+                          function* () {
+                            if (owned.link.program === security.id) {
+                              return yield* runTool(security, owned);
+                            }
+                            if (deferPerformance) {
+                              return false;
+                            }
+                            return yield* runTool(performance, owned);
+                          },
+                      ),
+                    );
+                    return joinChildHostingResults(settled);
+                  },
+                };
               },
-            };
           },
         });
         return yield* host.operations.run();
@@ -372,7 +406,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
-
   for (const mode of ["success", "authored-failure"] as const) {
     it(`${runtime.name}: heterogeneous tool all preserves typed slots and ${mode} across reopen`, async () => {
       const s = scenario(mode);

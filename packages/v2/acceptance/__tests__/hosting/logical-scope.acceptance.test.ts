@@ -3,7 +3,6 @@ import {
   readJournal,
   historyFrom,
 } from "@sweatpan.ts/testing";
-
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -13,7 +12,6 @@ import { createHosting, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function* ask(request: string): Operation<string, string> {
   const value: unknown = yield request;
   if (typeof value !== "string") {
@@ -21,7 +19,6 @@ function* ask(request: string): Operation<string, string> {
   }
   return value;
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -30,7 +27,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return execution;
   }
   function scenario() {
-    const journal = createMemoryJournal<{ answer: string }, string, string, string>({
+    const journal = createMemoryJournal<
+      {
+        answer: string;
+      },
+      string,
+      string,
+      string
+    >({
       program: "scopes",
       equals: isDeepStrictEqual,
     });
@@ -53,11 +57,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         return { answer: yield* ask("approval") };
       });
-      expectTypeOf(result).toEqualTypeOf<{ answer: string }>();
+      expectTypeOf(result).toEqualTypeOf<{
+        answer: string;
+      }>();
       bodyTail++;
       return result;
     }
-    function run(store: Journal<{ answer: string }, string, string, string, unknown, Y> = journal) {
+    function run(
+      store: Journal<
+        {
+          answer: string;
+        },
+        string,
+        string,
+        string,
+        unknown,
+        Y
+      > = journal,
+    ) {
       return start(function* () {
         const recovery = createRecovery(runtime, {
           name: "scopes",
@@ -78,8 +95,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *deliveryMode() {
-            return "wait";
+          operations: {
+            deliveryMode: () =>
+              function* () {
+                return "wait";
+              },
           },
         });
         return yield* host.operations.run();
@@ -87,7 +107,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     async function waiting(request: string) {
       const result = await run();
-      expectTypeOf(result).toEqualTypeOf<HostedResult<{ answer: string }, string>>();
+      expectTypeOf(result).toEqualTypeOf<
+        HostedResult<
+          {
+            answer: string;
+          },
+          string
+        >
+      >();
       if (result.state !== "waiting") {
         throw new Error(`Expected ${request}, got ${result.state}`);
       }
@@ -178,7 +205,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.run()).toEqual({ state: "cancelled", reason: "deadline" });
       expect(s.bodyTail).toBe(0);
     });
-
     it("recovers a rejected completion without repeating accepted cleanup", async () => {
       const s = scenario();
       for (const request of [
@@ -205,7 +231,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await s.run()).toEqual({ state: "completed", value: { answer: "yes" } });
       expect((await start(() => readJournal(s.journal)).result).history).toEqual(before.history);
     });
-
     it("retains cleanup failures, attempts remaining frames and does not restart cleanup on repeat cancellation", async () => {
       const s = scenario();
       const approval = await s.waiting("approval");
@@ -247,7 +272,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         "audit",
       ]);
     });
-
     for (const changed of ["scope", "critical"] as const) {
       it(`rejects changed ${changed} evidence even when the domain request is identical`, async () => {
         const s = scenario();

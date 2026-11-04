@@ -5,6 +5,11 @@
 modules import these contracts and remain generic in the yielded protocol `Y`.
 Only stack assembly selects `runtime-effect` or `runtime-effection`.
 
+For deciding what to make interceptable, when to use direct wrappers versus scoped
+middleware, and what the abstraction does not yet support, read
+[Composing behavior](./COMPOSITION.md). Middleware opportunities include synchronous
+functions and returned handles, not only asynchronous operations.
+
 `RuntimeType` and `Computation<F, A, E, R>` are structural, type-only mappings from
 `@standard-durability/core`, re-exported here. They retain native Effect error and
 service slots; Effection tracks its result only. Shared expected failures travel
@@ -175,9 +180,12 @@ const messages = createStreamApi(runtime.composition, "messages", {
 yield * Source.set(workerMessages);
 yield *
   messages.around({
-    *subscribe(args, next) {
-      const subscription = yield* next(...args);
-      return subscription;
+    operations: {
+      subscribe: (next) =>
+        function* (...args) {
+          const subscription = yield* next(...args);
+          return subscription;
+        },
     },
   });
 const subscription = yield * messages.stream;

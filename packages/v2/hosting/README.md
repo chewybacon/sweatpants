@@ -107,8 +107,11 @@ same execution store and select waiting through scoped middleware:
 ```ts
 yield *
   host.around({
-    *deliveryMode([request]) {
-      return request.kind === "approve" ? "wait" : "execute";
+    operations: {
+      deliveryMode: () =>
+        function* (request) {
+          return request.kind === "approve" ? "wait" : "execute";
+        },
     },
   });
 const result = yield * host.operations.run();
@@ -320,7 +323,7 @@ package. `createEffectCapabilities(runtime, name)` creates host-owned scoped API
 - `api(definition)` exposes middleware over normalized context and raw successful values.
 - `grant({ alias: definition })` selects typed callable capabilities and host admission.
 
-Wire `ctx.handle` into `createHosting`, and install `host.around(ctx.admission)` before
+Wire `ctx.handle` into `createHosting`, and install `host.around({ operations: ctx.admission })` before
 routing middleware. Admission checks membership before delivery authority, not before
 journal parking. It is deliberately composable policy, not a security sandbox.
 Duplicate keys with different definition objects are rejected within one assembly.
@@ -795,18 +798,24 @@ before the first activation. Middleware can return
 let accepted = 0;
 yield *
   host.attempts.around({
-    *settle(args, next) {
-      const result = yield* next(...args);
-      accepted++;
-      return result;
+    operations: {
+      settle: (next) =>
+        function* (...args) {
+          const result = yield* next(...args);
+          accepted++;
+          return result;
+        },
     },
   });
 yield *
   host.around({
-    *continuation() {
-      return accepted >= limit
-        ? { action: "yield", reason: "acceptance budget" }
-        : { action: "continue" };
+    operations: {
+      continuation: () =>
+        function* () {
+          return accepted >= limit
+            ? { action: "yield", reason: "acceptance budget" }
+            : { action: "continue" };
+        },
     },
   });
 const result = yield * host.operations.run();

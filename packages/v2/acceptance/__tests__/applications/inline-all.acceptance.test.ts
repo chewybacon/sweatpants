@@ -23,10 +23,8 @@ import {
   createOwnedAll,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { defineTool } from "@sweatpan.ts/tools";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const groupId = "inline.all";
 const seed = defineEffect({ key: "inline.seed", context: z.string(), response: z.string() });
 const approval = defineEffect({
@@ -45,7 +43,6 @@ interface BranchContext {
 }
 type Factory = Branch<BranchContext, CapabilityRequest | ScopeInstruction>;
 type ParentResult = [Outcome<boolean, unknown>, number];
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -66,7 +63,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let journal = store.open();
     type Child = OwnedChild<unknown, CapabilityRequest, unknown, string, unknown, Y>;
     let children: readonly Child[] = [];
-    const waits = new Map<number, { grant: ResolutionGrant; effect: string }>();
+    const waits = new Map<
+      number,
+      {
+        grant: ResolutionGrant;
+        effect: string;
+      }
+    >();
     let parentWait: ResolutionGrant | undefined;
     let boundary = "";
     let authoring: All<BranchContext, CapabilityRequest | ScopeInstruction> | undefined;
@@ -171,7 +174,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             interactions: child.journal.interactions,
             handle: grant.handle,
           });
-          yield* host.around(grant.admission);
+          yield* host.around({
+            operations: grant.admission,
+          });
           yield* installToolRouting(runtime, host, child.journal, {
             tool: scoreTool,
             *run(owned) {
@@ -196,7 +201,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 attempts: owned.journal.attempts,
                 handle: acquisition.handle,
               });
-              yield* toolHost.around(acquisition.admission);
+              yield* toolHost.around({
+                operations: acquisition.admission,
+              });
               yield* installGuestRetention(
                 runtime.composition,
                 toolHost,
@@ -208,10 +215,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           });
           yield* host.around({
-            *deliveryMode([request], next) {
-              return request.effect === approval.id || request.effect === cleanup.id
-                ? "wait"
-                : yield* next(request);
+            operations: {
+              deliveryMode: (next) =>
+                function* (request) {
+                  return request.effect === approval.id || request.effect === cleanup.id
+                    ? "wait"
+                    : yield* next(request);
+                },
             },
           });
           const result = yield* host.operations.run();
@@ -230,10 +240,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           interactions: journal.interactions,
           handle: parentGrant.handle,
         });
-        yield* host.around(parentGrant.admission);
         yield* host.around({
-          *deliveryMode([request], next) {
-            return request.effect === cleanup.id ? "wait" : yield* next(request);
+          operations: parentGrant.admission,
+        });
+        yield* host.around({
+          operations: {
+            deliveryMode: (next) =>
+              function* (request) {
+                return request.effect === cleanup.id ? "wait" : yield* next(request);
+              },
           },
         });
         yield* ownedAll.install({
@@ -314,7 +329,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
-
   for (const named of [false, true]) {
     it(`${runtime.name}: inline all (named tool: ${named}) reconstructs closures from parent replay and retains completed branch results`, async () => {
       const s = scenario(named);
@@ -380,7 +394,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(s.run()).resolves.toEqual(expected);
       expect({ parent: s.counts.parent, branches: s.counts.branches }).toEqual(visits);
     });
-
     it(`${runtime.name}: cancelling inline all (named tool: ${named}) fences elicitation and joins branch cleanup before parent cleanup across reopen`, async () => {
       const s = scenario(named);
       await s.run();

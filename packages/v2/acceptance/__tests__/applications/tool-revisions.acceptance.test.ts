@@ -24,7 +24,6 @@ import {
   resolveToolExecution,
   type ToolInteraction,
 } from "@sweatpan.ts/tools";
-
 import {
   createHostedRecovery,
   createSqliteDatabaseRig,
@@ -32,7 +31,6 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 // Provisional build output: deterministic package-manifest bytes. The digest covers the
 // entry point, contracts and declared dependency identities, but this fixture does not
 // claim to serialize or independently reconstruct arbitrary JavaScript closures.
@@ -53,14 +51,22 @@ function reference(revision: string) {
 }
 const originalRef = reference("original");
 const replacementRef = reference("replacement");
-type Result = { revision: string; input: string; reviewed: string; approved: boolean };
-
+type Result = {
+  revision: string;
+  input: string;
+  reviewed: string;
+  approved: boolean;
+};
 // Tool author: a stable logical name, schemas and body; no authored digest or version suffix.
 function authored(
   revision: "original" | "replacement",
   counts: Record<
     "original" | "replacement",
-    { inputs: number; acquired: number; deliveries: number }
+    {
+      inputs: number;
+      acquired: number;
+      deliveries: number;
+    }
   >,
 ) {
   const read = defineEffect({ key: "review.read", context: z.string(), response: z.string() });
@@ -94,18 +100,18 @@ function authored(
     });
   return { tool, revision, program: reference(revision), bytes: artifactBytes(revision) };
 }
-
-function verifyArtifact<T extends { bytes: string; program: string }>(
-  program: string,
-  artifact: T,
-) {
+function verifyArtifact<
+  T extends {
+    bytes: string;
+    program: string;
+  },
+>(program: string, artifact: T) {
   const actual = `tool:sha256:${createHash("sha256").update(artifact.bytes).digest("hex")}`;
   if (actual !== program || artifact.program !== program) {
     throw new Error("Pinned tool artifact digest mismatch");
   }
   return artifact;
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: deployment defaults never replace an execution's pinned tool or answer contract`, async () => {
     const database = createSqliteDatabaseRig();
@@ -246,7 +252,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             handle: acquisition.handle,
           });
           yield* installGuestRetention(runtime.composition, host, recovery, current);
-          yield* host.around(acquisition.admission);
+          yield* host.around({
+            operations: acquisition.admission,
+          });
           yield* installElicitHandlers(host, effects, tool);
           yield* effects.install(tool.capabilities.read, function* (input) {
             counts[revision].deliveries++;
@@ -286,7 +294,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const inputCounts = [counts.original.inputs, counts.replacement.inputs];
     expect((await task(app.journal("old").read)).program).toBe(originalRef);
     expect((await task(app.journal("new").read)).program).toBe(replacementRef);
-
     const beforeMissing = await task(app.journal("old").read);
     const beforeCounts = structuredClone(counts);
     inventory.delete(originalRef);
@@ -355,7 +362,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(counts).toEqual(terminalCounts);
   });
 });
-
 // Build-owned adapter experiment: create an executable declaration rather than mutate
 // the author's frozen definition or leave its call builder targeting the logical ID.
 function executable(artifact: ReturnType<typeof authored>) {
@@ -405,7 +411,6 @@ function modelResponse(call: boolean): ModelResponse {
     errorMessage: null,
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: hosted chat pins executable tools while authors and models keep stable names`, async () => {
     const database = createSqliteDatabaseRig();
@@ -425,7 +430,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     ]);
     let defaultRef = originalRef;
     const peer = createProtocolRig();
-    const modelInputs: { id: string; history: unknown }[] = [];
+    const modelInputs: {
+      id: string;
+      history: unknown;
+    }[] = [];
     function task<T>(work: Work<T, Y>) {
       const result = runtime.start(work);
       void result.result.catch(() => undefined);
@@ -651,7 +659,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await Promise.race([peer.waitForRequests(previous + 1), running]);
       const history = z.array(z.unknown()).parse(modelInputs.at(-1)!.history);
       const result = history.find(
-        (entry): entry is { role: string; content: string; toolCallId: string } =>
+        (
+          entry,
+        ): entry is {
+          role: string;
+          content: string;
+          toolCallId: string;
+        } =>
           typeof entry === "object" && entry !== null && "role" in entry && entry.role === "tool",
       );
       expect(result?.toolCallId).toBe("review-call");

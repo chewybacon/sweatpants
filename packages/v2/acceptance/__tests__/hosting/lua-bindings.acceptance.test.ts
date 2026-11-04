@@ -13,7 +13,6 @@ import { createEffectCapabilities, createHosting } from "@sweatpan.ts/hosting";
 import { createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 let compiled: Promise<WebAssembly.Module> | undefined;
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const scenario of [
@@ -84,7 +83,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           // Simulate an untyped external provider violating its declared response.
           return { ok: true, value: 42 as unknown as string };
         });
-        yield* host.around(grant.admission);
+        yield* host.around({
+          operations: grant.admission,
+        });
         return yield* host.operations.run();
       });
       onTestFinished(() => task.cancel());

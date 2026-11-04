@@ -4,6 +4,22 @@ This is a record of design traps and the boundaries that keep them manageable.
 It is not a backlog of edge cases the framework must automatically handle.
 Entries describe design constraints; they do not declare unimplemented APIs complete.
 
+## FG-010 — Confusing scope lookup with asynchronous IO
+
+A synchronous SQLite transaction cannot run the current API facade through its
+one-step generator runner: even scope lookup yields a runtime instruction. A yield
+does not necessarily wait for IO, but that runner rejects every yielded instruction.
+
+**Boundary:** Acquire synchronous access with `const sql = yield* Sqlite` before entering the transaction. The handle
+resolves current policy in its captured scope on each call; it does not acquire the
+calling scope's driver. Acquired-access lifetime and physical database lifetime are
+separate responsibilities.
+
+**Author responsibility:** Keep SQL middleware synchronous and yield the API again when a new
+scope's policy is needed. A rejected Promise cannot cancel work already started by
+an async function. Use the acquired access within its scope and close caller-owned
+databases separately. See the [SQLite experiment](./acceptance/examples/scoped-sqlite.md).
+
 ## FG-009 — Treating an attempt notification as ownership of a host
 
 A delayed cancellation for a body attempt arrives after another run has started

@@ -14,10 +14,8 @@ import type { Operation, Work } from "@standard-durability/core";
 import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
-
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 interface Request {
   readonly operation: string;
   readonly programs?: readonly string[];
@@ -32,7 +30,6 @@ function* all(programs: readonly string[]): Operation<readonly string[], Request
   }
   return (yield { operation: "all", programs }) as readonly string[];
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -91,39 +88,43 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       yield* host.around({
-        *deliveryMode() {
-          if (raceCancellation && label === "performance") {
-            raceCancellation = false;
-            // Activation has observed this sibling's old boundary. Commit the other
-            // child's cancellation now, before this host registers that boundary.
-            expect(yield* runChild(children[0]!)).toBe(true);
-          }
-          return "wait";
-        },
-        *child([pending], next) {
-          if (pending.request.operation !== "all") {
-            return yield* next(pending);
-          }
-          const group = yield* child.journal.ensureChildren<string, Request, unknown, string>(
-            pending.id,
-            {
-              children: pending.request.programs!.map((input) => ({
-                program: "research-child",
-                input,
-              })),
-              outcome: (values) => ({ ok: true, value: values }),
+        operations: {
+          deliveryMode: () =>
+            function* () {
+              if (raceCancellation && label === "performance") {
+                raceCancellation = false;
+                // Activation has observed this sibling's old boundary. Commit the other
+                // child's cancellation now, before this host registers that boundary.
+                expect(yield* runChild(children[0]!)).toBe(true);
+              }
+              return "wait";
             },
-          );
-          for (const descendant of group) {
-            descendants.set(descendant.link.input as string, descendant);
-          }
-          return {
-            id: pending.id,
-            *run() {
-              const settled = yield* runtime.all(group.map((entry) => () => runChild(entry)));
-              return joinChildHostingResults(settled);
+          child: (next) =>
+            function* (pending) {
+              if (pending.request.operation !== "all") {
+                return yield* next(pending);
+              }
+              const group = yield* child.journal.ensureChildren<string, Request, unknown, string>(
+                pending.id,
+                {
+                  children: pending.request.programs!.map((input) => ({
+                    program: "research-child",
+                    input,
+                  })),
+                  outcome: (values) => ({ ok: true, value: values }),
+                },
+              );
+              for (const descendant of group) {
+                descendants.set(descendant.link.input as string, descendant);
+              }
+              return {
+                id: pending.id,
+                *run() {
+                  const settled = yield* runtime.all(group.map((entry) => () => runChild(entry)));
+                  return joinChildHostingResults(settled);
+                },
+              };
             },
-          };
         },
       });
       const result = yield* host.operations.run();
@@ -164,41 +165,50 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *deliveryMode() {
-            return "wait";
-          },
-          *child([pending], next) {
-            if (pending.request.operation !== "all") {
-              return yield* next(pending);
-            }
-            boundary = pending.id;
-            children = yield* journal.ensureChildren<string, Request, unknown, string>(pending.id, {
-              children: pending.request.programs!.map((input) => ({
-                program: "research-child",
-                input,
-              })),
-              outcome(values) {
-                expectTypeOf(values).toEqualTypeOf<readonly string[]>();
-                if (projectionFails) {
-                  throw new Error("Join projection failed");
-                }
-                return { ok: true, value: values };
+          operations: {
+            deliveryMode: () =>
+              function* () {
+                return "wait";
               },
-            });
-            acquired = children.map((child) => child.link.childId);
-            return {
-              id: pending.id,
-              *run() {
-                if (deferChildren) {
-                  return false;
+            child: (next) =>
+              function* (pending) {
+                if (pending.request.operation !== "all") {
+                  return yield* next(pending);
                 }
-                if (raceCancellation) {
-                  return yield* runChild(children[1]!);
-                }
-                const settled = yield* runtime.all(children.map((child) => () => runChild(child)));
-                return joinChildHostingResults(settled);
+                boundary = pending.id;
+                children = yield* journal.ensureChildren<string, Request, unknown, string>(
+                  pending.id,
+                  {
+                    children: pending.request.programs!.map((input) => ({
+                      program: "research-child",
+                      input,
+                    })),
+                    outcome(values) {
+                      expectTypeOf(values).toEqualTypeOf<readonly string[]>();
+                      if (projectionFails) {
+                        throw new Error("Join projection failed");
+                      }
+                      return { ok: true, value: values };
+                    },
+                  },
+                );
+                acquired = children.map((child) => child.link.childId);
+                return {
+                  id: pending.id,
+                  *run() {
+                    if (deferChildren) {
+                      return false;
+                    }
+                    if (raceCancellation) {
+                      return yield* runChild(children[1]!);
+                    }
+                    const settled = yield* runtime.all(
+                      children.map((child) => () => runChild(child)),
+                    );
+                    return joinChildHostingResults(settled);
+                  },
+                };
               },
-            };
           },
         });
         const result = yield* host.operations.run();
@@ -274,7 +284,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
-
   for (const failures of [false, true]) {
     it(`${runtime.name}: owned all cancellation fences siblings and joins every cleanup before parent unwind (failures: ${failures})`, async () => {
       const s = scenario();
@@ -317,7 +326,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
     });
   }
-
   it(`${runtime.name}: independently cancelled child fences remaining siblings before the group can settle`, async () => {
     const s = scenario();
     await s.run();
@@ -338,7 +346,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await s.releaseParent();
     await expect(s.run()).resolves.toMatchObject({ state: "cancelled", reason: "child stopped" });
   });
-
   it(`${runtime.name}: owned all cancellation before children start queues every stop`, async () => {
     const s = scenario();
     s.deferChildren(true);
@@ -355,7 +362,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await s.releaseParent();
     await expect(s.run()).resolves.toMatchObject({ state: "cancelled", reason: "stop all" });
   });
-
   it(`${runtime.name}: critical owned all preserves sibling authority until the join is safe`, async () => {
     const s = scenario(true);
     await s.run();
@@ -375,7 +381,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await s.releaseParent();
     await expect(s.run()).resolves.toMatchObject({ state: "cancelled", reason: "stop all" });
   });
-
   it(`${runtime.name}: nested branching cancellation fences eligible leaves and drains protected joins across reopen`, async () => {
     const s = scenario(false, true);
     await s.run();
@@ -446,7 +451,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await s.releaseParent();
     await expect(s.run()).resolves.toMatchObject({ state: "cancelled", reason: "stop all" });
   });
-
   it(`${runtime.name}: failed group projection rolls back the last child completion and parent acceptance`, async () => {
     const s = scenario();
     await s.run();

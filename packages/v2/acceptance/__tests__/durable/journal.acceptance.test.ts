@@ -15,7 +15,6 @@ import { createScopedGuest, type Guest } from "@sweatpan.ts/execution";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 let compiled: Promise<WebAssembly.Module> | undefined;
 const source = `
 local hold = workflow.effect("reserve", { binding = "reserve" })
@@ -45,7 +44,6 @@ function decodeResult(value: unknown) {
 }
 type Request = ReturnType<typeof decodeRequest>;
 type Result = ReturnType<typeof decodeResult>;
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function run<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -86,20 +84,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             });
             if (checkpoints) {
               yield* recovery.around(
-                createCheckpointMiddleware({
-                  execution: recovery.execution,
-                  program: "booking:v1",
-                  adapter: evaluator.checkpoints,
-                  matches: isDeepStrictEqual,
-                }),
+                {
+                  operations: createCheckpointMiddleware({
+                    execution: recovery.execution,
+                    program: "booking:v1",
+                    adapter: evaluator.checkpoints,
+                    matches: isDeepStrictEqual,
+                  }),
+                },
                 { at: "min" },
               );
             }
             yield* recovery.around({
-              *recover(args, next) {
-                const restored = yield* next(...args);
-                guests.push(restored.guest);
-                return restored;
+              operations: {
+                recover: (next) =>
+                  function* (...args) {
+                    const restored = yield* next(...args);
+                    guests.push(restored.guest);
+                    return restored;
+                  },
               },
             });
             return yield* activateJournal(runtime.composition, recovery.operations, journal);
@@ -191,7 +194,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ).toBe(true);
       });
     }
-
     it("rejects a stale activation commit and disposes both competing Guests", async () => {
       const journal = createMemoryJournal<number, string, unknown, unknown>({
         program: "race",
@@ -215,12 +217,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           });
           yield* recovery.around({
-            *recover(args, next) {
-              const recovered = yield* next(...args);
-              yield* runtime.fromPromise((signal) =>
-                gates.send({ id, token: "ready-to-commit" }, signal),
-              );
-              return recovered;
+            operations: {
+              recover: (next) =>
+                function* (...args) {
+                  const recovered = yield* next(...args);
+                  yield* runtime.fromPromise((signal) =>
+                    gates.send({ id, token: "ready-to-commit" }, signal),
+                  );
+                  return recovered;
+                },
             },
           });
           return yield* activateJournal(runtime.composition, recovery.operations, journal);
@@ -243,9 +248,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await expect(run(() => guest.start())).rejects.toThrow("closed");
       }
     });
-
     it("rejects a wrong checkpoint anchor and isolates stored data from caller mutation", async () => {
-      const journal = createMemoryJournal<number, { id: string }, string, string>({
+      const journal = createMemoryJournal<
+        number,
+        {
+          id: string;
+        },
+        string,
+        string
+      >({
         program: "anchor",
         equals: isDeepStrictEqual,
       });
@@ -265,14 +276,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           });
           if (invalidCheckpoint) {
             yield* recovery.around({
-              *checkpoint() {
-                return {
-                  program: "anchor",
-                  format: "fixture",
-                  position: 1,
-                  receipt: "wrong",
-                  state: {},
-                };
+              operations: {
+                checkpoint: () =>
+                  function* () {
+                    return {
+                      program: "anchor",
+                      format: "fixture",
+                      position: 1,
+                      receipt: "wrong",
+                      state: {},
+                    };
+                  },
               },
             });
           }

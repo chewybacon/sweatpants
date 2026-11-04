@@ -14,7 +14,6 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: lost publication recovers accepted output and registered waits without acquiring or delivering`, async () => {
     const store = createSqliteJournalRig<string, string, string, string, unknown, Y>({
@@ -74,8 +73,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
               });
               yield* host.around({
-                *deliveryMode([request]) {
-                  return request === "question" ? "wait" : "execute";
+                operations: {
+                  deliveryMode: () =>
+                    function* (request) {
+                      return request === "question" ? "wait" : "execute";
+                    },
                 },
               });
               return yield* host.operations.run();
@@ -192,8 +194,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     const task = runtime.start(function* () {
       yield* host.around({
-        *deliveryMode() {
-          return "wait";
+        operations: {
+          deliveryMode: () =>
+            function* () {
+              return "wait";
+            },
         },
       });
       const result = yield* host.operations.run();

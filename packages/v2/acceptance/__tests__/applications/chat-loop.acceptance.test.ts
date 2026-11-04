@@ -26,7 +26,6 @@ import { createHostedRecovery, createSqliteJournalRig } from "@sweatpan.ts/testi
 import type { ChatToolCall, ModelResponse, ModelInfo } from "@sweatpan.ts/providers";
 import type { Runtime, Subscription } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const batch = z.object({
   text: z.string(),
   calls: z.array(z.object({ id: z.string(), name: z.string(), input: z.string() })),
@@ -75,7 +74,6 @@ function response(value: z.infer<typeof batch>): ModelResponse {
     errorMessage: null,
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function scenario(
     mode:
@@ -229,7 +227,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 };
               },
             });
-            yield* sampling.around(limitChatRounds(maxRounds));
+            yield* sampling.around({
+              operations: limitChatRounds(maxRounds),
+            });
             yield* effects.install(sample, sampling.operations.sample);
             yield* effects.install(alpha, function* (input) {
               counts.alpha++;
@@ -245,10 +245,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               counts.beta++;
               throw new Error("Expected participant wait");
             });
-            yield* host.around(grant.admission);
             yield* host.around({
-              *deliveryMode([request]) {
-                return request.effect === beta.id ? "wait" : "execute";
+              operations: grant.admission,
+            });
+            yield* host.around({
+              operations: {
+                deliveryMode: () =>
+                  function* (request) {
+                    return request.effect === beta.id ? "wait" : "execute";
+                  },
               },
             });
             return yield* host.operations.run();
@@ -273,7 +278,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     return { assemble, store, counts, initial };
   }
-
   for (const mode of ["success", "authored-failure"] as const) {
     it(`${runtime.name}: catalog loop correlates multi-tool rounds across a parked call and journal reopen (${mode})`, async () => {
       const s = scenario(mode);
@@ -408,7 +412,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(s.counts.alpha).toBe(0);
     expect(s.counts.events).toBe(2);
   });
-
   for (const disposition of ["early-exit", "cancel", "consumer-failure"] as const) {
     it(`${runtime.name}: pull chat owns early termination without advancing an unconsumed tool (${disposition})`, async () => {
       let calls = 0;
@@ -478,7 +481,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(calls).toBe(0);
     });
   }
-
   it(`${runtime.name}: runChat callback failure stops the shared pull implementation before tools`, async () => {
     let calls = 0;
     const guest = createScopedGuest(function* (scope) {
@@ -531,7 +533,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(s.counts).toMatchObject({ samples: 1, alpha: 0, beta: 0, events: 0 });
   });
 });
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it.each([
     "ordered",
@@ -671,7 +672,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             attempts: journal.attempts,
             handle: granted.handle,
           });
-          yield* host.around(granted.admission);
+          yield* host.around({
+            operations: granted.admission,
+          });
           return yield* host.operations.run();
         });
         void task.result.catch(() => undefined);

@@ -10,19 +10,15 @@ import {
   type OwnedChild,
   type ResolutionGrant,
 } from "@sweatpan.ts/durable";
-
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, onTestFinished } from "vitest";
 import type { Work, Operation } from "@standard-durability/core";
 import { createScopedGuest } from "@sweatpan.ts/execution";
-
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createLuaEvaluator, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 let module: Promise<WebAssembly.Module> | undefined;
 const loadModule = () =>
   (module ??= readFile(luaWasmUrl).then((bytes) => WebAssembly.compile(bytes)));
@@ -138,7 +134,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       onTestFinished(() => store.close());
       let journal = store.open();
       const children: Child[] = [];
-      const waits = new Map<number, { grant: ResolutionGrant; request: string }>();
+      const waits = new Map<
+        number,
+        {
+          grant: ResolutionGrant;
+          request: string;
+        }
+      >();
       let parentWait: ResolutionGrant | undefined;
       let restored = 0;
       function run() {
@@ -168,111 +170,118 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           });
           yield* host.around({
-            *deliveryMode() {
-              return "wait";
-            },
-            *child([pending], next) {
-              if (pending.request !== "race") {
-                return yield* next(pending);
-              }
-              const group = yield* journal.ensureChildren<string, string, string, string>(
-                pending.id,
-                {
-                  join: "race",
-                  children: [
-                    { program: "lua-child:v1", input: null },
-                    { program: "winner:v1", input: null },
-                  ],
-                  outcome: (values) => ({ ok: true, value: values[0]! }),
+            operations: {
+              deliveryMode: () =>
+                function* () {
+                  return "wait";
                 },
-              );
-              return {
-                id: pending.id,
-                *run() {
-                  const results = yield* runtime.all(
-                    group.map(
-                      (child, index) =>
-                        function* () {
-                          children[index] = child;
-                          const lua = evaluator();
-                          const placement = createHostedExecution<
-                            string,
-                            string,
-                            Y,
-                            string,
-                            string
-                          >(runtime, {
-                            acquire:
-                              index === 0
-                                ? lua.acquire
-                                : function* () {
-                                    return createScopedGuest(function* () {
-                                      return (yield "win") as string;
-                                    });
-                                  },
-                            checkpoints: lua.checkpoints,
-                          });
-                          const checkpointAdapter = placement.checkpoints;
-                          if (!checkpointAdapter) {
-                            throw new Error("Expected checkpoint capability");
-                          }
-                          const childRecovery = createPlacedRecovery<
-                            string,
-                            string,
-                            Y,
-                            string,
-                            string
-                          >(runtime.composition, {
-                            name: `child:${index}`,
-                            program: child.link.program,
-                            matches: isDeepStrictEqual,
-                            acquire: placement.acquire,
-                          });
-                          if (index === 0) {
-                            yield* childRecovery.around(
-                              createCheckpointMiddleware({
-                                program: child.link.program,
-                                execution: childRecovery.execution,
-                                matches: isDeepStrictEqual,
-                                adapter: {
-                                  ...checkpointAdapter,
-                                  *restore(saved) {
-                                    restored++;
-                                    return yield* checkpointAdapter.restore(saved);
-                                  },
-                                },
-                              }),
-                            );
-                          }
-                          const childHost = createHosting(runtime.composition, {
-                            name: `child-host:${index}`,
-                            journal: child.journal,
-                            recovery: childRecovery.operations,
-                            attempts: child.journal.attempts,
-                            interactions: child.journal.interactions,
-                            *handle(): Operation<never, Y> {
-                              throw new Error("Participant delivery only");
-                            },
-                          });
-                          yield* childHost.around({
-                            *deliveryMode() {
-                              return "wait";
-                            },
-                          });
-                          const result = yield* childHost.operations.run();
-                          if (result.state === "waiting") {
-                            waits.set(index, {
-                              grant: result.grant,
-                              request: result.pending.request,
-                            });
-                          }
-                          return childHostingResult(result);
-                        },
-                    ),
+              child: (next) =>
+                function* (pending) {
+                  if (pending.request !== "race") {
+                    return yield* next(pending);
+                  }
+                  const group = yield* journal.ensureChildren<string, string, string, string>(
+                    pending.id,
+                    {
+                      join: "race",
+                      children: [
+                        { program: "lua-child:v1", input: null },
+                        { program: "winner:v1", input: null },
+                      ],
+                      outcome: (values) => ({ ok: true, value: values[0]! }),
+                    },
                   );
-                  return joinChildHostingResults(results);
+                  return {
+                    id: pending.id,
+                    *run() {
+                      const results = yield* runtime.all(
+                        group.map(
+                          (child, index) =>
+                            function* () {
+                              children[index] = child;
+                              const lua = evaluator();
+                              const placement = createHostedExecution<
+                                string,
+                                string,
+                                Y,
+                                string,
+                                string
+                              >(runtime, {
+                                acquire:
+                                  index === 0
+                                    ? lua.acquire
+                                    : function* () {
+                                        return createScopedGuest(function* () {
+                                          return (yield "win") as string;
+                                        });
+                                      },
+                                checkpoints: lua.checkpoints,
+                              });
+                              const checkpointAdapter = placement.checkpoints;
+                              if (!checkpointAdapter) {
+                                throw new Error("Expected checkpoint capability");
+                              }
+                              const childRecovery = createPlacedRecovery<
+                                string,
+                                string,
+                                Y,
+                                string,
+                                string
+                              >(runtime.composition, {
+                                name: `child:${index}`,
+                                program: child.link.program,
+                                matches: isDeepStrictEqual,
+                                acquire: placement.acquire,
+                              });
+                              if (index === 0) {
+                                yield* childRecovery.around({
+                                  operations: createCheckpointMiddleware({
+                                    program: child.link.program,
+                                    execution: childRecovery.execution,
+                                    matches: isDeepStrictEqual,
+                                    adapter: {
+                                      ...checkpointAdapter,
+                                      *restore(saved) {
+                                        restored++;
+                                        return yield* checkpointAdapter.restore(saved);
+                                      },
+                                    },
+                                  }),
+                                });
+                              }
+                              const childHost = createHosting(runtime.composition, {
+                                name: `child-host:${index}`,
+                                journal: child.journal,
+                                recovery: childRecovery.operations,
+                                attempts: child.journal.attempts,
+                                interactions: child.journal.interactions,
+                                *handle(): Operation<never, Y> {
+                                  throw new Error("Participant delivery only");
+                                },
+                              });
+                              yield* childHost.around({
+                                operations: {
+                                  deliveryMode: () =>
+                                    function* () {
+                                      return "wait";
+                                    },
+                                },
+                              });
+                              const result = yield* childHost.operations.run();
+                              if (result.state === "waiting") {
+                                waits.set(index, {
+                                  grant: result.grant,
+                                  request: result.pending.request,
+                                });
+                              }
+                              return childHostingResult(result);
+                            },
+                        ),
+                      );
+                      return joinChildHostingResults(results);
+                    },
+                  };
                 },
-              };
             },
           });
           const result = yield* host.operations.run();

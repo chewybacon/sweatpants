@@ -36,7 +36,6 @@ import {
   travelTip,
 } from "../../examples/flight-chat.ts";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const planner: ModelInfo = {
   id: "planner",
   name: "Planner",
@@ -83,7 +82,6 @@ const itinerary = response([
   },
 ]);
 const final = response([{ type: "text", text: "Your flight choices are ready." }]);
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const mode of [
     "normal",
@@ -216,9 +214,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* effects.install(travelTip, function* ({ destination }) {
               return yield* runtime.composition.scoped(function* () {
                 yield* models.install({
-                  *select() {
-                    selections.push(selectedTip.id);
-                    return selectedTip;
+                  operations: {
+                    *select() {
+                      selections.push(selectedTip.id);
+                      return selectedTip;
+                    },
                   },
                 });
                 // This is one application-owned inference, not recursion into the outer chat loop.
@@ -253,19 +253,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               });
             });
             yield* host.attempts.around({
-              *settle(args, next) {
-                const accepted = yield* next(...args);
-                if (
-                  mode === "accepted-interruption" &&
-                  accepted.entry.request.effect === travelTip.id &&
-                  !interrupted
-                ) {
-                  interrupted = true;
-                  yield* runtime.fromPromise((signal) =>
-                    acknowledgement.send({ id: "accepted-tip", token: "hold" }, signal),
-                  );
-                }
-                return accepted;
+              operations: {
+                settle: (next) =>
+                  function* (...args) {
+                    const accepted = yield* next(...args);
+                    if (
+                      mode === "accepted-interruption" &&
+                      accepted.entry.request.effect === travelTip.id &&
+                      !interrupted
+                    ) {
+                      interrupted = true;
+                      yield* runtime.fromPromise((signal) =>
+                        acknowledgement.send({ id: "accepted-tip", token: "hold" }, signal),
+                      );
+                    }
+                    return accepted;
+                  },
               },
             });
           },

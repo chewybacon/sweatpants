@@ -6,7 +6,6 @@ import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installGuestRetention } from "@sweatpan.ts/hosting";
 import { createProtocolRig, createSqliteJournalRig, createLatch } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const wrapper of ["activate", "recover", "none", "shared"] as const) {
     it(`retains only visible live Guests through ${wrapper} middleware`, async () => {
@@ -54,15 +53,21 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const execution = runtime.start(function* () {
         if (wrapper === "activate") {
           yield* host.around({
-            activate(args, next) {
-              return runtime.composition.scoped(() => next(...args));
+            operations: {
+              activate: (next) =>
+                function (...args) {
+                  return runtime.composition.scoped(() => next(...args));
+                },
             },
           });
         }
         if (wrapper === "recover") {
           yield* recovery.around({
-            recover(args, next) {
-              return runtime.composition.scoped(() => next(...args));
+            operations: {
+              recover: (next) =>
+                function (...args) {
+                  return runtime.composition.scoped(() => next(...args));
+                },
             },
           });
         }

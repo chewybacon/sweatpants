@@ -20,9 +20,7 @@ import {
 } from "@sweatpan.ts/hosting";
 import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function textSchema<T>(transform: (text: string) => T): StandardSchemaV1<string, T> {
   return {
     "~standard": {
@@ -36,7 +34,6 @@ function textSchema<T>(transform: (text: string) => T): StandardSchemaV1<string,
     },
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const recording of ["generator", "promise", "promise-rejected"] as const) {
     for (const placement of ["local", "wrapped"] as const) {
@@ -82,14 +79,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* ctx.scope.ensure(function* () {
               cleanups++;
             });
-            expectTypeOf(input).toEqualTypeOf<{ query: string }>();
+            expectTypeOf(input).toEqualTypeOf<{
+              query: string;
+            }>();
             let label: string;
             if (recording === "generator") {
               const recorded = yield* ctx.record(function* () {
                 records++;
                 return { ok: true as const, value: { label: `investigation-${records}` } };
               });
-              expectTypeOf(recorded.value).toEqualTypeOf<{ label: string }>();
+              expectTypeOf(recorded.value).toEqualTypeOf<{
+                label: string;
+              }>();
               label = recorded.value.label;
             } else {
               const recorded = yield* ctx.await(
@@ -103,19 +104,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
                 { record: placement === "wrapped" ? {} : { key: "investigation-label" } },
               );
-              expectTypeOf(recorded).toEqualTypeOf<{ label: string }>();
+              expectTypeOf(recorded).toEqualTypeOf<{
+                label: string;
+              }>();
               label = recorded.label;
             }
             const file = yield* ctx.capabilities.readFile(input.query);
             if (!file.ok) {
               throw new Error("Read failed");
             }
-            expectTypeOf(file.value).toEqualTypeOf<{ contents: string }>();
+            expectTypeOf(file.value).toEqualTypeOf<{
+              contents: string;
+            }>();
             const answer = yield* ctx.elicit("clarification", `Include ${input.query}?`);
             if (!answer.ok) {
               throw new Error("Clarification failed");
             }
-            expectTypeOf(answer.value).toEqualTypeOf<{ approved: boolean }>();
+            expectTypeOf(answer.value).toEqualTypeOf<{
+              approved: boolean;
+            }>();
             return {
               label,
               contents: file.value.contents,
@@ -159,7 +166,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             investigate,
             "tool-acquisition",
           );
-          let waiting: { grant: ResolutionGrant; child: Child } | undefined;
+          let waiting:
+            | {
+                grant: ResolutionGrant;
+                child: Child;
+              }
+            | undefined;
           function childHost(child: Child) {
             const recovery = createRecovery<Result, CapabilityRequest, Y, unknown, string>(
               runtime,
@@ -185,10 +197,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           function* runChild(child: Child): Operation<ChildHostingResult, Y> {
             yield* effects.install(readFile);
             const { host, recovery } = childHost(child);
-            yield* host.around(acquisition.admission);
             yield* host.around({
-              *deliveryMode([request], next) {
-                return request.effect === clarification.id ? "wait" : yield* next(request);
+              operations: acquisition.admission,
+            });
+            yield* host.around({
+              operations: {
+                deliveryMode: (next) =>
+                  function* (request) {
+                    return request.effect === clarification.id ? "wait" : yield* next(request);
+                  },
               },
             });
             yield* installGuestRetention(runtime.composition, host, recovery, child.journal);
@@ -202,20 +219,26 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             run() {
               return start(function* () {
                 yield* acquisition.around({
-                  *acquire([input], next) {
-                    acquisitions++;
-                    yield* runtime.composition.ensure(function* () {
-                      disposals++;
-                    });
-                    return yield* next(input);
+                  operations: {
+                    acquire: (next) =>
+                      function* (input) {
+                        acquisitions++;
+                        yield* runtime.composition.ensure(function* () {
+                          disposals++;
+                        });
+                        return yield* next(input);
+                      },
                   },
                 });
                 if (placement === "wrapped") {
                   yield* acquisition.around({
-                    *acquire([input], next) {
-                      expectTypeOf(input).toEqualTypeOf<Input>();
-                      placements++;
-                      return yield* next(input);
+                    operations: {
+                      acquire: (next) =>
+                        function* (input) {
+                          expectTypeOf(input).toEqualTypeOf<Input>();
+                          placements++;
+                          return yield* next(input);
+                        },
                     },
                   });
                 }
@@ -246,7 +269,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     throw new Error("Durable tool must route to an owned child");
                   },
                 });
-                yield* host.around(caller.admission);
+                yield* host.around({
+                  operations: caller.admission,
+                });
                 yield* installToolRouting(runtime, host, journal, {
                   tool: investigate,
                   run: runChild,
@@ -277,7 +302,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           };
         }
-
         let app = assemble();
         if (recording === "promise-rejected") {
           await expect(app.run()).rejects.toThrow("Recorded Promise delivery failed");

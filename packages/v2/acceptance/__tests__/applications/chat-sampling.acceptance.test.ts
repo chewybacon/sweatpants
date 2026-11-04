@@ -9,7 +9,6 @@ import type { ModelInfo, ModelResponse } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const parent: ModelInfo = {
   id: "parent",
   name: "Parent",
@@ -42,7 +41,6 @@ function response(tool: boolean): ModelResponse {
     errorMessage: null,
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: scoped sampling policy isolates sibling models and limits and restores parent policy`, async () => {
     let selections = 0;
@@ -61,16 +59,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     });
     const task = runtime.start(function* () {
-      yield* sampling.around(limitChatRounds(4));
+      yield* sampling.around({
+        operations: limitChatRounds(4),
+      });
       const results = yield* runtime.all([
         function* () {
           yield* models.install({
-            *select() {
-              selections++;
-              return { ...parent, id: "child" };
+            operations: {
+              *select() {
+                selections++;
+                return { ...parent, id: "child" };
+              },
             },
           });
-          yield* sampling.around(limitChatRounds(1));
+          yield* sampling.around({
+            operations: limitChatRounds(1),
+          });
           return yield* sampling.operations.sample(request);
         },
         function* () {
@@ -106,8 +110,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       // Driver replacement still retains inherited sampling middleware.
       yield* runtime.composition.scoped(function* () {
         yield* sampling.install({
-          *sample() {
-            return { ok: true, value: { model: parent, response: response(true) } };
+          operations: {
+            *sample() {
+              return { ok: true, value: { model: parent, response: response(true) } };
+            },
           },
         });
         expect(yield* sampling.operations.sample({ ...request, round: 3 })).toMatchObject({
@@ -125,7 +131,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(() => limitChatRounds(invalid)).toThrow("Invalid chat round limit");
     }
   });
-
   it(`${runtime.name}: cancellation during model selection never dispatches inference`, async () => {
     const peer = createProtocolRig();
     let samples = 0;

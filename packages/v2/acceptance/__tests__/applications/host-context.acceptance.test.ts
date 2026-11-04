@@ -21,7 +21,6 @@ import { createBufferedSignal, type Runtime } from "@sweatpan.ts/runtime";
 import { createHostedRecovery, createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
 import type { ResolutionGrant } from "@sweatpan.ts/durable";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const selected: ModelInfo = {
   id: "model",
   provider: "test",
@@ -61,7 +60,6 @@ const modelEffect = defineEffect({
   }),
 });
 const proceed = defineEffect({ key: "continue-model", context: z.string(), response: z.boolean() });
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: host-side scoped preparation and counting survive changed policy on journal reopen`, async () => {
     const store = createSqliteJournalRig<string, CapabilityRequest, unknown, string, unknown, Y>({
@@ -150,12 +148,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         run: () =>
           start(function* () {
             yield* context.around({
-              *prepare([input], next) {
-                preparations++;
-                return yield* next({
-                  ...input,
-                  history: [{ role: "system", content: policy }, ...input.history],
-                });
+              operations: {
+                prepare: (next) =>
+                  function* (input) {
+                    preparations++;
+                    return yield* next({
+                      ...input,
+                      history: [{ role: "system", content: policy }, ...input.history],
+                    });
+                  },
               },
             });
             yield* effects.install(modelEffect, function* ({ question, target }) {
@@ -188,13 +189,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 value: { prepared: preparedSchema.parse(prepared), count, response },
               };
             });
-            yield* host.around(granted.admission);
             yield* host.around({
-              *deliveryMode([request], next) {
-                if (request.effect === proceed.id) {
-                  return "wait" as const;
-                }
-                return yield* next(request);
+              operations: granted.admission,
+            });
+            yield* host.around({
+              operations: {
+                deliveryMode: (next) =>
+                  function* (request) {
+                    if (request.effect === proceed.id) {
+                      return "wait" as const;
+                    }
+                    return yield* next(request);
+                  },
               },
             });
             return yield* host.operations.run();

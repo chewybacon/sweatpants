@@ -17,11 +17,19 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 type Request =
-  | { readonly kind: "signup" | "reserve" }
-  | { readonly kind: "approve" | "commit" | "release"; readonly resource: string }
-  | { readonly kind: "repair"; readonly resource: string; readonly failure: string };
+  | {
+      readonly kind: "signup" | "reserve";
+    }
+  | {
+      readonly kind: "approve" | "commit" | "release";
+      readonly resource: string;
+    }
+  | {
+      readonly kind: "repair";
+      readonly resource: string;
+      readonly failure: string;
+    };
 const repairDecision = z.object({
   action: z.enum(["confirmed-released", "waive"]),
   evidence: z.string().min(1),
@@ -29,7 +37,6 @@ const repairDecision = z.object({
 function* exchange(request: Request): Operation<unknown, Request> {
   return yield request;
 }
-
 // A concrete saga assembly, not a new failure interpreter or repair registry.
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
@@ -130,31 +137,38 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function* runChild(owned: Child) {
         const host = childHost(owned);
         yield* host.around({
-          *deliveryMode([request]) {
-            return request.kind === "approve" || request.kind === "repair" ? "wait" : "execute";
-          },
-          *activate(args, next) {
-            const boundary = yield* next(...args);
-            // Stop this test owner at a persisted protected boundary, before any
-            // attempt grant or external delivery. The next owner may continue.
-            if (
-              pauseCommit &&
-              boundary.state === "parked" &&
-              boundary.pending.request.kind === "commit"
-            ) {
-              throw new Error("Paused before commit delivery");
-            }
-            return boundary;
+          operations: {
+            deliveryMode: () =>
+              function* (request) {
+                return request.kind === "approve" || request.kind === "repair" ? "wait" : "execute";
+              },
+            activate: (next) =>
+              function* (...args) {
+                const boundary = yield* next(...args);
+                // Stop this test owner at a persisted protected boundary, before any
+                // attempt grant or external delivery. The next owner may continue.
+                if (
+                  pauseCommit &&
+                  boundary.state === "parked" &&
+                  boundary.pending.request.kind === "commit"
+                ) {
+                  throw new Error("Paused before commit delivery");
+                }
+                return boundary;
+              },
           },
         });
         yield* host.attempts.around({
-          *settle([grant, outcome], next) {
-            const accepted = yield* next(grant, outcome);
-            if (!lost && accepted.entry.request.kind === loseAccepted) {
-              lost = true;
-              throw new Error("Owner lost after acceptance");
-            }
-            return accepted;
+          operations: {
+            settle: (next) =>
+              function* (grant, outcome) {
+                const accepted = yield* next(grant, outcome);
+                if (!lost && accepted.entry.request.kind === loseAccepted) {
+                  lost = true;
+                  throw new Error("Owner lost after acceptance");
+                }
+                return accepted;
+              },
           },
         });
         return childHostingResult(yield* host.operations.run());
@@ -181,9 +195,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *child([pending]) {
-            const owned = yield* bindChild(pending.id);
-            return { id: owned.link.childId, run: () => runChild(owned) };
+          operations: {
+            child: () =>
+              function* (pending) {
+                const owned = yield* bindChild(pending.id);
+                return { id: owned.link.childId, run: () => runChild(owned) };
+              },
           },
         });
         return yield* host.operations.run();
@@ -299,7 +316,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     return view.state.interaction.grant;
   }
-
   it.each(["confirmed-released", "waive"] as const)(
     `${runtime.name}: cancelled signup retains required repair and its parent across reopen (%s)`,
     async (action) => {
@@ -387,7 +403,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve", "release"]);
     },
   );
-
   it.each(["none", "before-delivery", "unknown", "accepted", "cancel-after-accepted"] as const)(
     `${runtime.name}: protected signup commit preserves business state across cancellation/owner loss (%s)`,
     async (loss) => {
@@ -451,7 +466,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve", "commit"]);
     },
   );
-
   it(`${runtime.name}: repair of the newest acquisition preserves earlier compensation in LIFO order`, async () => {
     const s = scenario(undefined, 2);
     await s.begin();
@@ -491,7 +505,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       "release",
     ]);
   });
-
   it(`${runtime.name}: unknown compensation delivery remains occupied, not a known repair failure`, async () => {
     const s = scenario();
     await s.begin();
@@ -516,7 +529,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect((await s.app.observe()).root.state.status).toBe("running");
     expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve", "release"]);
   });
-
   it(`${runtime.name}: accepted acquisition survives owner loss before compensation registration`, async () => {
     const s = scenario("reserve");
     await expect(s.begin()).rejects.toThrow("Owner lost after acceptance");

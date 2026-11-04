@@ -8,9 +8,12 @@ Use `around` to compose strategies and `install` to replace the driver within a 
 const context = createChatContext(runtime.composition, "chat-context");
 yield *
   context.around({
-    *prepare([input], next) {
-      const history = selectCompletedWindow(input.history);
-      return yield* next({ ...input, history });
+    operations: {
+      prepare: (next) =>
+        function* (input) {
+          const history = selectCompletedWindow(input.history);
+          return yield* next({ ...input, history });
+        },
     },
   });
 const inference = yield * context.operations.prepare({ model, history, tools });
@@ -255,7 +258,7 @@ const sampling = createChatSampling(runtime.composition, "chat.sampling", {
     return yield* infer(model, request);
   },
 });
-yield * sampling.around(limitChatRounds(4));
+yield * sampling.around({ operations: limitChatRounds(4) });
 yield * effects.install(sampleEffect, sampling.operations.sample);
 ```
 

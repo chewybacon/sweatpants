@@ -9,7 +9,7 @@ const provider = createPiAiProvider(runtime, {
   model,
   stream: (model, context, options) => models.streamSimple(model, context, options),
 });
-const api = runtime.composition.createApi("model", provider);
+const api = runtime.composition.createApi("model", { operations: provider });
 const subscription = yield * api.operations.stream(request);
 ```
 

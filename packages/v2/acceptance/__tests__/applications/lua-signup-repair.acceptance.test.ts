@@ -14,7 +14,6 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const source = await readFile(new URL("./signup-repair.lua", import.meta.url), "utf8");
 let module: Promise<WebAssembly.Module> | undefined;
 const loadModule = () =>
@@ -48,7 +47,6 @@ const allowed = {
   commit: ["confirmed-committed", "confirmed-not-committed"],
   release: ["confirmed-released", "waive"],
 };
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -111,18 +109,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *deliveryMode([request]) {
-            return request.kind === "approve" || request.kind === "repair" ? "wait" : "execute";
+          operations: {
+            deliveryMode: () =>
+              function* (request) {
+                return request.kind === "approve" || request.kind === "repair" ? "wait" : "execute";
+              },
           },
         });
         yield* host.attempts.around({
-          *settle([grant, outcome], next) {
-            const accepted = yield* next(grant, outcome);
-            if (!lost && accepted.entry.request.kind === loseAcceptance) {
-              lost = true;
-              throw new Error("Owner lost after acceptance");
-            }
-            return accepted;
+          operations: {
+            settle: (next) =>
+              function* (grant, outcome) {
+                const accepted = yield* next(grant, outcome);
+                if (!lost && accepted.entry.request.kind === loseAcceptance) {
+                  lost = true;
+                  throw new Error("Owner lost after acceptance");
+                }
+                return accepted;
+              },
           },
         });
         return childHostingResult(yield* host.operations.run());
@@ -149,9 +153,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          *child([pending]) {
-            const owned = yield* bind(pending.id);
-            return { id: owned.link.childId, run: () => runChild(owned) };
+          operations: {
+            child: () =>
+              function* (pending) {
+                const owned = yield* bind(pending.id);
+                return { id: owned.link.childId, run: () => runChild(owned) };
+              },
           },
         });
         return yield* host.operations.run();
@@ -253,7 +260,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     return view.state.interaction.grant;
   }
-
   it.each(["confirmed-released", "waive"] as const)(
     `${runtime.name}: Lua compensation parks for explicit repair and holds its parent (%s)`,
     async (action) => {
@@ -313,7 +319,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve", "release"]);
     },
   );
-
   for (const operation of ["reserve", "commit"] as const) {
     it.each([true, false])(
       `${runtime.name}: Lua ${operation} cancellation fences a late reply and requires final-outcome evidence (external success: %s)`,
@@ -394,7 +399,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     );
   }
-
   it.each(["reserve", "commit"] as const)(
     `${runtime.name}: Lua reconstructs accepted %s before applying cancellation after owner loss`,
     async (operation) => {
@@ -427,7 +431,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       );
     },
   );
-
   it(`${runtime.name}: uncertain Lua cleanup delivery stays occupied without invented repair evidence`, async () => {
     const s = scenario();
     await s.begin();
@@ -448,7 +451,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(view.leaf.entries.map((entry) => entry.request.kind)).toEqual(["reserve"]);
     expect(s.peer.requests.map((request) => request.id)).toEqual(["reserve", "release"]);
   });
-
   it(`${runtime.name}: successful Lua signup suppresses compensation and terminal reopen acquires no Guest`, async () => {
     const s = scenario();
     await s.begin();

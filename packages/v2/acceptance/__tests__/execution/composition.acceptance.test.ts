@@ -9,15 +9,18 @@ import { createScopedGuest, type Guest, type GuestWork, type Turn } from "@sweat
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
-function* read(id: string): Operation<string, { id: string }> {
+function* read(id: string): Operation<
+  string,
+  {
+    id: string;
+  }
+> {
   const reply: unknown = yield { id };
   if (typeof reply !== "string") {
     throw new Error("Expected text reply");
   }
   return reply;
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   describe(`${runtime.name}: acquisition and Guest method composition`, () => {
     for (const finish of ["complete", "park"] as const) {
@@ -28,7 +31,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let started = 0;
         let authoredCleanup = 0;
         let acquired = 0;
-
         // Host assembly fixes Y; authored result/request types remain inferred.
         function prepare<R, Q>(work: Work<R, Q>): GuestWork<R, Q, Y> {
           const acquire: GuestWork<R, Q, Y> = function* () {
@@ -43,27 +45,34 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               );
             });
             const layers: OperationMiddleware<typeof guest> = {
-              *start(args, next) {
-                trace.push(`start:${id}`);
-                return yield* next(...args);
-              },
-              *resume(args, next) {
-                const credential = yield* token.expect();
-                yield* runtime.fromPromise((signal) =>
-                  peer.send({ id: `resume:${id}`, token: credential }, signal),
-                );
-                const turn = yield* next(...args);
-                expectTypeOf(turn).toEqualTypeOf<Turn<R, Q>>();
-                return turn;
-              },
-              *close(args, next) {
-                trace.push(`close:${id}`);
-                return yield* next(...args);
-              },
+              start: (next) =>
+                function* (...args) {
+                  trace.push(`start:${id}`);
+                  return yield* next(...args);
+                },
+              resume: (next) =>
+                function* (...args) {
+                  const credential = yield* token.expect();
+                  yield* runtime.fromPromise((signal) =>
+                    peer.send({ id: `resume:${id}`, token: credential }, signal),
+                  );
+                  const turn = yield* next(...args);
+                  expectTypeOf(turn).toEqualTypeOf<Turn<R, Q>>();
+                  return turn;
+                },
+              close: (next) =>
+                function* (...args) {
+                  trace.push(`close:${id}`);
+                  return yield* next(...args);
+                },
             };
             // The same layer object is accepted by scoped API installation.
-            const scoped = runtime.composition.createApi<Guest<R, Q, Y>>(`guest:${id}`, guest);
-            yield* scoped.around(layers);
+            const scoped = runtime.composition.createApi<Guest<R, Q, Y>>(`guest:${id}`, {
+              operations: guest,
+            });
+            yield* scoped.around({
+              operations: layers,
+            });
             // Direct decoration binds this particular handle; no global Guest driver.
             return {
               start: composeOperation(() => guest.start(), [layers.start]),
@@ -72,15 +81,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             };
           };
           return composeOperation(acquire, [
-            function* (args, next) {
-              trace.push("acquire:in");
-              const guest = yield* next(...args);
-              trace.push("acquire:out");
-              return guest;
-            },
+            (next) =>
+              function* (...args) {
+                trace.push("acquire:in");
+                const guest = yield* next(...args);
+                trace.push("acquire:out");
+                return guest;
+              },
           ]);
         }
-
         const acquire = prepare(function* () {
           started++;
           try {
@@ -98,7 +107,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(started).toBe(0);
           const one = yield* first.start();
           const two = yield* second.start();
-          expectTypeOf(one).toEqualTypeOf<Turn<{ text: string; length: number }, { id: string }>>();
+          expectTypeOf(one).toEqualTypeOf<
+            Turn<
+              {
+                text: string;
+                length: number;
+              },
+              {
+                id: string;
+              }
+            >
+          >();
           expect(one).toEqual({
             kind: "suspended",
             request: { id: "document" },
@@ -160,23 +179,30 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
       });
     }
-
     it("infers API results directly from an operation implementation", async () => {
       const peer = createProtocolRig();
       const api = runtime.composition.createApi("inferred-read", {
-        *read(id: string) {
-          const reply = yield* runtime.fromPromise((signal) =>
-            peer.send({ id, token: "read" }, signal),
-          );
-          return { text: reply.body, length: reply.body.length };
+        operations: {
+          *read(id: string) {
+            const reply = yield* runtime.fromPromise((signal) =>
+              peer.send({ id, token: "read" }, signal),
+            );
+            return { text: reply.body, length: reply.body.length };
+          },
         },
       });
       const execution = runtime.start(function* () {
         yield* api.around({
-          *read([id], next) {
-            const result = yield* next(id);
-            expectTypeOf(result).toEqualTypeOf<{ text: string; length: number }>();
-            return { ...result, text: result.text.toUpperCase() };
+          operations: {
+            read: (next) =>
+              function* (id) {
+                const result = yield* next(id);
+                expectTypeOf(result).toEqualTypeOf<{
+                  text: string;
+                  length: number;
+                }>();
+                return { ...result, text: result.text.toUpperCase() };
+              },
           },
         });
         return yield* api.operations.read("document");

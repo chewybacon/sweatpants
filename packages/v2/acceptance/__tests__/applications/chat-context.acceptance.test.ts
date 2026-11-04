@@ -13,7 +13,6 @@ import {
 import { createPiAiStreamRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const target: PiAiProviderOptions["model"] = {
   id: "target",
   name: "Target",
@@ -67,7 +66,6 @@ const terminal = {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   },
 };
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: context preparation composes scoped strategies, contexts and replacement drivers`, async () => {
     const context = createChatContext(runtime.composition, "context-preparation");
@@ -85,29 +83,35 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(baseline).toEqual(prepareChatInference(input));
       yield* runtime.composition.scoped(function* () {
         yield* context.around({
-          *prepare([request], next) {
-            const result = yield* next(request);
-            observations.push(result.request.context.messages.length);
-            return result;
+          operations: {
+            prepare: (next) =>
+              function* (request) {
+                const result = yield* next(request);
+                observations.push(result.request.context.messages.length);
+                return result;
+              },
           },
         });
         yield* runtime.composition.scoped(function* () {
           yield* retained.set(1);
           yield* context.around({
-            *prepare([request], next) {
-              const count = yield* retained.expect();
-              const instructions = request.history.filter(
-                (message) => message.role === "system" || message.role === "developer",
-              );
-              // This example's last message is a complete user turn. The default
-              // assembler still rejects windows that leave orphaned tool results.
-              const conversation = request.history.filter(
-                (message) => message.role !== "system" && message.role !== "developer",
-              );
-              return yield* next({
-                ...request,
-                history: [...instructions, ...conversation.slice(-count)],
-              });
+            operations: {
+              prepare: (next) =>
+                function* (request) {
+                  const count = yield* retained.expect();
+                  const instructions = request.history.filter(
+                    (message) => message.role === "system" || message.role === "developer",
+                  );
+                  // This example's last message is a complete user turn. The default
+                  // assembler still rejects windows that leave orphaned tool results.
+                  const conversation = request.history.filter(
+                    (message) => message.role !== "system" && message.role !== "developer",
+                  );
+                  return yield* next({
+                    ...request,
+                    history: [...instructions, ...conversation.slice(-count)],
+                  });
+                },
             },
           });
           const windowed = yield* context.operations.prepare(input);
@@ -128,8 +132,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(yield* context.operations.prepare(input)).toEqual(baseline);
         yield* runtime.composition.scoped(function* () {
           yield* context.install({
-            *prepare(request) {
-              return prepareChatInference({ ...request, options: { maxTokens: 32 } });
+            operations: {
+              *prepare(request) {
+                return prepareChatInference({ ...request, options: { maxTokens: 32 } });
+              },
             },
           });
           expect((yield* context.operations.prepare(input)).request.options).toEqual({
@@ -148,16 +154,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await task.result;
     expect(input).toEqual(original);
   });
-
   it(`${runtime.name}: context assembly applies explicit cross-model policy before SDK dispatch without changing accepted history`, async () => {
     const peer = createPiAiStreamRig({ events: [], result: terminal });
     const provider = createPiAiProvider(runtime, { model: target, stream: peer.stream });
     const preparation = createChatContext(runtime.composition, "provider-context");
     const api = runtime.composition.createApi("chat-context", {
-      *infer(input: ChatInferenceOptions) {
-        const inference = yield* preparation.operations.prepare(input);
-        const subscription = yield* provider.stream(inference.request);
-        return yield* subscription.next();
+      operations: {
+        *infer(input: ChatInferenceOptions) {
+          const inference = yield* preparation.operations.prepare(input);
+          const subscription = yield* provider.stream(inference.request);
+          return yield* subscription.next();
+        },
       },
     });
     const original = structuredClone(history);
@@ -226,7 +233,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       ],
     });
   });
-
   it(`${runtime.name}: invalid round boundaries and incompatible model inputs never reach inference`, async () => {
     const peer = createPiAiStreamRig({ events: [], result: terminal });
     const provider = createPiAiProvider(runtime, { model: target, stream: peer.stream });

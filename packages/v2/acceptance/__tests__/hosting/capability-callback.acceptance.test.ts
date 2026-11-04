@@ -13,9 +13,7 @@ import { type OwnedChild, type ResolutionGrant } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, createEffectCapabilities } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string, T> {
   return {
     "~standard": {
@@ -29,7 +27,6 @@ function textSchema<T>(transform: (value: string) => T): StandardSchemaV1<string
     },
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -37,7 +34,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => execution.cancel());
     return execution;
   }
-
   it(`${runtime.name}: a granted parent callback parks as an owned Guest and recovers its accepted answer`, async () => {
     const peer = createProtocolRig();
     const store = createSqliteJournalRig<string, CapabilityRequest, unknown, string, unknown, Y>({
@@ -48,7 +44,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let normalizations = 0;
     let answerMiddleware = 0;
     let projections = 0;
-
     function assemble() {
       const effects = createEffectCapabilities(runtime, "callback-effects");
       const notify = defineEffect(
@@ -71,10 +66,23 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const grant = effects.grant({ elicit, notify });
       const journal = store.open();
       let child:
-        | OwnedChild<{ market: string }, CapabilityRequest, unknown, string, unknown, Y>
+        | OwnedChild<
+            {
+              market: string;
+            },
+            CapabilityRequest,
+            unknown,
+            string,
+            unknown,
+            Y
+          >
         | undefined;
-      let waiting: { grant: ResolutionGrant; request: CapabilityRequest } | undefined;
-
+      let waiting:
+        | {
+            grant: ResolutionGrant;
+            request: CapabilityRequest;
+          }
+        | undefined;
       // Authored callback supplied by the parent assembly. It has its own durable work.
       function* clarify() {
         yield* grant.capabilities.notify("opened");
@@ -82,7 +90,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (!answer.ok) {
           throw new Error("Unexpected answer failure");
         }
-        expectTypeOf(answer.value).toEqualTypeOf<{ market: string }>();
+        expectTypeOf(answer.value).toEqualTypeOf<{
+          market: string;
+        }>();
         return answer.value;
       }
       function* runCallback(): Operation<ChildHostingResult, Y> {
@@ -105,10 +115,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           interactions: child.journal.interactions,
           handle: grant.handle,
         });
-        yield* host.around(grant.admission);
         yield* host.around({
-          *deliveryMode([request], next) {
-            return request.effect === elicit.id ? "wait" : yield* next(request);
+          operations: grant.admission,
+        });
+        yield* host.around({
+          operations: {
+            deliveryMode: (next) =>
+              function* (request) {
+                return request.effect === elicit.id ? "wait" : yield* next(request);
+              },
           },
         });
         const result = yield* host.operations.run();
@@ -141,29 +156,36 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             attempts: journal.attempts,
             handle: grant.handle,
           });
-          yield* host.around(grant.admission);
           yield* host.around({
-            *child([pending], next) {
-              // Trusted assembly explicitly grants and routes this one definition.
-              // This is policy glue, not a generic authorization/transport adapter.
-              if (pending.request.effect !== elicit.id) {
-                return yield* next(pending);
-              }
-              expect(pending.request.input).toBe("market");
-              child = yield* journal.ensureChild<
-                { market: string },
-                CapabilityRequest,
-                unknown,
-                string
-              >(pending.id, {
-                program: "clarify",
-                input: pending.request,
-                outcome(value) {
-                  projections++;
-                  return { ok: true, value: { ok: true, value } };
+            operations: grant.admission,
+          });
+          yield* host.around({
+            operations: {
+              child: (next) =>
+                function* (pending) {
+                  // Trusted assembly explicitly grants and routes this one definition.
+                  // This is policy glue, not a generic authorization/transport adapter.
+                  if (pending.request.effect !== elicit.id) {
+                    return yield* next(pending);
+                  }
+                  expect(pending.request.input).toBe("market");
+                  child = yield* journal.ensureChild<
+                    {
+                      market: string;
+                    },
+                    CapabilityRequest,
+                    unknown,
+                    string
+                  >(pending.id, {
+                    program: "clarify",
+                    input: pending.request,
+                    outcome(value) {
+                      projections++;
+                      return { ok: true, value: { ok: true, value } };
+                    },
+                  });
+                  return { id: child.link.childId, run: runCallback };
                 },
-              });
-              return { id: child.link.childId, run: runCallback };
             },
           });
           return yield* host.operations.run();
@@ -177,10 +199,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           // Raw participant ingress uses the same registered schema pipeline. Scoped
           // middleware supplies the peer reply; accepted replay never runs this path.
           yield* effects.api(elicit).around({
-            *handle([message]) {
-              expect(message).toBe("market");
-              answerMiddleware++;
-              return { ok: true, value: raw };
+            operations: {
+              handle: () =>
+                function* (message) {
+                  expect(message).toBe("market");
+                  answerMiddleware++;
+                  return { ok: true, value: raw };
+                },
             },
           });
           const outcome = yield* grant.handle(waiting.request);
@@ -195,7 +220,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       };
     }
-
     const first = assemble();
     const opening = first.run();
     await Promise.race([peer.waitForRequests(1), opening.result]);
@@ -204,7 +228,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(parked.state).toBe("child");
     const originalWait = first.wait;
     expect(originalWait).toBeDefined();
-
     store.reopen();
     const second = assemble();
     await expect(second.run().result).resolves.toEqual(parked);

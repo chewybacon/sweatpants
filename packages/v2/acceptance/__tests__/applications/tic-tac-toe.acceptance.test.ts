@@ -17,9 +17,7 @@ import {
   installEffectAnswers,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 type Player = "X" | "O";
 type Cell = Player | null;
 const boardSchema: StandardSchemaV1<readonly Cell[], readonly Cell[]> = {
@@ -56,7 +54,6 @@ const pickUserMove = defineEffect({
   context: boardSchema,
   response: moveSchema,
 });
-
 function winner(board: readonly Cell[]): Player | undefined {
   for (const [a, b, c] of [
     [0, 1, 2],
@@ -75,7 +72,6 @@ function winner(board: readonly Cell[]): Player | undefined {
   }
   return undefined;
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const heads of [true, false]) {
     for (const interruption of ["none", "player-wait", "accepted-model-move"] as const) {
@@ -92,7 +88,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function acquireContext(effects: ReturnType<typeof createEffectCapabilities<Y>>) {
           return effects.grant({ chooseModelMove, pickUserMove }, { record: true });
         }
-
         // The authored application uses only record and the granted typed effects.
         function* playTtt(ctx: ReturnType<typeof acquireContext>) {
           const coin = yield* ctx.record(
@@ -105,7 +100,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const modelSymbol: Player = coin.value === "heads" ? "X" : "O";
           let board: Cell[] = Array<Cell>(9).fill(null);
           let player: Player = "X";
-          const moves: { player: Player; cell: number }[] = [];
+          const moves: {
+            player: Player;
+            cell: number;
+          }[] = [];
           while (true) {
             const modelTurn = player === modelSymbol;
             const move = modelTurn
@@ -214,11 +212,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   return { ok: true as const, value: reply.body };
                 });
                 yield* host.around({
-                  *child(args, next) {
-                    return yield* current!.admission.child(args, next);
-                  },
-                  *deliveryMode([request], next) {
-                    return request.effect === pickUserMove.id ? "wait" : yield* next(request);
+                  operations: {
+                    child: (next) =>
+                      function* (...args) {
+                        return yield* current!.admission.child(next)(...args);
+                      },
+                    deliveryMode: (next) =>
+                      function* (request) {
+                        return request.effect === pickUserMove.id ? "wait" : yield* next(request);
+                      },
                   },
                 });
                 yield* installGuestRetention(runtime.composition, host, recovery, journal);
@@ -226,7 +228,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               });
             },
             answer(
-              wait: { grant: ResolutionGrant; pending: { request: CapabilityRequest } },
+              wait: {
+                grant: ResolutionGrant;
+                pending: {
+                  request: CapabilityRequest;
+                };
+              },
               raw: string,
             ) {
               return start(function* () {
@@ -245,7 +252,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           };
         }
-
         let app = assemble();
         let run = app.run();
         let modelReplies = 0;

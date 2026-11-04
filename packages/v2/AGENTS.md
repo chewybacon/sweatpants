@@ -54,6 +54,21 @@ consumer. Keep uncertain designs experimental; preserve explicitly parked or uns
 work until the user chooses to revisit it. A scaffolding file records a place for a
 responsibility, not an obligation to invent an implementation.
 
+## Recognize composition opportunities
+
+Read [Runtime composition guidance](./runtime/COMPOSITION.md) before introducing a
+policy callback, replaceable driver, interception hook, or new middleware surface.
+Look beyond asynchronous operations: regular functions, acquired handles, stream
+subscriptions and configuration can also participate in composition. Do not reject
+middleware merely because the consumer is synchronous.
+
+Choose and state when behavior is selected: construction, acquisition, or each call.
+Then choose existing direct decoration, scoped API dispatch, or context lookup.
+Keep resource ownership explicit. Prefer existing composition over bespoke hook
+registries, but do not make every private helper a scoped API. When the requested
+semantics are not supported, describe the abstraction gap; an assembly workaround
+for one consumer does not settle whether the Runtime should support a broader shape.
+
 ## Testing
 
 The primary testing method is protocol-simulated, in-process acceptance testing.

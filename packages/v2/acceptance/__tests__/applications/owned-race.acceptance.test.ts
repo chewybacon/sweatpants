@@ -31,9 +31,7 @@ import {
   installGuestRetention,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const answer = defineEffect({ key: "race.answer", context: z.string(), response: z.string() });
 const cleanup = defineEffect({ key: "race.cleanup", context: z.string(), response: z.string() });
 interface Context {
@@ -64,7 +62,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const committed = runtime.createSignal<AttemptRevocation>();
     const relayReady = createLatch<void>();
     let stopped = new AbortController();
-    const failures: { index: number; error: unknown }[] = [];
+    const failures: {
+      index: number;
+      error: unknown;
+    }[] = [];
     const interrupted = createLatch<void>();
     const peer = createProtocolRig();
     const notifications = createNotificationRig();
@@ -119,7 +120,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     void relayTask.result.catch(() => undefined);
     onTestFinished(() => relayTask.cancel());
     const relay = relayTask.result;
-    const waits = new Map<number, { grant: ResolutionGrant; effect: string }>();
+    const waits = new Map<
+      number,
+      {
+        grant: ResolutionGrant;
+        effect: string;
+      }
+    >();
     const visits = [0, 0, 0];
     let parentWait: ResolutionGrant | undefined;
     let boundary = "";
@@ -206,7 +213,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             interactions: child.journal.interactions,
             handle: childGrant.handle,
           });
-          yield* host.around(childGrant.admission);
+          yield* host.around({
+            operations: childGrant.admission,
+          });
           yield* effects.install(answer, function* (context) {
             const reply = yield* runtime.fromPromise((signal) =>
               peer.send({ id: context, token: "live" }, signal),
@@ -226,11 +235,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             notifications.driver(runtime),
           );
           yield* host.around({
-            *deliveryMode([request]) {
-              return (index === live && request.effect === answer.id) ||
-                (cleanupBarrier && index === 2 && request.effect === cleanup.id)
-                ? "execute"
-                : "wait";
+            operations: {
+              deliveryMode: () =>
+                function* (request) {
+                  return (index === live && request.effect === answer.id) ||
+                    (cleanupBarrier && index === 2 && request.effect === cleanup.id)
+                    ? "execute"
+                    : "wait";
+                },
             },
           });
           // This assembly joins failed branches without cancelling independent siblings.
@@ -268,10 +280,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           interactions: journal.interactions,
           handle: grant.handle,
         });
-        yield* host.around(grant.admission);
         yield* host.around({
-          *deliveryMode() {
-            return "wait";
+          operations: grant.admission,
+        });
+        yield* host.around({
+          operations: {
+            deliveryMode: () =>
+              function* () {
+                return "wait";
+              },
           },
         });
         yield* owned.install({
@@ -533,7 +550,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         if (protectedAttempt.state !== "occupied") {
           throw new Error("Expected live cleanup");
         }
-
         let winnerReturned = false;
         const choosing = s.choose(1, { ok: true, value: "winner" }).then(() => {
           winnerReturned = true;

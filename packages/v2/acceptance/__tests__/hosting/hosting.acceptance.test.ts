@@ -9,7 +9,6 @@ import {
   createLatch,
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
-
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Api, Work, Operation, Outcome } from "@standard-durability/core";
@@ -26,12 +25,9 @@ import {
   installAttemptCancellation,
   type HostedResult,
 } from "@sweatpan.ts/hosting";
-
 import type { Serializer } from "@sweatpan.ts/storage";
-
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const lifetime of ["recover", "retain"] as const) {
     function start<T>(work: Work<T, Y>) {
@@ -42,11 +38,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     }
     function scenario(
       liveCancellation = false,
-      serialization?: { resolve(): Operation<Serializer, Y> },
+      serialization?: {
+        resolve(): Operation<Serializer, Y>;
+      },
     ) {
       const revocations: AttemptRevocation[] = [];
       const store = createSqliteJournalRig<
-        { reservation: string },
+        {
+          reservation: string;
+        },
         string,
         string,
         string,
@@ -124,45 +124,51 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           );
           expect(installed).toBe(transportNotifications);
           yield* installed.around({
-            *subscribe(args, next) {
-              notificationCalls.push("subscribe");
-              return yield* next(...args);
-            },
-            *publish(args, next) {
-              notificationCalls.push("publish");
-              return yield* next(...args);
+            operations: {
+              subscribe: (next) =>
+                function* (...args) {
+                  notificationCalls.push("subscribe");
+                  return yield* next(...args);
+                },
+              publish: (next) =>
+                function* (...args) {
+                  notificationCalls.push("publish");
+                  return yield* next(...args);
+                },
             },
           });
         }
       }
-
       let physicalDisposals = 0;
       function host(
         attempts:
           | Attempts<string, string, string, Y>
           | Api<Attempts<string, string, string, Y>, Y> = journal.attempts,
       ) {
-        const recovery = createRecovery(runtime, {
-          name: "reservation-recovery",
-          program: "reservation",
-          matches: isDeepStrictEqual,
-          *acquire() {
-            const guest = createScopedGuest(function* () {
-              const reservation: unknown = yield "reserve";
-              if (typeof reservation !== "string") {
-                throw new Error("Expected reservation");
-              }
-              return { reservation };
-            });
-            return {
-              ...guest,
-              *close() {
-                yield* guest.close();
-                physicalDisposals++;
-              },
-            };
+        const recovery = createRecovery<{ reservation: string }, string, Y, string, string>(
+          runtime,
+          {
+            name: "reservation-recovery",
+            program: "reservation",
+            matches: isDeepStrictEqual,
+            *acquire() {
+              const guest = createScopedGuest(function* () {
+                const reservation: unknown = yield "reserve";
+                if (typeof reservation !== "string") {
+                  throw new Error("Expected reservation");
+                }
+                return { reservation };
+              });
+              return {
+                ...guest,
+                *close() {
+                  yield* guest.close();
+                  physicalDisposals++;
+                },
+              };
+            },
           },
-        });
+        );
         const hosting = createHosting(runtime.composition, {
           name: "reservation-host",
           recovery: recovery.operations,
@@ -210,42 +216,55 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           if (gates.observeCommands) {
             const trace = gates.observeCommands;
             yield* commands.around({
-              *begin(args, next) {
-                trace.push("begin");
-                return yield* next(...args);
-              },
-              *settle(args, next) {
-                trace.push("settle");
-                return yield* next(...args);
+              operations: {
+                begin: (next) =>
+                  function* (...args) {
+                    trace.push("begin");
+                    return yield* next(...args);
+                  },
+                settle: (next) =>
+                  function* (...args) {
+                    trace.push("settle");
+                    return yield* next(...args);
+                  },
               },
             });
           }
           if (gates.afterSettle) {
             const afterSettle = gates.afterSettle;
             yield* commands.around({
-              *settle(args, next) {
-                const accepted = yield* next(...args);
-                yield* afterSettle();
-                return accepted;
+              operations: {
+                settle: (next) =>
+                  function* (...args) {
+                    const accepted = yield* next(...args);
+                    yield* afterSettle();
+                    return accepted;
+                  },
               },
             });
           }
           if (gates.beforePark) {
             const gate = gates.beforePark;
             yield* recovery.around({
-              *recover(args, next) {
-                const recovered = yield* next(...args);
-                yield* gate();
-                return recovered;
+              operations: {
+                recover: (next) =>
+                  function* (...args) {
+                    const recovered = yield* next(...args);
+                    yield* gate();
+                    return recovered;
+                  },
               },
             });
           }
           yield* hosting.around({
-            *retrySafety() {
-              if (gates.beforeBegin) {
-                yield* gates.beforeBegin();
-              }
-              return safety;
+            operations: {
+              retrySafety: () =>
+                function* () {
+                  if (gates.beforeBegin) {
+                    yield* gates.beforeBegin();
+                  }
+                  return safety;
+                },
             },
           });
           return yield* hosting.operations.run(replace);
@@ -309,8 +328,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const continueResolution = createLatch<void>();
           const selected = runtime.composition.createContext<Serializer>("delivery-serializer");
           const serialization = runtime.composition.createApi("delivery-serialization", {
-            *resolve(): Operation<Serializer, Y> {
-              return (yield* selected.get()) ?? v8Serializer;
+            operations: {
+              *resolve(): Operation<Serializer, Y> {
+                return (yield* selected.get()) ?? v8Serializer;
+              },
             },
           });
           const s = scenario(false, serialization.operations);
@@ -350,26 +371,29 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             *beforeBegin() {
               yield* selected.set(v8Serializer);
               yield* serialization.around({
-                *resolve(args, next) {
-                  const serializer = yield* next(...args);
-                  if (serializer !== childSerializer) {
-                    return serializer;
-                  }
-                  if (failure === "cancel-during-resolution") {
-                    resolving.resolve();
-                    yield* runtime.fromPromise(() => continueResolution.promise);
-                  }
-                  return {
-                    ...serializer,
-                    encode(value) {
-                      encoded++;
-                      return serializer.encode(value);
+                operations: {
+                  resolve: (next) =>
+                    function* (...args) {
+                      const serializer = yield* next(...args);
+                      if (serializer !== childSerializer) {
+                        return serializer;
+                      }
+                      if (failure === "cancel-during-resolution") {
+                        resolving.resolve();
+                        yield* runtime.fromPromise(() => continueResolution.promise);
+                      }
+                      return {
+                        ...serializer,
+                        encode(value) {
+                          encoded++;
+                          return serializer.encode(value);
+                        },
+                        decode(bytes) {
+                          decoded++;
+                          return serializer.decode(bytes);
+                        },
+                      };
                     },
-                    decode(bytes) {
-                      decoded++;
-                      return serializer.decode(bytes);
-                    },
-                  };
                 },
               });
             },
@@ -419,7 +443,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(s.peer.requests).toHaveLength(1);
         });
       }
-
       it("rejects an unsupported stored format without delivering another effect", async () => {
         let incompatible = false;
         const s = scenario(false, {
@@ -439,7 +462,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         expect(s.peer.requests).toHaveLength(1);
       });
-
       it("denies competing delivery, replaces explicitly and rejects stale control and late results", async () => {
         const s = scenario(true);
         const first = s.run("repeatable");
@@ -464,7 +486,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
         s.peer.reply(replacement.attemptId, { status: 200, body: "reservation-1" });
         const completed = await second.result;
-        expectTypeOf(completed).toEqualTypeOf<HostedResult<{ reservation: string }, string>>();
+        expectTypeOf(completed).toEqualTypeOf<
+          HostedResult<
+            {
+              reservation: string;
+            },
+            string
+          >
+        >();
         expect(completed).toEqual({ state: "completed", value: { reservation: "reservation-1" } });
         expect((await start(() => readJournal(s.journal)).result).history).toHaveLength(1);
         expect(await s.run().result).toEqual(completed);
@@ -481,7 +510,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ).toBe(true);
         expect(s.peer.requests).toHaveLength(2);
       });
-
       it("stopping an execution preserves occupancy and its escaped handle cannot stop a successor", async () => {
         const s = scenario(true);
         const first = s.run("repeatable");
@@ -496,7 +524,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           state: "active",
         });
         expect(await s.run("repeatable").result).toEqual({ state: "occupied", grant: original });
-
         // Resumption is an explicit repeatable replacement, not authority inferred from shutdown.
         const successor = s.run("repeatable", original);
         await s.wait(2, successor.result);
@@ -512,7 +539,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         expect(s.notifications.subscriptions).toBe(0);
       });
-
       for (const live of [false, true]) {
         it(`fences late outcomes when cancellation notification is unavailable (middleware: ${live})`, async () => {
           const s = scenario(live);
@@ -541,7 +567,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(s.notifications.subscriptions).toBe(0);
         });
       }
-
       it("retains invalidation after publication failure and retries notification on repeated commands", async () => {
         const s = scenario(true);
         let publications = 0;
@@ -567,7 +592,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(s.notifications.subscriptions).toBe(0);
         expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
       });
-
       it("interrupts live IO and joins asynchronous cleanup after committed invalidation", async () => {
         const s = scenario(true);
         const cleanup = createProtocolRig();
@@ -602,7 +626,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
         expect(await s.run().result).toEqual({ state: "invalidated", grant, reason: "deadline" });
       });
-
       it("detects invalidation committed before notification subscription without starting the handler", async () => {
         const s = scenario(true);
         const gate = createProtocolRig();
@@ -623,7 +646,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(s.peer.requests).toEqual([]);
         expect(s.notifications.subscriptions).toBe(0);
       });
-
       it("does not enter the handler when notification arrives after the eligibility read", async () => {
         const s = scenario(true);
         const gate = createProtocolRig();
@@ -645,7 +667,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(s.notifications.subscriptions).toBe(0);
         expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
       });
-
       it("preserves an outcome accepted before invalidation and never publishes a cancellation", async () => {
         const s = scenario(true);
         const first = s.run();
@@ -666,7 +687,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         expect(s.notifications.subscriptions).toBe(0);
       });
-
       for (const originalSafety of ["unsafe", "repeatable"] as const) {
         it(`does not retry when recorded or current policy is unsafe (recorded: ${originalSafety})`, async () => {
           const s = scenario();
@@ -685,7 +705,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect((await start(() => readJournal(s.journal)).result).history).toEqual([]);
         });
       }
-
       for (const safety of ["unsafe", "repeatable"] as const) {
         it(`host shutdown aborts delivery but leaves the workflow recoverable (${safety})`, async () => {
           const s = scenario();
@@ -714,7 +733,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           }
         });
       }
-
       for (const boundary of ["beforePark", "beforeBegin"] as const) {
         it(`serializes competing hosts at ${boundary} without duplicate delivery`, async () => {
           const s = scenario();
@@ -748,7 +766,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect((await start(() => readJournal(s.journal)).result).history).toHaveLength(1);
         });
       }
-
       it("recovers an accepted result after acknowledgement loss without executing again", async () => {
         let writes = 0;
         const s = scenario(false, {
@@ -786,7 +803,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         expect(s.peer.requests).toHaveLength(1);
       });
-
       for (const supplied of [false, true]) {
         it(`recovers after attempt middleware throws after acceptance (supplied API: ${supplied})`, async () => {
           const s = scenario();
@@ -816,7 +832,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(s.peer.requests).toHaveLength(1);
         });
       }
-
       it("rolls back an unencodable settlement and accepts resubmission without redelivering the effect", async () => {
         const s = scenario();
         const transport: Attempts<string, string, string, Y> = {
@@ -860,7 +875,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await start(() => readJournal(s.journal)).result).toEqual(completed);
         expect(s.peer.requests).toHaveLength(1);
       });
-
       it("never executes after a lost grant acknowledgement and leaves the attempt occupied", async () => {
         const s = scenario();
         const transport: Attempts<string, string, string, Y> = {

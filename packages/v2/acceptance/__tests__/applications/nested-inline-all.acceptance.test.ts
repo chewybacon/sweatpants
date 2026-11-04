@@ -24,9 +24,7 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const question = defineEffect({
   key: "nested.question",
   context: z.string(),
@@ -39,7 +37,6 @@ interface Context {
   readonly ask: typeof question.call;
 }
 type Factory = Branch<Context, CapabilityRequest | ScopeInstruction>;
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -64,7 +61,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         onTestFinished(() => store.close());
         let root = store.open();
-        const waits = new Map<string, { journal: Journal; grant: ResolutionGrant }>();
+        const waits = new Map<
+          string,
+          {
+            journal: Journal;
+            grant: ResolutionGrant;
+          }
+        >();
         const identities = new Map<string, string>();
         const acquisitions = new Map<string, number>();
         let completedOuter: Journal | undefined;
@@ -146,26 +149,41 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 interactions: journal.interactions,
                 handle: grant.handle,
               });
-              yield* host.around(grant.admission);
               yield* host.around({
-                *continuation() {
-                  return yieldLeaves && depth === 2
-                    ? { action: "yield", reason: "leaf budget" }
-                    : { action: "continue" };
+                operations: grant.admission,
+              });
+              yield* host.around({
+                operations: {
+                  continuation: () =>
+                    function* () {
+                      return yieldLeaves && depth === 2
+                        ? { action: "yield", reason: "leaf budget" }
+                        : { action: "continue" };
+                    },
                 },
               });
               yield* host.around({
-                *deliveryMode() {
-                  return "wait";
+                operations: {
+                  deliveryMode: () =>
+                    function* () {
+                      return "wait";
+                    },
                 },
               });
               yield* runner.install({
-                *run(child, branch, index) {
-                  if (depth === 0 && index === 1) {
-                    completedOuter = child.journal;
-                  }
-                  const result = yield* drive(child.journal, child.link.program, branch, depth + 1);
-                  return childHostingResult(result);
+                operations: {
+                  *run(child, branch, index) {
+                    if (depth === 0 && index === 1) {
+                      completedOuter = child.journal;
+                    }
+                    const result = yield* drive(
+                      child.journal,
+                      child.link.program,
+                      branch,
+                      depth + 1,
+                    );
+                    return childHostingResult(result);
+                  },
                 },
               });
               yield* owned.install({

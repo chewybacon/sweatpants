@@ -4,10 +4,14 @@ import { createEffectCapabilities } from "@sweatpan.ts/hosting";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import type { Runtime } from "@sweatpan.ts/runtime";
-
 export function effectInference<Y>(
   runtime: Runtime<Y>,
-  schema: StandardSchemaV1<string, { domain: string }>,
+  schema: StandardSchemaV1<
+    string,
+    {
+      domain: string;
+    }
+  >,
 ) {
   const effects = createEffectCapabilities(runtime, "types");
   const lookup = defineEffect({ key: "lookup", context: schema }, function* ({ domain }) {
@@ -18,7 +22,15 @@ export function effectInference<Y>(
   });
   const { capabilities } = effects.grant({ lookup });
   const result: Operation<
-    Outcome<{ domain: string; count: number }, { code: "missing" }>,
+    Outcome<
+      {
+        domain: string;
+        count: number;
+      },
+      {
+        code: "missing";
+      }
+    >,
     CapabilityRequest
   > = capabilities.lookup("example.com");
   effects.install(lookup);
@@ -41,22 +53,34 @@ export function effectInference<Y>(
     return 6;
   });
   effects.api(lookup).around({
-    *handle([input], next) {
-      const result = yield* next(input);
-      if (!result.ok) {
-        const code: "missing" = result.error.code;
-        return { ok: false, error: { code } };
-      }
-      return result;
+    operations: {
+      handle: (next) =>
+        function* (input) {
+          const result = yield* next(input);
+          if (!result.ok) {
+            const code: "missing" = result.error.code;
+            return { ok: false, error: { code } };
+          }
+          return result;
+        },
     },
   });
   return { result, wrong };
 }
-
 export function declaredExchangeInference<Y>(
   runtime: Runtime<Y>,
-  context: StandardSchemaV1<string, { message: string }>,
-  market: StandardSchemaV1<string, { market: string }>,
+  context: StandardSchemaV1<
+    string,
+    {
+      message: string;
+    }
+  >,
+  market: StandardSchemaV1<
+    string,
+    {
+      market: string;
+    }
+  >,
   count: StandardSchemaV1<string, number>,
 ) {
   const effects = createEffectCapabilities(runtime, "declaration-types");
@@ -70,7 +94,14 @@ export function declaredExchangeInference<Y>(
     },
   );
   const transformedResult: Operation<
-    Outcome<{ market: string }, { code: "empty" }>,
+    Outcome<
+      {
+        market: string;
+      },
+      {
+        code: "empty";
+      }
+    >,
     CapabilityRequest
   > = transformed.call("Market?");
   effects.install(transformed);
@@ -90,20 +121,31 @@ export function declaredExchangeInference<Y>(
     return { ok: true, value: { market: "Europe" } };
   });
   effects.api(chooseMarket).around({
-    *handle([input], next) {
-      const message: string = input.message;
-      return yield* next({ message });
+    operations: {
+      handle: (next) =>
+        function* (input) {
+          const message: string = input.message;
+          return yield* next({ message });
+        },
     },
   });
   effects.api(chooseMarket).around({
-    // @ts-expect-error Middleware must preserve the raw response type.
-    *handle() {
-      return { ok: true as const, value: 123 };
+    operations: {
+      // @ts-expect-error Middleware must preserve the raw response type.
+      handle: () =>
+        function* () {
+          return { ok: true as const, value: 123 };
+        },
     },
   });
   const ctx = effects.grant({ chooseMarket, chooseCount });
   const a: Operation<
-    Outcome<{ market: string }, unknown>,
+    Outcome<
+      {
+        market: string;
+      },
+      unknown
+    >,
     CapabilityRequest
   > = ctx.capabilities.chooseMarket("Market?");
   const b: Operation<Outcome<number, unknown>, CapabilityRequest> = ctx.capabilities.chooseCount(
@@ -115,11 +157,16 @@ export function declaredExchangeInference<Y>(
   ctx.record(() => 6, { key: "recorded-operation" });
   return { a, b, wrong, transformedResult };
 }
-
 export function recordedInference<Y>(runtime: Runtime<Y>) {
   const effects = createEffectCapabilities(runtime, "record-types");
   const ctx = effects.grant({}, { record: true });
-  const roll: Operation<{ ok: true; value: number }, CapabilityRequest> = ctx.record(
+  const roll: Operation<
+    {
+      ok: true;
+      value: number;
+    },
+    CapabilityRequest
+  > = ctx.record(
     function* () {
       yield* runtime.sleep(1);
       return { ok: true as const, value: 6 };
@@ -159,7 +206,6 @@ export function recordedInference<Y>(runtime: Runtime<Y>) {
   );
   return { roll, decision, empty };
 }
-
 export function nativeDefaultInference(
   schema: StandardSchemaV1<string, string>,
   runtime: Runtime<"host">,
@@ -180,7 +226,6 @@ export function nativeDefaultInference(
   });
   return definition;
 }
-
 export function recordNativeInference(runtime: Runtime<"host">) {
   const ctx = createEffectCapabilities(runtime, "inline-native").grant({}, { record: true });
   ctx.record(

@@ -75,10 +75,17 @@ import {
   readJournal,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 // Assertion helpers deliberately require a successful phase before reading its payload.
 function reportOf<T>(edge: {
-  drive: { status: "reported"; report: T } | { status: "unconfirmed"; error: string };
+  drive:
+    | {
+        status: "reported";
+        report: T;
+      }
+    | {
+        status: "unconfirmed";
+        error: string;
+      };
 }): T {
   if (edge.drive.status !== "reported") {
     throw new Error(`Drive unconfirmed: ${edge.drive.error}`);
@@ -86,14 +93,21 @@ function reportOf<T>(edge: {
   return edge.drive.report;
 }
 function frontierOf<T>(edge: {
-  discovery: { status: "observed"; frontier: T } | { status: "unavailable"; error: string };
+  discovery:
+    | {
+        status: "observed";
+        frontier: T;
+      }
+    | {
+        status: "unavailable";
+        error: string;
+      };
 }): T {
   if (edge.discovery.status !== "observed") {
     throw new Error(`Discovery unavailable: ${edge.discovery.error}`);
   }
   return edge.discovery.frontier;
 }
-
 // Canonical v1 vocabulary. These are tracer validation schemas, not a provider wire decoder.
 const contentSource = z.discriminatedUnion("type", [
   z.object({ type: z.literal("data"), value: z.string(), mimeType: z.string() }),
@@ -215,8 +229,16 @@ const responseSchema: StandardSchemaV1<ModelResponse> = responseDataSchema;
 type Request = ModelRequest;
 type Response = ModelResponse;
 type Event = ModelStreamEvent;
-type Output = Event | { type: "elicit"; grant: ResolutionGrant };
-type OutputFrame = { value: Output; after: number };
+type Output =
+  | Event
+  | {
+      type: "elicit";
+      grant: ResolutionGrant;
+    };
+type OutputFrame = {
+  value: Output;
+  after: number;
+};
 function textEvent(delta: string, text = delta): Event {
   return {
     type: "text-delta",
@@ -328,7 +350,10 @@ const approval = defineEffect({
 // Application-owned Zod adapter, not a universal Standard Schema conversion.
 // Input projection describes what the model sends, before Host normalization.
 function modelToolDefinition(
-  contract: { readonly id: string; readonly context: z.ZodType },
+  contract: {
+    readonly id: string;
+    readonly context: z.ZodType;
+  },
   description: string,
 ): ChatToolDefinition {
   return {
@@ -339,7 +364,6 @@ function modelToolDefinition(
       .parse(z.toJSONSchema(contract.context, { io: "input", target: "draft-7" })),
   };
 }
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it.each<ToolInputCase>(["valid", "empty", "blank"])(
     `${runtime.name}: authored model tool discovery, validation and recovery (%s)`,
@@ -395,7 +419,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }
       type Child = OwnedChild<boolean, CapabilityRequest, unknown, string, unknown, Y>;
       function assemble(
-        discovery: { readonly id: string; readonly context: z.ZodType } = contract,
+        discovery: {
+          readonly id: string;
+          readonly context: z.ZodType;
+        } = contract,
       ) {
         // Build discovery before acquiring a Guest or dispatching a provider.
         const definition = modelToolDefinition(discovery, "Ask for approval");
@@ -403,7 +430,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const effects = createEffectCapabilities(runtime, "chat-effects");
         const root = effects.grant({ sample: selectedSample, confirm });
         const acquisition = createToolAcquisition(runtime, effects, confirm, "confirm-acquisition");
-        let waiting: { child: Child; grant: ResolutionGrant } | undefined;
+        let waiting:
+          | {
+              child: Child;
+              grant: ResolutionGrant;
+            }
+          | undefined;
         function childHost(child: Child) {
           const recovery = createHostedRecovery<boolean, CapabilityRequest, Y, unknown, string>(
             runtime,
@@ -430,10 +462,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         function* runChild(child: Child): Operation<ChildHostingResult, Y> {
           const { host, recovery } = childHost(child);
           yield* installGuestRetention(runtime.composition, host, recovery, child.journal);
-          yield* host.around(acquisition.admission);
           yield* host.around({
-            *deliveryMode() {
-              return "wait" as const;
+            operations: acquisition.admission,
+          });
+          yield* host.around({
+            operations: {
+              deliveryMode: () =>
+                function* () {
+                  return "wait" as const;
+                },
             },
           });
           const result = yield* host.operations.run();
@@ -454,83 +491,88 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             >(runtime, {
               *run(emit) {
                 yield* provider.install({
-                  *stream(inference) {
-                    const request = inference.request;
-                    const target = inference.model;
-                    expect(target.provider).toBe("test");
-                    expect(target.api).toBe("scripted");
-                    if (target.id === planner.id && !plannerAvailable) {
-                      throw new Error("Original model is unavailable");
-                    }
-                    expect(target.id).toBe(
-                      request.context.messages.length === 1 ? planner.id : responder.id,
-                    );
-                    selections.push(structuredClone(target));
-                    requests.push(structuredClone(request));
-                    yield* runtime.composition.ensure(function* () {
-                      released++;
-                    });
-                    const source = runtime.createSignal<Event, Response>();
-                    const subscription = yield* source;
-                    if (request.context.messages.length === 1) {
-                      source.send(textEvent("Let me"));
-                      let first = true;
-                      let finished = false;
-                      return {
-                        *next() {
-                          if (first) {
-                            first = false;
+                  operations: {
+                    *stream(inference) {
+                      const request = inference.request;
+                      const target = inference.model;
+                      expect(target.provider).toBe("test");
+                      expect(target.api).toBe("scripted");
+                      if (target.id === planner.id && !plannerAvailable) {
+                        throw new Error("Original model is unavailable");
+                      }
+                      expect(target.id).toBe(
+                        request.context.messages.length === 1 ? planner.id : responder.id,
+                      );
+                      selections.push(structuredClone(target));
+                      requests.push(structuredClone(request));
+                      yield* runtime.composition.ensure(function* () {
+                        released++;
+                      });
+                      const source = runtime.createSignal<Event, Response>();
+                      const subscription = yield* source;
+                      if (request.context.messages.length === 1) {
+                        source.send(textEvent("Let me"));
+                        let first = true;
+                        let finished = false;
+                        return {
+                          *next() {
+                            if (first) {
+                              first = false;
+                              return yield* subscription.next();
+                            }
+                            if (!finished) {
+                              // The engine's advancement is still pending after live output is readable.
+                              yield* runtime.fromPromise((signal) =>
+                                peer.send({ id: "first-model", token: "finish" }, signal),
+                              );
+                              finished = true;
+                              source.send(textEvent(" ask", "Let me ask"));
+                              source.send(textEvent(".", "Let me ask."));
+                              source.close(response("Let me ask.", true, inputCase));
+                            }
                             return yield* subscription.next();
-                          }
-                          if (!finished) {
-                            // The engine's advancement is still pending after live output is readable.
-                            yield* runtime.fromPromise((signal) =>
-                              peer.send({ id: "first-model", token: "finish" }, signal),
-                            );
-                            finished = true;
-                            source.send(textEvent(" ask", "Let me ask"));
-                            source.send(textEvent(".", "Let me ask."));
-                            source.close(response("Let me ask.", true, inputCase));
-                          }
-                          return yield* subscription.next();
-                        },
-                      };
-                    } else {
-                      expect(request.context.messages[1]).toEqual({
-                        role: "assistant",
-                        content: response("Let me ask.", true, inputCase).message.content.filter(
-                          (part) => part.type !== "reasoning",
-                        ),
-                      });
-                      expect(request.context.tools).toEqual([
-                        {
-                          name: "confirm",
-                          description: "Ask for approval",
-                          parameters: {
-                            $schema: "http://json-schema.org/draft-07/schema#",
-                            type: "object",
-                            properties: { question: { type: "string", minLength: 1 } },
-                            required: ["question"],
                           },
-                        },
-                      ]);
-                      expect(request.context.messages.at(-1)).toEqual({
-                        role: "tool",
-                        toolCallId: "call-1",
-                        name: "confirm",
-                        content: "true",
-                        isError: false,
-                      });
-                      source.send(textEvent("Confirmed."));
-                      source.close(response("Confirmed."));
-                    }
-                    return subscription;
+                        };
+                      } else {
+                        expect(request.context.messages[1]).toEqual({
+                          role: "assistant",
+                          content: response("Let me ask.", true, inputCase).message.content.filter(
+                            (part) => part.type !== "reasoning",
+                          ),
+                        });
+                        expect(request.context.tools).toEqual([
+                          {
+                            name: "confirm",
+                            description: "Ask for approval",
+                            parameters: {
+                              $schema: "http://json-schema.org/draft-07/schema#",
+                              type: "object",
+                              properties: { question: { type: "string", minLength: 1 } },
+                              required: ["question"],
+                            },
+                          },
+                        ]);
+                        expect(request.context.messages.at(-1)).toEqual({
+                          role: "tool",
+                          toolCallId: "call-1",
+                          name: "confirm",
+                          content: "true",
+                          isError: false,
+                        });
+                        source.send(textEvent("Confirmed."));
+                        source.close(response("Confirmed."));
+                      }
+                      return subscription;
+                    },
                   },
                 });
                 yield* provider.around({
-                  *stream([request], next) {
-                    intercepted++;
-                    return yield* next(request);
+                  operations: {
+                    stream: (next) =>
+                      function* (request) {
+                        intercepted++;
+                        return yield* next(request);
+                      },
                   },
                 });
                 const context = createChatContext(runtime.composition, "chat-preparation");
@@ -543,12 +585,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   },
                 });
                 yield* context.around({
-                  *prepare([input], next) {
-                    preparations.push(preparationPolicy);
-                    return yield* next({
-                      ...input,
-                      options: { ...input.options, temperature: preparationPolicy },
-                    });
+                  operations: {
+                    prepare: (next) =>
+                      function* (input) {
+                        preparations.push(preparationPolicy);
+                        return yield* next({
+                          ...input,
+                          options: { ...input.options, temperature: preparationPolicy },
+                        });
+                      },
                   },
                 });
                 const models = createChatModel(runtime.composition, "chat-selection", {
@@ -597,7 +642,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     });
                   },
                 });
-                yield* sampling.around(limitChatRounds(4));
+                yield* sampling.around({
+                  operations: limitChatRounds(4),
+                });
                 yield* effects.install(selectedSample, sampling.operations.sample);
                 const recovery = createHostedRecovery<
                   string,
@@ -654,7 +701,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   attempts: journal.attempts,
                   handle: root.handle,
                 });
-                yield* host.around(root.admission);
+                yield* host.around({
+                  operations: root.admission,
+                });
                 yield* installToolRouting(runtime, host, journal, { tool: confirm, run: runChild });
                 return yield* host.operations.run();
               },
@@ -724,9 +773,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function* installOutput() {
         yield* Source.set(output);
         yield* reads.around({
-          *subscribe([options], next) {
-            subscriptions.push(options.after);
-            return yield* next(options);
+          operations: {
+            subscribe: (next) =>
+              function* (options) {
+                subscriptions.push(options.after);
+                return yield* next(options);
+              },
           },
         });
       }
@@ -880,7 +932,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     },
   );
 });
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const mode of ["failure", "cancel", "error-event"] as const) {
     it(`${runtime.name}: ${mode} after partial model output releases the provider without accepting a response`, async () => {
@@ -982,7 +1033,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               attempts: journal.attempts,
               handle: grant.handle,
             });
-            yield* host.around(grant.admission);
+            yield* host.around({
+              operations: grant.admission,
+            });
             return yield* host.operations.run();
           },
         },
@@ -1019,7 +1072,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
   }
 });
-
 // The explicit Guest batch boundary routes to application-owned concurrent tools.
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: discovery preserves cancellation during an answerable cleanup across reopen`, async () => {
@@ -1077,11 +1129,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           interactions: journal.interactions,
           handle: acquisition.handle,
         });
-        yield* host.around(acquisition.admission);
+        yield* host.around({
+          operations: acquisition.admission,
+        });
         yield* installGuestRetention(runtime.composition, host, recovery, journal);
         yield* host.around({
-          *deliveryMode() {
-            return "wait";
+          operations: {
+            deliveryMode: () =>
+              function* () {
+                return "wait";
+              },
           },
         });
         return yield* host.operations.run();
@@ -1370,10 +1427,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               }
               let iterations = 0;
               yield* host.around({
-                *continuation() {
-                  return iterations++ < maxIterations
-                    ? { action: "continue" }
-                    : { action: "yield", reason: "edge budget" };
+                operations: {
+                  continuation: () =>
+                    function* () {
+                      return iterations++ < maxIterations
+                        ? { action: "continue" }
+                        : { action: "yield", reason: "edge budget" };
+                    },
                 },
               });
             },
@@ -1452,13 +1512,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
               };
             });
-
             let iterations = 0;
             yield* host.around({
-              *continuation() {
-                return iterations++ < maxIterations
-                  ? { action: "continue" }
-                  : { action: "yield", reason: "edge budget" };
+              operations: {
+                continuation: () =>
+                  function* () {
+                    return iterations++ < maxIterations
+                      ? { action: "continue" }
+                      : { action: "yield", reason: "edge budget" };
+                  },
               },
             });
           },
@@ -1539,7 +1601,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         return start(() => accept(item, value)).result;
       }
       function advance(
-        answers: readonly { target: Interaction; value: unknown }[],
+        answers: readonly {
+          target: Interaction;
+          value: unknown;
+        }[],
         maxIterations = 16,
       ) {
         return start(function* () {
@@ -1593,7 +1658,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       function createClient(
         initial: Interaction[],
         send: (
-          answers: readonly { target: Interaction; value: unknown }[],
+          answers: readonly {
+            target: Interaction;
+            value: unknown;
+          }[],
           budget: number,
         ) => Promise<EdgeResponse>,
         reply: (interaction: Interaction) => unknown,
@@ -2261,7 +2329,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     },
   );
 });
-
 // Application authoring check: identical complete wiring, three interaction shapes.
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it.each(["one", "ten", "asymmetric", "denied", "invalid-sample"] as const)(
@@ -2480,7 +2547,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     },
   );
 });
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: conversation admits a second turn from accepted history across reopen`, async () => {
     const database = createSqliteDatabaseRig();
@@ -2565,7 +2631,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(() => assemble("another-conversation").turn(first.execution)).toThrow(
       "outside this conversation",
     );
-
     const running = task(() => conversation.turn(first.execution).run());
     await Promise.race([peer.waitForRequests(1), running.result]);
     peer.reply("conversation-model-0", {
@@ -2630,7 +2695,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       toolCallId: "read-first",
       content: "accepted first file",
     });
-
     database.reopen();
     conversation = assemble();
     const secondCommand = {

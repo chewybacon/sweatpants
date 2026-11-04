@@ -1,3 +1,4 @@
+import type { Operations } from "@standard-durability/core";
 import { readJournal, historyFrom } from "@sweatpan.ts/testing";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -18,7 +19,6 @@ import type { Runtime } from "@sweatpan.ts/runtime";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createProtocolRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const source = `
 local hold = workflow.effect("reserve", { binding = "reserve", input = input })
 local counter = 40
@@ -66,7 +66,6 @@ function decodeResult(value: unknown) {
 type Request = ReturnType<typeof decodeRequest>;
 type Result = ReturnType<typeof decodeResult>;
 const matches = (left: Request, right: Request) => JSON.stringify(left) === JSON.stringify(right);
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   describe(`${runtime.name}: journal activation with replay and real Lua checkpoints`, () => {
     const token = runtime.composition.createContext<string>("reservation-token");
@@ -84,10 +83,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         },
       });
       // Around composes a callable without changing its inferred Guest result.
-      const acquisition: Around<[], ReturnType<typeof evaluator.acquire>> = function* (args, next) {
-        trace.push("acquire");
-        return yield* next(...args);
-      };
+      const acquisition: Around<[], ReturnType<typeof evaluator.acquire>> = (next) =>
+        function* (...args) {
+          trace.push("acquire");
+          return yield* next(...args);
+        };
       const api = createRecovery(runtime.composition, {
         name,
         program,
@@ -103,14 +103,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       // acceleration is OperationMiddleware over actual recovery methods.
       return { api, acceleration, trace, commands: () => commands };
     }
-
     function run<T>(work: Work<T, Y>) {
       const execution = runtime.start(work);
       void execution.result.catch(() => undefined);
       onTestFinished(() => execution.cancel());
       return execution.result;
     }
-
     async function acceptReservationAndApproval() {
       const peer = createProtocolRig();
       const journal = createMemoryJournal<Result, Request, unknown, unknown>({
@@ -118,21 +116,26 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         equals: isDeepStrictEqual,
       });
       const observed: string[] = [];
-      type Domain = { exchange(request: Request): Outcome<string, string> };
-      const domain = runtime.composition.createApi<Domain>("reservation:domain", {
-        *exchange(request) {
-          const credential = yield* token.expect();
-          const reply = yield* runtime.fromPromise((signal) =>
-            peer.send({ id: request.binding, token: credential }, signal),
-          );
-          return { ok: true, value: reply.body };
+      type Domain = {
+        exchange(request: Request): Outcome<string, string>;
+      };
+      const domain = runtime.composition.createApi<Operations<Domain, Y>>("reservation:domain", {
+        operations: {
+          *exchange(request) {
+            const credential = yield* token.expect();
+            const reply = yield* runtime.fromPromise((signal) =>
+              peer.send({ id: request.binding, token: credential }, signal),
+            );
+            return { ok: true, value: reply.body };
+          },
         },
       });
       const observation: Middleware<Domain, Y> = {
-        *exchange(args, next) {
-          observed.push(args[0].binding);
-          return yield* next(...args);
-        },
+        exchange: (next) =>
+          function* (...args) {
+            observed.push(args[0].binding);
+            return yield* next(...args);
+          },
       };
       for (const [index, [id, body]] of [
         ["reserve", "hold-7"],
@@ -140,7 +143,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       ].entries()) {
         const host = assembly(`initial:${index}`);
         const activation = await run(function* () {
-          yield* host.api.around(host.acceleration);
+          yield* host.api.around({
+            operations: host.acceleration,
+          });
           return yield* activateJournal(runtime.composition, host.api.operations, journal);
         });
         if (activation.state !== "parked") {
@@ -148,7 +153,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         const delivery = run(function* () {
           yield* token.set("first");
-          yield* domain.around(observation);
+          yield* domain.around({
+            operations: observation,
+          });
           const outcome = yield* domain.operations.exchange(activation.pending.request);
           return yield* journal.accept(activation.pending.id, outcome);
         });
@@ -168,7 +175,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       // The last answer is committed, but no activation has consumed it yet.
       return { peer, journal, snapshot };
     }
-
     for (const mode of ["checkpoint", "replay", "unsupported", "disabled"] as const) {
       it(`${mode} activates from the journal and completes without repeating accepted effects`, async () => {
         const saved = await acceptReservationAndApproval();
@@ -193,12 +199,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           const host = assembly(name);
           const result = run(function* () {
             if (mode !== "replay") {
-              yield* host.api.around(host.acceleration, { at: "min" });
+              yield* host.api.around(
+                {
+                  operations: host.acceleration,
+                },
+                { at: "min" },
+              );
             }
             if (mode === "disabled") {
               yield* host.api.around({
-                *recover([plan], next) {
-                  return yield* next({ history: plan.history });
+                operations: {
+                  recover: (next) =>
+                    function* (plan) {
+                      return yield* next({ history: plan.history });
+                    },
                 },
               });
             }
@@ -245,7 +259,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(saved.peer.requests.map(({ id }) => id)).toEqual(["reserve", "approval", "cleanup"]);
       });
     }
-
     it("completes an iterator-only application through journal activation", async () => {
       const journal = createMemoryJournal<Result, Request, string, string>({
         program: "iterator-reservation-v1",
@@ -306,7 +319,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(completed.value).toEqual({ hold: "hold-7", approved: "approved", count: 41 });
       expect(peer.requests.map(({ id }) => id)).toEqual(["reserve", "approval", "cleanup"]);
     });
-
     for (const fault of ["corrupt", "anchor", "program", "history", "divergence"] as const) {
       it(`rejects ${fault} storage on activation without effects or silently restarting`, async () => {
         const saved = await acceptReservationAndApproval();
@@ -349,7 +361,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         };
         await expect(
           run(function* () {
-            yield* host.api.around(host.acceleration);
+            yield* host.api.around({
+              operations: host.acceleration,
+            });
             return yield* activateJournal(runtime.composition, host.api.operations, journal);
           }),
         ).rejects.toBeDefined();

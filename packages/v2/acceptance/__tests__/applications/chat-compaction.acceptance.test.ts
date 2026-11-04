@@ -23,7 +23,6 @@ import type { ModelInfo } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createHostedRecovery, createSqliteJournalRig, readJournal } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
-
 const model: ModelInfo = {
   id: "fixture",
   api: "scripted",
@@ -110,7 +109,6 @@ const summarize = defineEffect({
 });
 const resume = defineEffect({ key: "chat.resume", context: z.string(), response: z.boolean() });
 const infer = defineEffect({ key: "chat.infer", context: inferenceSchema, response: z.string() });
-
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -188,13 +186,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 inferences.push(structuredClone(request));
                 return { ok: true as const, value: "Ship it" };
               });
-              yield* host.around(granted.admission);
               yield* host.around({
-                *deliveryMode([request], next) {
-                  if (request.effect === resume.id) {
-                    return "wait" as const;
-                  }
-                  return yield* next(request);
+                operations: granted.admission,
+              });
+              yield* host.around({
+                operations: {
+                  deliveryMode: (next) =>
+                    function* (request) {
+                      if (request.effect === resume.id) {
+                        return "wait" as const;
+                      }
+                      return yield* next(request);
+                    },
                 },
               });
               return yield* host.operations.run();
@@ -250,15 +253,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(inferences).toHaveLength(1);
     });
   }
-
   it(`${runtime.name}: compaction rejects split groups and changed prefixes before downstream work`, async () => {
     let dispatched = 0;
     const api = runtime.composition.createApi("compacted-inference", {
-      *run(source: readonly ChatHistoryMessage[], request: ChatCompactionRequest, summary: string) {
-        const view = applyChatCompaction(source, request, summary);
-        const inference = prepareChatInference({ model, history: view, tools: [] });
-        dispatched++;
-        return inference;
+      operations: {
+        *run(
+          source: readonly ChatHistoryMessage[],
+          request: ChatCompactionRequest,
+          summary: string,
+        ) {
+          const view = applyChatCompaction(source, request, summary);
+          const inference = prepareChatInference({ model, history: view, tools: [] });
+          dispatched++;
+          return inference;
+        },
       },
     });
     const request = prepareChatCompaction(history, 5);

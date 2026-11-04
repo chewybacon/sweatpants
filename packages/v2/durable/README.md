@@ -125,21 +125,23 @@ its own scope before replay:
 ```ts
 yield *
   recovery.execution.around({
-    *cancel([reason], next) {
-      trace("cancel", reason);
-      return yield* next(reason);
+    operations: {
+      cancel: (next) =>
+        function* (reason) {
+          trace("cancel", reason);
+          return yield* next(reason);
+        },
     },
   });
-
 yield *
-  recovery.around(
-    createCheckpointMiddleware({
+  recovery.around({
+    operations: createCheckpointMiddleware({
       program,
       adapter: evaluator.checkpoints,
       execution: recovery.execution,
       matches,
     }),
-  );
+  });
 ```
 
 The checkpoint middleware now takes that execution API rather than a composition
