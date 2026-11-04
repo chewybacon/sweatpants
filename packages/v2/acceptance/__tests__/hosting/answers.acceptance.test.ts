@@ -17,7 +17,9 @@ import {
   type Hosting,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 for (const ingress of ["direct", "host"] as const) {
   forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     for (const mode of [
@@ -124,15 +126,10 @@ for (const ingress of ["direct", "host"] as const) {
           return {
             run() {
               return start(function* () {
+                yield* host.around(granted.admission);
                 yield* host.around({
-                  operations: granted.admission,
-                });
-                yield* host.around({
-                  operations: {
-                    deliveryMode: () =>
-                      function* () {
-                        return "wait";
-                      },
+                  *deliveryMode() {
+                    return "wait";
                   },
                 });
                 return yield* host.operations.run();

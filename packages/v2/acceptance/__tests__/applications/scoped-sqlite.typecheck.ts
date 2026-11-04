@@ -1,24 +1,35 @@
+import { decorateFunction, type Decorator } from "@standard-durability/core";
 import type { SqliteConnection } from "@sweatpan.ts/storage-sqlite";
-import type { SqliteStatementMiddleware } from "../../examples/scoped-sqlite.ts";
-// Compile-only evidence: synchronous statement middleware keeps driver result types.
-export const invalidAsyncLayer: SqliteStatementMiddleware = {
-  // @ts-expect-error A SQL run must return its changes synchronously.
-  run: (next) =>
-    async function (...args) {
-      return next(...args);
-    },
+import type { SqliteDecorators } from "../../examples/scoped-sqlite.ts";
+
+export const invalidAsyncLayer: SqliteDecorators = {
+  // @ts-expect-error SQL run returns its changes synchronously.
+  run:
+    (next) =>
+    async (...args) =>
+      next(...args),
+};
+export const invalidTransaction: SqliteDecorators = {
+  // @ts-expect-error A transaction must preserve each callback's result type.
+  transaction: () => () => "wrong",
 };
 export function preservesTransactionResult(connection: SqliteConnection) {
-  const result: {
-    readonly accepted: true;
-  } = connection.transaction(() => ({ accepted: true }) as const);
+  const transaction = decorateFunction(connection.transaction.bind(connection), [
+    (next) =>
+      function <T>(work: () => T): T {
+        return next(work);
+      },
+  ]);
+  const result: { readonly accepted: true } = transaction(() => ({ accepted: true }) as const);
   return result;
 }
-// TypeScript allows values (including Promises) from a void-returning function.
-// The bound connection's runtime guard is still needed for untyped/void methods.
-export const asyncVoidLayer: SqliteStatementMiddleware = {
-  exec: (next) =>
-    async function (...args) {
-      next(...args);
-    },
-};
+interface Overloaded {
+  (value: string): string;
+  (value: number): number;
+}
+export function preservesOverloads(method: Overloaded, decorator: Decorator<Overloaded>) {
+  const wrapped = decorateFunction(method, [decorator]);
+  const text: string = wrapped("text");
+  const number: number = wrapped(42);
+  return { text, number };
+}

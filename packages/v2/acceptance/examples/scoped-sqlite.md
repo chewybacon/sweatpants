@@ -1,29 +1,41 @@
-# Scoped synchronous SQLite consumer
+# SQLite acquisition decoration
 
-The [assembly](./scoped-sqlite.ts) declares the existing `SqliteConnection` as a
-grouped core API with the connection in `sync`. It adds no local dispatcher,
-lifetime guard or middleware registry. Consumers install `around({ sync: { run: next => wrappedRun } })`,
-then acquire `const sql = yield* api` before constructing the journal. SQL calls resolve policy
-synchronously inside the transaction.
+The [assembly](./scoped-sqlite.ts) uses the existing operation-only API to acquire a
+plain `SqliteConnection`. Acquisition middleware decorates the returned connection
+with the additive `decorateFunction` helper. Its `Decorator<F>` contract preserves
+generic signatures such as `transaction<T>` without changing scoped middleware.
 
-[Acceptance](../__tests__/applications/scoped-sqlite.acceptance.test.ts) runs real
-in-memory Node SQLite under Effect and Effection. It proves middleware ordering,
-child driver isolation, retained parent scope selection, parent restoration, fresh
-root isolation, and rejection after scope exit or cancellation. Throws and invalid
-Promise/operation returns after a SQL write roll back admission and activation intent;
-the same database subsequently accepts admission. This covers statement failures
-inside the transaction, not transaction middleware throwing after `next` has committed. The caller owns database disposal.
+```ts
+yield *
+  Sqlite.around({
+    *acquire(args, next) {
+      return decorateSqlite(yield* next(...args), {
+        run:
+          (next) =>
+          (...args) => {
+            trace(args[0]);
+            return next(...args);
+          },
+      });
+    },
+  });
+const sql = yield * Sqlite.operations.acquire();
+```
 
-The acquired handle resolves its captured scope's current policy on each call.
-This differs from the preceding acquisition experiment, which snapshotted wrappers.
-The generic `transaction<T>` method keeps its signature on the synchronous handle.
-The journal's existing non-yielding transaction runner remains unchanged.
+Acquire before constructing the journal. Statements run synchronously inside its
+transactions. Wrapper factories run once per decorated connection; their state
+persists across SQL calls. An existing handle retains its policy and driver after
+later installations or when used in a child. Reacquisition selects new policy.
 
-Return guards cannot cancel already-started async work or undo external effects.
-Middleware must remain synchronous; the SQL driver owns callback and commit semantics.
-This is evidence for composition and rollback on Node SQLite, not process-crash
-survival or a new deployed Cloudflare guarantee. Workerd journeys continue to exercise
-the existing journal/host adapters separately.
+[Acceptance](../__tests__/applications/scoped-sqlite.acceptance.test.ts) runs under
+Effect and Effection. It covers scoped acquisition, parent/child database isolation,
+stateful wrappers, generic transaction results and rollback when statement policy
+throws after a write but before transaction completion. Fresh acquisition can then
+successfully admit the same execution. Type fixtures reject invalid generic and
+asynchronous statement decorators and preserve overloads.
 
-See [Runtime composition](../../runtime/COMPOSITION.md) for the grouped method,
-property and captured-scope contracts.
+The caller owns both databases. Handles are ordinary objects: there is no automatic
+revocation at scope exit, per-call runtime lookup, Promise/iterable return guard, or
+new dispatcher. The SQL driver owns callback validation and commit semantics.
+Middleware throwing after a transaction commits cannot roll it back. This is local
+in-process evidence, not a process-crash or deployed-platform guarantee.

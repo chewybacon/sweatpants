@@ -1,5 +1,6 @@
 import type { Composition } from "@standard-durability/core";
 import type { StreamApi, StreamMethods } from "./contracts.ts";
+
 /**
  * Expose an ordinary scoped subscription API as a Stream. Context selection belongs
  * to the supplied driver; install and around retain normal composition semantics.
@@ -12,9 +13,7 @@ export function createStreamApi<T, Close, Y>(
   name: string,
   defaults: StreamMethods<T, Close, Y>,
 ): StreamApi<T, Close, Y> {
-  const api = composition.createApi<StreamMethods<T, Close, Y>>(name, {
-    operations: defaults,
-  });
+  const api = composition.createApi<StreamMethods<T, Close, Y>>(name, defaults);
   return {
     ...api,
     stream: {

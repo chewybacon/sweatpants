@@ -12,6 +12,7 @@ import {
   createSqliteJournalStore,
   type DurableObjectSqlStorage,
 } from "@sweatpan.ts/storage-sqlite";
+
 const PROGRAM = "do:sample-approval:v1";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -21,19 +22,16 @@ const json: Serializer = {
   decode: (bytes) => JSON.parse(decoder.decode(bytes)) as unknown,
 };
 const equals = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+
 // Minimal structural Workers types; the fixture avoids a workers-types dependency.
 type Namespace = {
   idFromName(name: string): unknown;
-  get(id: unknown): {
-    fetch(r: Request): Promise<Response>;
-  };
+  get(id: unknown): { fetch(r: Request): Promise<Response> };
 };
+
 export class Conversation {
-  constructor(
-    private readonly ctx: {
-      storage: unknown;
-    },
-  ) {}
+  constructor(private readonly ctx: { storage: unknown }) {}
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const runtime: Runtime<any> =
@@ -42,16 +40,10 @@ export class Conversation {
         : createEffectionRuntime();
     return Response.json(await runtime.start(() => this.handle(runtime, url)).result);
   }
+
   *handle<Y>(runtime: Runtime<Y>, url: URL): Operation<unknown, Y> {
     const storage = this.ctx.storage as unknown as DurableObjectSqlStorage & {
-      sql: {
-        exec(
-          sql: string,
-          ...params: unknown[]
-        ): {
-          toArray(): unknown[];
-        };
-      };
+      sql: { exec(sql: string, ...params: unknown[]): { toArray(): unknown[] } };
     };
     storage.sql.exec("CREATE TABLE IF NOT EXISTS fixture_deliveries (request TEXT)");
     const journal = createSqliteJournalStore<string, string, string, string, unknown, Y>({
@@ -107,24 +99,17 @@ export class Conversation {
       },
     });
     yield* host.around({
-      operations: {
-        deliveryMode: () =>
-          function* (request) {
-            return request === "approval" ? "wait" : "execute";
-          },
+      *deliveryMode([request]) {
+        return request === "approval" ? "wait" : "execute";
       },
     });
     const result = yield* host.operations.run();
     return result.state === "completed" ? result : { state: result.state };
   }
 }
+
 export default {
-  fetch(
-    request: Request,
-    env: {
-      CONVERSATIONS: Namespace;
-    },
-  ): Promise<Response> {
+  fetch(request: Request, env: { CONVERSATIONS: Namespace }): Promise<Response> {
     const url = new URL(request.url);
     const stub = env.CONVERSATIONS.get(
       env.CONVERSATIONS.idFromName(url.searchParams.get("id") ?? "default"),

@@ -5,6 +5,7 @@ import type { OwnedJournal } from "@sweatpan.ts/durable";
 import type { EffectCapabilities, Hosting } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { ElicitHandlers, ToolRoute } from "./contracts.ts";
+
 /**
  * Install scoped delivery policy for every declared elicitation. Supplied handlers
  * execute with normalized request context and return raw authored Outcomes through
@@ -20,9 +21,7 @@ import type { ElicitHandlers, ToolRoute } from "./contracts.ts";
 export function* installElicitHandlers<L extends Record<string, EffectDefinition>, R, E, Y>(
   host: Hosting<R, CapabilityRequest, unknown, E, Y>,
   effects: EffectCapabilities<Y>,
-  tool: {
-    readonly elicits: L;
-  },
+  tool: { readonly elicits: L },
   handlers: ElicitHandlers<NoInfer<L>, Y> = {},
 ): Operation<void, Y> {
   const modes = new Map<string, "execute" | "wait">();
@@ -43,16 +42,14 @@ export function* installElicitHandlers<L extends Record<string, EffectDefinition
   }
   yield* host.around(
     {
-      operations: {
-        deliveryMode: (next) =>
-          function* (request) {
-            return modes.get(request.effect) ?? (yield* next(request));
-          },
+      *deliveryMode([request], next) {
+        return modes.get(request.effect) ?? (yield* next(request));
       },
     },
     { at: "min" },
   );
 }
+
 /** Install one named route, without creating another routing algebra. Install parent
  * grant admission first. Reuses persisted normalized input on recovery, validates new
  * input before child creation, and leaves child-host policy/lifetime with run. */
@@ -75,38 +72,32 @@ export function* installToolRouting<
     outcome = (value: R) => ({ ok: true as const, value: { ok: true, value } }),
   } = route;
   yield* host.around({
-    operations: {
-      child: (next) =>
-        function* (pending) {
-          if (pending.request.effect !== tool.id) {
-            return yield* next(pending);
-          }
-          const snapshot = yield* journal.read();
-          const links = snapshot.status === "running" ? snapshot.children : undefined;
-          const existing = links?.[0];
-          if (links && (links.length !== 1 || existing?.program !== tool.id)) {
-            throw new Error("Stored child does not match named tool route");
-          }
-          let input = existing?.input;
-          if (!existing) {
-            const parsed = yield* runtime.fromPromise(async () =>
-              tool.context["~standard"].validate(pending.request.input),
-            );
-            if (parsed.issues) {
-              throw new Error("Invalid tool input");
-            }
-            input = parsed.value;
-          }
-          const child = yield* journal.ensureChild<R, CapabilityRequest, unknown, string>(
-            pending.id,
-            {
-              program: tool.id,
-              input,
-              outcome,
-            },
-          );
-          return { id: child.link.childId, run: () => run(child) };
-        },
+    *child([pending], next) {
+      if (pending.request.effect !== tool.id) {
+        return yield* next(pending);
+      }
+      const snapshot = yield* journal.read();
+      const links = snapshot.status === "running" ? snapshot.children : undefined;
+      const existing = links?.[0];
+      if (links && (links.length !== 1 || existing?.program !== tool.id)) {
+        throw new Error("Stored child does not match named tool route");
+      }
+      let input = existing?.input;
+      if (!existing) {
+        const parsed = yield* runtime.fromPromise(async () =>
+          tool.context["~standard"].validate(pending.request.input),
+        );
+        if (parsed.issues) {
+          throw new Error("Invalid tool input");
+        }
+        input = parsed.value;
+      }
+      const child = yield* journal.ensureChild<R, CapabilityRequest, unknown, string>(pending.id, {
+        program: tool.id,
+        input,
+        outcome,
+      });
+      return { id: child.link.childId, run: () => run(child) };
     },
   });
 }

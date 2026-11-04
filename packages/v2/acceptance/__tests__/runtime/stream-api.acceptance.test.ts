@@ -7,6 +7,7 @@ import {
   type Subscription,
 } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "./assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   it(`${runtime.name}: stream API composes scoped sources, installed drivers and event middleware`, async () => {
     const source = runtime.composition.createContext<Stream<number, string, Y>>("events.source");
@@ -27,22 +28,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const task = runtime.start(function* () {
       yield* source.set(outer);
       yield* messages.around({
-        operations: {
-          subscribe: (next) =>
-            function* (...args) {
-              subscriptions++;
-              const subscription = yield* next(...args);
-              return {
-                *next() {
-                  const item = yield* subscription.next();
-                  if (item.done) {
-                    return item;
-                  }
-                  observed.push(item.value);
-                  return { done: false as const, value: item.value * 10 };
-                },
-              };
+        *subscribe(args, next) {
+          subscriptions++;
+          const subscription = yield* next(...args);
+          return {
+            *next() {
+              const item = yield* subscription.next();
+              if (item.done) {
+                return item;
+              }
+              observed.push(item.value);
+              return { done: false as const, value: item.value * 10 };
             },
+          };
         },
       });
       const parent = yield* stream;
@@ -67,10 +65,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(rejected).toContain("Stream subscription scope exited");
       yield* runtime.composition.scoped(function* () {
         yield* messages.install({
-          operations: {
-            *subscribe() {
-              return yield* installed;
-            },
+          *subscribe() {
+            return yield* installed;
           },
         });
         const replacement = yield* stream;

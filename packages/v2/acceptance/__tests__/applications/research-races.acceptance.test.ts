@@ -31,7 +31,9 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 const fetchSource = defineEffect({
   key: "research.source",
   context: z.string(),
@@ -50,11 +52,9 @@ interface Context {
   readonly fetchSource: typeof fetchSource.call;
   readonly release: typeof release.call;
 }
-type Finding = {
-  source: string;
-  text: string;
-};
+type Finding = { source: string; text: string };
 type Factory = Branch<Context, Instructions>;
+
 // Authored application: each factory uses its own supplied scope and capabilities.
 function* source(ctx: Context, name: string): Operation<Finding, Instructions> {
   yield* ctx.scope.ensure(function* () {
@@ -94,6 +94,7 @@ const research: Factory = function* (ctx) {
   expectTypeOf(results).toEqualTypeOf<[Finding, Finding]>();
   return results;
 };
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -117,11 +118,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let root = store.open();
         const waits = new Map<
           string,
-          {
-            journal: Journal;
-            grant: ResolutionGrant;
-            effect: string;
-          }
+          { journal: Journal; grant: ResolutionGrant; effect: string }
         >();
         const journals = new Map<string, Journal>();
         const acquisitions = new Map<string, number>();
@@ -185,44 +182,30 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 interactions: journal.interactions,
                 handle: grant.handle,
               });
+              yield* host.around(grant.admission);
               yield* host.around({
-                operations: grant.admission,
-              });
-              yield* host.around({
-                operations: {
-                  continuation: () =>
-                    function* () {
-                      return yieldSources && path.split("/").length === 3
-                        ? { action: "yield", reason: "source budget" }
-                        : { action: "continue" };
-                    },
+                *continuation() {
+                  return yieldSources && path.split("/").length === 3
+                    ? { action: "yield", reason: "source budget" }
+                    : { action: "continue" };
                 },
               });
               yield* host.around({
-                operations: {
-                  deliveryMode: () =>
-                    function* () {
-                      return "wait";
-                    },
+                *deliveryMode() {
+                  return "wait";
                 },
               });
               yield* runner.install({
-                operations: {
-                  *run(child, branch, index) {
-                    const childPath = `${path}/${index}`;
-                    if (paused.has(childPath)) {
-                      return false;
-                    }
-                    const result = yield* drive(
-                      child.journal,
-                      child.link.program,
-                      branch,
-                      childPath,
-                    );
-                    return childHostingResult(result);
-                  },
+                *run(child, branch, index) {
+                  const childPath = `${path}/${index}`;
+                  if (paused.has(childPath)) {
+                    return false;
+                  }
+                  const result = yield* drive(child.journal, child.link.program, branch, childPath);
+                  return childHostingResult(result);
                 },
               });
+
               for (const group of [all, race]) {
                 yield* group.install({
                   host,

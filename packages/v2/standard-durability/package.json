@@ -15,14 +15,6 @@
       },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./internal": {
-      "development": {
-        "types": "./src/api-internal.ts",
-        "import": "./src/api-internal.ts"
-      },
-      "types": "./dist/api-internal.d.ts",
-      "import": "./dist/api-internal.js"
     }
   },
   "scripts": {

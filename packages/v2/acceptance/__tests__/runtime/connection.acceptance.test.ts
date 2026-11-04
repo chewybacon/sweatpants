@@ -8,6 +8,7 @@ import {
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { Work } from "@standard-durability/core";
 import { forEachRuntime } from "./assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const transportKind of ["local", "message-channel"] as const) {
     function start<T>(work: Work<T, Y>) {
@@ -28,23 +29,18 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const result = await start(function* () {
         const [left, right] = yield* acquireConnections(runtime, rig);
         const api = runtime.composition.createApi("peer-handler", {
-          operations: {
-            *handle(request: string) {
-              const label = yield* labels.expect();
-              if (request === "invoke") {
-                return `${label}:${yield* right.exchange("question")}`;
-              }
-              return `${label}:${request}`;
-            },
+          *handle(request: string) {
+            const label = yield* labels.expect();
+            if (request === "invoke") {
+              return `${label}:${yield* right.exchange("question")}`;
+            }
+            return `${label}:${request}`;
           },
         });
         yield* api.around({
-          operations: {
-            handle: (next) =>
-              function* (...args) {
-                calls.push(`${yield* labels.expect()}:${args[0]}`);
-                return yield* next(...args);
-              },
+          *handle(args, next) {
+            calls.push(`${yield* labels.expect()}:${args[0]}`);
+            return yield* next(...args);
           },
         });
         return yield* runtime.all([
@@ -76,6 +72,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(result).toEqual(["host:caller:question", "host done", "caller done"]);
       expect(calls).toEqual(["host:invoke", "caller:question"]);
     });
+
     it(`${runtime.name} ${transportKind}: delivery errors are replies and a request can only be answered once`, async () => {
       const rig = transport();
       await start(function* () {
@@ -110,6 +107,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ]);
       }).result;
     });
+
     it(`${runtime.name} ${transportKind}: retained transport failure rejects pending exchanges in both directions`, async () => {
       const rig = transport();
       await start(function* () {
@@ -144,6 +142,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       }).result;
     });
   }
+
   it(`${runtime.name}: nested reverse handlers can overlap requests in both directions`, async () => {
     const rig = createDuplexExchangeRig<string, string, string, string, Y>(runtime, {
       async left(request): Promise<string> {
@@ -164,6 +163,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(await rig.left.exchange("invoke")).toBe("answer:nested result");
   });
 });
+
 it("local transport buffers before start and delivers detached bytes asynchronously", async () => {
   const [left, right] = createLocalTransport();
   onTestFinished(() => {

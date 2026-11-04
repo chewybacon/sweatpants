@@ -21,70 +21,44 @@ export type Operations<Shape, Y> = {
     : never;
 };
 
-/** Wrap the complete callable, preserving generic and overloaded signatures. */
+/** Construction-time decoration preserving the complete callable signature. */
 export type Decorator<F> = (next: F) => F;
-export type Around<Args extends unknown[], Returned> = Decorator<(...args: Args) => Returned>;
+
+/** Effection-style interception of a callable's complete return type. */
+export type Around<Args extends unknown[], Returned> = (
+  args: Args,
+  next: (...args: Args) => Returned,
+) => Returned;
+
+/**
+ * Derive layers from actual operation methods, without wrapping their return again.
+ * Per-call generic relationships and overloads require specifically typed hooks;
+ * conditional extraction does not preserve them. Concrete capabilities retain types.
+ */
 export type OperationMiddleware<Methods> = {
-  readonly [K in keyof Methods]?: Decorator<NonNullable<Methods[K]>>;
+  readonly [K in keyof Methods]?: Methods[K] extends (...args: infer Args) => infer Returned
+    ? Around<Args, Returned>
+    : never;
 };
+
+/** A layer may delegate, rewrite, or short-circuit. Assembly owns policy. */
 export type Middleware<Shape, Y> = OperationMiddleware<Operations<Shape, Y>>;
 
-/** Properties are decorated as zero-argument readers; methods retain their signature. */
-export type SyncMiddleware<Members> = {
-  readonly [K in keyof Members]?: Members[K] extends (...args: never[]) => unknown
-    ? Decorator<Members[K]>
-    : Decorator<() => Members[K]>;
-};
-export interface ApiMiddleware<O, S> {
-  readonly operations?: OperationMiddleware<O>;
-  readonly sync?: SyncMiddleware<S>;
-}
-export interface ApiDefinition<O, S> {
-  readonly operations?: O;
-  readonly sync?: S;
-}
-export type OperationMethods<O, Y> = {
-  [K in keyof O]: (...args: never[]) => Operation<unknown, Y>;
-};
-// Ordinary iterable data is valid synchronously. Other iterable objects are reserved
-// for runtime operations. Explicit groups determine dispatch; types validate them.
-type IterableData =
-  | string
-  | readonly unknown[]
-  | ReadonlyMap<unknown, unknown>
-  | ReadonlySet<unknown>
-  | ArrayBufferView;
-type UnsupportedSync<T> = T extends IterableData
-  ? never
-  : T extends PromiseLike<unknown> | Operation<unknown, unknown>
-    ? T
-    : never;
-type SynchronousMembers<S> = {
-  [K in keyof S]: S[K] extends (...args: never[]) => infer R
-    ? [UnsupportedSync<R>] extends [never]
-      ? S[K]
-      : never
-    : [UnsupportedSync<S[K]>] extends [never]
-      ? S[K]
-      : never;
-};
-
-export type ApiDefaults<O, S> = ApiDefinition<O, S> & { readonly sync?: S & SynchronousMembers<S> };
-
-/** One grouped API. Yield it to acquire synchronous access in the executing scope. */
-export interface Api<O, Y, S = {}> extends Operation<Readonly<S>, Y> {
-  readonly operations: O;
+export interface Api<Methods, Y> {
+  /** Resolve against the executing scope; obtaining this facade captures no scope. */
+  readonly operations: Methods;
   /**
-   * Earlier max decorators surround later max decorators; later min decorators
-   * surround earlier min decorators. Operation next() resolves its terminal driver
-   * in its executing scope. Synchronous access resolves in its acquired scope.
+   * Scoped middleware. Default/max surrounds min middleware. Earlier max layers
+   * are outermost; later min layers are outermost within min. Child scopes inherit
+   * layers. A short circuit deliberately skips the remainder of the chain.
+   * Calling next in a child resolves its driver without redispatching wrappers.
    */
   around(
-    middleware: ApiMiddleware<O, S>,
+    middleware: OperationMiddleware<Methods>,
     options?: { readonly at: "min" | "max" },
   ): Operation<void, Y>;
-  /** One installation per scope. Omitted groups retain their currently selected driver. */
-  install(driver: ApiDefinition<O, S>): Operation<void, Y>;
+  /** One terminal driver per scope; a child can install an override. */
+  install(driver: Methods): Operation<void, Y>;
 }
 
 export interface Context<T, Y> {
@@ -100,11 +74,16 @@ export interface Context<T, Y> {
  * not direct calls to implementation objects. Contexts may hold either deliberately.
  */
 export interface Composition<Y> {
-  /** Groups declare execution kind; both groups are optional. No implicit lifting. */
-  createApi<O extends OperationMethods<O, Y> = {}, S extends object = {}>(
+  /** Infer an operation-bearing implementation directly, including its result types. */
+  createApi<Methods extends { [K in keyof Methods]: (...args: never[]) => Operation<unknown, Y> }>(
     name: string,
-    defaults: ApiDefaults<O, S>,
-  ): Api<O, Y, S>;
+    defaults: Methods,
+  ): Api<Methods, Y>;
+  /** Explicit value signatures remain a shorthand for operation-bearing methods. */
+  createApi<Signature extends object>(
+    name: string,
+    defaults: Operations<Signature, Y>,
+  ): Api<Operations<Signature, Y>, Y>;
   createContext<T>(name: string): Context<T, Y>;
   /** A child owner that joins cleanup before returning. Plain yield* adds no scope. */
   scoped<T>(work: Work<T, Y>): Operation<T, Y>;

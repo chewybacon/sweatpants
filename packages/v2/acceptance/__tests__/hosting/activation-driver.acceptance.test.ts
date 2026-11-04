@@ -17,6 +17,7 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const owner of ["request", "application"] as const) {
     it(`${runtime.name}: ${owner} ownership drives hosting independently of readers and survives only its owner`, async () => {
@@ -73,20 +74,15 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         const background = yield* createOwnedActivationDriver(runtime, work);
         const api = createActivationDriver(runtime.composition, "activation", background);
         yield* api.around({
-          operations: {
-            start: (next) =>
-              function* (...args) {
-                starts++;
-                return yield* next(...args);
-              },
+          *start(args, next) {
+            starts++;
+            return yield* next(...args);
           },
         });
         yield* runtime.composition.scoped(function* () {
           if (owner === "request") {
             escaped = yield* createOwnedActivationDriver(runtime, work);
-            yield* api.install({
-              operations: escaped,
-            });
+            yield* api.install(escaped);
           } else {
             escaped = background;
           }
@@ -136,6 +132,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(deliveries).toBe(1);
     });
   }
+
   it(`${runtime.name}: owner shutdown joins all active cleanup and rejects starts during shutdown`, async () => {
     const ready = createLatch<ActivationDriver<void, Y>>();
     const cleaning = createLatch<void>();

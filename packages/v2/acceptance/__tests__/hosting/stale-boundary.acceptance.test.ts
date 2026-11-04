@@ -9,7 +9,9 @@ import { activateJournal, JournalConflict } from "@sweatpan.ts/durable";
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installGuestRetention } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -49,17 +51,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           }
           pendingId = initial.pending.id;
           yield* recovery.around({
-            operations: {
-              recover: (next) =>
-                function* (...args) {
-                  const recovered = yield* next(...args);
-                  if (seam === "activation" && !conflicted) {
-                    conflicted = true;
-                    // A second actor registers after recovery read but before park writes.
-                    yield* journal.interactions.register(pendingId);
-                  }
-                  return recovered;
-                },
+            *recover(args, next) {
+              const recovered = yield* next(...args);
+              if (seam === "activation" && !conflicted) {
+                conflicted = true;
+                // A second actor registers after recovery read but before park writes.
+                yield* journal.interactions.register(pendingId);
+              }
+              return recovered;
             },
           });
           const host = createHosting(runtime.composition, {
@@ -74,18 +73,16 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             },
           });
           yield* host.around({
-            operations: {
-              deliveryMode: () =>
-                function* (request) {
-                  if (seam !== "activation" && !conflicted) {
-                    conflicted = true;
-                    yield* journal.cancellation.request(pendingId, "external stop");
-                  }
-                  if (request === "cleanup" || seam === "activation") {
-                    return "wait";
-                  }
-                  return seam === "registration" ? "wait" : "execute";
-                },
+            *deliveryMode([request]) {
+              if (seam !== "activation" && !conflicted) {
+                conflicted = true;
+                yield* journal.cancellation.request(pendingId, "external stop");
+              }
+
+              if (request === "cleanup" || seam === "activation") {
+                return "wait";
+              }
+              return seam === "registration" ? "wait" : "execute";
             },
           });
           if (retained) {

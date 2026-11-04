@@ -7,6 +7,7 @@ import { z } from "zod";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Work } from "@standard-durability/core";
 import { defineEffect, type CapabilityRequest } from "@sweatpan.ts/core";
+
 import {
   createEffectCapabilities,
   createHosting,
@@ -15,7 +16,9 @@ import {
 } from "@sweatpan.ts/hosting";
 import { admitTool, createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -79,11 +82,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expectTypeOf(approved.value).toEqualTypeOf<boolean>();
           return { number, contents: contents.value, approved: approved.value };
         });
-      type Result = {
-        number: number;
-        contents: string;
-        approved: boolean;
-      };
+      type Result = { number: number; contents: string; approved: boolean };
       const store = createSqliteJournalRig<Result, CapabilityRequest, unknown, string, unknown, Y>({
         program: tool.id,
         equals: isDeepStrictEqual,
@@ -105,9 +104,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               throw new Error("Input not admitted");
             }
             return yield* acquisition.operations.acquire(
-              snapshot.admission.input as {
-                query: string;
-              },
+              snapshot.admission.input as { query: string },
             );
           },
         });
@@ -128,31 +125,21 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             return { ok: true, value: `file:${query}` };
           });
           yield* acquisition.around({
-            operations: {
-              acquire: (next) =>
-                function* (input) {
-                  expectTypeOf(input).toEqualTypeOf<{
-                    query: string;
-                  }>();
-                  expect(input).toEqual({ query: "auth" });
-                  acquired++;
-                  yield* runtime.composition.ensure(function* () {
-                    disposed++;
-                  });
-                  return yield* next(input);
-                },
+            *acquire([input], next) {
+              expectTypeOf(input).toEqualTypeOf<{ query: string }>();
+              expect(input).toEqual({ query: "auth" });
+              acquired++;
+              yield* runtime.composition.ensure(function* () {
+                disposed++;
+              });
+              return yield* next(input);
             },
           });
           const { host, recovery } = assemble();
+          yield* host.around(acquisition.admission);
           yield* host.around({
-            operations: acquisition.admission,
-          });
-          yield* host.around({
-            operations: {
-              deliveryMode: (next) =>
-                function* (request) {
-                  return request.effect === approve.id ? "wait" : yield* next(request);
-                },
+            *deliveryMode([request], next) {
+              return request.effect === approve.id ? "wait" : yield* next(request);
             },
           });
           yield* installGuestRetention(runtime.composition, host, recovery, journal);

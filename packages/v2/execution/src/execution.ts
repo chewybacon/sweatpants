@@ -1,5 +1,6 @@
 import type { Composition } from "@standard-durability/core";
 import type { Execution, Guest } from "./contracts.ts";
+
 /**
  * Declare a scoped execution API without acquiring or advancing an evaluator.
  * The name identifies its bindings and middleware; use a distinct name for unrelated
@@ -13,17 +14,14 @@ export function createExecution<R, Q, Y, V = unknown, E = unknown>(
     throw new Error(`Execution driver is not installed: ${name}`);
   }
   const api = composition.createApi<Required<Guest<R, Q, Y, V, E>>>(name, {
-    operations: {
-      start: missing,
-      resume: missing,
-      cancel: missing,
-      close: missing,
-    },
+    start: missing,
+    resume: missing,
+    cancel: missing,
+    close: missing,
   });
-  const binding = composition.createContext<{
-    guest: Guest<R, Q, Y, V, E>;
-    active: boolean;
-  }>(`${name}:owner`);
+  const binding = composition.createContext<{ guest: Guest<R, Q, Y, V, E>; active: boolean }>(
+    `${name}:owner`,
+  );
   return {
     *isInstalled(guest) {
       const current = yield* binding.get();
@@ -31,7 +29,6 @@ export function createExecution<R, Q, Y, V = unknown, E = unknown>(
     },
     operations: api.operations,
     around: api.around,
-    [Symbol.iterator]: api[Symbol.iterator],
     *install(guest) {
       // Own the acquired resource even if driver installation fails.
       const owner = { guest, active: true };
@@ -40,19 +37,17 @@ export function createExecution<R, Q, Y, V = unknown, E = unknown>(
         yield* guest.close();
       });
       yield* api.install({
-        operations: {
-          start: () => guest.start(),
-          resume: (outcome) => guest.resume(outcome),
-          *cancel(reason) {
-            if (!guest.cancel) {
-              throw new Error("Evaluator does not support logical cancellation");
-            }
-            return yield* guest.cancel(reason);
-          },
-          *close() {
-            owner.active = false;
-            yield* guest.close();
-          },
+        start: () => guest.start(),
+        resume: (outcome) => guest.resume(outcome),
+        *cancel(reason) {
+          if (!guest.cancel) {
+            throw new Error("Evaluator does not support logical cancellation");
+          }
+          return yield* guest.cancel(reason);
+        },
+        *close() {
+          owner.active = false;
+          yield* guest.close();
         },
       });
       yield* binding.set(owner);

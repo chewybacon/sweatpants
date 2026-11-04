@@ -18,6 +18,7 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const interrupted of [false, true]) {
     it(`${runtime.name}: application ownership, reader disconnect, ${interrupted ? "shutdown" : "yield"}, and fresh-owner reconciliation`, async () => {
@@ -74,23 +75,17 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
               });
               yield* host.attempts.around({
-                operations: {
-                  settle: (next) =>
-                    function* (...args) {
-                      const result = yield* next(...args);
-                      accepted++;
-                      return result;
-                    },
+                *settle(args, next) {
+                  const result = yield* next(...args);
+                  accepted++;
+                  return result;
                 },
               });
               yield* host.around({
-                operations: {
-                  continuation: () =>
-                    function* () {
-                      return accepted >= limit
-                        ? { action: "yield", reason: "budget" }
-                        : { action: "continue" };
-                    },
+                *continuation() {
+                  return accepted >= limit
+                    ? { action: "yield", reason: "budget" }
+                    : { action: "continue" };
                 },
               });
               const reconciler = createActivationReconciler(

@@ -1,5 +1,6 @@
 import type { OperationMiddleware } from "@standard-durability/core";
 import type { ChatLoopSample, ChatSampling } from "./contracts.ts";
+
 /** Optional Host sampling middleware. Check before dispatch, then deny a final-round
  * tool batch before the Guest can invoke tools. Expected denials are returned as data;
  * when the caller records them, recovery cannot silently retry with a larger limit.
@@ -13,30 +14,25 @@ export function limitChatRounds<Y, Sample extends ChatLoopSample = ChatLoopSampl
     throw new Error("Invalid chat round limit");
   }
   return {
-    sample: (next) =>
-      function* (request) {
-        if (!Number.isSafeInteger(request.round) || request.round < 0) {
-          return { ok: false, error: { code: "invalid-round", message: "Invalid chat round" } };
-        }
-        if (request.round >= maxRounds) {
-          return { ok: false, error: { code: "round-limit", message: "Chat round limit reached" } };
-        }
-        const result = yield* next(request);
-        if (
-          result.ok &&
-          request.round + 1 === maxRounds &&
-          result.value.response.message.content.some((part) => part.type === "tool-call")
-        ) {
-          return {
-            ok: false,
-            error: {
-              code: "round-limit",
-              message: "Chat round limit reached",
-              sample: result.value,
-            },
-          };
-        }
-        return result;
-      },
+    *sample([request], next) {
+      if (!Number.isSafeInteger(request.round) || request.round < 0) {
+        return { ok: false, error: { code: "invalid-round", message: "Invalid chat round" } };
+      }
+      if (request.round >= maxRounds) {
+        return { ok: false, error: { code: "round-limit", message: "Chat round limit reached" } };
+      }
+      const result = yield* next(request);
+      if (
+        result.ok &&
+        request.round + 1 === maxRounds &&
+        result.value.response.message.content.some((part) => part.type === "tool-call")
+      ) {
+        return {
+          ok: false,
+          error: { code: "round-limit", message: "Chat round limit reached", sample: result.value },
+        };
+      }
+      return result;
+    },
   };
 }

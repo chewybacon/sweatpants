@@ -8,15 +8,10 @@ export type {
   Operations,
   Middleware,
   Around,
+  Decorator,
   OperationMiddleware,
   Api,
-  Decorator,
-  ApiMiddleware,
-  ApiDefinition,
-  ApiDefaults,
-  OperationMethods,
-  SyncMiddleware,
   Context,
   Composition,
 } from "./contracts.ts";
-export { composeOperation } from "./operation.ts";
+export { composeOperation, decorateFunction } from "./operation.ts";

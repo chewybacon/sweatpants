@@ -6,26 +6,32 @@ that composition predictable; they do not prescribe one mandatory policy stack.
 
 ## Signatures and handle decoration
 
-`createApi(name, { operations, sync })` has one grouped declaration and returns
-`Api<O, Y, S>`. Either group can be omitted. `api.operations` preserves operation
-methods; `const access = yield* api` acquires ordinary methods and read-only
-properties in the executing scope. No members are implicitly lifted.
+`Api<Methods, Y>` describes actual operation-bearing methods. `createApi(name,
+implementation)` can infer them directly; existing explicit value-signature calls
+remain shorthand for `Operations<Signature, Y>`. Lifting is explicit in that
+shorthand, so a Guest method returning `Operation<Turn<...>, Y>` is never lifted
+again. Plain synchronous driver implementations are not supported.
 
-`Decorator<F> = (next: F) => F` wraps the complete signature, including generics and
-overloads. `OperationMiddleware<O>` and `SyncMiddleware<S>` derive decorators for
-members; properties use zero-argument readers. Install them with
-`api.around({ operations, sync })`. `Around<Args, Returned>` is an explicit callable
-helper; `Operations<Shape, Y>` and `Middleware<Shape, Y>` remain explicit type helpers,
-not alternative factory overloads.
+`Around<Args, Returned>` is the shared `(args, next) => Returned` function shape.
+`OperationMiddleware<Methods>` derives it from actual methods; the existing
+`Middleware<Signature, Y>` shorthand derives it from `Operations<Signature, Y>`.
+Both scoped `api.around(layers)` and direct `composeOperation(method, layers)` use
+this shape. The first direct layer is outermost. Composition invokes no method,
+captures no scope and creates no cleanup owner. Bind methods that rely on `this`
+before passing them to direct composition.
 
-`composeOperation(method, decorators)` uses the same signature-preserving shape.
-The first decorator is outermost. Direct composition captures no scope and creates
-no cleanup owner. Bind receiver-dependent methods first. Annotate defaults with
-portable `Operation<Result, Y>` when middleware needs a broader yielded protocol
-than a concrete generator implementation infers.
+Direct wrappers belong to the specific callable they wrap. An acquisition layer
+can decorate its returned Guest without advancing the authored body. Its wrappers
+can read contexts when their operations execute. Resource ownership stays with
+the acquiring scope; changing the exposed close method does not transfer the
+scope's responsibility to release physical resources.
 
-See [Runtime composition](../runtime/COMPOSITION.md) for examples, selection-time
-choices, grouped installation, and the full synchronous contract.
+Use portable `Operation<Result, Y>` contracts when middleware must yield host
+operations beyond those inferred from a concrete generator implementation. Direct
+inference preserves that implementation's return type, including narrower native
+or generator types. Automatic argument/result extraction does not preserve
+per-call generic relationships or overloads inside middleware; concrete Guest
+capabilities do not have that limitation. Public method types remain intact.
 
 ## Calls and ownership
 
@@ -70,26 +76,10 @@ sandbox against code that holds raw implementations. Fresh executions must
 establish their own bindings. Persistent recovery and durable acceptance remain
 separate protocols; interception alone does not implement them.
 
-## Synchronous consumers
-
-`const access = yield* api` captures the executing scope. Each synchronous call
-resolves that scope's current middleware and nearest installed driver. A parent
-handle used in a child keeps parent selection. Acquisition registers an invalidating
-finalizer: newer cleanup may use access; older cleanup sees it invalidated. Access
-does not own driver resources or keep the scope alive.
-
-The [SQLite consumer](../acceptance/examples/scoped-sqlite.md) uses this boundary
-inside journal transactions on both runtimes. Generic transaction signatures remain
-intact through acquisition and decorators. Promise/operation returns from synchronous
-members throw, including async functions in TypeScript void slots. Guards cannot
-cancel already-started work or detect fire-and-forget effects.
-
 ## Acceptance evidence
 
 The same portable applications run under Effect and Effection:
 
-- `mixed-api.acceptance.test.ts`: regular functions, lazy property reads, generic
-  decorators, live acquired policy, driver selection, reentrancy, cleanup and cancellation.
 - `composition.acceptance.test.ts`: exact ordering, installation order, deferred
   lookup, child driver routing, argument/result transformation and short circuit.
 - `assembly-policy.acceptance.test.ts`: deliberately different cache/authorization
@@ -122,3 +112,14 @@ combined native failures may also propagate unchanged. Scope ownership and clean
 remain the responsibility of `scoped` and `ensure`. The error-boundary acceptance
 journeys exercise scoped API failures, cleanup-before-recovery and interruption on
 both runtimes.
+
+## Signature-preserving direct decorators
+
+`decorateFunction(method, decorators)` is additive to existing scoped middleware
+and `composeOperation`. It uses `Decorator<F> = (next: F) => F`, preserving generic
+and overloaded signatures. Factories run once when constructing the wrapper,
+innermost first; the first listed wrapper executes outermost. Bind methods that
+need a receiver. No scope lookup, lifetime guard or resource owner is added.
+
+See [Composition guidance](../runtime/COMPOSITION.md) and the
+[SQLite acquisition experiment](../acceptance/examples/scoped-sqlite.md).

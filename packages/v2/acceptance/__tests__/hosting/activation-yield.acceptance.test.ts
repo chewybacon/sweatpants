@@ -6,6 +6,7 @@ import { createHosting, installGuestRetention, type HostedResult } from "@sweatp
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createHostedRecovery, createLatch, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const retained of [false, true]) {
     it(`${runtime.name}: cooperative budget yields after acceptance and joined cleanup (retained ${retained})`, async () => {
@@ -65,25 +66,19 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* installGuestRetention(runtime.composition, host, recovery, journal);
           }
           yield* host.attempts.around({
-            operations: {
-              settle: (next) =>
-                function* (...args) {
-                  const result = yield* next(...args);
-                  accepted++;
-                  return result;
-                },
+            *settle(args, next) {
+              const result = yield* next(...args);
+              accepted++;
+              return result;
             },
           });
           const result = yield* runtime.composition.scoped(function* () {
             yield* host.around({
-              operations: {
-                continuation: () =>
-                  function* () {
-                    expect(cleaned).toBe(accepted);
-                    return accepted >= limit
-                      ? { action: "yield", reason: "acceptance budget" }
-                      : { action: "continue" };
-                  },
+              *continuation() {
+                expect(cleaned).toBe(accepted);
+                return accepted >= limit
+                  ? { action: "yield", reason: "acceptance budget" }
+                  : { action: "continue" };
               },
             });
             return yield* host.operations.run();

@@ -14,6 +14,7 @@ import { createRuntime as createEffectRuntime } from "@sweatpan.ts/runtime-effec
 import { createRuntime as createEffectionRuntime } from "@sweatpan.ts/runtime-effection";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { Serializer } from "@sweatpan.ts/storage";
+
 const PROGRAM = "do:alarm-sample-approval:v1";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -23,23 +24,16 @@ const json: Serializer = {
   decode: (bytes) => JSON.parse(decoder.decode(bytes)) as unknown,
 };
 const equals = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+
 type Storage = DurableObjectHostStorage & {
-  sql: {
-    exec(
-      sql: string,
-      ...params: unknown[]
-    ): {
-      toArray(): Record<string, unknown>[];
-    };
-  };
+  sql: { exec(sql: string, ...params: unknown[]): { toArray(): Record<string, unknown>[] } };
 };
 type Namespace = {
   idFromName(name: string): unknown;
-  get(id: unknown): {
-    fetch(request: Request): Promise<Response>;
-  };
+  get(id: unknown): { fetch(request: Request): Promise<Response> };
 };
 type Host = DurableObjectHost<string, string, string, string, string, string, any>;
+
 function assemble<Y>(runtime: Runtime<Y>, storage: Storage) {
   storage.sql.exec("CREATE TABLE IF NOT EXISTS fixture_deliveries (request TEXT)");
   return createDurableObjectHost<string, string, string, string, string, string, Y>({
@@ -82,11 +76,8 @@ function assemble<Y>(runtime: Runtime<Y>, storage: Storage) {
         },
       });
       yield* host.around({
-        operations: {
-          deliveryMode: () =>
-            function* (request) {
-              return request === "approval" ? "wait" : "execute";
-            },
+        *deliveryMode([request]) {
+          return request === "approval" ? "wait" : "execute";
         },
       });
       const result = yield* host.operations.run();
@@ -95,12 +86,15 @@ function assemble<Y>(runtime: Runtime<Y>, storage: Storage) {
     },
   });
 }
+
 export class Conversation {
   private readonly storage: Storage;
   private host: Host | undefined;
+
   constructor(ctx: { storage: unknown }) {
     this.storage = ctx.storage as Storage;
   }
+
   // The runtime choice is a fixture parameter, persisted so a restarted alarm uses it.
   private bind(name?: string | null): Host {
     this.storage.sql.exec(
@@ -120,6 +114,7 @@ export class Conversation {
       this.storage,
     ) as Host);
   }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const host = this.bind(url.searchParams.get("runtime"));
@@ -239,6 +234,7 @@ export class Conversation {
       deliveries: deliveries.length,
     });
   }
+
   async alarm(info?: AlarmInvocation): Promise<void> {
     const storage = this.storage;
     storage.sql.exec(
@@ -247,16 +243,13 @@ export class Conversation {
     await this.bind().alarm(info, function* (host) {
       // Application tracing of each alarm run's outcome.
       yield* host.around({
-        operations: {
-          settle: (next) =>
-            function* (outcome, run) {
-              storage.sql.exec(
-                "INSERT INTO fixture_alarms VALUES (?, ?, NULL)",
-                run.invocation.retryCount,
-                outcome.ok ? "ok" : "failed",
-              );
-              return yield* next(outcome, run);
-            },
+        *settle([outcome, run], next) {
+          storage.sql.exec(
+            "INSERT INTO fixture_alarms VALUES (?, ?, NULL)",
+            run.invocation.retryCount,
+            outcome.ok ? "ok" : "failed",
+          );
+          return yield* next(outcome, run);
         },
       });
       yield* installAlarmRetryLimit(host, 1, function* (error) {
@@ -269,6 +262,7 @@ export class Conversation {
     });
   }
 }
+
 function lines() {
   return new TransformStream<string, Uint8Array>({
     transform(frame, controller) {
@@ -276,13 +270,9 @@ function lines() {
     },
   });
 }
+
 export default {
-  fetch(
-    request: Request,
-    env: {
-      CONVERSATIONS: Namespace;
-    },
-  ): Promise<Response> {
+  fetch(request: Request, env: { CONVERSATIONS: Namespace }): Promise<Response> {
     const url = new URL(request.url);
     const stub = env.CONVERSATIONS.get(
       env.CONVERSATIONS.idFromName(url.searchParams.get("id") ?? "default"),

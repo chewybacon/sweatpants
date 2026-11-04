@@ -14,6 +14,7 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -32,6 +33,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const store = createMemoryJournalStore<string, string, string, string>(options);
       return { ...store, reopen: () => store.open(), connect: () => store.open() };
     }
+
     it(`${runtime.name}/${storage}: accepted answer survives missing scheduling and stale acknowledgements`, async () => {
       const store = createStore();
       let journal = store.open();
@@ -69,17 +71,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               },
             });
             yield* host.around({
-              operations: {
-                continuation: () =>
-                  function* () {
-                    return shouldYield
-                      ? { action: "yield", reason: "budget" }
-                      : { action: "continue" };
-                  },
-                deliveryMode: () =>
-                  function* (request) {
-                    return request === "question" ? "wait" : "execute";
-                  },
+              *continuation() {
+                return shouldYield ? { action: "yield", reason: "budget" } : { action: "continue" };
+              },
+              *deliveryMode([request]) {
+                return request === "question" ? "wait" : "execute";
               },
             });
             return yield* host.operations.run();
@@ -111,12 +107,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const observed = (await start(app.intents.operations.read))!;
       const stable = await start(function* () {
         yield* app.intents.around({
-          operations: {
-            acknowledge: (next) =>
-              function* (...args) {
-                acknowledgements++;
-                return yield* next(...args);
-              },
+          *acknowledge(args, next) {
+            acknowledgements++;
+            return yield* next(...args);
           },
         });
         return yield* app.operations.reconcile();
@@ -124,6 +117,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(stable.state === "driven" && stable.acknowledged).toBe(true);
       expect(acknowledgements).toBe(1);
       expect(await start(app.operations.reconcile)).toEqual({ state: "idle" });
+
       // A duplicate wakeup races answer ingress on a separate SQLite connection.
       // The answer commits after the Host observes its wait, before acknowledgement.
       await start(app.intents.operations.request);
@@ -131,12 +125,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const grant = waiting.result.grant;
       const raced = await start(function* () {
         yield* app.intents.around({
-          operations: {
-            acknowledge: (next) =>
-              function* (...args) {
-                yield* ingress.interactions.answer(grant, { ok: true, value: "yes" });
-                return yield* next(...args);
-              },
+          *acknowledge(args, next) {
+            yield* ingress.interactions.answer(grant, { ok: true, value: "yes" });
+            return yield* next(...args);
           },
         });
         return yield* app.operations.reconcile();
@@ -167,6 +158,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         start(() => app.intents.operations.acknowledge({ ...pending, execution: "foreign" })),
       ).rejects.toThrow("Foreign activation intent");
     });
+
     for (const nested of [false, true]) {
       for (const succeeds of [false, true]) {
         it(`${runtime.name}/${storage}: overlapping pass preserves ${nested ? "child" : "root"} in-flight intent (${succeeds ? "settles" : "fails"})`, async () => {
@@ -201,28 +193,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               },
             });
             yield* host.around({
-              operations: {
-                child: (next) =>
-                  function* (pending) {
-                    if (pending.request !== "child") {
-                      return yield* next(pending);
-                    }
-                    const child = yield* journal.ensureChild<string, string, string, string>(
-                      pending.id,
-                      {
-                        program: "leaf",
-                        input: null,
-                        outcome: (value) => ({ ok: true, value }),
-                      },
-                    );
-                    return {
-                      id: child.link.childId,
-                      *run() {
-                        const result = yield* drive(child.journal, child.link.program, false);
-                        return childHostingResult(result);
-                      },
-                    };
+              *child([pending], next) {
+                if (pending.request !== "child") {
+                  return yield* next(pending);
+                }
+                const child = yield* journal.ensureChild<string, string, string, string>(
+                  pending.id,
+                  {
+                    program: "leaf",
+                    input: null,
+                    outcome: (value) => ({ ok: true, value }),
                   },
+                );
+                return {
+                  id: child.link.childId,
+                  *run() {
+                    const result = yield* drive(child.journal, child.link.program, false);
+                    return childHostingResult(result);
+                  },
+                };
               },
             });
             return yield* host.operations.run();
@@ -272,6 +261,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
       }
     }
+
     for (const failure of ["delivery", "acknowledgement"] as const) {
       it(`${runtime.name}/${storage}: ${failure} failure leaves reconcilable intent without redelivery`, async () => {
         const store = createStore();
@@ -310,15 +300,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                 },
               });
               yield* host.attempts.around({
-                operations: {
-                  settle: (next) =>
-                    function* (...args) {
-                      const result = yield* next(...args);
-                      if (fail) {
-                        throw new Error("Acknowledgement lost");
-                      }
-                      return result;
-                    },
+                *settle(args, next) {
+                  const result = yield* next(...args);
+                  if (fail) {
+                    throw new Error("Acknowledgement lost");
+                  }
+                  return result;
                 },
               });
               return yield* host.operations.run();
@@ -347,6 +334,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(deliveries).toBe(1);
       });
     }
+
     it(`${runtime.name}/${storage}: child answers wake the root and failed parent projection rolls back intent`, async () => {
       const store = createStore();
       let root = store.open();
@@ -381,47 +369,39 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          operations: {
-            continuation: () =>
-              function* () {
-                return leaf && yieldChild
-                  ? { action: "yield", reason: "child budget" }
-                  : { action: "continue" };
-              },
-            deliveryMode: () =>
-              function* () {
-                return "wait";
-              },
-            child: (next) =>
-              function* (pending) {
-                if (pending.request !== "child") {
-                  return yield* next(pending);
+          *continuation() {
+            return leaf && yieldChild
+              ? { action: "yield", reason: "child budget" }
+              : { action: "continue" };
+          },
+          *deliveryMode() {
+            return "wait";
+          },
+          *child([pending], next) {
+            if (pending.request !== "child") {
+              return yield* next(pending);
+            }
+            const owned = yield* journal.ensureChild<string, string, string, string>(pending.id, {
+              program: "leaf",
+              input: null,
+              outcome(value) {
+                if (failProjection) {
+                  throw new Error("Projection failed");
                 }
-                const owned = yield* journal.ensureChild<string, string, string, string>(
-                  pending.id,
-                  {
-                    program: "leaf",
-                    input: null,
-                    outcome(value) {
-                      if (failProjection) {
-                        throw new Error("Projection failed");
-                      }
-                      return { ok: true, value };
-                    },
-                  },
-                );
-                child = owned.journal;
-                return {
-                  id: owned.link.childId,
-                  *run() {
-                    const result = yield* drive(owned.journal, owned.link.program, true);
-                    if (result.state === "waiting") {
-                      grant = result.grant;
-                    }
-                    return childHostingResult(result);
-                  },
-                };
+                return { ok: true, value };
               },
+            });
+            child = owned.journal;
+            return {
+              id: owned.link.childId,
+              *run() {
+                const result = yield* drive(owned.journal, owned.link.program, true);
+                if (result.state === "waiting") {
+                  grant = result.grant;
+                }
+                return childHostingResult(result);
+              },
+            };
           },
         });
         return yield* host.operations.run();
@@ -474,6 +454,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await start(app.operations.reconcile);
       expect(await start(app.operations.reconcile)).toEqual({ state: "idle" });
     });
+
     for (const window of ["before", "after"] as const) {
       it(`${runtime.name}/${storage}: ${window}-delete intent acknowledgement failure requires rereading`, async () => {
         const store = createStore();
@@ -515,14 +496,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         await expect(
           start(function* () {
             yield* app.intents.around({
-              operations: {
-                acknowledge: (next) =>
-                  function* (...args) {
-                    if (window === "after") {
-                      expect(yield* next(...args)).toBe(true);
-                    }
-                    throw new Error("Intent acknowledgement failed");
-                  },
+              *acknowledge(args, next) {
+                if (window === "after") {
+                  expect(yield* next(...args)).toBe(true);
+                }
+                throw new Error("Intent acknowledgement failed");
               },
             });
             return yield* app.operations.reconcile();
@@ -537,6 +515,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(deliveries).toBe(1);
       });
     }
+
     it(`${runtime.name}/${storage}: cancellation wakes a quiescent nested tree and drains cleanup after reopen`, async () => {
       const store = createStore();
       let root = store.open();
@@ -573,33 +552,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           },
         });
         yield* host.around({
-          operations: {
-            deliveryMode: () =>
-              function* (request) {
-                return request === "cleanup" ? "execute" : "wait";
+          *deliveryMode([request]) {
+            return request === "cleanup" ? "execute" : "wait";
+          },
+          *child([pending], next) {
+            if (pending.request !== "child") {
+              return yield* next(pending);
+            }
+            const child = yield* journal.ensureChild<string, string, string, string>(pending.id, {
+              program: "leaf",
+              input: null,
+              outcome: (value) => ({ ok: true, value }),
+            });
+            return {
+              id: child.link.childId,
+              *run() {
+                return childHostingResult(yield* drive(child.journal, child.link.program, false));
               },
-            child: (next) =>
-              function* (pending) {
-                if (pending.request !== "child") {
-                  return yield* next(pending);
-                }
-                const child = yield* journal.ensureChild<string, string, string, string>(
-                  pending.id,
-                  {
-                    program: "leaf",
-                    input: null,
-                    outcome: (value) => ({ ok: true, value }),
-                  },
-                );
-                return {
-                  id: child.link.childId,
-                  *run() {
-                    return childHostingResult(
-                      yield* drive(child.journal, child.link.program, false),
-                    );
-                  },
-                };
-              },
+            };
           },
         });
         return yield* host.operations.run();
@@ -634,6 +604,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(await start(app.operations.reconcile)).toEqual({ state: "idle" });
       expect(cleaned).toHaveLength(2);
     });
+
     it(`${runtime.name}/${storage}: rolled-back journal writes leave intent unchanged`, async () => {
       const store = createStore();
       const journal = store.open();

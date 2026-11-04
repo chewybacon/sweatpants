@@ -23,17 +23,10 @@ import {
   createSqliteJournalRig,
 } from "@sweatpan.ts/testing";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 // Assertion helpers deliberately require a successful phase before reading its payload.
 function reportOf<T>(edge: {
-  drive:
-    | {
-        status: "reported";
-        report: T;
-      }
-    | {
-        status: "unconfirmed";
-        error: string;
-      };
+  drive: { status: "reported"; report: T } | { status: "unconfirmed"; error: string };
 }): T {
   if (edge.drive.status !== "reported") {
     throw new Error(`Drive unconfirmed: ${edge.drive.error}`);
@@ -41,21 +34,14 @@ function reportOf<T>(edge: {
   return edge.drive.report;
 }
 function frontierOf<T>(edge: {
-  discovery:
-    | {
-        status: "observed";
-        frontier: T;
-      }
-    | {
-        status: "unavailable";
-        error: string;
-      };
+  discovery: { status: "observed"; frontier: T } | { status: "unavailable"; error: string };
 }): T {
   if (edge.discovery.status !== "observed") {
     throw new Error(`Discovery unavailable: ${edge.discovery.error}`);
   }
   return edge.discovery.frontier;
 }
+
 // Application-handled decline initiates compensation; independent child cancellation
 // would cancel siblings under the current owned-group policy.
 const source = `
@@ -132,6 +118,7 @@ const requestSchema = z.union([
 ]);
 type Request = z.infer<typeof requestSchema>;
 type Mode = "root" | "group" | "approval" | "compensation" | "compensation-other" | "file";
+
 for (const storage of ["memory", "sqlite"] as const) {
   forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     type Journal = OwnedJournal<string, Request, unknown, string, unknown, Y>;
@@ -255,54 +242,49 @@ for (const storage of ["memory", "sqlite"] as const) {
         let iterations = 0;
         let steps = 0;
         yield* host.around({
-          operations: {
-            continuation: () =>
-              function* () {
-                if (steps++ >= maxIterations) {
-                  return { action: "yield", reason: "edge budget" };
-                }
-                if (yieldCleanup && mode === "compensation" && iterations++ > 0) {
-                  return { action: "yield", reason: "one cleanup step" };
-                }
-                return { action: "continue" };
+          *continuation() {
+            if (steps++ >= maxIterations) {
+              return { action: "yield", reason: "edge budget" };
+            }
+            if (yieldCleanup && mode === "compensation" && iterations++ > 0) {
+              return { action: "yield", reason: "one cleanup step" };
+            }
+            return { action: "continue" };
+          },
+          *deliveryMode([request]) {
+            return request.kind === "approve" ||
+              request.kind === "repair" ||
+              request.kind === "read"
+              ? "wait"
+              : "execute";
+          },
+          *child([pending]) {
+            if (mode !== "root" && mode !== "group") {
+              return undefined;
+            }
+            const children = yield* bind(journal, mode, pending.id);
+            return {
+              id: pending.id,
+              *run() {
+                const reports = yield* runtime.all(
+                  children.map(
+                    (child) =>
+                      function* () {
+                        return childHostingResult(
+                          yield* drive(
+                            child.journal,
+                            child.mode,
+                            yieldCleanup,
+                            maxIterations,
+                            child.input,
+                          ),
+                        );
+                      },
+                  ),
+                );
+                return joinChildHostingResults(reports);
               },
-            deliveryMode: () =>
-              function* (request) {
-                return request.kind === "approve" ||
-                  request.kind === "repair" ||
-                  request.kind === "read"
-                  ? "wait"
-                  : "execute";
-              },
-            child: () =>
-              function* (pending) {
-                if (mode !== "root" && mode !== "group") {
-                  return undefined;
-                }
-                const children = yield* bind(journal, mode, pending.id);
-                return {
-                  id: pending.id,
-                  *run() {
-                    const reports = yield* runtime.all(
-                      children.map(
-                        (child) =>
-                          function* () {
-                            return childHostingResult(
-                              yield* drive(
-                                child.journal,
-                                child.mode,
-                                yieldCleanup,
-                                maxIterations,
-                                child.input,
-                              ),
-                            );
-                          },
-                      ),
-                    );
-                    return joinChildHostingResults(reports);
-                  },
-                };
-              },
+            };
           },
         });
         const report = yield* host.operations.run();
@@ -405,10 +387,7 @@ for (const storage of ["memory", "sqlite"] as const) {
       return {
         advance(
           request: {
-            answers: readonly {
-              target: unknown;
-              value: unknown;
-            }[];
+            answers: readonly { target: unknown; value: unknown }[];
             maxIterationsPerHost: number;
           },
           role: "participant" | "operator",

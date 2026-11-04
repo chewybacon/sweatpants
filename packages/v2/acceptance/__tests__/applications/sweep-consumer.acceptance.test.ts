@@ -10,6 +10,7 @@ import { createActivationReconciler, type ActivationReconciliation } from "@swea
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting } from "@sweatpan.ts/hosting";
 import { createToolAdmission } from "@sweatpan.ts/tools";
+
 import {
   createSqliteDatabaseRig,
   createHostedRecovery,
@@ -18,30 +19,18 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 // This application owns its catalog, sweep checkpoint, clock/backoff and pinned recipe.
 // It has one designated sweep owner, processes one entry per invocation and wraps in ID order.
 const PROGRAM = "sweep:sample-approval:v1";
 type Report = ActivationReconciliation<string, string>;
-type Visit = {
-  id: string;
-} & (
-  | {
-      state: "unadmitted" | "idle" | "backoff";
-    }
-  | {
-      state: "failed";
-      error: unknown;
-    }
-  | {
-      state: "driven";
-      report: Report;
-    }
+type Visit = { id: string } & (
+  | { state: "unadmitted" | "idle" | "backoff" }
+  | { state: "failed"; error: unknown }
+  | { state: "driven"; report: Report }
 );
-type Tick =
-  | Visit
-  | {
-      state: "wrapped";
-    };
+type Tick = Visit | { state: "wrapped" };
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -102,132 +91,112 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         };
       }
       const scheduling = runtime.composition.createApi("root-scheduling", {
-        operations: {
-          *visit(input: ReturnType<typeof createVisit>): Operation<Visit, Y> {
-            const { id, program, deadline, journal, intents } = input;
-            return yield* runtime.composition.catchError(
-              function* (): Operation<Visit, Y> {
-                const snapshot = yield* journal.read(); // Also checks the persisted program binding.
-                const pending = yield* intents.operations.read();
-                if (!pending) {
-                  return { id, state: "idle" };
-                }
-                if (snapshot.status === "running" && !snapshot.admission) {
-                  return { id, state: "unadmitted" };
-                }
-                const report = yield* runtime.withSignal(deadline, function* () {
-                  let settled = 0;
-                  const recovery = createHostedRecovery(runtime, {
-                    name: `sweep-recovery:${id}`,
-                    program,
-                    matches: isDeepStrictEqual,
-                    *acquire() {
-                      // Resolve only when evaluation is needed. Terminal roots do not require code.
-                      if (program !== PROGRAM || unavailable.has(id)) {
-                        throw new Error("Pinned executable unavailable");
-                      }
-                      const input = z.string().parse(snapshot.admission?.input);
-                      acquisitions.set(id, (acquisitions.get(id) ?? 0) + 1);
-                      return createScopedGuest(function* () {
-                        const answer: unknown = yield `sample:${input}`;
-                        const approved: unknown = yield "approval";
-                        return `${String(answer)}:${String(approved)}`;
-                      });
-                    },
-                  });
-                  const host = createHosting(runtime.composition, {
-                    name: `sweep-host:${id}`,
-                    journal,
-                    recovery: recovery.operations,
-                    attempts: journal.attempts,
-                    interactions: journal.interactions,
-                    *handle(request: string): Operation<Outcome<string, string>, Y> {
-                      if (cleanup) {
-                        yield* runtime.composition.ensure(cleanup);
-                      }
-                      const response = yield* runtime.fromPromise((signal) =>
-                        peer.send({ id, token: request }, signal),
-                      );
-                      return { ok: true, value: response.body };
-                    },
-                  });
-                  yield* host.around({
-                    operations: {
-                      continuation: () =>
-                        function* () {
-                          return settled >= budget
-                            ? { action: "yield", reason: "sweep budget" }
-                            : { action: "continue" };
-                        },
-                      deliveryMode: () =>
-                        function* (request) {
-                          return request === "approval" ? "wait" : "execute";
-                        },
-                    },
-                  });
-                  yield* host.attempts.around({
-                    operations: {
-                      settle: (next) =>
-                        function* (...args) {
-                          const accepted = yield* next(...args);
-                          settled++;
-                          return accepted;
-                        },
-                    },
-                  });
-                  const reconciler = createActivationReconciler(
-                    runtime.composition,
-                    `sweep:${id}`,
-                    {
-                      intents,
-                      run: host.operations.run,
-                    },
-                  );
-                  return yield* reconciler.operations.reconcile();
+        *visit(input: ReturnType<typeof createVisit>): Operation<Visit, Y> {
+          const { id, program, deadline, journal, intents } = input;
+          return yield* runtime.composition.catchError(
+            function* (): Operation<Visit, Y> {
+              const snapshot = yield* journal.read(); // Also checks the persisted program binding.
+              const pending = yield* intents.operations.read();
+              if (!pending) {
+                return { id, state: "idle" };
+              }
+              if (snapshot.status === "running" && !snapshot.admission) {
+                return { id, state: "unadmitted" };
+              }
+              const report = yield* runtime.withSignal(deadline, function* () {
+                let settled = 0;
+                const recovery = createHostedRecovery(runtime, {
+                  name: `sweep-recovery:${id}`,
+                  program,
+                  matches: isDeepStrictEqual,
+                  *acquire() {
+                    // Resolve only when evaluation is needed. Terminal roots do not require code.
+                    if (program !== PROGRAM || unavailable.has(id)) {
+                      throw new Error("Pinned executable unavailable");
+                    }
+                    const input = z.string().parse(snapshot.admission?.input);
+                    acquisitions.set(id, (acquisitions.get(id) ?? 0) + 1);
+                    return createScopedGuest(function* () {
+                      const answer: unknown = yield `sample:${input}`;
+                      const approved: unknown = yield "approval";
+                      return `${String(answer)}:${String(approved)}`;
+                    });
+                  },
                 });
-                return { id, state: "driven", report };
-              },
-              function* (error) {
-                return { id, state: "failed" as const, error };
-              },
-            );
-          },
+                const host = createHosting(runtime.composition, {
+                  name: `sweep-host:${id}`,
+                  journal,
+                  recovery: recovery.operations,
+                  attempts: journal.attempts,
+                  interactions: journal.interactions,
+                  *handle(request: string): Operation<Outcome<string, string>, Y> {
+                    if (cleanup) {
+                      yield* runtime.composition.ensure(cleanup);
+                    }
+                    const response = yield* runtime.fromPromise((signal) =>
+                      peer.send({ id, token: request }, signal),
+                    );
+                    return { ok: true, value: response.body };
+                  },
+                });
+                yield* host.around({
+                  *continuation() {
+                    return settled >= budget
+                      ? { action: "yield", reason: "sweep budget" }
+                      : { action: "continue" };
+                  },
+                  *deliveryMode([request]) {
+                    return request === "approval" ? "wait" : "execute";
+                  },
+                });
+                yield* host.attempts.around({
+                  *settle(args, next) {
+                    const accepted = yield* next(...args);
+                    settled++;
+                    return accepted;
+                  },
+                });
+                const reconciler = createActivationReconciler(runtime.composition, `sweep:${id}`, {
+                  intents,
+                  run: host.operations.run,
+                });
+                return yield* reconciler.operations.reconcile();
+              });
+              return { id, state: "driven", report };
+            },
+            function* (error) {
+              return { id, state: "failed" as const, error };
+            },
+          );
         },
       });
       function* installBackoff(now: number, delay = 10) {
         yield* scheduling.around({
-          operations: {
-            visit: (next) =>
-              function* (input) {
-                const { id, intents } = input;
-                // Capture scheduling intent before dispatch; never acknowledge or replace it here.
-                const pending = yield* intents.operations.read();
-                const backoff = db
-                  .prepare("SELECT token, until_tick FROM consumer_backoff WHERE id=?")
-                  .get(id);
-                if (
-                  pending &&
-                  backoff?.token === pending.token &&
-                  Number(backoff.until_tick) > now
-                ) {
-                  return { id, state: "backoff" };
-                }
-                const visit = yield* next(input);
-                // Failures are uncertain observations; this policy never infers rollback.
-                if (
-                  pending &&
-                  (visit.state === "failed" ||
-                    visit.state === "unadmitted" ||
-                    (visit.state === "driven" &&
-                      visit.report.state === "driven" &&
-                      ["occupied", "invalidated", "yielded"].includes(visit.report.result.state)))
-                ) {
-                  db.prepare(
-                    "INSERT INTO consumer_backoff VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token=excluded.token, until_tick=excluded.until_tick",
-                  ).run(id, pending.token, now + delay);
-                }
-                return visit;
-              },
+          *visit([input], next) {
+            const { id, intents } = input;
+            // Capture scheduling intent before dispatch; never acknowledge or replace it here.
+            const pending = yield* intents.operations.read();
+            const backoff = db
+              .prepare("SELECT token, until_tick FROM consumer_backoff WHERE id=?")
+              .get(id);
+            if (pending && backoff?.token === pending.token && Number(backoff.until_tick) > now) {
+              return { id, state: "backoff" };
+            }
+            const visit = yield* next(input);
+            // Failures are uncertain observations; this policy never infers rollback.
+            if (
+              pending &&
+              (visit.state === "failed" ||
+                visit.state === "unadmitted" ||
+                (visit.state === "driven" &&
+                  visit.report.state === "driven" &&
+                  ["occupied", "invalidated", "yielded"].includes(visit.report.result.state)))
+            ) {
+              db.prepare(
+                "INSERT INTO consumer_backoff VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token=excluded.token, until_tick=excluded.until_tick",
+              ).run(id, pending.token, now + delay);
+            }
+            return visit;
           },
         });
       }
@@ -283,6 +252,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       },
     };
   }
+
   it(`${runtime.name}: persisted sweep traversal discovers admitted roots after restart and recovers lost observations`, async () => {
     const scenario = application();
     let app = scenario.assemble();
@@ -355,6 +325,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       "Journal program mismatch",
     );
   });
+
   it(`${runtime.name}: finite sweep frontier survives restart and revisits old intent during enrollment`, async () => {
     const scenario = application();
     let app = scenario.assemble();
@@ -403,6 +374,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(await visitA()).toEqual({ id: "a", state: "backoff" });
     expect(scenario.peer.requests).toHaveLength(0);
   });
+
   it(`${runtime.name}: cooperative deadline failure advances traversal, and new intent bypasses old-token backoff`, async () => {
     const scenario = application();
     let app = scenario.assemble();

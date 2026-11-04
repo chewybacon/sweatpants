@@ -16,7 +16,9 @@ import {
   type Hosting,
 } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
+
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -24,6 +26,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     onTestFinished(() => execution.cancel());
     return execution;
   }
+
   for (const mode of [
     "fulfilled",
     "rejected",
@@ -110,14 +113,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         });
         return start(function* () {
           yield* host.around({
-            operations: {
-              child: (next) =>
-                function* (pending) {
-                  if (!current) {
-                    throw new Error("Guest has not been acquired");
-                  }
-                  return yield* current.admission.child(next)(pending);
-                },
+            *child([pending], next) {
+              if (!current) {
+                throw new Error("Guest has not been acquired");
+              }
+              return yield* current.admission.child([pending], next);
             },
           });
           yield* installGuestRetention(runtime.composition, host, recovery, journal);
@@ -141,6 +141,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(calls).toBe(1);
     });
   }
+
   it(`${runtime.name}: cancellation recovery abandons pending recording and replays recorded cleanup`, async () => {
     const store = createSqliteJournalRig<string, CapabilityRequest, unknown, string, unknown, Y>({
       program: "cancel-record-cleanup",
@@ -214,12 +215,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       return start(function* () {
         yield* host.around({
-          operations: {
-            child: (next) =>
-              function* (...args) {
-                const grant = yield* current.expect();
-                return yield* grant.admission.child(next)(...args);
-              },
+          *child(args, next) {
+            const grant = yield* current.expect();
+            return yield* grant.admission.child(args, next);
           },
         });
         yield* installGuestRetention(runtime.composition, host, recovery, journal);
@@ -247,6 +245,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await expect(assemble(false).result).resolves.toEqual({ state: "cancelled", reason: "stop" });
     expect({ bodyCalls, cleanupCalls }).toEqual({ bodyCalls: 1, cleanupCalls: 1 });
   });
+
   for (const finish of ["complete", "cancel", "revoke", "dispose"] as const) {
     it(`${runtime.name}: inline operation ${finish} uses scoped delivery and native cleanup`, async () => {
       const store = createSqliteJournalRig<unknown, CapabilityRequest, unknown, string, unknown, Y>(
@@ -265,9 +264,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       let savedRecord:
         | ((
             work: () => Operation<Outcome<unknown, unknown>, Y>,
-            options?: {
-              readonly key?: string;
-            },
+            options?: { readonly key?: string },
           ) => Operation<Outcome<unknown, unknown>, CapabilityRequest>)
         | undefined;
       function assemble() {
@@ -335,11 +332,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         return start(function* () {
           yield* context.set("delivery");
           yield* host.around({
-            operations: {
-              child: (next) =>
-                function* (...args) {
-                  return yield* current!.admission.child(next)(...args);
-                },
+            *child(args, next) {
+              return yield* current!.admission.child(args, next);
             },
           });
           if (finish !== "dispose") {

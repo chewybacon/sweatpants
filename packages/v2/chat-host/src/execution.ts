@@ -9,9 +9,11 @@ import {
 import { createPullStream, type Runtime, type Subscription } from "@sweatpan.ts/runtime";
 import { createToolInteractionStream, type ToolInteraction } from "@sweatpan.ts/tools";
 import type { ChatExecution, ChatExecutionOptions } from "./contracts.ts";
+
 /** Validation failed before this invocation submitted to journal answer ingress.
  * Does not prove that another invocation has never accepted the same grant. */
 export class ChatAnswerValidationError extends Error {}
+
 /** Bind execution, ingress and discovery to one open root and compatible catalog.
  * Pure construction; each run owns fresh Hosts and installed policies in a child
  * native scope. No Guest work occurs during answer or discovery. Rebuild after reopen.
@@ -66,76 +68,71 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
           handle: grant.handle,
         });
         yield* installGuestRetention(runtime.composition, host, recovery, journal);
+        yield* host.around(grant.admission);
         yield* host.around({
-          operations: grant.admission,
-        });
-        yield* host.around({
-          operations: {
-            child: (next) =>
-              function* (pending) {
-                if (pending.request.effect !== options.batch.effect) {
-                  return yield* next(pending);
+          *child([pending], next) {
+            if (pending.request.effect !== options.batch.effect) {
+              return yield* next(pending);
+            }
+            const calls = options.batch.calls(pending.request.input);
+            if (!calls.length) {
+              throw new Error("Empty chat tool batch");
+            }
+            const routes = calls.map((call) => {
+              const route = names.get(call.name);
+              if (!route) {
+                throw new Error("Unknown model tool");
+              }
+              return route;
+            });
+            const state = yield* journal.read();
+            if (state.status !== "running" || state.pending?.id !== pending.id) {
+              throw new Error("Chat batch boundary changed");
+            }
+            const stored = state.children;
+            if (
+              stored &&
+              (stored.length !== routes.length ||
+                stored.some((link, i) => link.program !== routes[i]!.program))
+            ) {
+              throw new Error("Stored chat batch differs from catalog");
+            }
+            const inputs: unknown[] = [];
+            for (const [index, call] of calls.entries()) {
+              if (stored) {
+                inputs.push(stored[index]!.input);
+              } else {
+                const parsed = yield* runtime.fromPromise(async () =>
+                  routes[index]!.context["~standard"].validate(call.input),
+                );
+                if (parsed.issues) {
+                  throw new Error("Invalid chat tool input");
                 }
-                const calls = options.batch.calls(pending.request.input);
-                if (!calls.length) {
-                  throw new Error("Empty chat tool batch");
-                }
-                const routes = calls.map((call) => {
-                  const route = names.get(call.name);
-                  if (!route) {
-                    throw new Error("Unknown model tool");
-                  }
-                  return route;
-                });
-                const state = yield* journal.read();
-                if (state.status !== "running" || state.pending?.id !== pending.id) {
-                  throw new Error("Chat batch boundary changed");
-                }
-                const stored = state.children;
-                if (
-                  stored &&
-                  (stored.length !== routes.length ||
-                    stored.some((link, i) => link.program !== routes[i]!.program))
-                ) {
-                  throw new Error("Stored chat batch differs from catalog");
-                }
-                const inputs: unknown[] = [];
-                for (const [index, call] of calls.entries()) {
-                  if (stored) {
-                    inputs.push(stored[index]!.input);
-                  } else {
-                    const parsed = yield* runtime.fromPromise(async () =>
-                      routes[index]!.context["~standard"].validate(call.input),
-                    );
-                    if (parsed.issues) {
-                      throw new Error("Invalid chat tool input");
-                    }
-                    inputs.push(parsed.value);
-                  }
-                }
-                const children = yield* journal.ensureChildren<
-                  unknown,
-                  CapabilityRequest,
-                  unknown,
-                  string
-                >(pending.id, {
-                  children: routes.map((route, index) => ({
-                    program: route.program,
-                    input: inputs[index],
-                  })),
-                  outcome: options.batch.outcome,
-                });
-                return {
-                  id: pending.id,
-                  *run() {
-                    return joinChildHostingResults(
-                      yield* runtime.all(
-                        children.map((child, index) => () => routes[index]!.run(child)),
-                      ),
-                    );
-                  },
-                };
+                inputs.push(parsed.value);
+              }
+            }
+            const children = yield* journal.ensureChildren<
+              unknown,
+              CapabilityRequest,
+              unknown,
+              string
+            >(pending.id, {
+              children: routes.map((route, index) => ({
+                program: route.program,
+                input: inputs[index],
+              })),
+              outcome: options.batch.outcome,
+            });
+            return {
+              id: pending.id,
+              *run() {
+                return joinChildHostingResults(
+                  yield* runtime.all(
+                    children.map((child, index) => () => routes[index]!.run(child)),
+                  ),
+                );
               },
+            };
           },
         });
         if (options.configure) {

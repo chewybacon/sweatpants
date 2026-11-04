@@ -4,6 +4,7 @@ import {
   createNotificationRig,
   createProtocolRig,
 } from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -11,8 +12,10 @@ import { type AttemptRevocation, type ResolutionGrant } from "@sweatpan.ts/durab
 import { createScopedGuest } from "@sweatpan.ts/execution";
 import { createHosting, installAttemptCancellation, type HostedResult } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 function* ask(request: string): Operation<string, string> {
   const value: unknown = yield request;
   if (typeof value !== "string") {
@@ -20,6 +23,7 @@ function* ask(request: string): Operation<string, string> {
   }
   return value;
 }
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const execution = runtime.start(work);
@@ -29,14 +33,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   }
   function scenario() {
     const revocations: AttemptRevocation[] = [];
-    const journal = createMemoryJournal<
-      {
-        id: string;
-      },
-      string,
-      string,
-      string
-    >({
+    const journal = createMemoryJournal<{ id: string }, string, string, string>({
       program: "critical-acquire",
       equals: isDeepStrictEqual,
       revocations: {
@@ -64,15 +61,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                   return { text: yield* ask("confirm") };
                 });
               });
-              expectTypeOf(confirmation).toEqualTypeOf<{
-                text: string;
-              }>();
+              expectTypeOf(confirmation).toEqualTypeOf<{ text: string }>();
               yield* ask("seal");
               return { id };
             });
-            expectTypeOf(hold).toEqualTypeOf<{
-              id: string;
-            }>();
+            expectTypeOf(hold).toEqualTypeOf<{ id: string }>();
             yield* ask("use");
             return hold;
           });
@@ -98,11 +91,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const host = assemble();
       return start(function* () {
         yield* host.around({
-          operations: {
-            deliveryMode: () =>
-              function* (request) {
-                return request === "confirm" || request === "seal" ? "wait" : "execute";
-              },
+          *deliveryMode([request]) {
+            return request === "confirm" || request === "seal" ? "wait" : "execute";
           },
         });
         yield* installAttemptCancellation(
@@ -151,14 +141,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         s.peer.reply("reserve", { status: 200, body: "hold-7" });
         const confirmation = await live.result;
-        expectTypeOf(confirmation).toEqualTypeOf<
-          HostedResult<
-            {
-              id: string;
-            },
-            string
-          >
-        >();
+        expectTypeOf(confirmation).toEqualTypeOf<HostedResult<{ id: string }, string>>();
         if (confirmation.state !== "waiting") {
           throw new Error("Expected confirmation");
         }

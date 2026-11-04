@@ -6,19 +6,18 @@ Entries describe design constraints; they do not declare unimplemented APIs comp
 
 ## FG-010 — Confusing scope lookup with asynchronous IO
 
-A synchronous SQLite transaction cannot run the current API facade through its
+A synchronous SQLite transaction cannot run an operation facade through its
 one-step generator runner: even scope lookup yields a runtime instruction. A yield
 does not necessarily wait for IO, but that runner rejects every yielded instruction.
 
-**Boundary:** Acquire synchronous access with `const sql = yield* Sqlite` before entering the transaction. The handle
-resolves current policy in its captured scope on each call; it does not acquire the
-calling scope's driver. Acquired-access lifetime and physical database lifetime are
-separate responsibilities.
+**Boundary:** Acquire a decorated connection before entering the transaction.
+Ordinary calls then use the policy selected at acquisition. Reacquire to select new
+policy; existing handles retain their wrappers and driver.
 
-**Author responsibility:** Keep SQL middleware synchronous and yield the API again when a new
-scope's policy is needed. A rejected Promise cannot cancel work already started by
-an async function. Use the acquired access within its scope and close caller-owned
-databases separately. See the [SQLite experiment](./acceptance/examples/scoped-sqlite.md).
+**Author responsibility:** Keep SQL middleware synchronous. Acquisition does not
+revoke retained handles or own the database; arrange its lifetime explicitly. Direct
+decoration cannot cancel async work or undo committed transactions. See the
+[SQLite experiment](./acceptance/examples/scoped-sqlite.md).
 
 ## FG-009 — Treating an attempt notification as ownership of a host
 

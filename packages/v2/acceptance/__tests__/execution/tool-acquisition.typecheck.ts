@@ -5,15 +5,11 @@ import type { Guest } from "@sweatpan.ts/execution";
 import { createEffectCapabilities } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { createToolAcquisition, defineTool } from "@sweatpan.ts/tools";
+
 /** Public consumer checked against source and emitted declarations. */
 export function toolAcquisitionTypes<Y>(
   runtime: Runtime<Y>,
-  schema: StandardSchemaV1<
-    string,
-    {
-      query: string;
-    }
-  >,
+  schema: StandardSchemaV1<string, { query: string }>,
 ) {
   const tool = defineTool("typed-acquisition")
     .parameters(schema)
@@ -23,13 +19,7 @@ export function toolAcquisitionTypes<Y>(
   const effects = createEffectCapabilities(runtime, "typed-effects");
   const acquisition = createToolAcquisition(runtime, effects, tool, "typed-acquisition");
   const acquired: Operation<
-    Guest<
-      {
-        length: number;
-      },
-      CapabilityRequest,
-      Y
-    >,
+    Guest<{ length: number }, CapabilityRequest, Y>,
     Y
   > = acquisition.operations.acquire({ query: "hello" });
   // @ts-expect-error Acquisition accepts normalized input, not schema caller input.
@@ -37,12 +27,9 @@ export function toolAcquisitionTypes<Y>(
   // @ts-expect-error The inferred tool result is preserved through the Guest.
   const wrong: Operation<Guest<string, CapabilityRequest, Y>, Y> = acquired;
   acquisition.around({
-    operations: {
-      acquire: (next) =>
-        function* (input) {
-          const query: string = input.query;
-          return yield* next({ query });
-        },
+    *acquire([input], next) {
+      const query: string = input.query;
+      return yield* next({ query });
     },
   });
   return { acquired, wrong };

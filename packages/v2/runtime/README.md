@@ -5,11 +5,6 @@
 modules import these contracts and remain generic in the yielded protocol `Y`.
 Only stack assembly selects `runtime-effect` or `runtime-effection`.
 
-For deciding what to make interceptable, when to use direct wrappers versus scoped
-middleware, and what the abstraction does not yet support, read
-[Composing behavior](./COMPOSITION.md). Middleware opportunities include synchronous
-functions and returned handles, not only asynchronous operations.
-
 `RuntimeType` and `Computation<F, A, E, R>` are structural, type-only mappings from
 `@standard-durability/core`, re-exported here. They retain native Effect error and
 service slots; Effection tracks its result only. Shared expected failures travel
@@ -180,12 +175,9 @@ const messages = createStreamApi(runtime.composition, "messages", {
 yield * Source.set(workerMessages);
 yield *
   messages.around({
-    operations: {
-      subscribe: (next) =>
-        function* (...args) {
-          const subscription = yield* next(...args);
-          return subscription;
-        },
+    *subscribe(args, next) {
+      const subscription = yield* next(...args);
+      return subscription;
     },
   });
 const subscription = yield * messages.stream;
@@ -282,3 +274,6 @@ associated with an already queued or serialized frame. Keep executable compactio
 policy in the local implementation; reconnect requests need only source identity
 and an offset. Application subscription middleware can trace or authorize the request
 without exposing the merger as an argument.
+
+See [Composition guidance](./COMPOSITION.md) for choosing construction-time,
+acquisition-time or per-operation policy, including synchronous consumers.

@@ -5,6 +5,7 @@ import {
   createProtocolRig,
   createLatch,
 } from "@sweatpan.ts/testing";
+
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, expectTypeOf, it, onTestFinished } from "vitest";
 import type { Operation, Outcome, Work } from "@standard-durability/core";
@@ -17,8 +18,10 @@ import {
   type HostedResult,
 } from "@sweatpan.ts/hosting";
 import { createMemoryJournal } from "@sweatpan.ts/storage-memory";
+
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 type Request = "reserve" | "approve" | "child-close" | "release" | "audit";
 function* ask(request: Request): Operation<string, Request> {
   const value: unknown = yield request;
@@ -27,6 +30,7 @@ function* ask(request: Request): Operation<string, Request> {
   }
   return value;
 }
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const lifetime of ["recover", "retain"] as const) {
     function start<T>(work: Work<T, Y>) {
@@ -36,14 +40,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       return execution;
     }
     function scenario(liveApproval = false) {
-      const journal = createMemoryJournal<
-        {
-          approval: string;
-        },
-        Request,
-        string,
-        string
-      >({
+      const journal = createMemoryJournal<{ approval: string }, Request, string, string>({
         program: "reservation-cancellation",
         equals: isDeepStrictEqual,
       });
@@ -114,15 +111,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             yield* installGuestRetention(runtime.composition, host, recovery, journal);
           }
           yield* recovery.execution.around({
-            operations: {
-              cancel: (next) =>
-                function* (reason) {
-                  cancellationCalls++;
-                  const turn = yield* next(reason);
-                  // Repeating cancellation must preserve the current cleanup boundary.
-                  expect(yield* next("repeated")).toEqual(turn);
-                  return turn;
-                },
+            *cancel([reason], next) {
+              cancellationCalls++;
+              const turn = yield* next(reason);
+              // Repeating cancellation must preserve the current cleanup boundary.
+              expect(yield* next("repeated")).toEqual(turn);
+              return turn;
             },
           });
           yield* installAttemptCancellation(
@@ -132,13 +126,10 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             notifications.driver(runtime),
           );
           yield* host.around({
-            operations: {
-              deliveryMode: () =>
-                function* (request) {
-                  return request === "release" || (request === "approve" && !liveApproval)
-                    ? "wait"
-                    : "execute";
-                },
+            *deliveryMode([request]) {
+              return request === "release" || (request === "approve" && !liveApproval)
+                ? "wait"
+                : "execute";
             },
           });
           return yield* call(host);
@@ -167,6 +158,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         ) => runHost((host) => host.operations.answer(grant, outcome)).result,
       };
     }
+
     describe(`${runtime.name} ${lifetime}: replayed root cancellation`, () => {
       it("reconciles cancellation committed after acceptance before resuming the original host", async () => {
         const s = scenario();
@@ -202,6 +194,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         expect(await final.result).toMatchObject({ state: "cancelled", reason: "deadline" });
         expect(s.peer.requests.map(({ id }) => id)).toEqual(["reserve", "child-close", "audit"]);
       });
+
       for (const failedRelease of [false, true]) {
         it(`unwinds nested cleanup, parks, recovers and retains terminal disposition (release fails: ${failedRelease})`, async () => {
           const s = scenario();
@@ -209,14 +202,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           await Promise.race([s.peer.waitForRequests(1), initial.result]);
           s.peer.reply("reserve", { status: 200, body: "hold-1" });
           const approval = await initial.result;
-          expectTypeOf(approval).toEqualTypeOf<
-            HostedResult<
-              {
-                approval: string;
-              },
-              Request
-            >
-          >();
+          expectTypeOf(approval).toEqualTypeOf<HostedResult<{ approval: string }, Request>>();
           if (approval.state !== "waiting") {
             throw new Error("Expected approval wait");
           }
@@ -284,6 +270,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(s.notifications.subscriptions).toBe(0);
         });
       }
+
       for (const dropped of [false, true]) {
         it(`atomically revokes live approval and preserves fresh cleanup authority (notification lost: ${dropped})`, async () => {
           const s = scenario(true);
@@ -330,6 +317,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           expect(await final.result).toEqual({ state: "cancelled", reason: "deadline" });
         });
       }
+
       it("rejects stale cancellation after an answer wins without revoking the accepted answer", async () => {
         const s = scenario();
         const initial = s.run();

@@ -15,6 +15,7 @@ import {
   type ToolDefinition,
 } from "@sweatpan.ts/tools";
 import type { ChatToolBinding, ChatToolBindingOptions } from "./contracts.ts";
+
 /** Capture one original tool's input/result types, hosting recipe and model metadata.
  * Construction performs no work. Each run gets fresh capabilities in its own scope;
  * required retention, admission and participant routing are installed by the binding. */
@@ -61,9 +62,7 @@ export function createChatToolBinding<
           handle: acquisition.handle,
         });
         yield* installGuestRetention(runtime.composition, host, recovery, bound.journal);
-        yield* host.around({
-          operations: acquisition.admission,
-        });
+        yield* host.around(acquisition.admission);
         yield* installElicitHandlers(host, effects, tool);
         if (options.configure) {
           yield* options.configure({ host, effects });

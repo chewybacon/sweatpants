@@ -31,6 +31,7 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 // Identity verification and placement remain provisional application assembly.
 const invocationSchema = z.object({ program: z.string(), input: z.object({ topic: z.string() }) });
 const lookup = defineEffect({ key: "pinned.lookup", context: z.string(), response: z.string() });
@@ -43,6 +44,7 @@ assert(second.ok)
 return second.value
 `;
 let moduleBytes: Promise<Buffer> | undefined;
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function start<T>(work: Work<T, Y>) {
     const task = runtime.start(work);
@@ -97,6 +99,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         let deliveries = 0;
         const topics: string[] = [];
         const routed: string[] = [];
+
         function run(
           artifact:
             | "original"
@@ -118,13 +121,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               return { ok: true, value: `${topic}!` };
             });
             // Each simulated deployment has its own pinned artifact inventory.
-            const inventory = new Map<
-              string,
-              {
-                source: string;
-                contract: string;
-              }
-            >();
+            const inventory = new Map<string, { source: string; contract: string }>();
             if (artifact !== "missing") {
               inventory.set(program, {
                 source: artifact === "changed" ? "return 'wrong program'" : source,
@@ -133,9 +130,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             }
             const artifactResolver = {
               *resolve(
-                invocation: ProgramInvocation<{
-                  topic: string;
-                }>,
+                invocation: ProgramInvocation<{ topic: string }>,
               ): Operation<ResolvedProgram<string, CapabilityRequest, Y>, Y> {
                 const body = inventory.get(invocation.program);
                 if (body === undefined) {
@@ -192,66 +187,57 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               artifactResolver,
             );
             yield* acquisition.around({
-              operations: {
-                resolve: (next) =>
-                  function* (invocation) {
-                    routed.push(invocation.program);
-                    // Local evaluator assembly still uses an explicitly detached invocation.
-                    const startup = serialize(invocation);
-                    const bound = createProgramExecution({
-                      invocation,
-                      checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
-                      *resolve() {
-                        const detached = invocationSchema.parse(deserialize(startup));
-                        return yield* next(detached);
-                      },
-                    });
-                    if (target === "local") {
-                      const local = createHostedExecution(runtime, bound);
-                      if (!checkpoint) {
-                        expect(local.checkpoints).toBeUndefined();
-                      }
-                      return { program: invocation.program, ...local };
-                    }
-                    const serverResolver = createProgramResolver(
-                      runtime.composition,
-                      "server-artifacts",
-                      {
-                        *resolve(
-                          _received: ProgramInvocation,
-                        ): Operation<ResolvedProgram<string, CapabilityRequest, Y>, Y> {
-                          throw new Error("Server artifact inventory not installed");
-                        },
-                      },
-                    );
-                    const worker = createWorkerGuestRig({
-                      runtime,
-                      invocation,
-                      checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
-                      *installServer() {
-                        yield* serverResolver.install({
-                          operations: {
-                            *resolve(received) {
-                              expect(received).not.toBe(invocation);
-                              expect(received.input).not.toBe(invocation.input);
-                              return yield* artifactResolver.resolve(
-                                invocationSchema.parse(received),
-                              );
-                            },
-                          },
-                        });
-                      },
-                      resolve: serverResolver.operations.resolve,
-                    });
-                    yield* runtime.composition.ensure(() =>
-                      runtime.fromPromise(() => worker.close()),
-                    );
-                    return {
-                      program: invocation.program,
-                      acquire: worker.acquire,
-                      checkpoints: worker.checkpoints,
-                    };
+              *resolve([invocation], next) {
+                routed.push(invocation.program);
+                // Local evaluator assembly still uses an explicitly detached invocation.
+                const startup = serialize(invocation);
+                const bound = createProgramExecution({
+                  invocation,
+                  checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
+                  *resolve() {
+                    const detached = invocationSchema.parse(deserialize(startup));
+                    return yield* next(detached);
                   },
+                });
+                if (target === "local") {
+                  const local = createHostedExecution(runtime, bound);
+                  if (!checkpoint) {
+                    expect(local.checkpoints).toBeUndefined();
+                  }
+                  return { program: invocation.program, ...local };
+                }
+                const serverResolver = createProgramResolver(
+                  runtime.composition,
+                  "server-artifacts",
+                  {
+                    *resolve(
+                      _received: ProgramInvocation,
+                    ): Operation<ResolvedProgram<string, CapabilityRequest, Y>, Y> {
+                      throw new Error("Server artifact inventory not installed");
+                    },
+                  },
+                );
+                const worker = createWorkerGuestRig({
+                  runtime,
+                  invocation,
+                  checkpointFormat: checkpoint ? "piccolo-continuation-4" : undefined,
+                  *installServer() {
+                    yield* serverResolver.install({
+                      *resolve(received) {
+                        expect(received).not.toBe(invocation);
+                        expect(received.input).not.toBe(invocation.input);
+                        return yield* artifactResolver.resolve(invocationSchema.parse(received));
+                      },
+                    });
+                  },
+                  resolve: serverResolver.operations.resolve,
+                });
+                yield* runtime.composition.ensure(() => runtime.fromPromise(() => worker.close()));
+                return {
+                  program: invocation.program,
+                  acquire: worker.acquire,
+                  checkpoints: worker.checkpoints,
+                };
               },
             });
             const snapshot = yield* journal.read();
@@ -271,14 +257,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               acquire: selected.acquire,
             });
             if (selected.checkpoints) {
-              yield* recovery.around({
-                operations: createCheckpointMiddleware({
+              yield* recovery.around(
+                createCheckpointMiddleware({
                   program,
                   execution: recovery.execution,
                   adapter: selected.checkpoints,
                   matches: isDeepStrictEqual,
                 }),
-              });
+              );
             }
             const host = createHosting(runtime.composition, {
               name: "pinned-host",
@@ -298,13 +284,12 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               },
               handle: grant.handle,
             });
-            yield* host.around({
-              operations: grant.admission,
-            });
+            yield* host.around(grant.admission);
             yield* installGuestRetention(runtime.composition, host, recovery, journal);
             return yield* host.operations.run();
           });
         }
+
         await expect(run("missing").result).rejects.toThrow("Pinned program unavailable");
         await expect(run("changed").result).rejects.toThrow(
           "Resolved program differs from pinned invocation",

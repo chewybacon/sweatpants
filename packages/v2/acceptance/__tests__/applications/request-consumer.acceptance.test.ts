@@ -19,6 +19,7 @@ import {
 } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
+
 const cursor = z.object({
   execution: z.string(),
   position: z.number().int().nonnegative(),
@@ -45,20 +46,13 @@ interface Page {
   revision: number;
   state: string;
   report: string | null;
-  entries: {
-    sequence: number;
-    receipt: string;
-    value?: string;
-    omitted?: "oversized";
-  }[];
+  entries: { sequence: number; receipt: string; value?: string; omitted?: "oversized" }[];
   after: PresentationCursor;
   end: PresentationCursor;
   more: boolean;
-  interaction?: {
-    requestId: string;
-    resolutionId: string;
-  };
+  interaction?: { requestId: string; resolutionId: string };
 }
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   function application() {
     const store = createSqliteJournalRig<string, string, string, string, unknown, Y>({
@@ -72,29 +66,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     let cleanup: (() => Operation<void, Y>) | undefined;
     // Application wire projection, deliberately separate from accepted journal presentation.
     const projection = runtime.composition.createApi("response-projection", {
-      operations: {
-        *entries(page: Page): Operation<Page["entries"], Y> {
-          return page.entries;
-        },
+      *entries(page: Page): Operation<Page["entries"], Y> {
+        return page.entries;
       },
     });
     function* installBoundedProjection() {
       yield* projection.around({
-        operations: {
-          entries: (next) =>
-            function* (page) {
-              const entries = yield* next(page);
-              if (
-                new TextEncoder().encode(JSON.stringify({ ...page, entries })).byteLength <= 2048
-              ) {
-                return entries;
-              }
-              return entries.map(({ sequence, receipt }) => ({
-                sequence,
-                receipt,
-                omitted: "oversized" as const,
-              }));
-            },
+        *entries([page], next) {
+          const entries = yield* next(page);
+          if (new TextEncoder().encode(JSON.stringify({ ...page, entries })).byteLength <= 2048) {
+            return entries;
+          }
+          return entries.map(({ sequence, receipt }) => ({
+            sequence,
+            receipt,
+            omitted: "oversized" as const,
+          }));
         },
       });
     }
@@ -177,27 +164,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               },
             });
             yield* host.around({
-              operations: {
-                continuation: () =>
-                  function* () {
-                    return settled >= (parsed.kind === "answer" ? 10 : parsed.budget)
-                      ? { action: "yield", reason: "request budget" }
-                      : { action: "continue" };
-                  },
-                deliveryMode: () =>
-                  function* (value) {
-                    return value === "approval" ? "wait" : "execute";
-                  },
+              *continuation() {
+                return settled >= (parsed.kind === "answer" ? 10 : parsed.budget)
+                  ? { action: "yield", reason: "request budget" }
+                  : { action: "continue" };
+              },
+              *deliveryMode([value]) {
+                return value === "approval" ? "wait" : "execute";
               },
             });
             yield* host.attempts.around({
-              operations: {
-                settle: (next) =>
-                  function* (...args) {
-                    const result = yield* next(...args);
-                    settled++;
-                    return result;
-                  },
+              *settle(args, next) {
+                const result = yield* next(...args);
+                settled++;
+                return result;
               },
             });
             const reconciler = createActivationReconciler(
@@ -294,6 +274,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   async function page(response: Promise<Response>): Promise<Page> {
     return (await response).json() as Promise<Page>;
   }
+
   it(`${runtime.name}: finite request commands and Observe recover bounded accepted pages without response-read demand`, async () => {
     const app = application();
     const submitting = app.request({
@@ -350,6 +331,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(idle.report).toBe("idle");
     expect(idle.state).toBe("completed");
   });
+
   it(`${runtime.name}: request abort joins cleanup, and Resume reports an occupied attempt without retry`, async () => {
     const app = application();
     const cleaning = createLatch<void>();
@@ -382,6 +364,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect((await page(app.request({ kind: "resume" }))).report).toBe("attempt-held-may-be-active");
     expect(app.peer.requests).toHaveLength(1);
   });
+
   it(`${runtime.name}: pre-aborted ingress writes nothing and oversized projection does not lose accepted data`, async () => {
     const app = application();
     const abort = new AbortController();
@@ -420,16 +403,13 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const summarized = await page(
       app.request({ kind: "observe" }, undefined, function* () {
         yield* app.projection.around({
-          operations: {
-            entries: (next) =>
-              function* (input) {
-                const entries = yield* next(input);
-                return entries.map(({ sequence, receipt }) => ({
-                  sequence,
-                  receipt,
-                  value: "summary",
-                }));
-              },
+          *entries([input], next) {
+            const entries = yield* next(input);
+            return entries.map(({ sequence, receipt }) => ({
+              sequence,
+              receipt,
+              value: "summary",
+            }));
           },
         });
       }),

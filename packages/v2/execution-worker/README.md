@@ -101,14 +101,14 @@ const recovery = createRecovery(runtime.composition, {
 });
 if (local.checkpoints) {
   yield *
-    recovery.around({
-      operations: createCheckpointMiddleware({
+    recovery.around(
+      createCheckpointMiddleware({
         program,
         execution: recovery.execution,
         adapter: local.checkpoints,
         matches,
       }),
-    });
+    );
 }
 ```
 
