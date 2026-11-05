@@ -5,7 +5,8 @@
     "types": ["node"],
     "customConditions": ["development"],
     "lib": ["ES2022", "DOM"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "rootDir": "../../.."
   },
   "include": [
     "src/**/*.ts",

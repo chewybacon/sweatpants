@@ -670,3 +670,16 @@ Flight React consumers now use a typed `createChatContext` declaration, with sep
 message and question components subscribing through `useChat()`. The same SQLite
 journey covers StrictMode, nested providers, client replacement and unmount without
 closing either externally owned client. Typed context actions retain command correlation.
+
+`applications/yo-chat-v2.acceptance.test.tsx` exercises the actual separate app's
+HTTP handler, browser transport and React composer with SQLite on both runtimes.
+It proves identical submission retry after receipt loss, read-only reopen, accepted
+history in a second turn, stale/concurrent submission rejection and no redispatch of
+uncertain sampling. The model peer is simulated; no live provider or TCP server runs.
+
+Yo-chat-v2 review follow-up extends the DOM journey with two independently subscribed
+clients: stale rejection unlocks the retained draft; explicit resend uses the refreshed
+predecessor. Physical shutdown joins model cleanup and preserves occupied attempts.
+`applications/yo-chat-v2-server.acceptance.test.ts` uses the actual Node listener on an
+ephemeral loopback port, with in-process HTTP peers for Host/Origin/body limits, static
+assets, stalled uploads and joined shutdown. No live model or subprocess is required.

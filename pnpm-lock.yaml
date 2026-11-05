@@ -765,6 +765,79 @@ importers:
         specifier: ^1.40.0
         version: 1.57.0
 
+  apps/yo-chat-v2:
+    dependencies:
+      '@earendil-works/pi-ai':
+        specifier: 1.0.1
+        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.13))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.21.0)(zod@4.1.13)
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../../packages/v2/standard-durability
+      '@sweatpan.ts/chat':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat
+      '@sweatpan.ts/chat-client':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat-client
+      '@sweatpan.ts/chat-host':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat-host
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../../packages/v2/core
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../../packages/v2/durable
+      '@sweatpan.ts/providers':
+        specifier: workspace:*
+        version: link:../../packages/v2/providers
+      '@sweatpan.ts/providers-pi-ai':
+        specifier: workspace:*
+        version: link:../../packages/v2/providers-pi-ai
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../../packages/v2/runtime
+      '@sweatpan.ts/runtime-effection':
+        specifier: workspace:*
+        version: link:../../packages/v2/runtime-effection
+      '@sweatpan.ts/storage-sqlite':
+        specifier: workspace:*
+        version: link:../../packages/v2/storage-sqlite
+      '@sweatpan.tsx/chat':
+        specifier: workspace:*
+        version: link:../../packages/v2/react-chat
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.8)
+      esbuild:
+        specifier: 0.27.2
+        version: 0.27.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   apps/yo-workflow:
     dependencies:
       '@dagrejs/dagre':

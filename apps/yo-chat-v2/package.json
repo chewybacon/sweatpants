@@ -1,0 +1,40 @@
+{
+  "name": "yo-chat-v2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm build && pnpm start",
+    "build": "pnpm check && esbuild src/main.tsx --bundle --platform=browser --outfile=dist/client.js",
+    "start": "node --env-file-if-exists=.env.local --conditions=development --import tsx src/server.ts",
+    "check": "tsc --noEmit",
+    "lint": "cd ../.. && oxlint --type-aware apps/yo-chat-v2",
+    "format:check": "cd ../.. && oxfmt apps/yo-chat-v2 --check"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.0.1",
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/chat": "workspace:*",
+    "@sweatpan.ts/chat-client": "workspace:*",
+    "@sweatpan.ts/chat-host": "workspace:*",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/providers": "workspace:*",
+    "@sweatpan.ts/providers-pi-ai": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/runtime-effection": "workspace:*",
+    "@sweatpan.ts/storage-sqlite": "workspace:*",
+    "@sweatpan.tsx/chat": "workspace:*",
+    "effection": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "esbuild": "0.27.2",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
