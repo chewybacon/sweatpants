@@ -23,6 +23,9 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode-compiler-scheme",
     "format:check": "cd ../../.. && oxfmt packages/v2/codemode-compiler-scheme --check"
   },
+  "dependencies": {
+    "@sweatpan.ts/codemode-compiler": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

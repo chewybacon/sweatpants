@@ -4,7 +4,11 @@
   "private": true,
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "generated",
+    "scripts",
+    "toolchain.json"
   ],
   "type": "module",
   "exports": {
@@ -15,15 +19,32 @@
       },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "development": {
+        "types": "./src/node.ts",
+        "import": "./src/node.ts"
+      },
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm wasm:check && tsc -p tsconfig.json",
+    "check": "pnpm wasm:check && tsc -p tsconfig.json --noEmit",
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode-runtime-scheme",
-    "format:check": "cd ../../.. && oxfmt packages/v2/codemode-runtime-scheme --check"
+    "format:check": "cd ../../.. && oxfmt packages/v2/codemode-runtime-scheme --check",
+    "wasm:build": "python3 scripts/build.py",
+    "wasm:check": "python3 scripts/manifest.py",
+    "wasm:verify": "python3 scripts/build.py --verify"
+  },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/execution": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }

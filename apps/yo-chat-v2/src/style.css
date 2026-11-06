@@ -64,3 +64,52 @@ button:disabled {
 [role="alert"] {
   color: #ffbaa7;
 }
+fieldset {
+  border: 1px solid #526579;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+}
+legend {
+  font-weight: 600;
+  padding: 0 8px;
+}
+.flight-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.flight-options button {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  padding: 20px;
+}
+fieldset > button {
+  margin-right: 12px;
+}
+.flight-summary {
+  border-left: 3px solid #acd4f3;
+  padding-left: 16px;
+}
+.flight-summary h2 {
+  font-size: 18px;
+}
+
+.code-run {
+  border-left: 3px solid #64748b;
+  padding-left: 16px;
+  margin: 20px 0;
+}
+.code-run h2 {
+  font-size: 18px;
+}
+.code-run pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #23272f;
+}

@@ -257,3 +257,110 @@ The chat journeys use this public stream for body and cleanup waits, visibility 
 cancellation during cleanup, partial discovery failure and terminal reopen. They also
 cover equivalent/conflicting aliases, repeat acquisition and owner exit. Lua's different
 request protocol is not decoded by this authored-tool capability.
+
+## Frontend elicit declarations and response APIs
+
+`defineElicitPlugin(tool).onElicit(handlers)` declares a partial typed
+frontend plugin. It projects the original tool internally and freezes the declaration,
+handler map and support advertisement. It acquires no runtime or frontend resource.
+Schemas and handler closures remain references; projection is still not browser import
+splitting. Keep those captured dependencies compatible with retained work.
+
+Frontend adapters declare their own capability vocabulary once:
+
+```ts
+const definePromptPlugin = defineElicitPlugins<PromptCapabilities>();
+const plugin = definePromptPlugin(investigate).onElicit({
+  *clarification(args, ctx) {
+    const value = yield* ctx.prompt(args.context);
+    return { ok: true, value };
+  },
+});
+```
+
+`args.context` is the elicit context schema's output. Successful handler replies are
+response-schema input, preserving transformations at server answer ingress. The
+handler's yielded protocol is inferred. `ctx.interaction` supplies immutable
+execution/program, elicit alias, request and resolution identities. The alias remains
+a literal type for each handler. Additional capabilities are frontend-defined; tools
+has no React dependency and adds no universal render, progress or AbortSignal API.
+
+Bind the same declaration independently for each frontend runtime/session:
+
+```ts
+const responder = createElicitResponder(
+  runtime,
+  "investigate.responses",
+  plugin,
+  (interaction) => ({ prompt: promptFor(interaction) }),
+);
+
+yield *
+  responder.around({
+    *respond(args, next) {
+      const result = yield* next(...args);
+      return result;
+    },
+  });
+const outcome = yield * responder.operations.respond(retainedSelection, question);
+```
+
+This is an ordinary scoped Api. The default operation checks tool identity and client
+route, validates raw question context, constructs frontend capabilities and invokes
+the matching handler. Middleware surrounds the entire operation, including validation;
+short-circuiting/replacement drivers are trusted and can bypass that default behavior.
+Middleware selection occurs per invocation; the declaration and capability factory
+are bound at responder construction. Use distinct API names for distinct responders
+that share a scope. Handler work and any resources remain owned by the caller's scope.
+
+No response is automatically sent to a server. The caller separately submits the
+Outcome against the original grant, handles its receipt, arranges advancement and
+refreshes the view. Discovery, compatibility and successful local handling grant no
+answer authority and do not imply durable acceptance. Response schemas are validated
+by existing server ingress, not transformed twice by the frontend.
+
+## Select and install elicit coverage
+
+Each tool must use a unique effect ID for every elicit alias when using plugins,
+support selection or retained-route installation. These APIs reject duplicate IDs,
+even when the aliases have identical schemas or routes: requests identify effects,
+not aliases. This is a per-tool constraint, not a global registry. Higher-level
+authoring tooling may generate namespaced IDs; these APIs do not rewrite identities.
+Existing interaction discovery can still read equivalent aliases in older contracts.
+
+`selectToolSupport(permitted, advertised)` is a pure helper over decoded inputs. It
+requires coverage for every declared elicit and returns immutable `available` selections
+and `unavailable` entries with missing aliases. It never expands the server's permitted
+inventory from client advertisements. Declared server handlers take precedence; tools
+without elicits need no client support. Authorization, choosing the server inventory,
+wire decoding/limits and compatible tool definitions remain application responsibilities.
+The helper checks claimed support, not actual connectivity or handler liveness.
+
+```ts
+const selected = selectToolSupport([{ tool: investigate, server: [] }], [plugin.support]);
+// Persist selected.available with the admitted execution, then bind its tool catalog.
+```
+
+`ElicitSupport` and `ElicitSelection` are schema-independent coverage contracts. They
+identify tools and elicit aliases, not schema compatibility. No separate revision label
+or generated compatibility proof is supplied. Keep declarations compatible with retained
+work; incompatible authored changes require distinct program/tool identities. Decode wire
+advertisements before selection. Retain selected routes with admitted work and rebuild
+from them; reconnect does not authorize changing the handling policy of existing work.
+The existing admission input supplies this persistence—no separate registry is created.
+
+`installSelectedElicitHandlers(host, effects, tool, selection, handlers?)`
+applies that retained plan through `installElicitHandlers`. It checks matching
+tool identity, complete known routes and supplied functions for every server route
+before installing anything. Client routes park even if an unselected server handler
+was supplied. This middleware owns neither journal persistence nor response acceptance;
+install original server declarations with the ordinary hosting/grant assembly.
+
+The flight acceptance journey uses these package exports with real chat/tool hosting,
+SQLite and React on both runtimes. It demonstrates one declaration bound to distinct
+capability instances, scoped response middleware isolation, invalid context rejection,
+missing server-handler rejection, client-route preservation, reopen and exact-grant
+answering. Source/emitted checks preserve typed context, capabilities and responses.
+The yo-chat-v2 HTTP journey consumes the same implementation. React presentation and
+the application-owned snapshot/handler dispatcher remain app-local, as do retries,
+frontend session replacement and multi-tab ownership policy.

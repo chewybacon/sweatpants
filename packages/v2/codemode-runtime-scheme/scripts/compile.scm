@@ -1,0 +1,12 @@
+(use-modules (hoot compile) (hoot config) (wasm assemble) (ice-9 binary-ports))
+(load "/build/scripts/meter.scm")
+(let ((output (cadr (command-line))))
+  (call-with-values
+    (lambda () (meter-module (compile-file "/build/scripts/evaluator.scm" #:debug-level 0)))
+    (lambda (module functions loops)
+      (call-with-output-file (string-append output "/kernel.wasm")
+        (lambda (port) (put-bytevector port (assemble-wasm module))) #:binary #t)))
+  (copy-file (string-append %reflect-js-dir "/reflect.js") (string-append output "/reflect.js"))
+  (for-each (lambda (name)
+    (copy-file (string-append %reflect-wasm-dir "/" name) (string-append output "/" name)))
+    '("reflect.wasm" "wtf8.wasm")))

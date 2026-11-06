@@ -1,2 +1,8 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public capability interfaces, options, results, and type aliases.
+import type { WorkflowModule } from "@sweatpan.ts/codemode-compiler";
+
+/** Scheme-kernel input; runtime identity and resource acquisition remain separate. */
+export interface SchemeWorkflowArtifact {
+  readonly format: "scheme-execution/1";
+  readonly source: string;
+  readonly effects: WorkflowModule["effects"];
+}

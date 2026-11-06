@@ -1,2 +1,8 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public entry point. Add explicit exports and intentional re-exports here.
+export type {
+  SchemeBoundary,
+  SchemeMachine,
+  SchemeEvaluator,
+  SchemeEvaluatorOptions,
+} from "./contracts.ts";
+export { createSchemeEvaluator, SchemeFailure } from "./evaluator.ts";
+export { createSchemeKernel } from "./kernel.ts";

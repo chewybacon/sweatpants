@@ -1,4 +1,4 @@
-import type { CheckpointAdapter, GuestWork } from "@sweatpan.ts/execution";
+import type { CheckpointAdapter, PreparedProgram } from "@sweatpan.ts/execution";
 import type { CapabilityRequest } from "@sweatpan.ts/core";
 
 /** Immutable Lua-name bindings; decoding does not grant authority or execute schemas. */
@@ -11,7 +11,6 @@ export interface LuaEffectBindings {
   decodeRequest(value: unknown): CapabilityRequest;
 }
 
-export interface LuaEvaluator<R, Q, Y> {
-  readonly acquire: GuestWork<R, Q, Y>;
+export interface LuaEvaluator<R, Q, Y> extends PreparedProgram<R, Q, Y> {
   readonly checkpoints: CheckpointAdapter<R, Q, Y, unknown, unknown, unknown>;
 }

@@ -74,7 +74,8 @@
       "@babel/types": "7.29.8"
     },
     "patchedDependencies": {
-      "@effectionx/worker@0.5.2": "patches/@effectionx__worker@0.5.2.patch"
+      "@effectionx/worker@0.5.2": "patches/@effectionx__worker@0.5.2.patch",
+      "@scriptc/compiler@0.3.6": "patches/@scriptc__compiler@0.3.6.patch"
     }
   }
 }

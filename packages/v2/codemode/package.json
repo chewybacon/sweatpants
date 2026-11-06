@@ -23,6 +23,11 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode",
     "format:check": "cd ../../.. && oxfmt packages/v2/codemode --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/codemode-runtime": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

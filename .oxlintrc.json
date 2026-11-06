@@ -118,7 +118,8 @@
     "**/vitest-effection.ts",
     "apps/yo-chat/src/routeTree.gen.ts",
     "apps/yo-chat/src/__generated__/**",
-    "packages/flowmode-runtime-scheme/generated/**"
+    "packages/flowmode-runtime-scheme/generated/**",
+    "packages/v2/codemode-runtime-scheme/generated/**"
   ],
   "overrides": [
     {

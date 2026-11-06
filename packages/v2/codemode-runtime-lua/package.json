@@ -5,7 +5,14 @@
   "license": "MIT",
   "files": [
     "dist",
-    "generated"
+    "generated",
+    "scripts",
+    "vm/src",
+    "vm/Cargo.toml",
+    "vm/Cargo.lock",
+    "vm/prelude.lua",
+    "vm/piccolo-checkpoint.patch",
+    "vm/.cargo/config.toml"
   ],
   "type": "module",
   "exports": {
@@ -19,13 +26,17 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm wasm:check && tsc -p tsconfig.json",
+    "check": "pnpm wasm:check && tsc -p tsconfig.json --noEmit",
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode-runtime-lua",
-    "format:check": "cd ../../.. && oxfmt packages/v2/codemode-runtime-lua --check"
+    "format:check": "cd ../../.. && oxfmt packages/v2/codemode-runtime-lua --check",
+    "wasm:build": "python3 scripts/build.py",
+    "wasm:check": "python3 scripts/manifest.py",
+    "wasm:verify": "python3 scripts/build.py --verify"
   },
   "dependencies": {
     "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/codemode-runtime": "workspace:*",
     "@sweatpan.ts/core": "workspace:*",
     "@sweatpan.ts/execution": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*"

@@ -291,3 +291,73 @@ for scoped artifact selection and placement middleware. Resolution does not acqu
 a Guest. Pin verification and format checks remain in program execution; capture
 uses the adapter belonging to the exact Guest. A supported restore failure must
 propagate rather than silently acquire a fresh Guest.
+
+## Generic evaluator kernels
+
+A `Kernel<Program, Input, Prepared, Y>` prepares an evaluator recipe without
+creating a live Guest or advancing authored code. `PreparedProgram` contains
+`acquire` and optional `checkpoints`. `ResolvedProgram` extends that same contract
+with the verified program reference; there is no second acquisition protocol.
+This is a shared preparation capability built from existing acquisition and
+checkpoint contracts, not a new execution primitive. Binding directly inside an
+artifact resolver remains appropriate when a separate preparation API adds no value.
+The concrete Prepared type preserves an adapter's required checkpoint capability
+or its absence, along with native yields and result/request types.
+
+```ts
+const kernel = createKernel(runtime.composition, "evaluator", driver);
+const prepared = yield * kernel.operations.prepare(program, input);
+// A trusted artifact resolver supplies the verified identity alongside prepared.
+// Existing createProgramExecution, recovery and hosting own the remaining flow.
+```
+
+Checkpoint adapters may recognize their Guests by object identity. Prefer execution
+middleware when intercepting Guest methods. If acquisition decoration replaces the
+Guest object, it must also adapt checkpoint capture to unwrap it and restoration to
+rewrap restored Guests. Keeping the original adapter alongside a replacement Guest
+can silently disable capture; preparation decoration alone does not preserve that
+capability. With recovery, use its existing execution facade:
+
+```ts
+yield *
+  recovery.execution.around({
+    *resume(args, next) {
+      trace("resume");
+      return yield* next(...args);
+    },
+  });
+```
+
+The adapter continues to capture the original Guest; restored Guests installed in
+this execution scope receive the same method middleware.
+
+Kernel preparation is a useful scoped boundary for evaluator selection and for
+wrapping acquisition. `around`/`install` are ordinary Runtime composition. Policies
+must preserve input and program identity; they cannot grant permission or replace
+journal validation. Prepared values are recipes, not exclusive leases or authority.
+
+`createScopedKernel<I, R, Q>()` evaluates TypeScript `ScopedProgram` callables via
+`createScopedGuest`. It advertises no checkpoints. Lua's `createLuaKernel` binds
+source and input to the existing checkpoint-capable Lua evaluator. Neither
+preparation nor acquisition starts an authored body. Repeated acquisition produces
+independent Guests; the supplied input and program must remain immutable.
+
+The kernel owns evaluator semantics and compatibility checks. The resolver owns
+artifact verification and pinned program identity; the host owns grants and
+advancement, and the journal owns acceptance. Checkpoint bytes do not establish
+journal provenance. A kernel does not implement another recovery loop.
+
+These factories own no persistent native resource requiring kernel.close. Acquisition
+owns physical resources in its surrounding scope; Guest.close disposes an incarnation.
+An adapter requiring a shared worker/connection must acquire that resource explicitly
+in an outer scope and bind it to the driver. No implicit global evaluator lifetime.
+Validation, compilation, model guidance and optional inspection remain separate
+capabilities, not mandatory kernel methods. TypeScript execution is not a sandbox.
+
+`applications/kernel.acceptance.test.ts` uses the same resolver/recovery/hosting
+consumer for Lua and TypeScript on both native runtimes. It reopens SQLite after
+acceptance but before delivery to the Guest, completes without redelivering accepted
+work, and checks method interception and scoped preparation policy. Lua additionally
+proves lazy loading, independent acquisitions, detached restore, changed-source
+rejection and checkpoint capture before/after restoration with execution middleware.
+This is local protocol/reopen evidence, not remote or process-crash validation.

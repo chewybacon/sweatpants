@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 21ddfbd16f9986f1700bc9221ad4e8ff24eba3b9..26ae02cb4b524612be5b6a09015e3b2d96fd32cf 100644
+--- a/package.json
++++ b/package.json
+@@ -13,6 +13,8 @@
+   "main": "dist/index.js",
+   "types": "dist/index.d.ts",
+   "exports": {
++    "./frontend/pipeline": "./dist/frontend/pipeline.js",
++    "./frontend/program-node": "./dist/frontend/program-node.js",
+     ".": "./dist/index.js",
+     "./startup-cache": "./dist/startup-cache.js",
+     "./scriptc.d.ts": "./ambient/scriptc.d.ts",

@@ -1,4 +1,11 @@
-import { SubmissionRejected } from "./contracts.ts";
+import {
+  codeRunSchema,
+  answerSchema,
+  questionSchema,
+  SubmissionRejected,
+  type Answer,
+  type Question,
+} from "./contracts.ts";
 import { isDeepStrictEqual } from "node:util";
 import { createSqliteJournalStore } from "@sweatpan.ts/storage-sqlite";
 import { createNodeSqliteConnection, v8Serializer } from "@sweatpan.ts/storage-sqlite/node";
@@ -7,7 +14,14 @@ import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { ChatHistoryMessage, ChatLoopResult } from "@sweatpan.ts/chat";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
-import { program, bindTurn, type Dependencies } from "./program.ts";
+import { program, flightProgram, codeProgram, legacyCodeProgram, bindTurn } from "./program.ts";
+import type { TextSampling } from "./sampling.ts";
+import { chooseFlight } from "./flight.ts";
+import { selectionSchema, supportSchema } from "./elicit-support.ts";
+import { selectToolSupport } from "@sweatpan.ts/tools";
+import { z } from "zod";
+import type { JournalReader, ChildLink } from "@sweatpan.ts/durable";
+import { codeInput, codeResult, codeToolId, legacyCodeToolId } from "./code-contracts.ts";
 const chatProgram = program.id;
 
 type Turn = {
@@ -23,6 +37,8 @@ export type ConversationSubmission = {
   readonly command: string;
   readonly prompt: string;
   readonly after: string | null;
+  readonly mode?: "tools" | "code";
+  readonly support?: z.infer<typeof supportSchema>[];
 };
 
 /** Application-local SQLite conversation policy: one active turn, explicit predecessor,
@@ -32,12 +48,18 @@ export function createConversation<Y>(
   runtime: Runtime<Y>,
   db: DatabaseSync,
   conversation: string,
-  dependencies: Dependencies<Y>,
+  sampling: TextSampling<Y>,
+  changed: () => void,
+  loadLuaModule?: () => Promise<WebAssembly.Module>,
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS chat_turns (
     conversation TEXT NOT NULL, ordinal INTEGER NOT NULL, command TEXT NOT NULL,
     execution TEXT NOT NULL UNIQUE, prompt TEXT NOT NULL, previous TEXT, input BLOB NOT NULL, program TEXT NOT NULL,
     PRIMARY KEY (conversation, ordinal), UNIQUE (conversation, command)
+  )`);
+  // This projection grants no journal authority and is never fed back to the model.
+  db.exec(`CREATE TABLE IF NOT EXISTS chat_previews (
+    execution TEXT PRIMARY KEY, text TEXT NOT NULL
   )`);
   function command(id: string) {
     return db
@@ -51,19 +73,24 @@ export function createConversation<Y>(
   }
   function journal(execution: string) {
     const owned = db
-      .prepare("SELECT program FROM chat_turns WHERE conversation = ? AND execution = ?")
+      .prepare("SELECT program, input FROM chat_turns WHERE conversation = ? AND execution = ?")
       .get(conversation, execution);
     if (!owned) {
       throw new Error("Execution outside this conversation");
     }
-    if (owned.program !== chatProgram) {
+    if (
+      owned.program !== chatProgram &&
+      owned.program !== flightProgram.id &&
+      owned.program !== codeProgram.id &&
+      owned.program !== legacyCodeProgram.id
+    ) {
       throw new Error("Unavailable conversation program");
     }
     return createSqliteJournalStore<ChatLoopResult, CapabilityRequest, unknown, string, unknown, Y>(
       {
         connection: createNodeSqliteConnection(db),
         id: execution,
-        program: chatProgram,
+        program: String(owned.program),
         equals: isDeepStrictEqual,
         serialization: {
           *resolve() {
@@ -74,15 +101,33 @@ export function createConversation<Y>(
     ).open();
   }
   function sameSubmission(row: Turn, input: ConversationSubmission) {
-    if (row.prompt !== input.prompt || row.previous !== input.after) {
+    if (
+      row.prompt !== input.prompt ||
+      row.previous !== input.after ||
+      z
+        .object({ mode: z.enum(["tools", "code"]).default("tools") })
+        .parse(v8Serializer.decode(row.input)).mode !== (input.mode ?? "tools") ||
+      !isDeepStrictEqual(
+        z
+          .object({ support: z.array(supportSchema).default([]) })
+          .parse(v8Serializer.decode(row.input)).support,
+        input.support ?? [],
+      )
+    ) {
       throw new SubmissionRejected("command-conflict");
     }
   }
-  return {
+  const api = {
     /** Reserve in a short synchronous transaction, then idempotently admit outside it.
      * Never hold a SQLite transaction across a native yield or journal operation. */
     *submit(input: ConversationSubmission) {
-      input = { command: input.command, prompt: input.prompt, after: input.after };
+      input = {
+        command: input.command,
+        prompt: input.prompt,
+        after: input.after,
+        support: input.support,
+        mode: input.mode,
+      };
       if (!input.command.trim() || !input.prompt.trim()) {
         throw new Error("Empty conversation submission");
       }
@@ -103,7 +148,17 @@ export function createConversation<Y>(
           }
           history = state.value.history;
         }
-        const encoded = v8Serializer.encode({ history, prompt: input.prompt });
+        const selections = selectToolSupport(
+          [{ tool: chooseFlight, server: [] }],
+          input.support ?? [],
+        ).available;
+        const encoded = v8Serializer.encode({
+          history,
+          prompt: input.prompt,
+          support: input.support ?? [],
+          selections,
+          mode: input.mode ?? "tools",
+        });
         // Another submit may have advanced the catalog while reading the predecessor.
         db.exec("BEGIN IMMEDIATE");
         try {
@@ -117,7 +172,12 @@ export function createConversation<Y>(
             }
             row = {
               execution: JSON.stringify([conversation, input.command]),
-              program: chatProgram,
+              program:
+                input.mode === "code"
+                  ? codeProgram.id
+                  : selections.length
+                    ? flightProgram.id
+                    : chatProgram,
               ordinal: (previous?.ordinal ?? 0) + 1,
               command: input.command,
               prompt: input.prompt,
@@ -147,7 +207,145 @@ export function createConversation<Y>(
     },
     /** Bind only a root enrolled in this conversation; descendant answers use its own authority. */
     turn(execution: string) {
-      return bindTurn(runtime, journal(execution), dependencies);
+      const row = db
+        .prepare("SELECT program, input FROM chat_turns WHERE conversation = ? AND execution = ?")
+        .get(conversation, execution) as Pick<Turn, "program" | "input"> | undefined;
+      if (!row) {
+        throw new Error("Execution outside this conversation");
+      }
+      return bindTurn(
+        runtime,
+        journal(execution),
+        {
+          loadLuaModule,
+          sampling: {
+            *sample(request) {
+              return yield* runtime.composition.scoped(function* () {
+                const stream = yield* sampling.stream(request);
+                while (true) {
+                  const item = yield* stream.next();
+                  if (item.done) {
+                    return item.value;
+                  }
+                  db.prepare(
+                    "INSERT INTO chat_previews VALUES (?, ?) ON CONFLICT(execution) DO UPDATE SET text = excluded.text",
+                  ).run(execution, item.value);
+                  changed();
+                }
+              });
+            },
+          },
+        },
+        row.program,
+        v8Serializer.decode(row.input),
+      );
+    },
+    *questions(execution: string) {
+      const state = yield* journal(execution).read();
+      if (!state.admission) {
+        return [];
+      }
+      const selections = z
+        .object({ selections: z.array(selectionSchema).default([]) })
+        .parse(state.admission?.input).selections;
+      const stream = yield* api.turn(execution).interactions();
+      const questions: Question[] = [];
+      while (true) {
+        const item = yield* stream.next();
+        if (item.done) {
+          return questions;
+        }
+        const question = item.value;
+        const kind = Object.entries(chooseFlight.elicits).find(
+          ([, declaration]) => declaration.id === question.declaration.id,
+        )?.[0];
+        if (!kind || !selections[0]) {
+          throw new Error("Unsupported flight question");
+        }
+        questions.push(
+          questionSchema.parse({
+            root: execution,
+            execution: question.execution,
+            parentExecution: question.parent?.execution,
+            grant: question.grant,
+            kind,
+            input: question.input,
+            selection: selections[0],
+          }),
+        );
+      }
+    },
+    *codeRuns(execution: string) {
+      const root = journal(execution);
+      type Reader = JournalReader<unknown, unknown, unknown, unknown, unknown, Y>;
+      const readers: { reader: Reader; input: unknown }[] = [{ reader: root, input: undefined }];
+      const seen = new Set<string>();
+      const runs: z.infer<typeof codeRunSchema>[] = [];
+      while (readers.length) {
+        const { reader, input: retainedInput } = readers.shift()!;
+        if (seen.has(reader.id)) {
+          continue;
+        }
+        seen.add(reader.id);
+        const state = yield* reader.read();
+        if (state.program === codeToolId || state.program === legacyCodeToolId) {
+          const retained = codeInput.parse(retainedInput);
+          runs.push({
+            id: reader.id,
+            source: retained.source,
+            state: state.status,
+            result: state.status === "completed" ? codeResult.parse(state.value) : undefined,
+          });
+        }
+        // Full bounded-demo history, including settled child links; observation never advances.
+        const children = new Map<string, ChildLink>();
+        for (let from = 0; from < state.history.end.position; ) {
+          const page = yield* state.history.read(from, 128);
+          if (!page.length) {
+            throw new Error("Incomplete retained code history");
+          }
+          from += page.length;
+          for (const entry of page) {
+            for (const link of yield* reader.readChildren(entry.receipt)) {
+              children.set(link.childId, link);
+            }
+          }
+        }
+        if (state.status === "running") {
+          for (const link of state.children ?? []) {
+            children.set(link.childId, link);
+          }
+        }
+        for (const link of children.values()) {
+          readers.push({ reader: yield* reader.openChild(link.childId), input: link.input });
+        }
+      }
+      return runs;
+    },
+    *answer(input: Answer) {
+      const command = answerSchema.parse(input);
+      const root = journal(command.root);
+      const child = yield* root.openDescendantInteractions(command.execution);
+      const request = yield* child.journal.interactions.request(command.grant);
+      if (
+        !request ||
+        typeof request !== "object" ||
+        !("effect" in request) ||
+        request.effect !== chooseFlight.elicits[command.kind].id
+      ) {
+        throw new Error("Question kind does not match stored authority");
+      }
+      const receipt = yield* api
+        .turn(command.root)
+        .answer(command, { ok: true, value: command.value });
+      return { receipt: receipt.entry.receipt, duplicate: receipt.duplicate };
+    },
+    preview(execution: string) {
+      return (
+        db.prepare("SELECT text FROM chat_previews WHERE execution = ?").get(execution) as
+          | { text: string }
+          | undefined
+      )?.text;
     },
     /** Retained sequence, not a cached execution-status projection. */
     turns() {
@@ -161,4 +359,5 @@ export function createConversation<Y>(
       return journal(execution).read();
     },
   };
+  return api;
 }

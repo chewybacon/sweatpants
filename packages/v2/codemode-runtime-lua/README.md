@@ -23,10 +23,11 @@ at repository checkpoint 9306914993c98fdea6d3ad45d0a1b03dd65ed396. SHA-256:
 
     2d1062f4fffcba8a554331046953831e61a6a70ef3b19bd997b6d459cf732b81
 
-The adjacent v1-manifest.json records its original build inputs. Source/build
-scripts remain in `packages/flowmode-runtime-lua/vm` and its `scripts` directory;
-the v2 package does not yet own a rebuilt compiler toolchain. Acceptance checks
-the artifact hash and loads it in-process. No subprocess, native executable,
+The adjacent v1-manifest.json records its original build inputs. This original
+artifact stays frozen for retained executions; checking it does not read the v1
+checkout. V2 owns the current Rust sources, Piccolo patch and build scripts under
+this package’s `vm/` and `scripts/` directories. Acceptance checks the original
+artifact hash and loads both evaluators in-process. No subprocess, native executable,
 legacy JavaScript adapter or network service is used.
 
 The public luaWasmUrl points to packaged bytes. Hosts choose their own loader;
@@ -150,3 +151,67 @@ The evaluator's generic decodeRequest option remains available for other protoco
 Acceptance covers alias resolution through SQLite reopen, replay and checkpoints,
 as well as rejected unknown/ungranted names, malformed envelopes and invalid schema
 values on both runtimes. This is local assembly evidence, not remote authentication.
+
+## Compile-only validation
+
+`createLuaValidator(runtime, loadModule)` implements the portable CodeValidator.
+Wrap it with `createCodeValidator(runtime, name, driver)` when scoped validation
+policy is needed. It calls the same pinned VM's `validate` command, without
+executing the source, acquiring a Guest or dispatching any capabilities. It checks
+the 64KB UTF-8 source budget and syntax. Unknown language and source rejection
+return diagnostics; module loading, Wasm traps and ABI failures throw. Native
+cancellation cannot interrupt synchronous Wasm work. Each call discards its VM.
+
+The VM's diagnostic text may refer to its internal prelude, so the adapter does
+not claim authored source coordinates. Valid syntax can still call unknown tools,
+fail schema validation, throw or exceed execution fuel. Validation is not a sandbox
+or execution permission. Authoring guidance, grants and retained source identity
+remain independent. See the codemode authoring acceptance journey for both runtimes.
+
+## Kernel preparation
+
+`createLuaKernel(runtime, { loadModule, decodeRequest, decodeResult })` implements
+execution's generic Kernel. `yield* kernel.prepare(source, input)` returns the
+existing LuaEvaluator with lazy `acquire` and required `checkpoints`. The earlier
+`createLuaEvaluator(runtime, { source, input, ...options })` remains available as
+the direct binding helper; it is the shared implementation, not a parallel engine.
+
+Wrap the kernel with `createKernel(runtime.composition, name, driver)` for scoped
+preparation middleware or driver selection. Each preparation has its own checkpoint
+adapter; it will not capture another recipe's Guests. Restore can use detached
+state with the matching source/runtime. The application must also verify bindings,
+decoders, program identity and journal provenance. Neither prepare nor acquire
+loads Wasm or advances Lua. The loader may cache code, never live Guests.
+
+## Opt-in Piccolo libraries
+
+`luaLibraryWasmUrl` selects the separately built library artifact. It exposes
+Piccolo's `string.sub`, `string.char`, and `table.concat`, alongside the existing
+base functions and workflow intrinsics. This is an explicit subset, not the full
+Lua standard library. `luaWasmUrl` continues to select the original artifact.
+The evaluator/kernel API and loader ownership are unchanged.
+
+The native callbacks have stable checkpoint registration. The library VM uses a
+new source/runtime identity, so checkpoints from the original VM are rejected
+rather than reinterpreted. The checkpoint wire format remains unchanged. Hosts
+must pin the chosen artifact in their program identity for journal replay too.
+
+Piccolo's concat runs a native continuation. Its wrapper limits each call to
+10,000 values and a conservative 1MiB output estimate (numbers reserve 512 bytes
+per value). This bounds native work before the next checkpoint; instruction fuel
+is not a wall-clock deadline. Existing 32MiB VM-memory and 4MiB wire limits still
+apply. No IO, filesystem, network, module loading or coroutine library is exposed.
+
+Build with `pnpm --filter @sweatpan.ts/codemode-runtime-lua wasm:build`; use
+`wasm:verify` to compare a rebuild and `wasm:check` to verify source/artifact hashes.
+The sibling `library-manifest.json` records v2-owned Rust sources, pinned Piccolo
+patch, build scripts and artifact hash. Build and type checks verify these hashes
+and the frozen legacy artifact. The toolchain uses its own
+`.artifacts/v2-codemode-runtime-lua` cache and writes only this package’s generated
+artifact. It neither reads nor changes the v1 package. The library build uses the
+`standard-library` Cargo feature; it never replaces the retained original bytes.
+
+Acceptance runs all three previously failing pair-generation programs, retains
+native function references across checkpoint disposal/restore and cleanup, checks
+cross-generation rejection and native concat budgets, and executes a new chat
+turn through SQLite reopen. Both Effect and Effection are exercised.

@@ -1,0 +1,15 @@
+{
+  "vm/src/json.rs": "257f4ba1c83f5bae9f8a1673c32e38ddf902f3c8a9488bf0c328b62f1014616a",
+  "vm/src/lib.rs": "8324ec60b8c4576c75ceb6080ae31663591fe734dd53fa00b84e8e4d02e78d4c",
+  "vm/src/main.rs": "1b4e6830e212c0c9a722a523b7ed4744d564eb9f37f29f03d2f6a25c55a08559",
+  "vm/src/runtime.rs": "0f683c6143209e04f46ab2cb3675f2551aca4ab18a8e6219f394ad0355c0e569",
+  "vm/Cargo.toml": "f0b8d786cae73bdbb660030022d326d158c28fb0f5a2744841c472579fc7364e",
+  "vm/Cargo.lock": "b15a539e3197772493b8a6bdf13ef1f77bf075efc489a1ec3ced79597cfba161",
+  "vm/prelude.lua": "f9b8328c969d447b171082cd4bbf45f31d2dd0d3ab43302beaf509e6e5d633f9",
+  "vm/piccolo-checkpoint.patch": "289e5e7cfa5775b9385a997be2161dd21a4e993dc9359eeac230c10decea895f",
+  "vm/.cargo/config.toml": "18b742013cf0b79e91a50003b8d82e2ad390e8fb9dd9618673a46f0191456dc9",
+  "scripts/build.py": "d7f1f6b200535306aea29bc4f9a8f46a5974aeb9ef4c0883379b2ef162bb34d2",
+  "scripts/manifest.py": "eefdb83045d2a1519dbaa4ff00e60b5747b657944a46153436e106176113f7d1",
+  "scripts/prepare.py": "7ee7b289e4a808965ef46600c8d2253e8bd3d06f1d7b41d86f67bdbe9bb0aa86",
+  "generated/library-kernel.wasm": "64df852d1370067ef9b3315411b62cf6cd388387060831f5eec5c8cb0087bf10"
+}

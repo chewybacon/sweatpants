@@ -1,2 +1,1 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Internal types shared by implementation modules; not part of the public API.
+export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };

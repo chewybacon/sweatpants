@@ -1,10 +1,12 @@
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createPiAiProvider, describePiAiModel } from "@sweatpan.ts/providers-pi-ai";
-import { prepareChatInference, type ChatSampling } from "@sweatpan.ts/chat";
+import { prepareChatInference } from "@sweatpan.ts/chat";
 import type { Runtime } from "@sweatpan.ts/runtime";
+import type { ModelInfo, ModelProvider } from "@sweatpan.ts/providers";
+import type { TextSampling } from "./sampling.ts";
 
-export async function createModelSampling<Y>(runtime: Runtime<Y>): Promise<ChatSampling<Y>> {
+export async function createModelSampling<Y>(runtime: Runtime<Y>): Promise<TextSampling<Y>> {
   const providerName = process.env["CHAT_PROVIDER"] ?? "openai";
   const modelId = process.env["CHAT_MODEL"] ?? "gpt-6-luna";
   const models = builtinModels();
@@ -43,23 +45,52 @@ export async function createModelSampling<Y>(runtime: Runtime<Y>): Promise<ChatS
     model: selected,
     stream: (sdkModel, context, options) => models.streamSimple(sdkModel, context, options),
   });
+  return createTextSampling(model, provider);
+}
+
+/** Map one provider stream to public provisional text without exposing reasoning. */
+export function createTextSampling<Y>(
+  model: ModelInfo,
+  provider: ModelProvider<Y>,
+): TextSampling<Y> {
   return {
-    *sample(request) {
+    stream(request) {
       const inference = prepareChatInference({
         model,
         history: request.history,
-        tools: [],
-        options: { toolChoice: "none", maxTokens: Math.min(model.maxOutputTokens ?? 1024, 1024) },
+        tools: request.tools,
+        options: {
+          toolChoice: request.tools.length ? "auto" : "none",
+          maxTokens: Math.min(model.maxOutputTokens ?? 1024, 1024),
+        },
       });
-      return yield* runtime.composition.scoped(function* () {
-        const stream = yield* provider.stream(inference.request);
-        while (true) {
-          const item = yield* stream.next();
-          if (item.done) {
-            return { ok: true as const, value: { model, response: item.value } };
-          }
-        }
-      });
+      return {
+        *[Symbol.iterator]() {
+          const stream = yield* provider.stream(inference.request);
+          return {
+            *next() {
+              while (true) {
+                const item = yield* stream.next();
+                if (item.done) {
+                  return {
+                    done: true as const,
+                    value: { ok: true as const, value: { model, response: item.value } },
+                  };
+                }
+                if (item.value.type === "text-delta" || item.value.type === "text-end") {
+                  return {
+                    done: false as const,
+                    value: item.value.partial.content
+                      .filter((part) => part.type === "text")
+                      .map((part) => part.text)
+                      .join(""),
+                  };
+                }
+              }
+            },
+          };
+        },
+      };
     },
   };
 }

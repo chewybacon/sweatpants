@@ -223,3 +223,78 @@ export interface ToolInteraction {
   readonly cancellation: RootCancellation<unknown> | undefined;
   readonly cancellationRequested: RootCancellation<unknown> | undefined;
 }
+
+/** Declared handler coverage for a tool; not a compatibility proof or permission grant. */
+export interface ElicitSupport {
+  readonly tool: string;
+  readonly elicits: readonly string[];
+}
+
+/** Retain with admitted work; reconnect advertisements must not rewrite this policy. */
+export interface ElicitSelection {
+  readonly tool: string;
+  readonly routes: Readonly<Record<string, "client" | "server">>;
+}
+
+/** Already-authorized inventory; server handlers take precedence over client support. */
+export interface ToolSupportCandidate {
+  readonly tool: Pick<ToolInteractionContract, "id" | "elicits">;
+  readonly server: readonly string[];
+}
+export interface ToolSupportSelection {
+  readonly available: readonly ElicitSelection[];
+  readonly unavailable: readonly { readonly tool: string; readonly missing: readonly string[] }[];
+}
+
+/** Local dispatch input. Transport decoding and answer authority belong to the caller. */
+export type ElicitRequest = Pick<
+  ToolInteraction,
+  "execution" | "program" | "grant" | "declaration" | "input"
+>;
+export interface ElicitMetadata<Key extends PropertyKey = string> {
+  readonly execution: string;
+  readonly program: string;
+  readonly key: Key;
+  readonly requestId: string;
+  readonly resolutionId: string;
+}
+export interface ElicitHandlerInput<Input> {
+  readonly context: Input;
+}
+export type ElicitHandlerContext<Capabilities, Key extends PropertyKey = string> = Capabilities & {
+  readonly interaction: ElicitMetadata<Key>;
+};
+
+/** Partial frontend handlers; context is schema output, successful reply is schema input. */
+export type ClientElicitHandlers<L extends Record<string, EffectDefinition>, C, Y> = {
+  readonly [K in keyof L]?: L[K] extends EffectDefinition<
+    infer Input,
+    infer _R,
+    infer _I,
+    infer Reply,
+    infer Failure
+  >
+    ? (
+        args: ElicitHandlerInput<Input>,
+        ctx: ElicitHandlerContext<C, K>,
+      ) => Operation<Outcome<Reply, Failure>, Y>
+    : never;
+};
+
+/** Immutable declaration with no runtime, capability instances or task ownership. */
+export interface ElicitPlugin<L extends Record<string, EffectDefinition>, C, Y> {
+  readonly contract: ToolInteractionContract;
+  readonly support: ElicitSupport;
+  readonly handlers: ClientElicitHandlers<L, C, Y>;
+}
+export interface ElicitPluginBuilder<L extends Record<string, EffectDefinition>, C> {
+  onElicit<Y = never>(handlers: ClientElicitHandlers<L, C, Y>): ElicitPlugin<L, C, Y>;
+}
+
+/** Frontend invocation only; returning an Outcome is not durable answer acceptance. */
+export interface ElicitResponder<Y> {
+  respond(
+    selection: ElicitSelection,
+    question: ElicitRequest,
+  ): Operation<Outcome<unknown, unknown>, Y>;
+}

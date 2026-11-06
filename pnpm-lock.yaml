@@ -172,6 +172,9 @@ patchedDependencies:
   '@effectionx/worker@0.5.2':
     hash: 56077b401d0b0e7d8266c943afd84ad8f046b7f20c7d234a148a830de5036d81
     path: patches/@effectionx__worker@0.5.2.patch
+  '@scriptc/compiler@0.3.6':
+    hash: 35a70dd8a4430b457067315945eff7e040efad57ea7c7aa3e2431d3e9b2165a8
+    path: patches/@scriptc__compiler@0.3.6.patch
 
 importers:
 
@@ -709,6 +712,97 @@ importers:
         specifier: 4.147.0
         version: 4.147.0(@cloudflare/workers-types@5.20261005.1)(@types/node@22.19.5)
 
+  apps/yo-chat-v2:
+    dependencies:
+      '@earendil-works/pi-ai':
+        specifier: 1.0.1
+        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.13))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.21.0)(zod@4.1.13)
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../../packages/v2/standard-durability
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
+      '@sweatpan.ts/chat':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat
+      '@sweatpan.ts/chat-client':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat-client
+      '@sweatpan.ts/chat-host':
+        specifier: workspace:*
+        version: link:../../packages/v2/chat-host
+      '@sweatpan.ts/codemode':
+        specifier: workspace:*
+        version: link:../../packages/v2/codemode
+      '@sweatpan.ts/codemode-runtime-lua':
+        specifier: workspace:*
+        version: link:../../packages/v2/codemode-runtime-lua
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../../packages/v2/core
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../../packages/v2/durable
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../../packages/v2/execution
+      '@sweatpan.ts/hosting':
+        specifier: workspace:*
+        version: link:../../packages/v2/hosting
+      '@sweatpan.ts/providers':
+        specifier: workspace:*
+        version: link:../../packages/v2/providers
+      '@sweatpan.ts/providers-pi-ai':
+        specifier: workspace:*
+        version: link:../../packages/v2/providers-pi-ai
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../../packages/v2/runtime
+      '@sweatpan.ts/runtime-effection':
+        specifier: workspace:*
+        version: link:../../packages/v2/runtime-effection
+      '@sweatpan.ts/storage-sqlite':
+        specifier: workspace:*
+        version: link:../../packages/v2/storage-sqlite
+      '@sweatpan.ts/tools':
+        specifier: workspace:*
+        version: link:../../packages/v2/tools
+      '@sweatpan.tsx/chat':
+        specifier: workspace:*
+        version: link:../../packages/v2/react-chat
+      effection:
+        specifier: 4.2.0
+        version: 4.2.0
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.8)
+      esbuild:
+        specifier: 0.27.2
+        version: 0.27.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   apps/yo-mcp:
     dependencies:
       '@sweatpants/agent-host':
@@ -764,79 +858,6 @@ importers:
       playwright-chromium:
         specifier: ^1.40.0
         version: 1.57.0
-
-  apps/yo-chat-v2:
-    dependencies:
-      '@earendil-works/pi-ai':
-        specifier: 1.0.1
-        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.13))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.21.0)(zod@4.1.13)
-      '@standard-durability/core':
-        specifier: workspace:*
-        version: link:../../packages/v2/standard-durability
-      '@sweatpan.ts/chat':
-        specifier: workspace:*
-        version: link:../../packages/v2/chat
-      '@sweatpan.ts/chat-client':
-        specifier: workspace:*
-        version: link:../../packages/v2/chat-client
-      '@sweatpan.ts/chat-host':
-        specifier: workspace:*
-        version: link:../../packages/v2/chat-host
-      '@sweatpan.ts/core':
-        specifier: workspace:*
-        version: link:../../packages/v2/core
-      '@sweatpan.ts/durable':
-        specifier: workspace:*
-        version: link:../../packages/v2/durable
-      '@sweatpan.ts/providers':
-        specifier: workspace:*
-        version: link:../../packages/v2/providers
-      '@sweatpan.ts/providers-pi-ai':
-        specifier: workspace:*
-        version: link:../../packages/v2/providers-pi-ai
-      '@sweatpan.ts/runtime':
-        specifier: workspace:*
-        version: link:../../packages/v2/runtime
-      '@sweatpan.ts/runtime-effection':
-        specifier: workspace:*
-        version: link:../../packages/v2/runtime-effection
-      '@sweatpan.ts/storage-sqlite':
-        specifier: workspace:*
-        version: link:../../packages/v2/storage-sqlite
-      '@sweatpan.tsx/chat':
-        specifier: workspace:*
-        version: link:../../packages/v2/react-chat
-      effection:
-        specifier: 4.2.0
-        version: 4.2.0
-      react:
-        specifier: 'catalog:'
-        version: 19.2.3
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.3(react@19.2.3)
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.8
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.8)
-      esbuild:
-        specifier: 0.27.2
-        version: 0.27.2
-      tsx:
-        specifier: 'catalog:'
-        version: 4.21.0
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
 
   apps/yo-workflow:
     dependencies:
@@ -2828,9 +2849,24 @@ importers:
       '@sweatpan.ts/chat-host':
         specifier: workspace:*
         version: link:../chat-host
+      '@sweatpan.ts/codemode':
+        specifier: workspace:*
+        version: link:../codemode
+      '@sweatpan.ts/codemode-compiler':
+        specifier: workspace:*
+        version: link:../codemode-compiler
+      '@sweatpan.ts/codemode-compiler-frontend-typescript':
+        specifier: workspace:*
+        version: link:../codemode-compiler-frontend-typescript
+      '@sweatpan.ts/codemode-compiler-scheme':
+        specifier: workspace:*
+        version: link:../codemode-compiler-scheme
       '@sweatpan.ts/codemode-runtime-lua':
         specifier: workspace:*
         version: link:../codemode-runtime-lua
+      '@sweatpan.ts/codemode-runtime-scheme':
+        specifier: workspace:*
+        version: link:../codemode-runtime-scheme
       '@sweatpan.ts/connection':
         specifier: workspace:*
         version: link:../connection
@@ -3007,13 +3043,52 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/codemode-runtime':
+        specifier: workspace:*
+        version: link:../codemode-runtime
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/codemode-compiler:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/codemode-runtime':
+        specifier: workspace:*
+        version: link:../codemode-runtime
     devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/v2/codemode-compiler-frontend-typescript:
+    dependencies:
+      '@scriptc/compiler':
+        specifier: 0.3.6
+        version: 0.3.6(patch_hash=35a70dd8a4430b457067315945eff7e040efad57ea7c7aa3e2431d3e9b2165a8)
+      '@sweatpan.ts/codemode-compiler':
+        specifier: workspace:*
+        version: link:../codemode-compiler
+      '@sweatpan.ts/codemode-runtime':
+        specifier: workspace:*
+        version: link:../codemode-runtime
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3025,12 +3100,26 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode-compiler-scheme:
+    dependencies:
+      '@sweatpan.ts/codemode-compiler':
+        specifier: workspace:*
+        version: link:../codemode-compiler
     devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
 
   packages/v2/codemode-runtime:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -3041,6 +3130,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
+      '@sweatpan.ts/codemode-runtime':
+        specifier: workspace:*
+        version: link:../codemode-runtime
       '@sweatpan.ts/core':
         specifier: workspace:*
         version: link:../core
@@ -3056,7 +3148,20 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode-runtime-scheme:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/execution':
+        specifier: workspace:*
+        version: link:../execution
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -7184,6 +7289,12 @@ packages:
     resolution: {integrity: sha512-SPEpaL6DX4rmcXtnhdrQYgzQ5W2uW3SCJch88lB2zImhJRhIIK44fkUrgIV/Q8yUNfw5oyZ5vkeQsZLhCb06lw==}
     cpu: [x64]
     os: [win32]
+
+  '@scriptc/compiler@0.3.6':
+    resolution: {integrity: sha512-O+ecAWakuEA7+eGfEeHFhfhIznUFIAA333k48qwA783hHsLhWl9LJv7cXQCzcEByrPAPifGX4QaeUJyC6hxllg==}
+
+  '@scriptc/runtime@0.3.6':
+    resolution: {integrity: sha512-sGEH/rVppWKBYyKkydvkke+scKAVaYYqjqilQLXapocAkqYOq3mxyzRQzUm/GV+Lg9n9pQD0AkFsxW0V+ZAYUQ==}
 
   '@shikijs/core@3.21.0':
     resolution: {integrity: sha512-AXSQu/2n1UIQekY8euBJlvFYZIw0PHY63jUzGbrOma4wPxzznJXTXkri+QcHeBNaFxiiOljKxxJkVSoB3PjbyA==}
@@ -13033,6 +13144,26 @@ packages:
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
+ignoredOptionalDependencies:
+  - '@scriptc/llvm-darwin-arm64'
+  - '@scriptc/llvm-darwin-x64'
+  - '@scriptc/llvm-linux-arm64-gnu'
+  - '@scriptc/llvm-linux-arm64-musl'
+  - '@scriptc/llvm-linux-x64-gnu'
+  - '@scriptc/llvm-linux-x64-musl'
+  - '@scriptc/llvm-win32-x64-msvc'
+  - '@scriptc/runtime-android-arm64'
+  - '@scriptc/runtime-darwin-arm64'
+  - '@scriptc/runtime-darwin-x64'
+  - '@scriptc/runtime-ios-arm64'
+  - '@scriptc/runtime-ios-simulator-arm64'
+  - '@scriptc/runtime-linux-arm64-gnu'
+  - '@scriptc/runtime-linux-arm64-musl'
+  - '@scriptc/runtime-linux-x64-gnu'
+  - '@scriptc/runtime-linux-x64-musl'
+  - '@scriptc/runtime-wasm32-wasi'
+  - '@scriptc/runtime-win32-x64-msvc'
+
 snapshots:
 
   '@acemir/cssom@0.9.31': {}
@@ -16214,6 +16345,14 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.55.1':
     optional: true
+
+  '@scriptc/compiler@0.3.6(patch_hash=35a70dd8a4430b457067315945eff7e040efad57ea7c7aa3e2431d3e9b2165a8)':
+    dependencies:
+      '@scriptc/runtime': 0.3.6
+      typescript: 7.0.2
+      typescript5: typescript@5.9.3
+
+  '@scriptc/runtime@0.3.6': {}
 
   '@shikijs/core@3.21.0':
     dependencies:

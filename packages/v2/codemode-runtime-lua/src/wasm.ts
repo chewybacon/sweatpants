@@ -1,3 +1,5 @@
+export class LuaCommandError extends Error {}
+
 const MAX_BYTES = 4 * 1024 * 1024;
 type Exports = {
   memory: WebAssembly.Memory;
@@ -5,6 +7,8 @@ type Exports = {
   execute(ptr: number, size: number): number;
   output_len(): number;
 };
+
+export const luaLibraryWasmUrl = new URL("../generated/library-kernel.wasm", import.meta.url);
 
 export const luaWasmUrl = new URL("../generated/kernel.wasm", import.meta.url);
 
@@ -47,7 +51,7 @@ export function invoke(module: WebAssembly.Module, command: unknown): Record<str
     ),
   );
   if (typeof result.error === "string") {
-    throw new Error(result.error);
+    throw new LuaCommandError(result.error);
   }
   return record(result.ok);
 }

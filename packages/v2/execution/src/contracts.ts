@@ -161,12 +161,45 @@ export interface CheckpointAdapter<R, Q, Y, V, E, Snapshot> {
   restore(snapshot: Snapshot): Operation<RestoredGuest<R, Q, Y, V, E>, Y>;
 }
 
-/** Verified artifact selection with input already bound; resolution itself creates no Guest. */
-export interface ResolvedProgram<R, Q, Y, V = unknown, E = unknown, S = unknown> {
-  /** Actual immutable reference derived/asserted by the trusted artifact resolver. */
-  readonly program: string;
+/** Bound evaluator recipe. Preparation creates no live Guest and advances no authored code.
+ * Acquire creates independent Guests; checkpoint support is explicitly optional.
+ * Keep program/input immutable while using this recipe. Physical resources belong to
+ * acquisition's surrounding scope, not to the recipe or kernel. */
+export interface PreparedProgram<R, Q, Y, V = unknown, E = unknown, S = unknown> {
   readonly acquire: GuestWork<R, Q, Y, V, E>;
   readonly checkpoints?: CheckpointAdapter<R, Q, Y, V, E, S>;
+}
+
+/** Evaluator capability, separate from artifact resolution and execution authority.
+ * Program is the evaluator's representation (source, compiled artifact or callable).
+ * Prepared preserves the adapter's concrete optional capabilities and native yields.
+ * Preparation may load/verify artifacts but must not acquire a live Guest or advance
+ * authored code. Drivers establish evaluator compatibility, not journal provenance. */
+export interface Kernel<
+  Program,
+  Input,
+  Prepared extends PreparedProgram<unknown, unknown, unknown>,
+  Y,
+> {
+  /** Bind immutable program/input to lazy acquisition and optional restoration.
+   * Preparation failures propagate; no program is admitted and no effects dispatch. */
+  prepare(program: Program, input: Input): Operation<Prepared, Y>;
+}
+
+/** Scoped TypeScript body. Domain requests and logical instructions remain Guest-owned. */
+export type ScopedProgram<I, R, Q> = (input: I, scope: LogicalScope) => Operation<R, Q>;
+
+/** Verified artifact selection with input already bound; resolution itself creates no Guest. */
+export interface ResolvedProgram<
+  R,
+  Q,
+  Y,
+  V = unknown,
+  E = unknown,
+  S = unknown,
+> extends PreparedProgram<R, Q, Y, V, E, S> {
+  /** Actual immutable reference derived/asserted by the trusted artifact resolver. */
+  readonly program: string;
 }
 
 /** Bound invocation usable by ordinary recovery, with explicitly optional checkpoint support. */

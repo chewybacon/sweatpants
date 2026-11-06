@@ -1,19 +1,40 @@
-import { createContext, useContext, useState, useId, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useId,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { createChatContext } from "@sweatpan.tsx/chat";
-import { SubmissionRejected, type View, type Submission } from "./contracts.ts";
+import {
+  SubmissionRejected,
+  type View,
+  type Submission,
+  type Answer,
+  type AnswerReceipt,
+  type Question,
+} from "./contracts.ts";
 import type { BrowserChat } from "./transport.ts";
-const binding = createChatContext<View, never, never>();
+import { ElicitViews } from "./react-elicit.tsx";
+import { questionKey, type FlightFrontend } from "./flight-frontend.tsx";
+const FlightContext = createContext<FlightFrontend | undefined>(undefined);
+const binding = createChatContext<View, Answer, AnswerReceipt>();
 const SubmissionContext = createContext<BrowserChat["submit"] | undefined>(undefined);
 export function ChatProvider({
   client,
+  frontend,
   children,
 }: {
   readonly client: BrowserChat;
+  readonly frontend?: FlightFrontend;
   readonly children: ReactNode;
 }) {
   return (
     <binding.ChatProvider client={client}>
-      <SubmissionContext.Provider value={client.submit}>{children}</SubmissionContext.Provider>
+      <SubmissionContext.Provider value={frontend?.submit ?? client.submit}>
+        <FlightContext.Provider value={frontend}>{children}</FlightContext.Provider>
+      </SubmissionContext.Provider>
     </binding.ChatProvider>
   );
 }
@@ -45,23 +66,89 @@ function Messages() {
         {view?.messages.map((message) => (
           <article key={message.id} aria-label={message.role}>
             <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
-            {message.parts.map((part) => (
-              <p key={part.id}>{part.text}</p>
-            ))}
+            {message.parts.map((part) =>
+              part.type === "text" ? (
+                <p key={part.id} data-state={part.state}>
+                  {part.text}
+                </p>
+              ) : part.type === "code-run" ? (
+                <section key={part.id} aria-label="Lua program" className="code-run">
+                  <h2>Lua program · {part.run.result?.status ?? part.run.state}</h2>
+                  <pre>
+                    <code>{part.run.source}</code>
+                  </pre>
+                  {part.questions.map((question) => (
+                    <FlightQuestion key={questionKey(question)} question={question} />
+                  ))}
+                  {part.run.result && (
+                    <pre aria-label="Program result">
+                      {JSON.stringify(part.run.result, null, 2)}
+                    </pre>
+                  )}
+                </section>
+              ) : part.type === "question" ? (
+                <FlightQuestion key={part.id} question={part.question} />
+              ) : (
+                <section key={part.id} className="flight-summary">
+                  <h2>Demo selection saved</h2>
+                  <p>
+                    {part.selection.flight.airline} to {part.selection.destination} ·{" "}
+                    {part.selection.flight.departure} → {part.selection.flight.arrival} · Seat{" "}
+                    {part.selection.seat}
+                  </p>
+                  <small>No real reservation or payment was made.</small>
+                </section>
+              ),
+            )}
           </article>
         ))}
       </section>
       {status === "error" && <p role="alert">Could not load the conversation.</p>}
-      {view?.status === "running" && (
-        <p role="status">This turn has not completed. Refresh to check its state.</p>
+      {view?.status === "running" && !view.questions.length && (
+        <p role="status">
+          {view.active
+            ? "Last observed: generating. Text is provisional until accepted."
+            : "This turn is unresolved. Retained provisional text is not a completed response."}
+        </p>
       )}
     </>
+  );
+}
+function FlightQuestion({ question }: { readonly question: Question }) {
+  const frontend = useContext(FlightContext);
+  if (!frontend) {
+    return <p>A flight-enabled frontend is needed to answer this question.</p>;
+  }
+  return <ActiveFlightQuestion frontend={frontend} question={question} />;
+}
+function ActiveFlightQuestion({
+  frontend,
+  question,
+}: {
+  readonly frontend: FlightFrontend;
+  readonly question: Question;
+}) {
+  const issues = useSyncExternalStore(frontend.subscribe, frontend.getSnapshot);
+  const issue = issues.find((value) => value.id === questionKey(question));
+  return (
+    <section aria-label={question.kind === "pickFlight" ? "Flight choice" : "Seat choice"}>
+      <ElicitViews host={frontend.host} execution={question.execution} />
+      {issue && (
+        <p role="alert">
+          {issue.message}{" "}
+          {issue.retryable && (
+            <button onClick={() => frontend.retry(issue.id)}>Retry same answer</button>
+          )}
+        </p>
+      )}
+    </section>
   );
 }
 function Composer() {
   const promptId = useId();
   const { view, submit: send, refresh } = useChat();
   const [text, setText] = useState("");
+  const [codeMode, setCodeMode] = useState(false);
   const [pending, setPending] = useState<Submission>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<"rejected" | "uncertain">();
@@ -74,7 +161,12 @@ function Composer() {
     if (!canSubmit || !view) {
       return;
     }
-    const command = pending ?? { command: crypto.randomUUID(), prompt: text, after: view.latest };
+    const command = pending ?? {
+      command: crypto.randomUUID(),
+      prompt: text,
+      after: view.latest,
+      mode: codeMode ? ("code" as const) : ("tools" as const),
+    };
     setPending(command);
     setBusy(true);
     setError(undefined);
@@ -109,8 +201,17 @@ function Composer() {
         disabled={busy || Boolean(pending)}
         onChange={(event) => setText(event.currentTarget.value)}
       />
+      <label>
+        <input
+          type="checkbox"
+          checked={codeMode}
+          disabled={busy || Boolean(pending)}
+          onChange={(event) => setCodeMode(event.currentTarget.checked)}
+        />
+        Use code mode
+      </label>
       <button disabled={!canSubmit}>
-        {busy ? "Waiting for response…" : pending ? "Retry same message" : "Send"}
+        {busy ? "Submitting…" : pending ? "Retry same message" : "Send"}
       </button>
       {error && (
         <p role="alert">

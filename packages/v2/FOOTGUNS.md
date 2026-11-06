@@ -178,3 +178,20 @@ experiment into a universal contract.
 **Author responsibility:** Cite evidence and its limits. In-process reopen is not proof
 of process-crash durability; native runtime coverage is not evaluator parity; a typed
 contract projection is not proof of a browser-safe import graph.
+
+## FG-011 — Treating a VM library export as a checkpoint-safe addition
+
+A language runtime may implement a function without making its native callbacks or
+continuations portable. Loading the whole library can introduce unregistered native
+references, nonserializable frames, or native work that outlives an instruction slice.
+Changing the available globals also changes replay behavior for retained programs.
+
+**Boundary:** Expose a tested subset, register native references in stable order,
+bound native work, and select the VM artifact through a pinned program identity.
+The library-enabled Lua artifact has a distinct runtime identity and rejects old
+checkpoints. The original artifact remains available for retained executions.
+
+**Author responsibility:** Test function references across checkpoint restore and
+cleanup, and keep existing program resolvers attached to their original VM. Do not
+silently upgrade retained source or assume instruction fuel is a wall-clock limit.
+See [Lua library integration](./codemode-runtime-lua/README.md#opt-in-piccolo-libraries).

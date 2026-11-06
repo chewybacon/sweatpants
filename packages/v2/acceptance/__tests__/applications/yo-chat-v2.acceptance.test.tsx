@@ -1,3 +1,4 @@
+import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { StrictMode } from "react";
 import { act, fireEvent, render, within, waitFor } from "@testing-library/react";
 import { expect, it, onTestFinished } from "vitest";
@@ -64,7 +65,9 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
         };
       },
     };
-    let app = createApplication(runtime, database.database, { sampling });
+    let app = createApplication(runtime, database.database, {
+      sampling: completedSampling(runtime, sampling),
+    });
     onTestFinished(async () => {
       await app.close();
       database.close();
@@ -93,6 +96,7 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
     const current = within(ui.container);
     await act(async () => {
       await client.refresh();
+      client.connect();
     });
     // A second mounted consumer starts from the same predecessor and keeps a draft.
     const staleClient = createBrowserChat(send);
@@ -128,7 +132,9 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
     const retained = client.getSnapshot().view;
     await app.close();
     database.reopen();
-    app = createApplication(runtime, database.database, { sampling });
+    app = createApplication(runtime, database.database, {
+      sampling: completedSampling(runtime, sampling),
+    });
     await act(async () => {
       await client.refresh();
     });
@@ -179,7 +185,9 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
           throw new Error("Provider connection lost");
         },
       };
-      let app = createApplication(runtime, database.database, { sampling });
+      let app = createApplication(runtime, database.database, {
+        sampling: completedSampling(runtime, sampling),
+      });
       onTestFinished(async () => {
         release.resolve();
         await app.close();
@@ -194,7 +202,7 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
         });
       const pending = app.fetch(request());
       await started.promise;
-      expect((await app.fetch(request())).status).toBe(409);
+      expect((await app.fetch(request())).status).toBe(202);
       const view = await (await app.fetch(new Request("http://localhost/api/conversation"))).json();
       expect(view.status).toBe("running");
       if (interruption === "shutdown") {
@@ -206,12 +214,14 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
       } else {
         release.resolve();
       }
-      expect((await pending).status).toBe(409);
+      expect((await pending).status).toBe(202);
       await app.close();
       expect(cleaned).toBe(true);
       database.reopen();
-      app = createApplication(runtime, database.database, { sampling });
-      expect((await app.fetch(request())).status).toBe(409);
+      app = createApplication(runtime, database.database, {
+        sampling: completedSampling(runtime, sampling),
+      });
+      expect((await app.fetch(request())).status).toBe(202);
       expect(calls).toBe(1);
     });
   }

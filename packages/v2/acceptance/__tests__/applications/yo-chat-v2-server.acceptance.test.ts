@@ -1,3 +1,4 @@
+import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { request as httpRequest } from "node:http";
 import { expect, it, onTestFinished } from "vitest";
 import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
@@ -16,7 +17,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const release = createLatch<void>();
     let cleaned = false;
     const app = createApplication(runtime, database.database, {
-      sampling: {
+      sampling: completedSampling(runtime, {
         *sample() {
           yield* runtime.composition.ensure(function* () {
             cleaned = true;
@@ -25,7 +26,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           yield* runtime.fromPromise(() => release.promise);
           throw new Error("Interrupted model");
         },
-      },
+      }),
     });
     const server = createNodeServer(app);
     onTestFinished(async () => {
@@ -72,7 +73,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     expect(oversized.status).toBe(413);
     await oversized.text();
-    // A full request is advancing, while another socket is still uploading its body.
+    // Admission returns while the server-owned model remains blocked.
     const pending = fetch(origin + "/api/conversation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -82,6 +83,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       () => "disconnected",
     );
     await started.promise;
+    await pending;
+    const disconnected = new AbortController();
+    const live = await fetch(origin + "/api/conversation/changes", { signal: disconnected.signal });
+    const reader = live.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('"changed"');
+    disconnected.abort();
+    await reader.cancel().catch(() => undefined);
+    expect(cleaned).toBe(false);
+    // Another live reader must also close during server shutdown, even while idle.
+    const watching = await fetch(origin + "/api/conversation/changes");
+    const remainingReader = watching.body!.getReader();
+    await remainingReader.read();
+    const reading = remainingReader.read().then(
+      () => undefined,
+      () => undefined,
+    );
     const uploadStarted = createLatch<void>();
     server.once("request", () => uploadStarted.resolve());
     const upload = httpRequest(origin + "/api/conversation", {
@@ -96,6 +113,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     upload.write("{");
     await uploadStarted.promise;
     await closeNodeServer(server, app);
+    await reading;
+    await remainingReader.cancel().catch(() => undefined);
     await uploadClosed;
     await pending;
     expect(cleaned).toBe(true);

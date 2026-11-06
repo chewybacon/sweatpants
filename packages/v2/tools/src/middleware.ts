@@ -1,3 +1,5 @@
+import { assertUniqueElicitIds } from "./elicit-support.ts";
+import type { ElicitSelection } from "./contracts.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
@@ -100,4 +102,40 @@ export function* installToolRouting<
       return { id: child.link.childId, run: () => run(child) };
     },
   });
+}
+
+/** Apply a retained selection through existing elicit delivery middleware.
+ * Validate all routes and server implementations before installing anything. Client
+ * routes park even when an unselected server implementation is available. The caller
+ * owns authorization, admission-time persistence and program resolution. */
+export function* installSelectedElicitHandlers<L extends Record<string, EffectDefinition>, R, E, Y>(
+  host: Hosting<R, CapabilityRequest, unknown, E, Y>,
+  effects: EffectCapabilities<Y>,
+  tool: { readonly id: string; readonly elicits: L },
+  selection: ElicitSelection,
+  handlers: ElicitHandlers<NoInfer<L>, Y> = {},
+): Operation<void, Y> {
+  assertUniqueElicitIds(tool.elicits);
+  if (
+    selection.tool !== tool.id ||
+    Object.keys(selection.routes).some((key) => !Object.hasOwn(tool.elicits, key))
+  ) {
+    throw new Error("Incompatible retained elicit selection");
+  }
+  const selected: Record<string, unknown> = Object.create(null);
+  for (const key of Object.keys(tool.elicits)) {
+    const route = Object.hasOwn(selection.routes, key) ? selection.routes[key] : undefined;
+    if (route !== "client" && route !== "server") {
+      throw new Error(`Missing elicit route: ${key}`);
+    }
+    if (route === "server") {
+      const handler = Object.hasOwn(handlers, key) ? handlers[key] : undefined;
+      if (typeof handler !== "function") {
+        throw new Error(`Missing selected server handler: ${key}`);
+      }
+      selected[key] = handler;
+    }
+  }
+  // Each selected entry is the original typed handler under its unchanged alias.
+  yield* installElicitHandlers(host, effects, tool, selected as ElicitHandlers<L, Y>);
 }

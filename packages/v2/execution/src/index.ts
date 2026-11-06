@@ -14,3 +14,6 @@ export type {
 export { createProgramExecution } from "./program.ts";
 export type { ProgramResolver } from "./contracts.ts";
 export { createProgramResolver } from "./apis.ts";
+export type { PreparedProgram, Kernel, ScopedProgram } from "./contracts.ts";
+export { createKernel } from "./apis.ts";
+export { createScopedKernel } from "./scoped-kernel.ts";

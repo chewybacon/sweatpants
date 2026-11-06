@@ -17,3 +17,22 @@ export type { ToolExecution, ToolExecutionResolution } from "./contracts.ts";
 
 export { createToolInteractionStream } from "./interaction-stream.ts";
 export type { ToolInteraction, ToolInteractionContract } from "./contracts.ts";
+
+export { defineElicitPlugin, defineElicitPlugins } from "./elicit-plugin.ts";
+export { selectToolSupport } from "./elicit-support.ts";
+export { createElicitResponder } from "./apis.ts";
+export { installSelectedElicitHandlers } from "./middleware.ts";
+export type {
+  ElicitSupport,
+  ElicitSelection,
+  ToolSupportCandidate,
+  ToolSupportSelection,
+  ElicitRequest,
+  ElicitMetadata,
+  ElicitHandlerInput,
+  ElicitHandlerContext,
+  ClientElicitHandlers,
+  ElicitPlugin,
+  ElicitPluginBuilder,
+  ElicitResponder,
+} from "./contracts.ts";
