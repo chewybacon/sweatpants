@@ -195,3 +195,24 @@ checkpoints. The original artifact remains available for retained executions.
 cleanup, and keep existing program resolvers attached to their original VM. Do not
 silently upgrade retained source or assume instruction fuel is a wall-clock limit.
 See [Lua library integration](./codemode-runtime-lua/README.md#opt-in-piccolo-libraries).
+
+## FG-012 — Treating inspection state as a recovery checkpoint
+
+A parked evaluator can be inspected even when its host intentionally uses replay
+rather than a continuation checkpoint. Root cancellation currently clears/omits
+acceleration checkpoints so recovery applies cancellation at its accepted boundary.
+Requiring a journal checkpoint for all inspection hides those cleanup suspensions;
+feeding a diagnostic capture back into recovery bypasses the intended policy.
+
+**Boundary:** Inspection is a detached, read-only observation, not restore or answer
+authority. Existing recovery middleware can capture diagnostics without replacing
+Guest identity. Application publication must identify the program and journal state
+that the observation describes; absent/stale observations are unavailable. Bind the
+full program identity (including effect/source metadata) when capturing, not when
+reading. Serialize publication with commands or bind it to the exact frontier and
+cancellation state; matching requests alone do not establish a matching revision.
+
+**Author responsibility:** Keep diagnostic retention and disclosure explicit. Do not
+implicitly acquire/advance a Guest on reads, expose private state to authored code,
+or substitute diagnostic state for journal-selected recovery. See the experimental
+[linked workflow journey](../../experiments/workflow-kernel/scriptc-scheme/README.md#registered-caller-and-compiled-callee-slice).

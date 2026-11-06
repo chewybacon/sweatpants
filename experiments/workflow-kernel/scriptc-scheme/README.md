@@ -88,9 +88,9 @@ porting the compiler or adding ScriptC to the product dependency graph.
 
 ```ts
 export function* review(title: string, ctx: Context): Operation<string> {
-  'use workflow';
+  "use workflow";
   // imported message(), shared mutable capture, and yielding finally
-  const decision = yield* ctx.elicit('approval', { message: message('approve:', title) });
+  const decision = yield* ctx.elicit("approval", { message: message("approve:", title) });
 }
 ```
 
@@ -159,7 +159,6 @@ capability identity, request/reply schema and authored source location, before
 ordinary language lowering. We should reuse the current tool declaration and
 elicitation contracts for that boundary rather than invent a second tool registry. A stable upstream frontend
 hook could eventually replace source normalization; none was established here.
-
 
 ## Declaration-driven admission
 
@@ -296,7 +295,6 @@ makes no model/network calls or production writes. Compiler scratch files and ts
 are released before guest execution starts. This remains synchronous, bounded
 experimental compilation; broader modules, syntax and sampling are not implied.
 
-
 ## Review hardening boundary
 
 Admission now uses an explicit syntax allowlist and rejects unbound identifier
@@ -328,3 +326,99 @@ subsequent compilation. Cleanup debug metadata now says `effect`.
 The frontend remains experimental and is not exported as an executable public
 package API. No additional target, serialized schema registry, cross-edit site-ID
 promise or shared IR verifier was added.
+
+## Registered caller and compiled callee slice
+
+`linked.mjs` is a bounded experimental assembly, patterned after yo-workflow's
+Execution prototype. It links one trusted compiler module to one public Scheme
+entry, `review_draft`. The caller receives that entry, not the private `review`
+definition or the capability instructions inside it. The module, caller, evaluator
+identity and effect/source mapping contribute to the application program identity.
+This is ordinary linking into one evaluator continuation, not textual macro expansion
+and not an owned child journal. The shared `WorkflowModule` contract is unchanged.
+
+```scheme
+(define (workflow input)
+  (let ((answer (review_draft input)))
+    (if (equal? answer "approved:yes")
+      (string-append "caller:" answer)
+      "caller:declined")))
+(workflow %input)
+```
+
+The compiled fixture still uses its bounded string reply protocol: it returns
+`approved:<reply>` after cleanup. The caller interprets `yes` versus `no`; this is
+not a complete sendEmail implementation or a promotion of that reply convention.
+
+The linker parses and re-emits caller forms inside a host-owned registered-program
+envelope and rejects internal evaluator forms. The existing v2 Scheme VM isolates
+private definitions, protects registered names, and preserves nested call frames.
+Compiler IR is trusted, verified frontend output; the limited definition-shape check
+is not a general IR verifier. No raw host bindings, arbitrary module graph, package
+linker API, provider, browser UI or evaluator-byte change is introduced here.
+
+`inspectLinkedCheckpoint` projects a captured Scheme state into a detached diagnostic
+view: caller/compiled calls, effect/source location, bounded environment displays,
+pending cleanup completion, cancellation flag and evaluator step count. Closure bodies
+are summarized. Captures carry the full program identity from capture/publication;
+inspection rejects metadata-only artifact changes as well as changed executables.
+Call attribution follows the evaluator registered-call scope, so colliding caller
+names and private helpers remain distinguishable. This single-registration profile
+does not support callbacks into caller code from compiled code. Inspection loads no VM and advances neither code nor journal state.
+It is privileged diagnostic data; it must not be automatically disclosed to an
+untrusted model or used as authority to answer, restore or invoke private code.
+
+**Checkpoint versus observation:** the existing durable activation intentionally
+clears/omits acceleration checkpoints under cancellation and uses replay to apply
+cancellation at its recorded boundary. The acceptance assembly therefore uses
+ordinary recovery middleware to capture diagnostics and retains a detached observation
+only after the matching wait is successfully published, anchored to its journal
+revision. The assembly is explicitly single-writer: commands reject overlap, and
+inspection rejects reads while a command is active. External journal writers are
+unsupported; request equality alone cannot bind diagnostics to concurrent changes
+in cancellation state. Inspection uses that observation when no journal checkpoint exists. The
+observation is never supplied to recovery. These diagnostics are local application
+state; reopen coverage does not prove independent diagnostic persistence or atomic
+publication across processes. If an observation is absent/stale, inspection must say
+unavailable rather than start a Guest to reconstruct it implicitly.
+
+`linked-workflow.acceptance.test.ts` exercises both host runtimes:
+
+- Approval, decline, body cancellation and cleanup cancellation across SQLite reopen.
+- Colliding caller/private helper names retain correct ownership after restore.
+- Metadata-only remapping rejects old captures; busy commands/reads and absent/stale
+  cancellation diagnostics reject without acquiring a Guest.
+- Named caller and compiled callee visible at approval and cleanup source sites.
+- Repeated reads and detached inspection mutation do not change evaluator/journal state.
+- Fresh-machine restore and recapture preserve the exact continuation at both waits;
+  normal hosting uses checkpoints, while cancelled hosting deliberately replays.
+- Invalid responses and a source-site ID submitted as answer authority reject.
+- Direct private entry/effect access, registered-name redefinition/shadowing, internal
+  forms and missing grants reject; changed caller artifacts cannot restore old state.
+- Completed/cancelled journal reads acquire no additional Guest.
+
+The normal suite projects hash-bound recorded ScriptC IR. `run-live.mjs` additionally
+compiles current authored TypeScript and runs the linked caller/inspection/restore
+path on both runtimes, without recording a fixture. The original twelve direct
+compile/restore journeys remain. Negative VM entry tests intentionally print Hoot
+error diagnostics while asserting that no effect request escaped.
+
+The next design questions are multi-module identity/source mapping, independent
+persistence of diagnostic observations, and the standard sampling/decision authoring
+contracts. Lua/Python parity and a general inspection API remain separate work. This
+slice supplies no reason to add a new Guest, journal, scheduler or kernel primitive.
+
+### Review follow-up: bounded caller and local recovery
+
+The linker reserves the evaluator's `root` scope name. Caller numeric literals are
+restricted to safe integers (excluding negative zero); exact fractions, decimal
+and exponent spellings reject before parsing. Supported strings, including control
+escapes, are exercised through the actual evaluator. This restricts model caller
+authoring, not the trusted compiled module or checkpoint datum reader. The evaluator
+remains responsible for full expression and protected-binding validation.
+
+The [Cloudflare local demo](./cloudflare/README.md) now projects controls from the
+journal's atomic pending request/interaction read and displays that request beside
+its answer buttons. A separate explicit advancement command recovers retained
+programs after interrupted execution without regenerating model code or replacing
+uncertain effect attempts. Its assembly stays local to the experiment.

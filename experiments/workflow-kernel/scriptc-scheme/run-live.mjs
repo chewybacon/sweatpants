@@ -12,6 +12,7 @@ import { schemeWorkflowTarget } from "../../../packages/v2/codemode-compiler-sch
 import { frontend, compileWorkflow } from "./live.mjs";
 import { input } from "./input.mjs";
 import { bindEffectBoundary } from "./boundary.mts";
+import { linkReview, inspectLinkedCheckpoint } from "./linked.mjs";
 
 const edited = {
   ...input,
@@ -85,6 +86,63 @@ for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
     }
   }
 }
+// Live authored source also crosses the registered compiled-call boundary. This
+// remains manual integration because ScriptC owns a subprocess.
+for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
+  await runtime.start(function* () {
+    const module = yield* frontend.lower(input);
+    const artifact = linkReview({
+      module,
+      caller:
+        '(define (workflow input) (string-append "caller:" (review_draft input))) (workflow %input)',
+      identity: schemeRuntimeIdentity,
+    });
+    const kernel = createSchemeKernel(runtime, {
+      identity: schemeRuntimeIdentity,
+      loadMachine: loadSchemeMachine,
+      decodeRequest: bindEffectBoundary(module, [
+        "scriptc.review.approval",
+        "scriptc.review.cleanup",
+      ]),
+      decodeResult: (value) => value,
+    });
+    const recipe = yield* kernel.prepare(artifact.source, "draft");
+    const guest = yield* recipe.acquire();
+    yield* runtime.composition.ensure(() => guest.close());
+    assert.equal((yield* guest.start()).kind, "suspended");
+    const captured = yield* recipe.checkpoints.capture(guest);
+    const view = inspectLinkedCheckpoint(artifact, { program: artifact.program, state: captured });
+    assert.equal(view.key, "approval");
+    assert.ok(view.calls.some((call) => call.name === "review_draft" && call.kind === "compiled"));
+    yield* guest.close();
+    const fresh = yield* kernel.prepare(artifact.source, "draft");
+    const restored = yield* fresh.checkpoints.restore(captured);
+    yield* runtime.composition.ensure(() => restored.guest.close());
+    assert.deepEqual(
+      inspectLinkedCheckpoint(artifact, {
+        program: artifact.program,
+        state: yield* fresh.checkpoints.capture(restored.guest),
+      }),
+      view,
+    );
+    assert.equal((yield* restored.guest.resume({ ok: true, value: "yes" })).kind, "suspended");
+    const cleanup = yield* fresh.checkpoints.capture(restored.guest);
+    assert.equal(
+      inspectLinkedCheckpoint(artifact, { program: artifact.program, state: cleanup }).key,
+      "cleanup",
+    );
+    yield* restored.guest.close();
+    const final = yield* fresh.checkpoints.restore(cleanup);
+    yield* runtime.composition.ensure(() => final.guest.close());
+    assert.deepEqual(yield* final.guest.resume({ ok: true, value: "released" }), {
+      kind: "completed",
+      value: "caller:approved:yes",
+    });
+  }).result;
+  console.log(
+    `${runtime.name}: live linked caller/compiled callee inspection and restore — passed`,
+  );
+}
 assert.throws(
   () =>
     compileWorkflow({
@@ -133,4 +191,6 @@ assert.throws(
 );
 // A failed frontend invocation must not prevent the next compilation.
 assert.equal(compileWorkflow(input).module.format, "workflow-scheme/1");
-console.log(`${completed} live compile/restore journeys and rejection recovery passed.`);
+console.log(
+  `${completed} direct and 2 linked live compile/restore journeys and rejection recovery passed.`,
+);

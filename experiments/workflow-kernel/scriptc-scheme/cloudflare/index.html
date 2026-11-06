@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Linked workflow · Cloudflare local</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #101722;
+      color: #e9eef5;
+    }
+    body {
+      max-width: 1240px;
+      margin: 36px auto;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 8px 0;
+    }
+    h2 {
+      font-size: 17px;
+      margin: 0 0 14px;
+    }
+    .eyebrow {
+      color: #6ee7c1;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .muted {
+      color: #a9b7ca;
+      font-size: 14px;
+    }
+    header {
+      margin-bottom: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .card {
+      background: #192333;
+      border: 1px solid #314157;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font:
+        13px/1.6 ui-monospace,
+        monospace;
+      margin: 0;
+    }
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      background: #101722;
+      color: #e9eef5;
+      border: 1px solid #52647c;
+      border-radius: 6px;
+      padding: 12px;
+      font: 15px/1.5 system-ui;
+      min-height: 74px;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 11px 16px;
+      margin: 12px 8px 0 0;
+      background: #6ee7c1;
+      color: #10251d;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #34465e;
+      color: white;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: wait;
+    }
+    .badge {
+      display: inline-block;
+      background: #263b53;
+      border-radius: 5px;
+      padding: 6px 10px;
+      font-size: 13px;
+      margin: 6px 6px 6px 0;
+    }
+    .status {
+      color: #6ee7c1;
+      font-size: 20px;
+      font-weight: 650;
+      margin: 12px 0;
+    }
+    .error {
+      color: #ffb4b4;
+    }
+    #frames > div {
+      padding: 9px 12px;
+      border-left: 3px solid #6ee7c1;
+      background: #213148;
+      margin: 7px 0;
+    }
+    details {
+      margin-top: 12px;
+    }
+    summary {
+      cursor: pointer;
+      color: #acbfd9;
+    }
+    .wide {
+      grid-column: 1/-1;
+    }
+    #source {
+      max-height: 250px;
+      overflow: auto;
+    }
+    @media (max-width: 800px) {
+      .grid {
+        display: block;
+      }
+    }
+  </style>
+  <header>
+    <div class="eyebrow">Sweatpants v2 · execution experiment</div>
+    <h1>A model calls a compiled workflow</h1>
+    <div class="muted" id="environment">Connecting to Cloudflare local…</div>
+  </header>
+  <div class="card">
+    <label for="prompt">Ask the live model to draft something for review</label>
+    <textarea id="prompt">
+Draft a short invitation to a Friday rock-paper-scissors tournament. Route it through the registered review workflow.</textarea
+    >
+    <button id="start">Generate caller & run</button
+    ><button id="refresh" class="secondary">Read persisted state</button
+    ><button id="new" class="secondary">New run</button>
+    <div id="activity" role="status"></div>
+    <div id="error" class="error" role="alert"></div>
+  </div>
+  <div class="grid">
+    <section class="card">
+      <h2>1 · Live model authored caller</h2>
+      <div id="provider" class="muted">Waiting for a live provider response</div>
+      <pre id="caller"></pre>
+      <h2 style="margin-top: 18px">Original model input</h2>
+      <pre id="input"></pre>
+    </section>
+    <section class="card">
+      <h2>2 · Compiled developer workflow</h2>
+      <div class="muted" id="compiler"></div>
+      <pre id="source"></pre>
+    </section>
+    <section class="card">
+      <h2>3 · Suspended execution</h2>
+      <div id="status" class="status"></div>
+      <div id="frames"></div>
+      <pre id="site"></pre>
+      <div id="actions"></div>
+      <details>
+        <summary>Captured variables & cleanup</summary>
+        <pre id="bindings"></pre>
+      </details>
+    </section>
+    <section class="card">
+      <h2>4 · Durable evidence</h2>
+      <div id="counters"></div>
+      <pre id="receipt"></pre>
+      <div class="muted" style="margin-top: 16px">
+        Each answer uses a fresh Wasm machine restored from the journal checkpoint. Reading or
+        reloading does not call the model or advance execution.
+      </div>
+      <details>
+        <summary>Program identity</summary>
+        <pre id="identity"></pre>
+      </details>
+    </section>
+  </div>
+  <p class="muted">
+    Local reference assembly. The review and cleanup are demonstration effects; no email is sent.
+    Model credentials remain in the Worker. Cancellation is covered by the separate acceptance
+    journey.
+  </p>
+  <script type="module">
+    let id = new URL(location.href).searchParams.get("run");
+    if (!id) {
+      id = crypto.randomUUID();
+      history.replaceState(null, "", "?run=" + id);
+    }
+    let state;
+    const el = (id) => document.getElementById(id);
+    function busy(value, message = "") {
+      for (const button of document.querySelectorAll("button")) {
+        button.disabled = value;
+      }
+      el("activity").textContent = message;
+    }
+    function render(data) {
+      state = data;
+      el("environment").textContent = data.environment;
+      el("compiler").textContent = data.build.compiler + " · compiled " + data.build.compiledAt;
+      el("source").textContent = data.build.authored;
+      // Show the exact model-authored caller separately from the linked executable.
+      el("caller").textContent = data.caller ?? "";
+      el("input").textContent = data.input ?? "";
+      el("provider").textContent = data.responseId
+        ? data.model + " · response " + data.responseId
+        : "Waiting for a live provider response";
+      el("status").textContent = data.inspection
+        ? "Waiting for " + data.inspection.key
+        : data.status;
+      el("frames").replaceChildren();
+      for (const frame of data.inspection?.calls ?? []) {
+        const row = document.createElement("div");
+        row.textContent = frame.kind + " → " + frame.name;
+        el("frames").append(row);
+      }
+      el("site").textContent = data.inspection
+        ? data.inspection.effect +
+          "\n" +
+          data.inspection.source.id +
+          ":" +
+          data.inspection.source.line
+        : "";
+      el("bindings").textContent = JSON.stringify(
+        { environments: data.inspection?.environments, cleanup: data.inspection?.cleanup },
+        null,
+        2,
+      );
+      el("counters").replaceChildren();
+      for (const text of [
+        "Journal revision: " + (data.revision ?? "—"),
+        "VM starts: " + (data.starts ?? 0),
+        "Checkpoint restores: " + (data.restores ?? 0),
+      ]) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = text;
+        el("counters").append(badge);
+      }
+      el("receipt").textContent = JSON.stringify(data.result ?? { state: "ready" }, null, 2);
+      el("identity").textContent = data.artifact?.program ?? "";
+      el("actions").replaceChildren();
+      if (data.result?.state === "waiting" && data.question) {
+        const label = document.createElement("h2");
+        label.textContent = "Current request requiring your answer";
+        const message = document.createElement("pre");
+        message.id = "pending-message";
+        message.textContent = data.question.message;
+        el("actions").append(label, message);
+        for (const { label, value } of data.question.choices) {
+          const button = document.createElement("button");
+          button.textContent = label;
+          button.onclick = () => command("answer", { grant: data.result.grant, value });
+          el("actions").append(button);
+        }
+      } else if (data.canAdvance) {
+        const button = document.createElement("button");
+        button.textContent = "Advance retained run";
+        button.onclick = () => command("advance", {});
+        const note = document.createElement("p");
+        note.textContent =
+          "Continue the saved program from journal state. This does not call the model or authorize retrying uncertain effects.";
+        el("actions").append(note, button);
+      }
+      el("start").disabled = !!data.artifact;
+    }
+    async function read() {
+      busy(true, "Reading persisted state…");
+      el("error").textContent = "";
+      try {
+        const response = await fetch("/api/runs/" + id);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error);
+        }
+        state = data;
+      } catch (error) {
+        el("error").textContent = error.message;
+      } finally {
+        busy(false);
+        if (state) {
+          render(state);
+        }
+      }
+    }
+    async function command(kind, body) {
+      busy(
+        true,
+        kind === "start"
+          ? "Live provider is authoring the caller; then workerd will execute it…"
+          : "Restoring the checkpoint in a fresh Wasm machine…",
+      );
+      el("error").textContent = "";
+      try {
+        const response = await fetch("/api/runs/" + id + "/" + kind, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error);
+        }
+        state = data;
+      } catch (error) {
+        el("error").textContent = error.message;
+        try {
+          const response = await fetch("/api/runs/" + id);
+          if (response.ok) {
+            state = await response.json();
+          } else {
+            state = undefined;
+            el("actions").replaceChildren();
+          }
+        } catch {
+          state = undefined;
+          el("actions").replaceChildren();
+        }
+      } finally {
+        busy(false);
+        if (state) {
+          render(state);
+        }
+      }
+    }
+    el("start").onclick = () => command("start", { prompt: el("prompt").value });
+    el("refresh").onclick = read;
+    el("new").onclick = () => {
+      location.href = "/?run=" + crypto.randomUUID();
+    };
+    await read();
+  </script>
+</html>
