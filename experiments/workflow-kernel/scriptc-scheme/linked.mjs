@@ -51,41 +51,8 @@ function print(value) {
   return JSON.stringify(value);
 }
 
-/** One trusted compiler module, one public entry. Not a general linker or verifier.
- * The caller is untrusted; compiled IR and grants are trusted assembly inputs. */
-export function linkReview({ module, caller, name = "review_draft", identity }) {
-  if (
-    module.format !== "workflow-scheme/1" ||
-    module.entry.parameters !== "input" ||
-    !identifier.test(name) ||
-    reserved.has(name) ||
-    !identifier.test(module.entry.name)
-  ) {
-    throw new Error("Unsupported linked workflow profile");
-  }
-  const definitions = parse(module.sexpressions);
-  const privateNames = new Set();
-  for (const definition of definitions) {
-    if (
-      !Array.isArray(definition) ||
-      symbolName(definition[0]) !== "define" ||
-      !Array.isArray(definition[1]) ||
-      !identifier.test(symbolName(definition[1][0]) ?? "")
-    ) {
-      throw new Error("Compiled module must contain function definitions");
-    }
-    const key = symbolName(definition[1][0]);
-    if (key === module.entry.name && definition[1].length !== 2) {
-      throw new Error("Compiled entry must accept exactly one input");
-    }
-    if (privateNames.has(key)) {
-      throw new Error("Duplicate compiled definition");
-    }
-    privateNames.add(key);
-  }
-  if (!privateNames.has(module.entry.name) || privateNames.has(name)) {
-    throw new Error("Missing or colliding compiled entry");
-  }
+/** Bounded authored syntax shared by the linked and sampling experiments. */
+export function admitLinkedCaller(caller) {
   if (caller.length > 12000) {
     throw new Error("Caller exceeds experimental source limit");
   }
@@ -131,7 +98,46 @@ export function linkReview({ module, caller, name = "review_draft", identity }) 
   if (!forms.length) {
     throw new Error("Empty caller");
   }
-  const source = `(registered-program\n(${module.sexpressions})\n(${`(${name} compiled ${module.entry.name} ())`})\n(${forms.map(print).join("\n")}))`;
+  return forms.map(print).join("\n");
+}
+
+/** One trusted compiler module, one public entry. Not a general linker or verifier.
+ * The caller is untrusted; compiled IR and grants are trusted assembly inputs. */
+export function linkReview({ module, caller, name = "review_draft", identity }) {
+  if (
+    module.format !== "workflow-scheme/1" ||
+    module.entry.parameters !== "input" ||
+    !identifier.test(name) ||
+    reserved.has(name) ||
+    !identifier.test(module.entry.name)
+  ) {
+    throw new Error("Unsupported linked workflow profile");
+  }
+  const definitions = parse(module.sexpressions);
+  const privateNames = new Set();
+  for (const definition of definitions) {
+    if (
+      !Array.isArray(definition) ||
+      symbolName(definition[0]) !== "define" ||
+      !Array.isArray(definition[1]) ||
+      !identifier.test(symbolName(definition[1][0]) ?? "")
+    ) {
+      throw new Error("Compiled module must contain function definitions");
+    }
+    const key = symbolName(definition[1][0]);
+    if (key === module.entry.name && definition[1].length !== 2) {
+      throw new Error("Compiled entry must accept exactly one input");
+    }
+    if (privateNames.has(key)) {
+      throw new Error("Duplicate compiled definition");
+    }
+    privateNames.add(key);
+  }
+  if (!privateNames.has(module.entry.name) || privateNames.has(name)) {
+    throw new Error("Missing or colliding compiled entry");
+  }
+  const admittedCaller = admitLinkedCaller(caller);
+  const source = `(registered-program\n(${module.sexpressions})\n(${`(${name} compiled ${module.entry.name} ())`})\n(${admittedCaller}))`;
   // Pin executable, evaluator and effect/source mapping together. This is not a grant.
   const digest = createHash("sha256")
     .update(JSON.stringify({ source, identity, effects: module.effects }))

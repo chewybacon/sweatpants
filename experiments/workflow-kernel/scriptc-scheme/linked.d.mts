@@ -37,3 +37,5 @@ export function inspectLinkedCheckpoint(
   cancellationRequested: boolean;
   truncated: boolean;
 };
+
+export function admitLinkedCaller(caller: string): string;
