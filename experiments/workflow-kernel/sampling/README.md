@@ -105,7 +105,7 @@ provider outcomes remain unresolved; this slice offers no operator reconciliatio
 Provider response/accounting richness is intentionally not promoted into this first
 text-only contract; provisional events stay host-side.
 
-No ScriptC `ctx.sample` macro, Cloudflare UI integration, Lua/Python binding,
+No ScriptC `ctx.sample` macro, Cloudflare UI integration, Python binding,
 `sampleTools`, `decision`, automatic history, or new kernel instruction
 is added. This proves the shared effect contract and ownership first. The next decision
 is which request/result data should be shared publicly before expanding compiler
@@ -149,3 +149,59 @@ No live structured-provider or Cloudflare run is claimed for this slice.
 registration and grants remain existing effect assembly. General schema discovery,
 provider-native schema support, compiler macros and the public generic authoring API
 remain open. Schema validity establishes shape, not factual correctness or authority.
+
+## Lua binding
+
+The same sampling declarations and host assembly now run on the existing v2 Lua
+kernel. `lua.mts` adds small local `sample(request)`, `sampleSchema(request)` and
+`elicit(request)` functions over `workflow.effect`. `defineLuaEffectBindings` maps
+only the registered aliases; existing host grants validate requests and replies.
+These local functions are conveniences, not isolation boundaries: direct raw effect
+calls have exactly the same granted authority. There is no new VM instruction,
+standard library, compiler lowering or duplicate provider implementation.
+
+```lua
+local sampled = sampleSchema({ prompt = "Choose a move and explain it briefly." })
+if not sampled.ok then return "sample rejected" end
+if not sampled.value.valid then return sampled.value.reason end
+local plan = sampled.value.value
+local answer = elicit({ message = plan.reason })
+```
+
+The Lua program identity pins the complete assembled source, shared schema/binding
+profile, host-selected model and the supplied VM artifact identity. The fixtures and
+live runner compute that identity from the actual Wasm bytes. The existing kernel
+owns preparation, continuation capture and restoration. The original packaged Lua
+artifact is sufficient; the opt-in library artifact is not required.
+
+The shared acceptance journeys now also run on Lua with both runtimes: two-round
+sampling, actual checkpoint restore across SQLite reopen, structured output, invalid
+model results, unknown bindings, malformed requests, cancellation at a player wait,
+physical provider interruption, logical cancellation and uncertain delivery. This
+establishes in-process recovery, not process-crash or Cloudflare parity.
+
+The manual live runner accepts `--lua` using the same CLI proxy configuration:
+
+```sh
+mise exec node@24.22.0 -- node --env-file=apps/yo-chat-v2/.env.local --conditions=development --import tsx experiments/workflow-kernel/sampling/run-live.mjs --lua
+```
+
+Python, Lua compiler output for authored TypeScript, and linked private compiled
+workflow calls remain separate work. This slice is the shared capability assembly
+for directly authored Lua.
+
+Live Lua check (2026-11-06): Luna 6 returned `paper`, then `rock`; scripted player
+answers produced `tie;tie;`. Exactly two provider requests occurred, including after
+SQLite reopen. Accepted response IDs were
+`resp_0ae69d5d1d17ccaf016aee5a69e8a487d18399a3d5c4e0b9d3` and
+`resp_02a2847510603045016aee5a6b65ec87d194fb1d7643f98638`.
+This was text sampling through the Node CLI proxy runner, not live structured output
+or a browser/Cloudflare recording. The temporary SQLite database was removed.
+
+
+Lua and Scheme decoded requests now pass through the same experiment-local
+`validateSamplingRequest` helper before journal admission. This validation includes
+participant elicit inputs, which must not wait for an execution handler to run.
+Malformed requests leave journal status/revision unchanged and publish no pending
+question or unsafe attempt, including after reopen. Host grant validation remains
+in place as the independent delivery boundary.

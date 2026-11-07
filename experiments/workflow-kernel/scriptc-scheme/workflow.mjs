@@ -6,11 +6,11 @@ import { effects } from "./contract.mts";
 const admitWorkflow = (text, helper, definitions = effects) => admit(text, helper, definitions);
 import { admitInput, projectWorkflow } from "./assembly.mjs";
 const read = (name) => readFileSync(new URL(`./workflow/${name}`, import.meta.url), "utf8");
-import { input, authored, helper } from "./input.mjs";
-export { input, authored, helper };
-const irText = read("review.ir.json");
-const provenance = JSON.parse(read("provenance.json"));
-function lowerRecorded(input) {
+import { input, authored, helper, outcomeInput } from "./input.mjs";
+export { input, authored, helper, outcomeInput };
+function lowerRecorded(input, outcome = false) {
+  const irText = read(outcome ? "review-outcome.ir.json" : "review.ir.json");
+  const provenance = JSON.parse(read(outcome ? "outcome-provenance.json" : "provenance.json"));
   const { helperText, admitted } = admitInput(input);
   const sha = (value) => createHash("sha256").update(value).digest("hex");
   for (const [name, value] of Object.entries({
@@ -43,3 +43,9 @@ export const decodeRequest = bindEffectBoundary(lowerRecorded(input).module, [
 ]);
 export { bindEffectBoundary };
 export { authoringGuide } from "./macros.mts";
+
+export const outcomeFrontend = {
+  *lower(input) {
+    return lowerRecorded(input, true).module;
+  },
+};

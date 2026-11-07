@@ -82,6 +82,13 @@ resource cleanup. Do not require live providers, external services, deployment o
 subprocess test rigs. State the limits of simulated recovery evidence honestly.
 Production packages must not depend on acceptance or testing packages.
 
+Explicit exception: workflow compiler acceptance may launch the pinned ScriptC/tsgo
+subprocess through the public build API. Exercise fresh compilation and cached
+artifacts using test-owned temporary directories; the adapter must dispose compiler
+sessions and scratch files on success and failure. Do not install dependencies or
+require live providers inside tests. This exception does not permit general subprocess
+application rigs.
+
 Run `pnpm v2:land` for v2 changes; `pnpm land` currently aliases this focused
 gate. Run `pnpm v2:test` for acceptance journeys. An empty scaffold is not passing
 behavioral coverage. The legacy suite remains available separately; its existing

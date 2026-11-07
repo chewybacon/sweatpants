@@ -8,3 +8,8 @@ export const input = {
   modules: { "helper.ts": helper },
   effects,
 };
+
+export const outcomeInput = {
+  ...input,
+  source: { ...input.source, text: read("review-outcome.workflow.ts") },
+};

@@ -27,6 +27,7 @@ export function assertDeclarationProfile(key: string, declaration: Declaration) 
 export function describeAuthoring(selected: Readonly<Record<string, Declaration>>) {
   return Object.entries(macroBindings).map(([method, bindings]) => ({
     method,
+    result: method.endsWith("Value") ? "value-or-throw" : "outcome",
     syntax: `yield* ctx.${method}(key, request)`,
     bindings: bindings.map((key) => {
       const declaration = selected[key];
@@ -61,6 +62,7 @@ export function expandEffectMacro(
   const effect = selected[key].id;
   return {
     effect,
+    unwrap: method.endsWith("Value"),
     source: `yield ["effect", ${JSON.stringify(effect)}, ${inputExpression}]`,
   };
 }

@@ -90,7 +90,7 @@ porting the compiler or adding ScriptC to the product dependency graph.
 export function* review(title: string, ctx: Context): Operation<string> {
   "use workflow";
   // imported message(), shared mutable capture, and yielding finally
-  const decision = yield* ctx.elicit("approval", { message: message("approve:", title) });
+  const decision = yield* ctx.elicitValue("approval", { message: message("approve:", title) });
 }
 ```
 
@@ -104,7 +104,7 @@ outside this experiment.
 The successful route is:
 
 1. `admit.mjs` resolves the context **binding**, admits only directly delegated
-   `ctx.elicit` calls for this probe's approval/cleanup contract, and preserves
+   declared context calls for this probe's approval/cleanup contract, and preserves
    their original source locations. It rejects context escape/reassignment,
    unknown keys, raw yield, host calls, and unapproved imports.
 2. It normalizes each admitted call into an explicit exchange yield and gives
@@ -177,9 +177,11 @@ delivery and outcome policy remain with the existing host assembly; the hosted a
 journal authority through that pipeline. Schema changes still
 require the application to pin its program/contract resolver appropriately.
 
-The local authoring adapter continues to return a successful reply directly and
-uses kernel failure/cleanup for errors. That is an explicit experimental choice,
-not a claim that it implements v2 `ToolContext.elicit`'s `Outcome` return API.
+The local authoring convenience still returns a successful value directly and
+throws on domain rejection, but the projector now emits that unwrap explicitly.
+Effect replies themselves carry Outcomes, matching v2 ToolContext; exposing that
+raw Outcome is now the default `ctx.elicit`/`ctx.effect` return; the existing
+throwing convenience is explicitly named `elicitValue`/`effectValue`.
 The contract typecheck proves valid inference and rejects unknown aliases, bad
 inputs and wrong reply types. Acceptance also rejects a missing declaration and
 an exchange that uses the wrong effect ID for its admitted source site.
@@ -235,7 +237,8 @@ schemas. `macros.mts` derives structured authoring guidance with call syntax,
 effect identities and JSON schemas from the same declarations. Sampling is not
 advertised because no sampling expansion is implemented in this experiment.
 
-The source invokes `ctx.elicit("approval", ...)` and `ctx.effect("cleanup", ...)`.
+The value-convenience fixture invokes `ctx.elicitValue("approval", ...)` and
+`ctx.effectValue("cleanup", ...)`.
 Admission resolves the lexical context binding and consults the trusted macro
 catalog. The expansion emits an explicit effect exchange before ScriptC's generic
 lowering; the shared S-expression IR contains no macro names or expansion code.
@@ -316,9 +319,9 @@ The hosted acceptance journey composes the compiled artifact, real Scheme kernel
 checkpoint recovery, SQLite journal and existing effect grant/response validator.
 A numeric response, missing effect grant and forged resolution grant all reject
 without consuming the approval. After reopening, a valid answer advances to
-cleanup; another reopen and answer complete with `approved:yes`. The compiler's
-explicit direct-success policy stores the validated Outcome directly, rather than
-using ToolContext's nested Outcome convention. This is in-process reopen evidence.
+cleanup; another reopen and answer complete with `approved:yes`. The host stores
+the validated domain Outcome in successful delivery, matching ToolContext; the
+compiled convenience unwraps it explicitly. This is in-process reopen evidence.
 Ordinary acceptance projects hash-bound recorded ScriptC IR; the manual live probe
 also covers the signature-erasure and host-reference regressions before a successful
 subsequent compilation. Cleanup debug metadata now says `effect`.
@@ -422,3 +425,158 @@ journal's atomic pending request/interaction read and displays that request besi
 its answer buttons. A separate explicit advancement command recovers retained
 programs after interrupted execution without regenerating model code or replacing
 uncertain effect attempts. Its assembly stays local to the experiment.
+
+## Shared IR to linked Lua experiment
+
+`lua-target.mts` consumes the existing serialized `WorkflowModule` (`workflow-scheme/1`)
+without reading ScriptC nodes, authored TypeScript or legacy typed IR. It emits a Lua
+module that returns the compiled entry function. `linkLuaReview` places that module in
+an immediately invoked closure and exposes only `review_draft` to a bounded Lua caller.
+
+```text
+TypeScript "use workflow"
+  → existing admission and ScriptC frontend
+  → shared Scheme S-expression module
+  → experimental Lua target
+  → private Lua module returning its entry function
+  → authored Lua caller invoking review_draft(input)
+  → existing v2 Lua kernel / effects / hosting / journal
+```
+
+```lua
+local answer = review_draft(input)
+if answer == "approved:yes" then
+  return "caller:" .. answer
+else
+  return "caller:declined"
+end
+```
+
+The compiled function runs inside Piccolo. Its internal effect sites suspend the same
+Guest as the caller; they are not host calls to a separate TypeScript workflow.
+`try-finally` becomes `workflow.scope`; a pending return travels through cleanup, while
+rejected effects and cancellation follow the existing Lua unwind protocol. Operands
+are materialized in order. Mutable lexical captures survive both body and cleanup
+checkpoint restoration. Host effect schemas and exact participant grants remain
+unchanged. The assembly decoder checks each site/request against the same module and
+an independently supplied effect allowlist.
+
+This is intentionally a **bounded experiment**, not a promoted general Lua compiler:
+
+- One workflow definition, string values, lexical lambdas, definitions/assignment,
+  calls, lists, generic effect exchanges, return/throw and protected finally.
+- Unsupported forms reject. Numeric/boolean semantics, loops, `ensure`, multiple
+  top-level definitions and return from cleanup are not implemented in this target.
+- The caller grammar admits local values, input, string literals, equality,
+  concatenation, if/else, returns and public-entry calls. It parses and re-emits those
+  forms; it does not interpolate unchecked Lua into the wrapper. Raw effects, private
+  calls, global lookup and entry reassignment reject. This is not general Lua admission.
+- Compiler output is trusted assembly input. No public compiler-frontend promotion,
+  new VM instructions or changes to v1 packages are involved.
+- Program identity binds emitted source and the VM identity. Effect/source metadata is
+  hashed into the executable envelope, so metadata-only changes also invalidate VM
+  restoration. The host must still select the matching retained artifact.
+- This slice does not implement Lua stack/local inspection equivalent to the Scheme
+  inspector, cross-language checkpoint conversion, Cloudflare integration or a recording.
+
+`linked-lua-workflow.acceptance.test.ts` exercises approval, decline, cancellation at
+body/cleanup, rejected approval followed by cleanup, actual restore across SQLite reopen,
+caller restrictions, schema rejection and changed-code/metadata restoration rejection
+on Effect and Effection. It uses the hash-checked recorded frontend fixture.
+
+The manual live compiler probe bypasses that fixture and compiles original and edited
+TypeScript with ScriptC, then serializes the shared module before Lua lowering:
+
+```sh
+mise exec node@24.22.0 -- node --conditions=development --import tsx experiments/workflow-kernel/scriptc-scheme/run-lua-live.mjs
+```
+
+On 2026-11-06, all 12 compile/restore journeys passed (two sources × two runtimes ×
+normal/body-cancel/cleanup-cancel). This is live compiler integration, not a model call.
+
+### Review hardening and reply contracts
+
+Lua caller admission rejects long-comment openers (`--[[`, `--[=[`, etc.) rather
+than stripping them as line comments. Ordinary line comments and comment delimiters
+inside string literals retain their meaning. String encoding rejects lone UTF-16
+surrogates; supported strings must be well-formed Unicode. Empty IR lists retain the
+Lua array marker. Duplicate parameters, empty lambdas and lambda-tail definitions or
+assignments reject instead of acquiring accidental Lua nil semantics. Workflow
+fallthrough produces an explicit diagnostic. The experiment exposes only the fixed
+`review_draft` entry and no longer offers a configurable name option.
+
+Authored callers follow Lua's concatenation and truthiness semantics. Compiled
+TypeScript follows the admitted string profile, whose checked addition rejects
+non-string operands. Supporting more source types requires explicit lowering rules;
+normalizing native Lua semantics to that profile is not a compiler correctness fix.
+
+The capability reply convention is shared: successful delivery contains a domain
+Outcome. Compiled value conveniences unwrap it inside the program; raw Outcome
+calls preserve it as data. A completed invalid structured sample remains domain
+data, while uncertain provider IO remains a thrown delivery failure and occupied
+attempt. There is no host-selected reply profile.
+
+### Shared linker and reply contracts
+
+`schemeWorkflowLinker` and `luaWorkflowLinker` implement the public
+`WorkflowLinker` contract from `@sweatpan.ts/codemode-compiler`. Their core
+acceptance journeys now use `link({ module, caller: { language, text }, name,
+identity })`; the manual Lua compiler probe does too. Target-specific lowering,
+caller admission and inspection remain here in the experiment.
+
+Capability replies now match typed tools and sampling: successful delivery contains
+an entire domain Outcome. The projector lowers the bounded value-or-throw authoring
+convenience into ordinary IR: a lambda reads `ok`, throws `error` on rejection and
+returns `value` on success. Scheme already implements these forms; Lua lowers the
+same field reads and conditional. Neither linker nor effect exchange implicitly
+unwraps replies. Raw effect acceptance journeys preserve both success and rejection
+as data across checkpoint restoration in both languages.
+
+There is no reply-mode helper or linker option. Hosts wrap validated participant
+outcomes in successful delivery; grant.handle already does this for installed effects.
+Delivery uncertainty remains under hosting's existing attempt/reconciliation rules.
+Changed compiled source changes program identities. Regenerate local demo artifacts;
+existing retained runs are not migrated. The authoring frontend now also admits the bounded Outcome branching profile
+described below.
+
+
+### Authored Outcome branching
+
+`workflow/review-outcome.workflow.ts` uses the same capability convention as typed
+tools and sampling:
+
+```ts
+const decision = yield* ctx.elicit('approval', { message: title });
+if (decision.ok) {
+  return message('approved:', decision.value);
+} else {
+  return message('rejected:', decision.error);
+}
+```
+
+`ctx.effect` also returns an Outcome; ignoring a domain rejection does not throw.
+`ctx.elicitValue`/`ctx.effectValue` explicitly select the existing unwrap convenience.
+These names are experimental authoring syntax, not new public tool methods.
+
+Admission permits `ok`, `value` and `error` reads only from immutable locals bound
+to directly yielded Outcome calls. ScriptC checks discriminated-union narrowing;
+the projector recognizes the bounded `{ok:true,value:string}|{ok:false,error:string}`
+shape and lowers it to ordinary shared field reads and conditional blocks. No new
+kernel instruction or host reply encoding. Computed properties, arbitrary objects,
+reassignment and mixing Outcome/value conveniences within one workflow reject.
+General schemas, error payloads, negated/equality conditions and arbitrary TypeScript
+remain outside this profile. The mixed-call restriction comes from the current
+single generator next-type normalization; it is not a runtime limitation.
+
+The hash-checked Outcome fixture is extracted through the same live compiler:
+
+```sh
+node --conditions=development --import tsx experiments/workflow-kernel/scriptc-scheme/extract-workflow.mjs --outcome
+```
+
+Both linked acceptance suites exercise approval/rejection branches, protected cleanup
+and detached restoration at both effects. They also prove an ignored cleanup rejection
+stays data. The manual Scheme/Lua runners compile both fixtures live and exercise
+success, domain rejection and body/cleanup cancellation. The Scheme runner additionally
+rejects access to the wrong discriminated arm. These are compiler/VM probes, not live
+model or deployment tests.

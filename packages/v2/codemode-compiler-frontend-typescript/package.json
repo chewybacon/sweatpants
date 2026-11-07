@@ -15,6 +15,14 @@
       },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./build": {
+      "development": {
+        "types": "./src/build.ts",
+        "import": "./src/build.ts"
+      },
+      "types": "./dist/build.d.ts",
+      "import": "./dist/build.js"
     }
   },
   "scripts": {
@@ -27,7 +35,9 @@
     "@scriptc/compiler": "0.3.6",
     "@sweatpan.ts/codemode-compiler": "workspace:*",
     "@sweatpan.ts/codemode-runtime": "workspace:*",
-    "@sweatpan.ts/core": "workspace:*"
+    "@sweatpan.ts/core": "workspace:*",
+    "typescript-api": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

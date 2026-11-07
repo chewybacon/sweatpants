@@ -10,7 +10,7 @@ import {
 } from "../../../packages/v2/codemode-runtime-scheme/src/node.ts";
 import { schemeWorkflowTarget } from "../../../packages/v2/codemode-compiler-scheme/src/index.ts";
 import { frontend, compileWorkflow } from "./live.mjs";
-import { input } from "./input.mjs";
+import { input, outcomeInput } from "./input.mjs";
 import { bindEffectBoundary } from "./boundary.mts";
 import { linkReview, inspectLinkedCheckpoint } from "./linked.mjs";
 
@@ -23,6 +23,8 @@ let completed = 0;
 for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
   for (const [name, candidate, result] of [
     ["original", input, "approved:yes"],
+    ["outcome", outcomeInput, "approved:yes"],
+    ["rejection", outcomeInput, "rejected:denied"],
     ["edited", edited, "published:yes"],
   ]) {
     for (const cancellation of ["none", "body", "cleanup"]) {
@@ -57,12 +59,23 @@ for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
         let cleanup =
           cancellation === "body"
             ? yield* restored.guest.cancel("stop")
-            : yield* restored.guest.resume({ ok: true, value: "yes" });
+            : yield* restored.guest.resume({
+                ok: true,
+                value:
+                  name === "rejection"
+                    ? { ok: false, error: "denied" }
+                    : { ok: true, value: "yes" },
+              });
         assert.equal(cleanup.kind, "suspended");
         assert.equal(cleanup.scope.phase, "cleanup");
         assert.deepEqual(cleanup.request, {
           effect: "scriptc.review.cleanup",
-          input: { message: cancellation === "body" ? "release:draft" : "release:yes" },
+          input: {
+            message:
+              cancellation === "body" || ["outcome", "rejection"].includes(name)
+                ? "release:draft"
+                : "release:yes",
+          },
         });
         if (cancellation !== "none") {
           cleanup = yield* restored.guest.cancel("stop");
@@ -75,7 +88,7 @@ for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
         yield* runtime.composition.ensure(() => final.guest.close());
         assert.deepEqual(final.turn, cleanup);
         assert.deepEqual(
-          yield* final.guest.resume({ ok: true, value: "released" }),
+          yield* final.guest.resume({ ok: true, value: { ok: true, value: "released" } }),
           cancellation === "none"
             ? { kind: "completed", value: result }
             : { kind: "cancelled", reason: "stop", failure: undefined },
@@ -125,7 +138,10 @@ for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
       }),
       view,
     );
-    assert.equal((yield* restored.guest.resume({ ok: true, value: "yes" })).kind, "suspended");
+    assert.equal(
+      (yield* restored.guest.resume({ ok: true, value: { ok: true, value: "yes" } })).kind,
+      "suspended",
+    );
     const cleanup = yield* fresh.checkpoints.capture(restored.guest);
     assert.equal(
       inspectLinkedCheckpoint(artifact, { program: artifact.program, state: cleanup }).key,
@@ -134,10 +150,13 @@ for (const runtime of [createEffectRuntime(), createEffectionRuntime()]) {
     yield* restored.guest.close();
     const final = yield* fresh.checkpoints.restore(cleanup);
     yield* runtime.composition.ensure(() => final.guest.close());
-    assert.deepEqual(yield* final.guest.resume({ ok: true, value: "released" }), {
-      kind: "completed",
-      value: "caller:approved:yes",
-    });
+    assert.deepEqual(
+      yield* final.guest.resume({ ok: true, value: { ok: true, value: "released" } }),
+      {
+        kind: "completed",
+        value: "caller:approved:yes",
+      },
+    );
   }).result;
   console.log(
     `${runtime.name}: live linked caller/compiled callee inspection and restore — passed`,
@@ -188,6 +207,18 @@ assert.throws(
       effects: { ...input.effects, approval: { ...input.effects.approval, response: undefined } },
     }),
   /unsupported declaration profile/,
+);
+// TypeScript must reject access to the wrong Outcome arm after narrowing.
+assert.throws(
+  () =>
+    compileWorkflow({
+      ...outcomeInput,
+      source: {
+        ...outcomeInput.source,
+        text: outcomeInput.source.text.replace("decision.value", "decision.error"),
+      },
+    }),
+  /ScriptC.*rejected input/,
 );
 // A failed frontend invocation must not prevent the next compilation.
 assert.equal(compileWorkflow(input).module.format, "workflow-scheme/1");

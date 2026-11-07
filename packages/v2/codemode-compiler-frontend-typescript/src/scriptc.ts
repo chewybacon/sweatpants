@@ -6,7 +6,9 @@ import { join, dirname } from "node:path";
 import { runFrontend } from "@scriptc/compiler/frontend/pipeline";
 import { loadProgram } from "@scriptc/compiler/frontend/program-node";
 
-type ScriptcModule = NonNullable<ReturnType<ReturnType<typeof runFrontend>["lower"]>["module"]>;
+export type ScriptcModule = NonNullable<
+  ReturnType<ReturnType<typeof runFrontend>["lower"]>["module"]
+>;
 
 export const scriptcCompiler = "@scriptc/compiler@0.3.6";
 

@@ -24,3 +24,6 @@ export function decodeRequest(boundary: { site: string; value: unknown }): {
 
 export { bindEffectBoundary } from "./boundary.mts";
 export { authoringGuide } from "./macros.mts";
+
+export const outcomeInput: TypeScriptWorkflowInput;
+export const outcomeFrontend: TypeScriptWorkflowFrontend<never>;

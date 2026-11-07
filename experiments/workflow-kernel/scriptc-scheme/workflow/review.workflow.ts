@@ -6,10 +6,10 @@ export function* review(title: string, ctx: WorkflowContext): Operation<string> 
   let reservation = title;
   const release = () => message('release:', reservation);
   try {
-    const decision = yield* ctx.elicit('approval', { message: message('approve:', title) });
+    const decision = yield* ctx.elicitValue('approval', { message: message('approve:', title) });
     reservation = decision;
     return message('approved:', decision);
   } finally {
-    yield* ctx.effect('cleanup', { message: release() });
+    yield* ctx.effectValue('cleanup', { message: release() });
   }
 }

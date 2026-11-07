@@ -18,11 +18,14 @@ import { createSqliteJournalRig } from "@sweatpan.ts/testing";
 import {
   frontend,
   input,
+  outcomeFrontend,
+  outcomeInput,
   bindEffectBoundary,
 } from "../../../../../experiments/workflow-kernel/scriptc-scheme/workflow.mjs";
 import { effects } from "../../../../../experiments/workflow-kernel/scriptc-scheme/contract.mts";
 import {
   linkReview,
+  schemeWorkflowLinker,
   inspectLinkedCheckpoint,
   type LinkedCapture,
 } from "../../../../../experiments/workflow-kernel/scriptc-scheme/linked.mjs";
@@ -38,10 +41,127 @@ const caller = `(define (workflow input)
 const allowed = Object.values(effects).map((effect) => effect.id);
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
+  for (const approved of [true, false]) {
+    it(`${runtime.name}: authored TypeScript Outcome branch ${approved} runs in scheme across restore and cleanup`, async () => {
+      const module = await runtime.start(() => outcomeFrontend.lower(outcomeInput)).result;
+      const artifact = schemeWorkflowLinker.link({
+        module,
+        caller: { language: "scheme", text: "(review_draft %input)" },
+        name: "review_draft",
+        identity: schemeRuntimeIdentity,
+      });
+      await runtime.start(function* () {
+        const recipe = yield* createSchemeKernel(runtime, {
+          identity: schemeRuntimeIdentity,
+          loadMachine: loadSchemeMachine,
+          decodeRequest: bindEffectBoundary(module, allowed),
+          decodeResult: (value) => value,
+        }).prepare(artifact.source, "draft");
+        const guest = yield* recipe.acquire();
+        yield* runtime.composition.ensure(() => guest.close());
+        expect(yield* guest.start()).toMatchObject({
+          kind: "suspended",
+          request: { effect: effects.approval.id, input: { message: "approve:draft" } },
+        });
+        const saved = yield* recipe.checkpoints.capture(guest);
+        yield* guest.close();
+        const restored = yield* recipe.checkpoints.restore(saved);
+        yield* runtime.composition.ensure(() => restored.guest.close());
+        const outcome = approved ? { ok: true, value: "yes" } : { ok: false, error: "denied" };
+        expect(yield* restored.guest.resume({ ok: true, value: outcome })).toMatchObject({
+          kind: "suspended",
+          scope: { phase: "cleanup" },
+          request: { effect: effects.cleanup.id, input: { message: "release:draft" } },
+        });
+        const cleanup = yield* recipe.checkpoints.capture(restored.guest);
+        yield* restored.guest.close();
+        const final = yield* recipe.checkpoints.restore(cleanup);
+        yield* runtime.composition.ensure(() => final.guest.close());
+        // This author explicitly ignores cleanup's domain result; no implicit throw.
+        expect(
+          yield* final.guest.resume({ ok: true, value: { ok: false, error: "already released" } }),
+        ).toEqual({ kind: "completed", value: approved ? "approved:yes" : "rejected:denied" });
+      }).result;
+    });
+  }
+
+  it(`${runtime.name}: scheme raw effect preserves domain success and rejection as data across restore`, async () => {
+    const base = await runtime.start(() => frontend.lower(input)).result;
+    const site = Object.keys(base.effects)[0]!;
+    const effect = base.effects[site]!;
+    // No authoring unwrap: the exact same effect boundary can expose Outcome data.
+    const module = {
+      ...base,
+      sexpressions: `(define (review input) (workflow-return (yield-at ${JSON.stringify(site)} (list "effect" ${JSON.stringify(effect.effect)} input))))`,
+    };
+    const artifact = schemeWorkflowLinker.link({
+      module,
+      caller: { language: "scheme", text: "(review_draft %input)" },
+      name: "review_draft",
+      identity: schemeRuntimeIdentity,
+    });
+    for (const outcome of [
+      { ok: true, value: "yes" },
+      { ok: false, error: "declined" },
+    ]) {
+      await runtime.start(function* () {
+        const recipe = yield* createSchemeKernel(runtime, {
+          identity: schemeRuntimeIdentity,
+          loadMachine: loadSchemeMachine,
+          decodeRequest: bindEffectBoundary(module, allowed),
+          decodeResult: (value) => value,
+        }).prepare(artifact.source, "draft");
+        const guest = yield* recipe.acquire();
+        yield* runtime.composition.ensure(() => guest.close());
+        expect(yield* guest.start()).toMatchObject({
+          kind: "suspended",
+          request: { effect: effect.effect, input: { message: "draft" } },
+        });
+        const saved = yield* recipe.checkpoints.capture(guest);
+        yield* guest.close();
+        const restored = yield* recipe.checkpoints.restore(saved);
+        yield* runtime.composition.ensure(() => restored.guest.close());
+        expect(yield* restored.guest.resume({ ok: true, value: outcome })).toEqual({
+          kind: "completed",
+          value: outcome,
+        });
+      }).result;
+    }
+  });
+
+  it(`${runtime.name}: scheme linker rejects unsupported caller language and binding`, async () => {
+    const module = await runtime.start(() => frontend.lower(input)).result;
+    const request = {
+      module,
+      caller: { language: "scheme", text: caller },
+      name: "review_draft",
+      identity: "test-runtime",
+    };
+    expect(() =>
+      schemeWorkflowLinker.link({ ...request, caller: { ...request.caller, language: "python" } }),
+    ).toThrow();
+    expect(() => schemeWorkflowLinker.link({ ...request, name: "if" })).toThrow();
+    const linked = schemeWorkflowLinker.link(request);
+    expect(linked).toMatchObject({
+      language: "scheme",
+      name: "review_draft",
+      entry: module.entry.name,
+      effects: module.effects,
+    });
+    expect(schemeWorkflowLinker.link({ ...request, identity: "another-runtime" }).program).not.toBe(
+      linked.program,
+    );
+  });
+
   for (const choice of ["approve", "decline", "cancel-body", "cancel-cleanup"] as const) {
     it(`${runtime.name}: linked developer workflow ${choice} is inspectable across journal reopen`, async () => {
       const module = await runtime.start(() => frontend.lower(input)).result;
-      const artifact = linkReview({ module, caller, identity: schemeRuntimeIdentity });
+      const artifact = schemeWorkflowLinker.link({
+        module,
+        caller: { language: "scheme", text: caller },
+        name: "review_draft",
+        identity: schemeRuntimeIdentity,
+      });
       const store = createSqliteJournalRig<string, CapabilityRequest, unknown, unknown, unknown, Y>(
         {
           program: artifact.program,
@@ -139,7 +259,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             if (command && "answer" in command) {
               const request = yield* journal.interactions.request(command.answer);
               const outcome = yield* grant.respond(request, { ok: true, value: command.value });
-              yield* host.operations.answer(command.answer, outcome);
+              yield* host.operations.answer(command.answer, { ok: true, value: outcome });
             } else if (command) {
               yield* host.operations.cancel(command.cancel, "stop");
             }
@@ -425,7 +545,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     // Acceptance commits, but the process stops before host advancement or any UI receipt write.
     const approvalGrant = approval.result.grant;
     await runtime.start(() =>
-      store.open().interactions.answer(approvalGrant, { ok: true, value: "yes" }),
+      store
+        .open()
+        .interactions.answer(approvalGrant, { ok: true, value: { ok: true, value: "yes" } }),
     ).result;
     store.reopen();
     const accepted = await runtime.start(() => assembly().read()).result;
@@ -574,7 +696,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               site,
               {
                 ...effect,
-                effect: "wrong.effect",
                 source: { ...effect.source, id: "wrong.workflow.ts", line: 999 },
               },
             ]),

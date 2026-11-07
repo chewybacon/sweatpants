@@ -1,3 +1,4 @@
+import { verifyWorkflowModule } from "../../../packages/v2/codemode-compiler/src/index.ts";
 import { createHash } from "node:crypto";
 import {
   parse,
@@ -104,6 +105,7 @@ export function admitLinkedCaller(caller) {
 /** One trusted compiler module, one public entry. Not a general linker or verifier.
  * The caller is untrusted; compiled IR and grants are trusted assembly inputs. */
 export function linkReview({ module, caller, name = "review_draft", identity }) {
+  verifyWorkflowModule(module);
   if (
     module.format !== "workflow-scheme/1" ||
     module.entry.parameters !== "input" ||
@@ -144,6 +146,7 @@ export function linkReview({ module, caller, name = "review_draft", identity }) 
     .digest("hex");
   return Object.freeze({
     source,
+    language: "scheme",
     program: `linked-review:${digest}`,
     identity,
     name,
@@ -254,3 +257,14 @@ export function inspectLinkedCheckpoint(artifact, capture) {
     truncated,
   };
 }
+
+/** Common linker contract; this adapter retains the bounded Scheme caller profile. */
+export const schemeWorkflowLinker = {
+  language: "scheme",
+  link({ module, caller, name, identity }) {
+    if (caller.language !== "scheme") {
+      throw new Error("Expected Scheme caller");
+    }
+    return linkReview({ module, caller: caller.text, name, identity });
+  },
+};

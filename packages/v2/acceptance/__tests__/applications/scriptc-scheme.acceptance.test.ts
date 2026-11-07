@@ -23,6 +23,7 @@ import { source } from "../../../../../experiments/workflow-kernel/scriptc-schem
 import {
   frontend,
   input,
+  outcomeInput,
   authored,
   helper,
   admitWorkflow,
@@ -94,7 +95,7 @@ forEachRuntime((runtime) => {
           const cleanup =
             cancellation === "body"
               ? yield* restored.guest.cancel!("stop")
-              : yield* restored.guest.resume({ ok: true, value: "yes" });
+              : yield* restored.guest.resume({ ok: true, value: { ok: true, value: "yes" } });
           expect(cleanup).toMatchObject({
             kind: "suspended",
             request: variant.request(
@@ -113,7 +114,9 @@ forEachRuntime((runtime) => {
           const final = yield* next.checkpoints.restore(saved);
           yield* runtime.composition.ensure(() => final.guest.close());
           expect(final.turn).toEqual(cleanup);
-          expect(yield* final.guest.resume({ ok: true, value: "released" })).toEqual(
+          expect(
+            yield* final.guest.resume({ ok: true, value: { ok: true, value: "released" } }),
+          ).toEqual(
             cancellation === "none"
               ? { kind: "completed", value: "approved:yes" }
               : { kind: "cancelled", reason: "stop" },
@@ -143,10 +146,20 @@ it("workflow admission retains authored elicit locations and refuses unsupported
       value: ["effect", "scriptc.review.cleanup", "draft"],
     }),
   ).toThrow(/admitted effect/);
-  expect(authoringGuide.map((macro) => macro.method)).toEqual(["elicit", "effect"]);
+  expect(authoringGuide.map((macro) => macro.method)).toEqual([
+    "elicit",
+    "effect",
+    "elicitValue",
+    "effectValue",
+  ]);
   expect(
     authoringGuide.flatMap((macro) => macro.bindings.map((binding) => binding.effect)),
-  ).toEqual(["scriptc.review.approval", "scriptc.review.cleanup"]);
+  ).toEqual([
+    "scriptc.review.approval",
+    "scriptc.review.cleanup",
+    "scriptc.review.approval",
+    "scriptc.review.cleanup",
+  ]);
   expect(authoringGuide[0].bindings[0].input).toMatchObject({
     type: "object",
     properties: { message: { type: "string" } },
@@ -172,10 +185,10 @@ it("workflow admission retains authored elicit locations and refuses unsupported
         `  const forbidden = ${expression};\n  let reservation`,
       ),
     ),
-    authored.replace("ctx.effect('cleanup'", "ctx.elicit('cleanup'"),
+    authored.replace("ctx.effectValue('cleanup'", "ctx.elicitValue('cleanup'"),
     authored.replace("'use workflow';", ""),
     authored.replace("'approval', { message:", "'unknown', { message:"),
-    authored.replace("ctx.elicit('approval'", "ctx.sample('approval'"),
+    authored.replace("ctx.elicitValue('approval'", "ctx.sample('approval'"),
     authored.replace("  let reservation", "  const alias = ctx;\n  let reservation"),
     authored.replace("  let reservation", "  ctx = ctx;\n  let reservation"),
     authored.replace("  let reservation", "  console.log('host');\n  let reservation"),
@@ -286,7 +299,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             ? capabilities.grant({ cleanup: effects.cleanup })
             : granted;
           const outcome = yield* selected.respond(request, { ok: true, value: answer.value });
-          yield* host.operations.answer(answer.grant, outcome);
+          yield* host.operations.answer(answer.grant, { ok: true, value: outcome });
         }
         return yield* host.operations.run();
       }).result;
@@ -328,4 +341,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       value: "approved:yes",
     });
   });
+});
+
+it("Outcome field admission preserves the bounded capability boundary", () => {
+  const source = outcomeInput.source.text;
+  expect(() => admitWorkflow(source, helper)).not.toThrow();
+  for (const text of [
+    source.replace("decision.ok", "decision['ok']"),
+    source.replace("decision.ok", "decision.constructor"),
+    source.replace("decision.ok", "title.length"),
+    source.replace("decision.ok", "decision.value"),
+    source.replace("decision.ok", "title"),
+    source.replace("if (decision.ok)", "decision = decision; if (decision.ok)"),
+    source.replace("ctx.effect('cleanup'", "ctx.effectValue('cleanup'"),
+  ]) {
+    expect(() => admitWorkflow(text, helper)).toThrow(/Workflow admission/);
+  }
 });

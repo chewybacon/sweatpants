@@ -1,11 +1,10 @@
-import type { WorkflowModule } from "../../../packages/v2/codemode-compiler/src/index.ts";
-export interface LinkedReview {
-  readonly source: string;
-  readonly program: string;
-  readonly identity: string;
-  readonly name: string;
-  readonly entry: string;
-  readonly effects: WorkflowModule["effects"];
+import type {
+  WorkflowModule,
+  LinkedWorkflow,
+  WorkflowLinker,
+} from "../../../packages/v2/codemode-compiler/src/index.ts";
+export interface LinkedReview extends LinkedWorkflow {
+  readonly language: "scheme";
 }
 export function linkReview(input: {
   module: WorkflowModule;
@@ -39,3 +38,5 @@ export function inspectLinkedCheckpoint(
 };
 
 export function admitLinkedCaller(caller: string): string;
+
+export const schemeWorkflowLinker: WorkflowLinker<LinkedReview>;

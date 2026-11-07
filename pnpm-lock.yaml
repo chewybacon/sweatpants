@@ -3085,6 +3085,12 @@ importers:
       '@sweatpan.ts/core':
         specifier: workspace:*
         version: link:../core
+      typescript-api:
+        specifier: 'catalog:'
+        version: typescript@6.0.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

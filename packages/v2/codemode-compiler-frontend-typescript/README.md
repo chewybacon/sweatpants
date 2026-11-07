@@ -1,6 +1,6 @@
 # TypeScript workflow frontend
 
-This scaffold exports `TypeScriptWorkflowInput` and
+The portable root exports `TypeScriptWorkflowInput` and
 `TypeScriptWorkflowFrontend<Y>`. A frontend consumes authored TypeScript, an explicit
 source-module graph and assembly-selected existing effect declarations. It admits
 `use workflow` capabilities and produces the shared workflow Scheme S-expression
@@ -9,8 +9,8 @@ module defined by `codemode-compiler`.
 ScriptC is an implementation detail, not a public input/output type. This package
 now pins `@scriptc/compiler` to **0.3.6**. Its private `src/scriptc.ts` adapter lowers
 already-admitted TypeScript and owns/disposes the tsgo frontend session. The
-complete source-admission-to-workflow implementation remains experimental. The
-consumer in `experiments/workflow-kernel/scriptc-scheme` implements this contract:
+general source-admission-to-workflow implementation remains experimental. A bounded
+public tool build path is described below. The earlier consumer in `experiments/workflow-kernel/scriptc-scheme` implements this contract:
 
 1. Admit supported directive/capability calls using actual lexical bindings.
 2. Normalize them to explicit exchanges before generic generator lowering.
@@ -61,8 +61,8 @@ node --conditions=development --import tsx experiments/workflow-kernel/scriptc-s
 node --conditions=development --import tsx experiments/workflow-kernel/scriptc-scheme/extract-workflow.mjs
 ```
 
-Run them from the repository root on Node 24.22+. Normal package imports and the
-acceptance suite do not launch tsgo; only explicitly invoking the adapter does.
+Run them from the repository root on Node 24.22+. Normal package imports do not launch tsgo. Explicit compiler calls do, including
+the authorized compiler acceptance exception described below.
 
 ## Live source-graph compilation
 
@@ -80,3 +80,64 @@ recorded acceptance adapter but reads no recorded IR/provenance. Its manual runn
 compiles original and edited sources, emits Scheme and exercises restore/cleanup
 on both host runtimes. It still supports only the experiment's bounded source and
 helper shape; this is not a promoted general TypeScript frontend.
+
+## Public tool build and artifact cache
+
+The Node-only `@sweatpan.ts/codemode-compiler-frontend-typescript/build` entry exports
+`buildTypeScriptTool`. The root entry remains portable contracts; ScriptC types stay
+private. Pass a public tool definition directly, its exported source, the selected
+export name and an explicit declaration-module source graph:
+
+```ts
+const result = buildTypeScriptTool(
+  {
+    source: { language: "typescript", id: "send-email.ts", text: source },
+    exportName: "sendEmail",
+    modules: { "email-effects.ts": effectsSource },
+    tool: sendEmail,
+  },
+  { cacheDirectory: ".artifacts/workflow-build" },
+);
+
+const module = result.artifact.module; // verified WorkflowModule; no ScriptC nodes
+```
+
+This admits the existing `defineTool(...).parameters(...).capabilities(...).elicits(...)
+.execute(function* (...) { "use workflow"; ... })` builder. Compilation reads syntax
+and selected declarations; it does not import source modules or execute the body.
+The trusted build assembly supplies the corresponding tool contract and complete
+declaration source graph. Declaration-module code is fingerprinted, not evaluated
+or compiled; effects still run through separately installed host grants.
+
+The first profile supports plain Zod string tool input, inferred string output,
+plain `{ message: string } -> string` effects, immutable locals, string concatenation,
+Outcome `ok`/`value` access, explicit if/else and yielding finally. Failure payloads
+are opaque; branch on `ok` without inspecting `error`. It rejects transformed/refined
+schemas, unknown calls, arbitrary member access, native operations, helper calls,
+loops and unsupported source graphs. There is no `output(schema)` requirement and
+no implicit unwrap. ScriptC checks the normalized typed body, including union-arm
+narrowing. The regular repository type gate separately checks the real authored tool
+fixture with public API inference; this build operation is not a whole-project tsc.
+
+`WorkflowBuildArtifact` contains verified shared IR, provenance, a content key and
+an integrity digest. The key covers source text/ID, selected export, all supplied
+module text, selected schema/identity projections, the pinned ScriptC version, parser
+version and the installed admission/projection/build/adapter implementation bytes.
+Source and dist builds conservatively have different implementation fingerprints.
+A cache hit checks provenance, digest and module structure before returning. A miss
+owns ScriptC's subprocess/temp graph and atomically renames a completed JSON artifact
+into the optional cache directory. Failure publishes nothing and never falls back to
+an older key. Corrupt entries reject rather than being silently trusted.
+
+The local cache is disposable trusted build storage, not an authenticated artifact
+registry or runtime authority. Digest checks detect corruption, not a malicious cache
+writer. Concurrent misses may compile twice; publication remains atomic. Builds are
+synchronous and own no persistent process. Linked program identity is a separate
+step binding the artifact's IR to caller source and evaluator identity.
+
+`workflow-contract.acceptance.test.ts` now compiles its public authored tool through
+this entry on an empty cache, then executes both fresh and cached artifacts in Scheme
+and Lua alongside the native tool. It covers domain outcomes, detached VM restoration,
+source/graph/contract invalidation, failed compilation recovery and corrupt cache
+rejection. This is the explicit ScriptC subprocess exception to the usual simulated
+acceptance rule; no installs, providers or real email are used by the tests.

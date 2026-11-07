@@ -1,3 +1,4 @@
+import type { CapabilityRequest } from "../../../packages/v2/core/src/index.ts";
 import { z } from "zod";
 import { defineEffect } from "../../../packages/v2/core/src/index.ts";
 
@@ -54,3 +55,22 @@ export const schemas = {
 export const declarations = { sample, sampleSchema, elicit: move };
 export const prompt =
   "Choose exactly one move for rock-paper-scissors. Reply with only rock, paper, or scissors. Round ";
+
+// Pin the same effect/schema profile for each sandbox's retained programs.
+export const samplingProfile = Object.entries(declarations).map(([name, effect]) => ({
+  name,
+  id: effect.id,
+  input: z.toJSONSchema(schemas[name as keyof typeof schemas].input),
+  output: z.toJSONSchema(schemas[name as keyof typeof schemas].output),
+}));
+
+/** Validate decoded sandbox input before a journal can accept or publish it. */
+export function validateSamplingRequest(request: CapabilityRequest): CapabilityRequest {
+  const name = (Object.keys(declarations) as (keyof typeof declarations)[]).find(
+    (name) => declarations[name].id === request.effect,
+  );
+  if (!name) {
+    throw new Error("Unknown sampling effect");
+  }
+  return { effect: request.effect, input: schemas[name].input.parse(request.input) };
+}

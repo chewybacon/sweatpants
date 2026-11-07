@@ -17,13 +17,14 @@ The initial `workflow-scheme/1` profile contains:
 - One named entry taking one input value. Targets supply invocation syntax.
 - Effect sites with declared effect identities, author aliases and original
   source coordinates. Schemas and handlers remain with the owning assembly.
-- Direct successful reply values; failure enters the kernel's failure/cleanup path.
-  This is an experimental compiler profile, not v2 ToolContext's Outcome API.
+- Domain Outcome replies, matching tool and sampling capability boundaries.
+  Authoring conveniences lower explicit inspection/unwrap into the program;
+  rejection enters throw/cleanup only when the program chooses it.
 
 The frontend must verify emitted forms. The current experiment uses the existing
-v1 typed Scheme IR verifier/emitter before returning S-expressions. A shared v2
-reader, complete dialect validator, and linker are **not implemented** here yet.
-The interface does not make arbitrary client-supplied Scheme safe or verified.
+v1 typed Scheme IR verifier/emitter before returning S-expressions. A shared v2 serialized-module verifier now checks the bounded profile below;
+a complete dialect/type validator and general linker are not implemented here.
+The interface alone does not make arbitrary client-supplied Scheme safe or verified.
 Metadata is JSON-serializable, not an immutable/pinned program identity; the caller
 must retain the artifact and its declaration/runtime resolver together.
 
@@ -56,3 +57,55 @@ payload encoding remains bounded to this fixture; general payload lowering and
 sampling authoring still need their own consumers. In particular, streaming model
 sampling must retain its existing stream contract rather than being flattened
 into a new compiler-specific sampling primitive.
+
+## Linking a compiled entry
+
+`WorkflowLinker.link(WorkflowLinkRequest)` is a pure assembly contract. The request
+contains a module, a caller `{ language, text }`, the public entry binding `name`,
+and the host-selected evaluator `identity`. `LinkedWorkflow` carries the linked
+source, language, entry names, required effect sites, and pinned program
+identity. Implementations must bind source, evaluator and effect/source
+metadata into that identity. This type alone does not verify untrusted artifacts.
+
+The module's existing effect map describes required imports; linking neither grants
+those effects nor installs handlers. The host still selects grants, validates
+requests/replies and prepares the matching kernel. No additional import registry,
+child execution mechanism or runtime lifetime is introduced.
+
+The Scheme and Lua experiments implement this contract and their journal/reopen
+journeys consume it. Both receive capability Outcomes as data; unwrapping is visible in the compiled IR.
+Scheme supports admitted public names; the bounded Lua adapter currently accepts
+only `review_draft`. Unsupported languages/bindings reject. These adapters remain
+experiment-local: the shared contract does not imply a general linker, arbitrary
+module graphs, equal language coverage or portable inspection. A second substantial
+workflow is still needed before broadening their implementation into public packages.
+
+## Serialized module verification
+
+`verifyWorkflowModule(module)` is a pure check called by the Scheme target and both
+experimental linkers. It checks function-only top-level structure, lexical bindings,
+duplicate parameters, entry arity, form arity, effect metadata and literal yield-site /
+effect-identity correlation. Verification reads data only, creates no Guest and
+installs no grants. It throws before target emission on unsupported input.
+
+The supported serialized profile is intentionally bounded to the exercised string
+and boolean literals, lexical functions/lambdas, list construction, json-field,
+js-add, not/truthy, local definitions/assignment, conditional blocks, try-finally,
+return/throw and declared effect exchanges. The compiler-profile reader consumes the
+entire source and limits size/depth; it rejects arbitrary Scheme reader extensions
+and numeric syntax. It is distinct from the Scheme runtime's general JSON wire codec.
+Targets may reject additional forms they do not implement. This is structural
+verification, not a proof of termination, successful return, schema compatibility,
+source provenance or authorization. Consumers verify the exact module at use; there
+is no cached verification token that could survive mutation.
+
+The `workflow-contract.acceptance.test.ts` consumer uses the existing public
+`defineTool(name).parameters(...).capabilities(...).elicits(...).execute(...)` builder,
+with inferred string output. The public TypeScript build API now compiles that
+directive-bearing source during acceptance, and both fresh and cached artifacts exercise
+create-draft, approval, send/delete and their domain failure branches through native
+tools, Scheme and Lua on both native runtimes, restoring VM checkpoints between
+requests. No actual email is sent. The portable IR has a different entry and effect
+set from the review fixture. This establishes the bounded public tool build and linker path, not general object
+lowering or crash-safe email delivery. The build API and cache limits are documented
+in codemode-compiler-frontend-typescript.

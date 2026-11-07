@@ -12,9 +12,41 @@ export function project(module, text, options = {}) {
   const refuse = (node) => {
     throw new Error(`Unsupported ScriptC projection: ${node.kind ?? node.name}`);
   };
+  const entry = module.functions.find((f) => f.name === "review");
+  const outcomeUnion = module.unions?.find((u) => u.id === entry?.generator?.nextT.unionId);
+  if (outcomeUnion) {
+    const expected = [
+      { tag: 0, values: [true] },
+      { tag: 1, values: [false] },
+    ];
+    if (
+      outcomeUnion.arms.length !== 2 ||
+      outcomeUnion.discriminant?.field !== "ok" ||
+      JSON.stringify(outcomeUnion.discriminant.cases) !== JSON.stringify(expected) ||
+      outcomeUnion.arms.some((arm, index) => {
+        const record = module.records.find((r) => r.id === arm.shapeId);
+        return (
+          arm.kind !== "record" ||
+          record?.fields.length !== 2 ||
+          !record.fields.some((f) => f.name === "ok" && f.type.kind === "bool") ||
+          !record.fields.some(
+            (f) => f.name === (index === 0 ? "value" : "error") && f.type.kind === "string",
+          )
+        );
+      })
+    ) {
+      throw new Error("Unsupported Outcome union profile");
+    }
+  }
   const type = (t) => {
     if (t.kind === "string") {
       return { kind: "string" };
+    }
+    if (t.kind === "union" && t.unionId === outcomeUnion?.id) {
+      return { kind: "json" };
+    }
+    if (t.kind === "bool") {
+      return { kind: "boolean" };
     }
     if (t.kind === "func") {
       return {
@@ -51,6 +83,24 @@ export function project(module, text, options = {}) {
     function expr(e) {
       const o = origin(e.loc);
       switch (e.kind) {
+        case "unionDisc":
+          if (e.unionId !== outcomeUnion?.id || e.field !== "ok") {
+            return refuse(e);
+          }
+          return { kind: "json-field", object: expr(e.value), key: "ok", origin: o };
+        case "unionNarrow":
+          if (e.unionId !== outcomeUnion?.id || ![0, 1].includes(e.tag)) {
+            return refuse(e);
+          }
+          return expr(e.value);
+        case "recordGet":
+          if (
+            !outcomeUnion?.arms.some((arm) => arm.shapeId === e.shapeId) ||
+            !["value", "error"].includes(e.field)
+          ) {
+            return refuse(e);
+          }
+          return { kind: "json-field", object: expr(e.obj), key: e.field, origin: o };
         case "arrayLit":
           return { kind: "list", values: e.elems.map(expr), origin: o };
         case "call": {
@@ -109,7 +159,57 @@ export function project(module, text, options = {}) {
           }
           const site = `scriptc:${admitted?.start ?? e.loc.start}`;
           debug.sites[site] = { ...(admitted ?? o), function: fn.name, operation: "effect" };
-          return { kind: "yield-at", site, request: expr(e.value), origin: o };
+          if (admitted && !admitted.unwrap) {
+            return { kind: "yield-at", site, request: expr(e.value), origin: o };
+          }
+          // This bounded authoring API promises a value or throw. Make that
+          // convenience explicit in the program, not in the host reply convention.
+          const reply = {
+            id: `reply-${serial++}`,
+            name: `reply-${serial++}`,
+            type: { kind: "json" },
+            mutable: false,
+          };
+          const unwrapId = `unwrap-${serial++}`;
+          const field = (key) => ({
+            kind: "json-field",
+            object: { kind: "read", binding: reply, origin: o },
+            key,
+            origin: o,
+          });
+          const unwrap = {
+            id: unwrapId,
+            name: `unwrap-${serial++}`,
+            kind: "sync",
+            parameters: [reply],
+            result: { kind: "string" },
+            captures: [],
+            scope: `scope-${serial++}`,
+            origin: o,
+            body: {
+              exit: "fallthrough",
+              statements: [
+                {
+                  kind: "if",
+                  test: { kind: "not", value: field("ok"), origin: o },
+                  consequent: {
+                    exit: "fallthrough",
+                    statements: [{ kind: "workflow-throw", value: field("error"), origin: o }],
+                  },
+                  otherwise: { exit: "fallthrough", statements: [] },
+                  origin: o,
+                },
+                { kind: "tail-value", target: unwrapId, value: field("value"), origin: o },
+              ],
+            },
+          };
+          return {
+            kind: "apply",
+            callable: "sync",
+            callee: { kind: "lambda", fn: unwrap, origin: o },
+            args: [{ kind: "yield-at", site, request: expr(e.value), origin: o }],
+            origin: o,
+          };
         }
         default:
           return refuse(e);
@@ -119,6 +219,17 @@ export function project(module, text, options = {}) {
     function stmt(s) {
       const o = origin(s.loc);
       switch (s.kind) {
+        case "if":
+          if (s.cond.type.kind !== "bool") {
+            return refuse(s);
+          }
+          return {
+            kind: "if",
+            test: expr(s.cond),
+            consequent: block(s.then),
+            otherwise: block(s.else_ ?? []),
+            origin: o,
+          };
         case "varDecl":
           return { kind: "define", binding: binding(s.localId), value: expr(s.init), origin: o };
         case "assign":
@@ -178,13 +289,12 @@ export function project(module, text, options = {}) {
       origin: origin(fn.loc),
     };
   }
-  const entry = module.functions.find((f) => f.name === "review");
   if (
     !entry?.generator ||
     (options.sites
       ? entry.generator.yieldT.kind !== "array"
       : entry.generator.yieldT.kind !== "string") ||
-    entry.generator.nextT.kind !== "string"
+    (entry.generator.nextT.kind !== "string" && !outcomeUnion)
   ) {
     throw new Error("Expected string review generator");
   }

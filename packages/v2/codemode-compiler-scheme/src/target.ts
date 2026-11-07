@@ -1,4 +1,4 @@
-import type { WorkflowTarget } from "@sweatpan.ts/codemode-compiler";
+import { verifyWorkflowModule, type WorkflowTarget } from "@sweatpan.ts/codemode-compiler";
 import type { SchemeWorkflowArtifact } from "./contracts.ts";
 
 /** The Scheme kernel already implements the shared dialect; only entry wiring is needed.
@@ -6,6 +6,7 @@ import type { SchemeWorkflowArtifact } from "./contracts.ts";
  */
 export const schemeWorkflowTarget: WorkflowTarget<SchemeWorkflowArtifact> = {
   emit(module) {
+    verifyWorkflowModule(module);
     if (module.format !== "workflow-scheme/1" || module.entry.parameters !== "input") {
       throw new Error("Unsupported workflow Scheme profile");
     }

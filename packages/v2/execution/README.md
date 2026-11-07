@@ -361,3 +361,17 @@ work, and checks method interception and scoped preparation policy. Lua addition
 proves lazy loading, independent acquisitions, detached restore, changed-source
 rejection and checkpoint capture before/after restoration with execution middleware.
 This is local protocol/reopen evidence, not remote or process-crash validation.
+
+## Capability replies and authored control flow
+
+Capability delivery carries a domain `Outcome` as the successful Guest reply:
+`{ ok: true, value: domainOutcome }`. The inner result describes capability success
+or rejection; it is data for authored code. A program may branch on that result or
+explicitly unwrap it and throw. That control-flow choice belongs in the program,
+not in a linker option or host reply adapter.
+
+Validate participant outcomes with `grant.respond` before accepting their delivery.
+`grant.handle` already returns this delivery envelope. Transport/handler exceptions
+remain outside it and follow hosting's uncertainty/reconciliation rules; they must
+not be converted into domain rejection. The general Guest protocol still supports
+rejection for evaluator uses; it does not prescribe a capability's domain contract.

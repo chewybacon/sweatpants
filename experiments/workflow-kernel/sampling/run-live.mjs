@@ -1,5 +1,12 @@
 // Manual live integration; never imported by the ordinary acceptance runner.
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  createLuaKernel,
+  luaWasmUrl,
+} from "../../../packages/v2/codemode-runtime-lua/src/index.ts";
+import { bindLuaSamplingProgram, luaGameCaller } from "./lua.mts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,7 +60,16 @@ const provider = createPiAiProvider(runtime, {
     return catalog.streamSimple(model, context, options);
   },
 });
-const artifact = bindSamplingProgram(gameCaller, schemeRuntimeIdentity, model);
+const language = process.argv.includes("--lua") ? "lua" : "scheme";
+const luaBytes = language === "lua" ? await readFile(luaWasmUrl) : undefined;
+const artifact =
+  language === "lua"
+    ? bindLuaSamplingProgram(
+        luaGameCaller,
+        createHash("sha256").update(luaBytes).digest("hex"),
+        model,
+      )
+    : bindSamplingProgram(gameCaller, schemeRuntimeIdentity, model);
 const directory = mkdtempSync(join(tmpdir(), "sweatpants-sampling-"));
 const path = join(directory, "game.sqlite");
 let db = new DatabaseSync(path);
@@ -69,12 +85,19 @@ const journal = () =>
       },
     },
   }).open();
-const kernel = createSchemeKernel(runtime, {
-  identity: schemeRuntimeIdentity,
-  loadMachine: loadSchemeMachine,
-  decodeRequest: artifact.decodeRequest,
-  decodeResult: (value) => value,
-});
+const kernel =
+  language === "lua"
+    ? createLuaKernel(runtime, {
+        loadModule: () => WebAssembly.compile(luaBytes),
+        decodeRequest: artifact.decodeRequest,
+        decodeResult: (value) => value,
+      })
+    : createSchemeKernel(runtime, {
+        identity: schemeRuntimeIdentity,
+        loadMachine: loadSchemeMachine,
+        decodeRequest: artifact.decodeRequest,
+        decodeResult: (value) => value,
+      });
 const run = (command) =>
   runtime.start(() =>
     createSamplingHost(runtime, {
@@ -113,6 +136,7 @@ try {
   console.log(
     JSON.stringify(
       {
+        language,
         model,
         providerCalls,
         result: final,

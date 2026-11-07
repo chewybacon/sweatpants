@@ -93,7 +93,7 @@ export function createLinkedExecution<Y>(
       if (command) {
         const request = yield* journal.interactions.request(command.grant);
         const outcome = yield* grant.respond(request, { ok: true, value: command.value });
-        yield* host.operations.answer(command.grant, outcome);
+        yield* host.operations.answer(command.grant, { ok: true, value: outcome });
       }
       // No attempt replacement and no model call. Existing hosting owns uncertainty.
       return yield* host.operations.run();

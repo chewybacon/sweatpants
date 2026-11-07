@@ -1,3 +1,11 @@
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createLuaKernel, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
+import {
+  bindLuaSamplingProgram,
+  luaGameCaller,
+  structuredLuaCaller,
+} from "../../../../../experiments/workflow-kernel/sampling/lua.mts";
 import { z } from "zod";
 import { sampleSchemaStream } from "../../../../../experiments/workflow-kernel/sampling/structured.mts";
 import { isDeepStrictEqual } from "node:util";
@@ -32,9 +40,13 @@ import { sampleStream } from "../../../../../experiments/workflow-kernel/samplin
 import { prompt } from "../../../../../experiments/workflow-kernel/sampling/contracts.mts";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
+const luaBytes = await readFile(luaWasmUrl);
+const luaIdentity = createHash("sha256").update(luaBytes).digest("hex");
+let luaModule: Promise<WebAssembly.Module> | undefined;
+const loadLuaModule = () => (luaModule ??= WebAssembly.compile(luaBytes));
 const model = { id: "game-model", provider: "scripted", api: "text" };
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
-  function fixture(language: "scheme" | "tool", caller = gameCaller, structured = false) {
+  function fixture(language: "scheme" | "tool" | "lua", caller = gameCaller, structured = false) {
     const peer = createProtocolRig();
     const requests: ModelRequest[] = [];
     let restores = 0;
@@ -78,11 +90,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         };
       },
     });
-    const artifact = bindSamplingProgram(caller, schemeRuntimeIdentity, model);
+    const luaArtifact = bindLuaSamplingProgram(
+      structured ? structuredLuaCaller : caller === gameCaller ? luaGameCaller : caller,
+      luaIdentity,
+      model,
+    );
+    const artifact = bindSamplingProgram(
+      language === "lua" ? gameCaller : caller,
+      schemeRuntimeIdentity,
+      model,
+    );
     const program =
-      language === "scheme"
-        ? artifact.program
-        : (structured ? structuredTool.id : rpsTool.id) + JSON.stringify(model);
+      language === "lua"
+        ? luaArtifact.program
+        : language === "scheme"
+          ? artifact.program
+          : (structured ? structuredTool.id : rpsTool.id) + JSON.stringify(model);
     const store = createSqliteJournalRig<string, CapabilityRequest, unknown, unknown, unknown, Y>({
       program,
       equals: isDeepStrictEqual,
@@ -107,17 +130,25 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         );
         return { acquire: () => acquisition.operations.acquire(2) };
       }
-      const recipe = yield* createSchemeKernel(runtime, {
-        identity: schemeRuntimeIdentity,
-        loadMachine: loadSchemeMachine,
-        decodeRequest: artifact.decodeRequest,
-        decodeResult(value) {
-          if (typeof value !== "string") {
-            throw new Error("Expected game result");
-          }
-          return value;
-        },
-      }).prepare(artifact.source, 2);
+      const decodeResult = (value: unknown) => {
+        if (typeof value !== "string") {
+          throw new Error("Expected game result");
+        }
+        return value;
+      };
+      const recipe =
+        language === "lua"
+          ? yield* createLuaKernel(runtime, {
+              loadModule: loadLuaModule,
+              decodeRequest: luaArtifact.decodeRequest,
+              decodeResult,
+            }).prepare(luaArtifact.source, 2)
+          : yield* createSchemeKernel(runtime, {
+              identity: schemeRuntimeIdentity,
+              loadMachine: loadSchemeMachine,
+              decodeRequest: artifact.decodeRequest,
+              decodeResult,
+            }).prepare(artifact.source, 2);
       return {
         ...recipe,
         checkpoints: {
@@ -146,7 +177,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     return { peer, provider, requests, run, store, restored: () => restores };
   }
 
-  for (const language of ["scheme", "tool"] as const) {
+  for (const language of ["scheme", "tool", "lua"] as const) {
     it(`${runtime.name} ${language}: structured sampling validates before elicitation and survives reopen`, async () => {
       const rig = fixture(language, structuredCaller, true);
       const task = rig.run();
@@ -239,7 +270,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       });
       expect(await rig.run().result).toEqual({ state: "completed", value: "player;model;" });
       expect(rig.peer.requests).toHaveLength(2);
-      if (language === "scheme") {
+      if (language !== "tool") {
         expect(rig.restored()).toBeGreaterThanOrEqual(2);
       }
     });
@@ -320,6 +351,27 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       value: { valid: true, value: null, sample: { text: "null", responseId: "sample-0" } },
     });
   });
+
+  for (const caller of [
+    'return sample({prompt = "hello", model = "ungranted"})',
+    'return sampleSchema({prompt = "hello", schema = "ungranted"})',
+    "return elicit({message = 123})",
+    'return workflow.effect("unknown", {effect = "ungranted", input = "hello"})',
+  ]) {
+    it(`${runtime.name}: Lua rejects ungranted or malformed sampling: ${caller}`, async () => {
+      const rig = fixture("lua", caller);
+      const before = await runtime.start(() => rig.store.open().read()).result;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(rig.run().result).rejects.toThrow();
+        const after = await runtime.start(() => rig.store.open().read()).result;
+        expect(after.status).toBe(before.status);
+        expect(after.revision).toBe(before.revision);
+        expect(after).not.toHaveProperty("pending");
+        rig.store.reopen();
+      }
+      expect(rig.peer.requests).toHaveLength(0);
+    });
+  }
 
   it(`${runtime.name}: malformed sandbox samples reject before provider delivery`, async () => {
     const rig = fixture(

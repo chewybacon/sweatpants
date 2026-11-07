@@ -164,6 +164,7 @@ export function admitWorkflow(text, helperText, elicits) {
     "ObjectProperty",
     "TryStatement",
     "ReturnStatement",
+    "IfStatement",
     "ExpressionStatement",
     "AssignmentExpression",
     "BinaryExpression",
@@ -195,6 +196,16 @@ export function admitWorkflow(text, helperText, elicits) {
       }
       if (path.isBinaryExpression() && path.node.operator !== "+") {
         fail("only string concatenation is admitted");
+      }
+    },
+    IfStatement(path) {
+      const test = path.node.test;
+      if (
+        !t.isMemberExpression(test) ||
+        test.computed ||
+        !t.isIdentifier(test.property, { name: "ok" })
+      ) {
+        fail("conditions must inspect an Outcome ok discriminant");
       }
     },
     FunctionDeclaration(path) {
@@ -255,6 +266,7 @@ export function admitWorkflow(text, helperText, elicits) {
           start: suspension.node.start,
           key: key.value,
           effect: expanded.effect,
+          unwrap: expanded.unwrap,
           line: suspension.node.loc.start.line,
           column: suspension.node.loc.start.column + 1,
         });
@@ -300,11 +312,34 @@ export function admitWorkflow(text, helperText, elicits) {
       fail("host construction is not admitted");
     },
     MemberExpression(path) {
-      if (!path.parentPath.isCallExpression() || path.parentPath.node.callee !== path.node) {
-        fail("member access is not admitted");
+      if (path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node) {
+        return;
+      }
+      // Only immutable local replies from directly yielded Outcome macros may be read.
+      const node = path.node;
+      const binding = t.isIdentifier(node.object) && path.scope.getBinding(node.object.name);
+      const init = binding?.path.isVariableDeclarator() && binding.path.node.init;
+      const site = init && sites.find((site) => site.start === init.start);
+      if (
+        node.computed ||
+        !t.isIdentifier(node.property) ||
+        !["ok", "value", "error"].includes(node.property.name) ||
+        !site ||
+        site.unwrap ||
+        binding.constantViolations.length
+      ) {
+        fail("member access requires an immutable Outcome reply");
       }
     },
   });
+  const outcomeSites = sites.filter((site) => !site.unwrap);
+  if (outcomeSites.length && outcomeSites.length !== sites.length) {
+    fail("mixing Outcome and value conveniences is not supported in this bounded profile");
+  }
+  if (outcomeSites.length) {
+    const signature = edits.find((edit) => edit.start === declaration.start);
+    signature.value = `function* review(${input.name}: string): Generator<string[], string, { ok: true; value: string } | { ok: false; error: string }> `;
+  }
   // Reject overlapping edits (including nested capabilities) instead of silently
   // dropping source. Source offsets remain attached to each admitted exchange.
   edits.sort((a, b) => a.start - b.start);

@@ -19,7 +19,8 @@ export interface ToolContext<
   L extends Record<string, EffectDefinition>,
   Y,
 > {
-  /** Calls declared capabilities; the host must separately grant their authority. */
+  /** Calls declared capabilities, returning their domain Outcomes as data.
+   * Rejection does not implicitly throw; the host separately grants authority. */
   readonly capabilities: { readonly [K in keyof D]: D[K]["call"] };
   /** Logical scope owning the body's registered cleanup and critical regions. */
   readonly scope: LogicalScope;
@@ -34,7 +35,8 @@ export interface ToolContext<
     start: (signal: AbortSignal) => PromiseLike<T>,
     options: { readonly record: { readonly key?: string } },
   ): Operation<T, CapabilityRequest>;
-  /** Request a declared external interaction, preserving its input and reply types. */
+  /** Request a declared external interaction, preserving its input and Outcome types.
+   * Domain rejection is data for authored control flow, not a delivery failure. */
   elicit<K extends keyof L>(key: K, ...args: Parameters<L[K]["call"]>): ReturnType<L[K]["call"]>;
 }
 
