@@ -34,6 +34,7 @@
     "@sweatpan.ts/codemode": "workspace:*",
     "@sweatpan.ts/codemode-compiler": "workspace:*",
     "@sweatpan.ts/codemode-compiler-frontend-typescript": "workspace:*",
+    "@sweatpan.ts/codemode-compiler-lua": "workspace:*",
     "@sweatpan.ts/codemode-compiler-scheme": "workspace:*",
     "@sweatpan.ts/codemode-runtime-lua": "workspace:*",
     "@sweatpan.ts/codemode-runtime-scheme": "workspace:*",

@@ -24,7 +24,11 @@
     "format:check": "cd ../../.. && oxfmt packages/v2/react-chat --check"
   },
   "dependencies": {
-    "@sweatpan.ts/chat-client": "workspace:*"
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/chat-client": "workspace:*",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/tools": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "catalog:",

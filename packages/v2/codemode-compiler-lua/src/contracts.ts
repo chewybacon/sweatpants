@@ -1,2 +1,7 @@
-/* eslint-disable unicorn/no-empty-file -- Bare scaffold; remove when implemented. */
-// Public capability interfaces, options, results, and type aliases.
+import type { WorkflowModule } from "@sweatpan.ts/codemode-compiler";
+/** Lua-kernel input; machine acquisition and effect grants remain assembly-owned. */
+export interface LuaWorkflowArtifact {
+  readonly format: "lua-execution/1";
+  readonly source: string;
+  readonly effects: WorkflowModule["effects"];
+}

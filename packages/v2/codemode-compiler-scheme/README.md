@@ -1,15 +1,36 @@
 # Scheme workflow target
 
-`schemeWorkflowTarget.emit(module)` consumes the shared workflow S-expression IR
-and returns a `SchemeWorkflowArtifact` containing executable source and effect
-metadata. The Scheme kernel already implements this dialect, so this target only
-checks the supported profile/entry syntax and adds the entry invocation.
+The portable root exports `schemeWorkflowTarget.emit(module)` and
+`admitSchemeCaller(text)`. The target verifies the bounded shared S-expression module
+and returns `{ format: "scheme-execution/1", source, effects }` for the Scheme kernel.
+It has no frontend, ScriptC, VM, or Node dependency.
 
-It depends on `codemode-compiler`, not any frontend, ScriptC, or a VM. Pass its
-source to the separately acquired Scheme kernel. Runtime identity, checkpoint
-compatibility and the schema/handler resolver remain assembly-owned.
+The Node `@sweatpan.ts/codemode-compiler-scheme/link` entry exports
+`schemeWorkflowLinker`, implementing the shared `WorkflowLinker` contract:
 
-This is a target for trusted, frontend-verified modules. It does not parse and
-revalidate arbitrary Scheme, resolve host imports, or establish invocation authority.
-The existing acceptance journey feeds it a JSON-round-tripped module, then proves
-capture, cleanup and pending-completion behavior through fresh-machine restore.
+```ts
+const linked = schemeWorkflowLinker.link({
+  module: artifact.module,
+  caller: { language: "scheme", text: "(sendEmail %input)" },
+  name: "sendEmail",
+  identity: schemeRuntimeIdentity,
+});
+```
+
+Linking verifies the module, admits/re-emits the caller and isolates the private
+compiled definitions behind one registered entry. The public name must be a valid,
+non-reserved Scheme identifier distinct from compiled definition names. `root` is
+reserved. The program hash binds executable source, runtime identity and effect/source
+metadata. It is compatibility identity, not an authorization or authenticity proof.
+
+Caller admission is bounded to 12K characters and the reader's depth/node budgets.
+It rejects internal workflow instructions and unsupported reader extensions; numeric
+literals must be safe integers. Runtime caller validation additionally enforces the
+registered binding's immutability and permitted operations. Admission alone is not a
+full static language/type checker or termination guarantee.
+
+Assembly selects grants, validates request/reply schemas, decodes effect payloads and
+acquires the matching kernel. Checkpoint inspection remains experimental and is not
+exported here. The public tool acceptance journey compiles `sendEmail`, links it under
+that name, and restores between effects on both host runtimes. The older review and
+cancellation experiments delegate to this implementation.

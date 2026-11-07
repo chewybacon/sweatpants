@@ -193,6 +193,12 @@ importers:
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
+      '@sweatpan.ts/codemode-compiler-lua':
+        specifier: workspace:*
+        version: link:packages/v2/codemode-compiler-lua
+      '@sweatpan.ts/codemode-compiler-scheme':
+        specifier: workspace:*
+        version: link:packages/v2/codemode-compiler-scheme
       '@sweatpants/agent-sdk':
         specifier: workspace:*
         version: link:packages/agent-sdk
@@ -2858,6 +2864,9 @@ importers:
       '@sweatpan.ts/codemode-compiler-frontend-typescript':
         specifier: workspace:*
         version: link:../codemode-compiler-frontend-typescript
+      '@sweatpan.ts/codemode-compiler-lua':
+        specifier: workspace:*
+        version: link:../codemode-compiler-lua
       '@sweatpan.ts/codemode-compiler-scheme':
         specifier: workspace:*
         version: link:../codemode-compiler-scheme
@@ -3100,7 +3109,14 @@ importers:
         version: 7.0.2
 
   packages/v2/codemode-compiler-lua:
+    dependencies:
+      '@sweatpan.ts/codemode-compiler':
+        specifier: workspace:*
+        version: link:../codemode-compiler
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3111,6 +3127,9 @@ importers:
         specifier: workspace:*
         version: link:../codemode-compiler
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3406,9 +3425,21 @@ importers:
 
   packages/v2/react-chat:
     dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
       '@sweatpan.ts/chat-client':
         specifier: workspace:*
         version: link:../chat-client
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@sweatpan.ts/tools':
+        specifier: workspace:*
+        version: link:../tools
     devDependencies:
       '@types/react':
         specifier: 'catalog:'

@@ -1,10 +1,7 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
-import { isValidElement } from "react";
-import {
-  createReactElicitHost,
-  ElicitViews,
-  SeatPicker,
-} from "../../../../../apps/yo-chat-v2/src/react-elicit.tsx";
+import { isValidElement, StrictMode } from "react";
+import { createReactElicitHost, ElicitViews } from "@sweatpan.tsx/chat";
+import { SeatPicker } from "../../../../../apps/yo-chat-v2/src/react-elicit.tsx";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { z } from "zod";
@@ -79,7 +76,11 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
         return { host, plugin, responder: host.bindPlugin(plugin) };
       }
       let session = createFrontend();
-      let ui = render(<ElicitViews host={session.host} />);
+      let ui = render(
+        <StrictMode>
+          <ElicitViews host={session.host} />
+        </StrictMode>,
+      );
       onTestFinished(() => ui.unmount());
       const partial = defineElicitPlugin(chooseFlight).onElicit({
         *pickFlight() {
@@ -419,6 +420,26 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
           requestId: seat!.grant.requestId,
           resolutionId: seat!.grant.resolutionId,
         });
+        // A second local invocation cannot steal or remove the existing presentation.
+        await expect(
+          task(() => session.responder.operations.respond(selected.available[0]!, seat!)).result,
+        ).rejects.toThrow("Interaction already has an active local render");
+        expect(session.host.getSnapshot()).toHaveLength(1);
+        const otherView = render(
+          <StrictMode>
+            <ElicitViews host={session.host} execution="different-execution" />
+          </StrictMode>,
+        );
+        onTestFinished(() => otherView.unmount());
+        expect(within(otherView.container).queryByRole("button", { name: "Seat 2A" })).toBeNull();
+        otherView.rerender(
+          <StrictMode>
+            <ElicitViews host={session.host} execution={seat!.execution} />
+          </StrictMode>,
+        );
+        expect(within(otherView.container).getByRole("button", { name: "Seat 2A" })).toBeTruthy();
+        otherView.unmount();
+        expect(session.host.getSnapshot()).toHaveLength(1);
         const oldNode = session.host.getSnapshot()[0]!.node;
         if (!isValidElement<{ onRespond: (seat: "2A" | "2B") => void }>(oldNode)) {
           throw new Error("Expected a seat component");
@@ -473,7 +494,8 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
       }
       expect(await questions()).toEqual([]);
       expect(handledFlights).toBe(1);
-      expect(handledSeats).toBe(serverSeat ? 0 : 2);
+      // The duplicate handler runs up to render; the host rejects duplicate UI, not handler work.
+      expect(handledSeats).toBe(serverSeat ? 0 : 3);
       expect(serverSeats).toBe(serverSeat ? 1 : 0);
       expect(searches).toBe(1);
       expect(samples).toBe(2);

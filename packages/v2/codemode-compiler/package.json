@@ -15,6 +15,14 @@
       },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./syntax": {
+      "development": {
+        "types": "./src/syntax.ts",
+        "import": "./src/syntax.ts"
+      },
+      "types": "./dist/syntax.d.ts",
+      "import": "./dist/syntax.js"
     }
   },
   "scripts": {

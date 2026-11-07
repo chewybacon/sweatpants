@@ -56,6 +56,54 @@ with a plain DOM subscriber on the same client. Its journeys cover StrictMode, n
 providers, client replacement and externally owned lifetime.
 
 No provider-owned client lifecycle, automatic startup/retry, optimistic acceptance,
-plugin registry or render nodes are included. SSR/hydration and Vue/Svelte/native
+or global plugin registry is included. SSR/hydration and Vue/Svelte/native
 integrations have not been validated. Server rendering needs an application-prepared
 snapshot; the hook does not fetch during render.
+
+## Typed elicitation rendering
+
+`createReactElicitHost(runtime)` binds existing tool plugin declarations and scoped
+responders to a session-local React presentation store. The concrete component's
+`onRespond` parameter determines `render`'s return type:
+
+```tsx
+const host = createReactElicitHost(runtime);
+const plugin = host.definePlugin(chooseFlight).onElicit({
+  *pickSeat(args, ctx) {
+    const value = yield* ctx.render(SeatPicker, args.context);
+    return { ok: true, value };
+  },
+});
+const responder = host.bindPlugin(plugin);
+// Session owner runs responder.operations.respond(selection, interaction).
+// The same plugin.support advertises the elicits this frontend handles.
+```
+
+`SeatPicker` declares `onRespond: (seat: "2A" | "2B") => void`; the host supplies
+that callback, and `value` infers as `"2A" | "2B"`. Props and the declared elicit's
+reply remain checked. Existing `defineElicitPlugins<ReactElicitCapabilities<Y>>()`
+can also declare plugins separately from a host; `bindPlugin` supplies a session's
+capabilities through `createElicitResponder`, including its existing scoped middleware.
+
+```tsx
+<ElicitViews host={host} execution={executionId} />
+```
+
+The optional filter selects one execution; omitting it displays all active slots.
+`ElicitRenderSource` is the subscription contract for custom presentation. Snapshot
+references are stable between updates. Listeners must not throw; consumers must not
+mutate snapshots. React nodes are frontend-local and never serialized into history.
+`ElicitViews` is a live client surface; SSR/hydration is not supported for it.
+
+The calling operation owns each render's lifetime. The first response settles it;
+completion or cancellation removes the slot and makes stale callbacks inert. Multiple
+views and StrictMode only subscribe: unmount does not cancel the handler. A duplicate
+active render for the same execution/request/resolution rejects without removing the
+original. This does not deduplicate handler work before `render`.
+
+The host does not start handlers, dispatch snapshots, submit answers, retry delivery,
+or establish durable acceptance. The flight frontend continues to own those policies.
+Selecting a response completes local UI work; only the server's accepted receipt
+establishes the answer. Accepted-history presentation comes from the conversation
+view, not retained live React nodes. Completed-component replay, progressive Markdown,
+and a general nested render pipeline remain separate work.

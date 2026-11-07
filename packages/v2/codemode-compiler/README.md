@@ -21,26 +21,24 @@ The initial `workflow-scheme/1` profile contains:
   Authoring conveniences lower explicit inspection/unwrap into the program;
   rejection enters throw/cleanup only when the program chooses it.
 
-The frontend must verify emitted forms. The current experiment uses the existing
-v1 typed Scheme IR verifier/emitter before returning S-expressions. A shared v2 serialized-module verifier now checks the bounded profile below;
-a complete dialect/type validator and general linker are not implemented here.
-The interface alone does not make arbitrary client-supplied Scheme safe or verified.
-Metadata is JSON-serializable, not an immutable/pinned program identity; the caller
-must retain the artifact and its declaration/runtime resolver together.
+The frontend verifies emitted forms; targets verify the exact serialized module
+again before use. Verification is structural, not proof of source authenticity,
+authorization or arbitrary language semantics.
 
 ## Implementations
 
-- `codemode-compiler-frontend-typescript`: source/declaration input contract; the
-  ScriptC-backed implementation remains in the experiment, outside production.
-- `codemode-compiler-scheme`: consumes the common module and wires its entry for
-  the existing Scheme Execution kernel. No TypeScript or ScriptC dependency.
-- `codemode-compiler-lua`: reserved lowering of this same S-expression dialect;
-  no v2 implementation yet. Future targets should consume this same boundary.
+- `codemode-compiler-frontend-typescript/build`: the public Node build API compiles
+  the bounded directive-bearing public tool builder through pinned ScriptC and
+  publishes an optionally cached, integrity-checked artifact.
+- `codemode-compiler-scheme`: portable target emission; Node `./link` exports the
+  Scheme linker, isolating compiled definitions behind one public binding.
+- `codemode-compiler-lua`: portable lowering of the same IR; Node `./link` exports
+  the bounded Lua linker with a configurable public binding.
 
-The ScriptC acceptance journey runs a recorded frontend adapter, serializes the
-module through JSON, passes it to the Scheme target and exercises fresh-machine
-restore and cancellation on both host runtimes. Manual pinned frontend extraction
-establishes source-to-IR provenance; acceptance does not spawn ScriptC.
+`workflow-contract.acceptance.test.ts` uses only public package exports for the
+build/link/kernel path. It exercises live compilation and cache hits using test-owned
+storage under the documented ScriptC subprocess exception. Older recorded-IR
+experiments remain separate evidence for their broader control-flow probes.
 
 ## One effect lowering
 
@@ -72,18 +70,17 @@ those effects nor installs handlers. The host still selects grants, validates
 requests/replies and prepares the matching kernel. No additional import registry,
 child execution mechanism or runtime lifetime is introduced.
 
-The Scheme and Lua experiments implement this contract and their journal/reopen
-journeys consume it. Both receive capability Outcomes as data; unwrapping is visible in the compiled IR.
-Scheme supports admitted public names; the bounded Lua adapter currently accepts
-only `review_draft`. Unsupported languages/bindings reject. These adapters remain
-experiment-local: the shared contract does not imply a general linker, arbitrary
-module graphs, equal language coverage or portable inspection. A second substantial
-workflow is still needed before broadening their implementation into public packages.
+The Scheme and Lua packages implement this contract for their documented bounded
+profiles. The public-tool acceptance journey and older journal/reopen experiments
+consume those implementations. Both receive capability Outcomes as data; unwrapping
+is visible in compiled IR. Neither promises arbitrary module graphs, equal caller
+language coverage or portable inspection. The legacy program identity prefixes are
+retained as opaque compatibility tags.
 
 ## Serialized module verification
 
 `verifyWorkflowModule(module)` is a pure check called by the Scheme target and both
-experimental linkers. It checks function-only top-level structure, lexical bindings,
+public linkers. It checks function-only top-level structure, lexical bindings,
 duplicate parameters, entry arity, form arity, effect metadata and literal yield-site /
 effect-identity correlation. Verification reads data only, creates no Guest and
 installs no grants. It throws before target emission on unsupported input.
@@ -109,3 +106,9 @@ requests. No actual email is sent. The portable IR has a different entry and eff
 set from the review fixture. This establishes the bounded public tool build and linker path, not general object
 lowering or crash-safe email delivery. The build API and cache limits are documented
 in codemode-compiler-frontend-typescript.
+
+The `./syntax` export provides `readWorkflowSExpressions`, `workflowSymbolName` and
+`WorkflowDatum` for target implementations. This bounded parsed view does not replace
+the serialized interchange format. The optional caller mode admits safe integer
+literals and `%input`; module verification still rejects numeric IR. Reading alone
+is not module verification. Runtime checkpoint/wire parsing stays runtime-owned.

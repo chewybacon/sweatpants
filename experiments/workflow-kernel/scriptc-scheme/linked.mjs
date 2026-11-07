@@ -1,44 +1,18 @@
-import { verifyWorkflowModule } from "../../../packages/v2/codemode-compiler/src/index.ts";
-import { createHash } from "node:crypto";
 import {
   parse,
   symbolName,
 } from "../../../packages/v2/codemode-runtime-scheme/src/scheme-data/read.ts";
-
-const identifier = /^[A-Za-z_][A-Za-z0-9_?!-]*$/;
-const forbidden = new Set([
-  "quote",
-  "yield-at",
-  "ensure",
-  "scope",
-  "set!",
-  "workflow-return",
-  "workflow-throw",
-  "try-finally",
-  "while",
-  "break",
-  "continue",
-  "registered-program",
-]);
-const reserved = new Set([
-  "root",
-  ...forbidden,
-  "define",
-  "lambda",
-  "let",
-  "let*",
-  "if",
-  "begin",
-  "block",
-  "list",
-  "object",
-  "not",
-  "truthy",
-  "js-add",
-  "string-append",
-  "equal?",
-  "json-field",
-]);
+import { schemeWorkflowLinker } from "@sweatpan.ts/codemode-compiler-scheme/link";
+export { schemeWorkflowLinker };
+export { admitSchemeCaller as admitLinkedCaller } from "@sweatpan.ts/codemode-compiler-scheme";
+export function linkReview({ module, caller, name = "review_draft", identity }) {
+  return schemeWorkflowLinker.link({
+    module,
+    caller: { language: "scheme", text: caller },
+    name,
+    identity,
+  });
+}
 function print(value) {
   if (Array.isArray(value)) {
     return `(${value.map(print).join(" ")})`;
@@ -50,116 +24,6 @@ function print(value) {
     return value ? "#t" : "#f";
   }
   return JSON.stringify(value);
-}
-
-/** Bounded authored syntax shared by the linked and sampling experiments. */
-export function admitLinkedCaller(caller) {
-  if (caller.length > 12000) {
-    throw new Error("Caller exceeds experimental source limit");
-  }
-  // Validate spelling before the datum reader converts numbers to JavaScript values.
-  // This bounded caller profile admits only safe integer literals; exact fractions,
-  // decimal/exponent forms and unsafe integers must not silently change semantics.
-  for (const token of caller.match(/;[^\n]*|"(?:\\.|[^"\\])*"|[()]|[^\s()]+/g) ?? []) {
-    if (
-      token.startsWith(";") ||
-      token.startsWith('"') ||
-      ["(", ")", "#t", "#f", "%input"].includes(token) ||
-      identifier.test(token)
-    ) {
-      continue;
-    }
-    if (
-      !/^[+-]?\d+$/.test(token) ||
-      !Number.isSafeInteger(Number(token)) ||
-      Object.is(Number(token), -0)
-    ) {
-      throw new Error("Unsupported caller literal: use safe integer literals");
-    }
-  }
-  const forms = parse(caller);
-  // Reject internal instructions even when nested in caller procedures. Serialize
-  // parsed forms so caller text cannot escape the host-owned registration envelope.
-  function check(form) {
-    if (Array.isArray(form)) {
-      if (forbidden.has(symbolName(form[0]))) {
-        throw new Error("Unsupported authored caller form");
-      }
-      form.forEach(check);
-    } else if (
-      form &&
-      typeof form === "object" &&
-      !identifier.test(form.sym) &&
-      form.sym !== "%input"
-    ) {
-      throw new Error("Unsupported caller identifier");
-    }
-  }
-  forms.forEach(check);
-  if (!forms.length) {
-    throw new Error("Empty caller");
-  }
-  return forms.map(print).join("\n");
-}
-
-/** One trusted compiler module, one public entry. Not a general linker or verifier.
- * The caller is untrusted; compiled IR and grants are trusted assembly inputs. */
-export function linkReview({ module, caller, name = "review_draft", identity }) {
-  verifyWorkflowModule(module);
-  if (
-    module.format !== "workflow-scheme/1" ||
-    module.entry.parameters !== "input" ||
-    !identifier.test(name) ||
-    reserved.has(name) ||
-    !identifier.test(module.entry.name)
-  ) {
-    throw new Error("Unsupported linked workflow profile");
-  }
-  const definitions = parse(module.sexpressions);
-  const privateNames = new Set();
-  for (const definition of definitions) {
-    if (
-      !Array.isArray(definition) ||
-      symbolName(definition[0]) !== "define" ||
-      !Array.isArray(definition[1]) ||
-      !identifier.test(symbolName(definition[1][0]) ?? "")
-    ) {
-      throw new Error("Compiled module must contain function definitions");
-    }
-    const key = symbolName(definition[1][0]);
-    if (key === module.entry.name && definition[1].length !== 2) {
-      throw new Error("Compiled entry must accept exactly one input");
-    }
-    if (privateNames.has(key)) {
-      throw new Error("Duplicate compiled definition");
-    }
-    privateNames.add(key);
-  }
-  if (!privateNames.has(module.entry.name) || privateNames.has(name)) {
-    throw new Error("Missing or colliding compiled entry");
-  }
-  const admittedCaller = admitLinkedCaller(caller);
-  const source = `(registered-program\n(${module.sexpressions})\n(${`(${name} compiled ${module.entry.name} ())`})\n(${admittedCaller}))`;
-  // Pin executable, evaluator and effect/source mapping together. This is not a grant.
-  const digest = createHash("sha256")
-    .update(JSON.stringify({ source, identity, effects: module.effects }))
-    .digest("hex");
-  return Object.freeze({
-    source,
-    language: "scheme",
-    program: `linked-review:${digest}`,
-    identity,
-    name,
-    entry: module.entry.name,
-    effects: Object.freeze(
-      Object.fromEntries(
-        Object.entries(module.effects).map(([site, effect]) => [
-          site,
-          Object.freeze({ ...effect, source: Object.freeze({ ...effect.source }) }),
-        ]),
-      ),
-    ),
-  });
 }
 
 /** Read-only view of trusted captured state, never recovery authorization.
@@ -257,14 +121,3 @@ export function inspectLinkedCheckpoint(artifact, capture) {
     truncated,
   };
 }
-
-/** Common linker contract; this adapter retains the bounded Scheme caller profile. */
-export const schemeWorkflowLinker = {
-  language: "scheme",
-  link({ module, caller, name, identity }) {
-    if (caller.language !== "scheme") {
-      throw new Error("Expected Scheme caller");
-    }
-    return linkReview({ module, caller: caller.text, name, identity });
-  },
-};

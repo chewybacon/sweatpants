@@ -23,12 +23,9 @@ import {
 } from "@sweatpan.ts/codemode-runtime-scheme/node";
 import { createLuaKernel, luaWasmUrl } from "@sweatpan.ts/codemode-runtime-lua";
 import type { PreparedProgram, Outcome, Operation, ScopeInstruction } from "@sweatpan.ts/execution";
-import {
-  luaWorkflowLinker,
-  bindLuaReviewBoundary,
-} from "../../../../../experiments/workflow-kernel/scriptc-scheme/lua-target.mts";
-import { schemeWorkflowLinker } from "../../../../../experiments/workflow-kernel/scriptc-scheme/linked.mjs";
-import { bindEffectBoundary } from "../../../../../experiments/workflow-kernel/scriptc-scheme/boundary.mts";
+import { luaWorkflowLinker } from "@sweatpan.ts/codemode-compiler-lua/link";
+import { luaWorkflowTarget } from "@sweatpan.ts/codemode-compiler-lua";
+import { schemeWorkflowLinker } from "@sweatpan.ts/codemode-compiler-scheme/link";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
@@ -165,6 +162,34 @@ let wasm: Promise<WebAssembly.Module> | undefined;
 const loadModule = () => (wasm ??= WebAssembly.compile(bytes));
 const allowed = Object.values(effects).map((definition) => definition.id);
 
+// This profile's message payload adapter and capability ceiling belong to assembly.
+// Linkers emit code/metadata; they neither grant effects nor choose request schemas.
+function decodeExchange(module: WorkflowModule, language: "scheme" | "lua") {
+  for (const site of Object.values(module.effects)) {
+    if (!allowed.includes(site.effect)) {
+      throw new Error("Effect not granted");
+    }
+  }
+  return (boundary: unknown): CapabilityRequest => {
+    const envelope = z
+      .object({ site: z.string(), value: z.unknown(), request: z.unknown() })
+      .parse(boundary);
+    const value = language === "scheme" ? envelope.value : envelope.request;
+    const declaration = module.effects[envelope.site];
+    if (
+      !declaration ||
+      !Array.isArray(value) ||
+      value.length !== 3 ||
+      value[0] !== "effect" ||
+      value[1] !== declaration.effect ||
+      typeof value[2] !== "string"
+    ) {
+      throw new Error("Exchange does not match admitted effect");
+    }
+    return { effect: declaration.effect, input: { message: value[2] } };
+  };
+}
+
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
   for (const [language, artifactSource] of [
     ["typescript", "compiled"],
@@ -204,26 +229,26 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
           } else if (language === "scheme") {
             const artifact = schemeWorkflowLinker.link({
               module: portable,
-              name: "send_email",
+              name: "sendEmail",
               identity: schemeRuntimeIdentity,
-              caller: { language: "scheme", text: "(send_email %input)" },
+              caller: { language: "scheme", text: "(sendEmail %input)" },
             });
             recipe = yield* createSchemeKernel(runtime, {
               identity: schemeRuntimeIdentity,
               loadMachine: loadSchemeMachine,
-              decodeRequest: bindEffectBoundary(portable, allowed),
+              decodeRequest: decodeExchange(portable, "scheme"),
               decodeResult: (value) => value,
             }).prepare(artifact.source, "hello");
           } else {
             const artifact = luaWorkflowLinker.link({
               module: portable,
-              name: "review_draft",
+              name: "sendEmail",
               identity: "email-lua-fixture",
-              caller: { language: "lua", text: "return review_draft(input)" },
+              caller: { language: "lua", text: "return sendEmail(input)" },
             });
             recipe = yield* createLuaKernel(runtime, {
               loadModule,
-              decodeRequest: bindLuaReviewBoundary(portable, allowed),
+              decodeRequest: decodeExchange(portable, "lua"),
               decodeResult: (value) => value,
             }).prepare(artifact.source, "hello");
           }
@@ -312,10 +337,85 @@ it("portable module verification rejects malformed structure and forged imports 
     expect(() =>
       luaWorkflowLinker.link({
         module: invalid,
-        name: "review_draft",
+        name: "sendEmail",
         identity: "fixture",
-        caller: { language: "lua", text: "return review_draft(input)" },
+        caller: { language: "lua", text: "return sendEmail(input)" },
       }),
     ).toThrow(/Invalid workflow module/);
   }
+});
+
+it("public linkers validate bindings and pin binding, caller, runtime and metadata", () => {
+  for (const linker of [schemeWorkflowLinker, luaWorkflowLinker]) {
+    const caller = (name: string) => ({
+      language: linker.language,
+      text: linker.language === "lua" ? `return ${name}(input)` : `(${name} %input)`,
+    });
+    const request = {
+      module,
+      name: "sendEmail",
+      identity: "runtime-1",
+      caller: caller("sendEmail"),
+    };
+    const artifact = linker.link(request);
+    expect(linker.link(request)).toEqual(artifact);
+    expect(
+      linker.link({ ...request, name: "deliver", caller: caller("deliver") }).program,
+    ).not.toBe(artifact.program);
+    expect(linker.link({ ...request, identity: "runtime-2" }).program).not.toBe(artifact.program);
+    const changed = {
+      ...module,
+      effects: Object.fromEntries(
+        Object.entries(module.effects).map(([site, effect]) => [
+          site,
+          { ...effect, source: { ...effect.source, line: effect.source.line + 1 } },
+        ]),
+      ),
+    };
+    expect(linker.link({ ...request, module: changed }).program).not.toBe(artifact.program);
+    for (const name of linker.language === "lua"
+      ? ["input", "local", "__metadata", "workflow", "x)()"]
+      : ["root", "define", module.entry.name, "x)()"]) {
+      expect(() => linker.link({ ...request, name })).toThrow();
+    }
+    expect(() =>
+      linker.link({ ...request, caller: { ...request.caller, language: "python" } }),
+    ).toThrow();
+  }
+});
+
+forEachRuntime(<Y>(runtime: Runtime<Y>) => {
+  it(`${runtime.name}: public standalone targets execute the same verified module`, async () => {
+    await runtime.start(function* () {
+      const simple: WorkflowModule = {
+        format: "workflow-scheme/1",
+        entry: { name: "echo", parameters: "input" },
+        effects: {},
+        sexpressions: '(define (echo input) (workflow-return (js-add "hello:" input)))',
+      };
+      const scheme = schemeWorkflowTarget.emit(simple);
+      const lua = luaWorkflowTarget.emit(simple);
+      const reject = (): never => {
+        throw new Error("Unexpected effect");
+      };
+      const recipes = [
+        yield* createSchemeKernel(runtime, {
+          identity: schemeRuntimeIdentity,
+          loadMachine: loadSchemeMachine,
+          decodeRequest: reject,
+          decodeResult: (value) => value,
+        }).prepare(scheme.source, "world"),
+        yield* createLuaKernel(runtime, {
+          loadModule,
+          decodeRequest: reject,
+          decodeResult: (value) => value,
+        }).prepare(lua.source, "world"),
+      ];
+      for (const recipe of recipes) {
+        const guest = yield* recipe.acquire();
+        yield* runtime.composition.ensure(() => guest.close());
+        expect(yield* guest.start()).toEqual({ kind: "completed", value: "hello:world" });
+      }
+    }).result;
+  });
 });

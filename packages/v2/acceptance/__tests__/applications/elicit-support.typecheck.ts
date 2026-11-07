@@ -58,10 +58,8 @@ export function inferredHandlerRuntime<Y>(
   return { response, portable };
 }
 
-import {
-  createReactElicitHost,
-  SeatPicker,
-} from "../../../../../apps/yo-chat-v2/src/react-elicit.tsx";
+import { createReactElicitHost } from "@sweatpan.tsx/chat";
+import { SeatPicker } from "../../../../../apps/yo-chat-v2/src/react-elicit.tsx";
 
 export function reactHandlerTypes<Y>(runtime: Runtime<Y>) {
   const host = createReactElicitHost(runtime);

@@ -16,7 +16,7 @@ import {
   type Question,
 } from "./contracts.ts";
 import type { BrowserChat } from "./transport.ts";
-import { ElicitViews } from "./react-elicit.tsx";
+import { ElicitViews } from "@sweatpan.tsx/chat";
 import { questionKey, type FlightFrontend } from "./flight-frontend.tsx";
 const FlightContext = createContext<FlightFrontend | undefined>(undefined);
 const binding = createChatContext<View, Answer, AnswerReceipt>();
