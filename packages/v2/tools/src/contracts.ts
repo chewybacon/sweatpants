@@ -1,8 +1,13 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Api, Operation, Outcome } from "@standard-durability/core";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
-import type { Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
+import type { GuestWork, Guest, LogicalScope, ScopeInstruction } from "@sweatpan.ts/execution";
 import type {
+  Acceptance,
+  JournalSnapshot,
+  InteractionRegistration,
+  OwnedJournal,
+  Recovery,
   OwnedChild,
   ChildLink,
   Interactions,
@@ -11,7 +16,13 @@ import type {
   ResolutionGrant,
   RootCancellation,
 } from "@sweatpan.ts/durable";
-import type { EffectCapabilities, EffectGrant, ChildHostingResult } from "@sweatpan.ts/hosting";
+import type {
+  EffectCapabilities,
+  EffectGrant,
+  ChildHostingResult,
+  HostedResult,
+  Hosting,
+} from "@sweatpan.ts/hosting";
 
 /** Authored operations available inside an evaluator-owned tool body. */
 export interface ToolContext<
@@ -299,4 +310,79 @@ export interface ElicitResponder<Y> {
     selection: ElicitSelection,
     question: ElicitRequest,
   ): Operation<Outcome<unknown, unknown>, Y>;
+}
+
+/** Placement/recovery policy. Preserve the supplied program, admitted acquisition
+ * and request equality; own every acquired Guest in the invoking scope. */
+export interface ToolRecoveryFactory<Y> {
+  <R>(options: {
+    readonly name: string;
+    readonly program: string;
+    readonly acquire: GuestWork<R, CapabilityRequest, Y, unknown, string>;
+    readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
+  }): Recovery<R, CapabilityRequest, Y, unknown, string, unknown>;
+}
+
+/** Exact capability instances used by a bound tool. Installation is scoped, not
+ * serialized to a worker. Recovery/placement must establish remote bindings explicitly. */
+export interface ToolSession<I, O, R, Y> {
+  readonly journal: OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>;
+  readonly admission: Api<ToolAdmission<I, O, Y>, Y>;
+  readonly effects: EffectCapabilities<Y>;
+  readonly acquisition: ToolAcquisition<O, R, Y>;
+  readonly recovery: Recovery<R, CapabilityRequest, Y, unknown, string, unknown>;
+  readonly host: Hosting<R, CapabilityRequest, unknown, string, Y>;
+  /** Validate/pin input, then run. Identical normalized admission is idempotent. */
+  start(input: I): Operation<HostedResult<R, CapabilityRequest>, Y>;
+  read(): ReturnType<OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>["read"]>;
+  /** Recover using persisted normalized input. Owns a fresh child scope per run. */
+  run(): Operation<HostedResult<R, CapabilityRequest>, Y>;
+  /** Validate and accept only; advancing after acceptance is an explicit caller choice. */
+  answer(
+    grant: ResolutionGrant,
+    outcome: Outcome<unknown, unknown>,
+  ): Operation<Acceptance<CapabilityRequest, unknown, string>, Y>;
+}
+
+export interface ToolSessionOptions<I, O, R, Y> {
+  /** Verified parent-owned link supplies normalized child input. Root start is unavailable. */
+  readonly child?: ChildLink;
+  /** Installed after required wiring, once per command in its owned scope. */
+  configure?(session: ToolSession<I, O, R, Y>): Operation<void, Y>;
+  readonly journal: OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>;
+  readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
+  /** Defaults to local replay. May select compatible placement and checkpoints. */
+  readonly recovery?: ToolRecoveryFactory<Y>;
+}
+
+/** Detached observation: no connection-bound history readers escape a command. */
+export type ToolApplicationSnapshot<R> = JournalSnapshot<R, CapabilityRequest, unknown> & {
+  readonly interaction?: InteractionRegistration;
+};
+
+export interface ToolApplicationMethods<I, R, Y> {
+  start(execution: string, input: I): Operation<HostedResult<R, CapabilityRequest>, Y>;
+  run(execution: string): Operation<HostedResult<R, CapabilityRequest>, Y>;
+  read(execution: string): Operation<ToolApplicationSnapshot<R>, Y>;
+  answer(
+    execution: string,
+    grant: ResolutionGrant,
+    outcome: Outcome<unknown, unknown>,
+  ): Operation<Acceptance<CapabilityRequest, unknown, string>, Y>;
+}
+
+/** Stateless application recipe. Each command owns an inherited child scope.
+ * Storage acquisition registers cleanup there. No implicit task, HTTP protocol,
+ * global resource owner, authentication or background advancement. */
+export interface ToolApplicationOptions<I, O, R, Y> extends Omit<
+  ToolSessionOptions<I, O, R, Y>,
+  "journal" | "child"
+> {
+  readonly name: string;
+  open(
+    execution: string,
+  ): Operation<OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>, Y>;
+  /** Runs for every command, including reads and answers. Use caller-owned contexts
+   * for transient identity; persisted input, not request context, drives replay. */
+  configure?(session: ToolSession<I, O, R, Y>): Operation<void, Y>;
 }

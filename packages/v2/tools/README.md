@@ -17,6 +17,87 @@ const investigate = defineTool("investigate")
   });
 ```
 
+## Hosted application entry point
+
+`createToolApplication` assembles an authored tool into scoped `start`, `run`, `read`
+and `answer` commands. It supplies local replay by default. Storage and compatible
+placement remain explicit adapters; constructing the application starts no work.
+
+```ts
+const app = createToolApplication(runtime, investigate, {
+  name: "investigations",
+  matches: equalRequests,
+  open: openJournal, // execution ID -> journal; register connection cleanup in this scope
+  // recovery: selectedRecovery, // optional placement/checkpoint assembly
+  *configure({ effects, acquisition, recovery, host }) {
+    yield* effects.install(readFile, readFileHandler);
+    yield* acquisition.around(traceAcquisition);
+    yield* recovery.execution.around(traceAdvancement);
+    yield* host.around(continuationBudget);
+  },
+});
+
+// These operations inherit caller-installed ports, contexts and middleware.
+const report = yield * app.operations.start(executionId, { path: "report.txt" });
+const snapshot = yield * app.operations.read(executionId);
+const receipt = yield * app.operations.answer(executionId, grant, outcome);
+// Acceptance and advancement are deliberately separate, so a lost response can
+// retry acceptance without changing the command. Run repairs interrupted advancement.
+yield * app.operations.run(executionId);
+```
+
+`start` validates and pins normalized input before advancement; `run` recovers the
+persisted input without repeating schema transforms. This includes admission pinned by
+trusted lower-level journal code; that caller owns normalization. `run` repairs the gap
+between admission and first advancement, not just previously started Guests.
+`read` returns detached snapshot data, including the current interaction, without acquiring
+a Guest. It omits connection-bound `history.at/read` methods; use a separately owned
+journal scope for history access. `answer` validates against the original elicitation declaration and accepts
+through the existing journal authority, without advancing. Results and input types stay
+inferred; the grant-based answer envelope is validated at runtime against its stored
+request. Concurrent writes retain existing journal conflict and duplicate-receipt rules.
+
+The application itself is an ordinary `Api`: `around` and `install` operate on its
+commands. Each command opens a journal inside an inherited child scope, checks its
+execution/program identity, and uses `createToolSession`. The opener owns connection
+acquisition and must register cleanup in that scope, including partial acquisition.
+`configure` installs policy on the exact session instances used by that command,
+after required admission, retention and default elicitation routing. It runs on reads
+and answers too; keep installations lazy and do not invoke session commands recursively.
+Default elicits park; `installElicitHandlers` can override them with server handlers.
+Configuration failure, command failure and interruption unwind owned resources. A broken
+configuration can therefore make reads unavailable too. Storage opens per command;
+a convenience operation that starts then reads performs two independently owned opens.
+
+There is no hidden `runtime.start`, global application scope, HTTP router, authorization
+or scheduler. A framework adapter owns its native task and request signal. Applications
+may own an outer scope for shared resources and inherited defaults. Authentication belongs
+at the command boundary, including direct callers; request identity is transient and must
+be re-established on recovery. Replay-relevant input belongs in admission. Native abort
+stops local work; it does not record logical cancellation or undo accepted work.
+
+`createToolSession` is the connection-bound assembly underneath. Each construction creates
+independent capability instances. Every session command verifies the journal's program
+before configuration or answer validation, including terminal runs. Its raw `read` retains
+journal history readers and requires the caller's connection to stay open. It exposes admission,
+effects, acquisition, recovery and host for advanced composition. It is also used by
+`createChatToolBinding`; chat children supply their verified persisted parent link instead
+of root admission. Child input must not be admitted again through `start`.
+
+Placement factories must preserve pinned program and exchange semantics. Local scoped
+installations do not cross a worker transport automatically. Remote bootstrap, grants,
+codecs and checkpoint compatibility remain the adapter's responsibility; wrapping Guest
+identity also requires preserving its checkpoint adapter. This application default is
+native TypeScript, not an automatic compiler or sandbox selector.
+
+The `tool-application` acceptance journey runs on Effect and Effection with local and
+serialized-local placement. It checks inherited/overridden ports, acquisition/effect/Guest
+middleware, normalized-input recovery, accepted-work replay and scope cleanup. The actual
+Start `pick_card` handler adds SQLite connection disposal and duplicate-answer evidence.
+These do not establish remote deployment or process-crash guarantees.
+
+## Lower-level composition
+
 `admitTool(runtime, tool, journal, rawInput)` validates a new root invocation and
 atomically stores the schema's returned value with the journal's pinned program.
 It does not acquire a Guest. Equal normalized resubmissions return the stored value;

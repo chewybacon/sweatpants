@@ -42,9 +42,11 @@ The root document links the complete base/theme stylesheet with Vite’s `?url` 
 ## Pick a card backend
 
 `src/tools/pick-card.ts` authors the tool with `defineTool`, `defineEffect` and `ctx.elicit`.
-`src/server/pick-card.ts` composes tool acquisition, recovery, hosted participant waiting,
-typed answer ingress and the SQLite journal. Existing guest retention owns capabilities
-through registration; the host is disposed when it returns. Start routes remain thin.
+`src/server/pick-card.ts` binds `createToolApplication` to SQLite and projects its journal
+into the card view. The shared tools assembly owns admission, acquisition, recovery,
+participant routing and validated answer ingress. Its scoped command API is also
+available directly, without HTTP. Start routes only validate the HTTP envelope and
+own the native request task.
 
 Use one caller-generated UUID for an invocation at `/api/cards/<execution>`:
 
@@ -59,8 +61,8 @@ Acceptance and advancement are separate durable steps; POST or an identical PUT 
 advancement after interruption. GET never does that work automatically.
 
 The Node adapter in `src/server/cards.ts` selects Effection and opens a fresh database
-connection per request. Each handler awaits its runtime task (including scoped cleanup)
-before closing that connection. A disconnected request may stop local advancement; the
+connection per application command. Each command scope closes its connection before
+returning; the HTTP handler also joins its native task cleanup. A disconnected request may stop local advancement; the
 journal retains any committed progress. No background task or process-local workflow is
 needed while the tool waits for input.
 
