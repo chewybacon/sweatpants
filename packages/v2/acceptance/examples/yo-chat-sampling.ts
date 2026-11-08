@@ -1,7 +1,7 @@
 import type { Outcome } from "@standard-durability/core";
 import type { ChatLoopSample, ChatSamplingError, ChatSampling } from "@sweatpan.ts/chat";
 import { createPullStream, type Runtime } from "@sweatpan.ts/runtime";
-import type { TextSampling } from "../../../../apps/yo-chat-v2/src/sampling.ts";
+import type { TextSampling } from "./chat-prototype/sampling.ts";
 
 /** Completed-only protocol peer for journeys that do not produce progress. */
 export function completedSampling<Y>(

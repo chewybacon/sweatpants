@@ -1,11 +1,8 @@
 import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { request as httpRequest } from "node:http";
 import { expect, it, onTestFinished } from "vitest";
-import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
-import {
-  createNodeServer,
-  closeNodeServer,
-} from "../../../../../apps/yo-chat-v2/src/node-server.ts";
+import { createApplication } from "../../examples/chat-prototype/application.ts";
+import { createNodeServer, closeNodeServer } from "../../examples/chat-prototype/node-server.ts";
 import { createLatch, createSqliteDatabaseRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -48,9 +45,6 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const html = await fetch(origin);
     expect(html.status).toBe(200);
     await html.text();
-    const asset = await fetch(origin + "/client.js");
-    expect(asset.status).toBe(200);
-    await asset.text();
     const foreign = await fetch(origin + "/api/conversation", {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: "https://foreign.example" },

@@ -14,9 +14,17 @@ export interface Accepted<Q, V, E> {
 /** Evaluator state anchored to a program and accepted history prefix. */
 export interface Checkpoint<S> {
   readonly program: string;
+  /**
+   * Adapter format identifier. Include a version component when serialization changes
+   * incompatibly. Checkpoint middleware restores only an exact adapter-format match;
+   * an unsupported format delegates to the next recovery policy before acquisition.
+   */
   readonly format: string;
   /** Number of accepted outcomes already reflected in evaluator state. */
   readonly position: number;
+  /** Last accepted receipt reflected in this checkpoint; null when position is zero.
+   * The journal may already contain entries beyond this checkpoint's accepted prefix.
+   */
   readonly receipt: string | null;
   readonly state: S;
 }
@@ -24,6 +32,7 @@ export interface Checkpoint<S> {
 /** Accepted count and the identity of the last accepted entry. */
 export interface JournalPosition {
   readonly position: number;
+  /** Last accepted receipt in this history prefix; null when position is zero. */
   readonly receipt: string | null;
 }
 

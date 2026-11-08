@@ -1,7 +1,7 @@
 # Linked workflow on Cloudflare local
 
 A local-only browser assembly of the v2 linked Scheme experiment. This is separate
-from v1 yo-workflow and the Node yo-chat-v2 app.
+from v1 yo-workflow and the retired Node chat prototype (now an acceptance fixture).
 
 The build compiles current developer TypeScript through live ScriptC into the
 shared Scheme IR. A live model (Luna 6 by default) writes a small Scheme caller

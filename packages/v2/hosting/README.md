@@ -240,7 +240,10 @@ cancellation commits. Losing this notification cannot admit the revoked result.
 The root protocol currently supports iterator replay and nested lexical finally,
 with sequential owned calls as described below. Fork groups, deadline alarms and
 checkpointed unwinding are not implemented.
-The installed Lua evaluator does not yet expose logical cancellation.
+The Lua evaluator supports logical cancellation at suspended boundaries, including
+protected `workflow.scope` cleanup. Its checkpoints retain suspended cancellation
+state, while journal cancellation recovery uses replay. See the
+[Lua cancellation contract and limits](../codemode-runtime-lua/README.md#logical-cancellation).
 
 ## Sequential owned calls
 

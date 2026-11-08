@@ -1,7 +1,7 @@
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { isValidElement, StrictMode } from "react";
 import { createReactElicitHost, ElicitViews } from "@sweatpan.tsx/chat";
-import { SeatPicker } from "../../../../../apps/yo-chat-v2/src/react-elicit.tsx";
+import { SeatPicker } from "../../examples/chat-prototype/react-elicit.tsx";
 import { isDeepStrictEqual } from "node:util";
 import { expect, expectTypeOf, it, onTestFinished } from "vitest";
 import { z } from "zod";
@@ -23,7 +23,7 @@ import {
   travelTip,
 } from "../../examples/flight-chat.ts";
 import { defineElicitPlugin, defineElicitPlugins, selectToolSupport } from "@sweatpan.ts/tools";
-import { selectionSchema } from "../../../../../apps/yo-chat-v2/src/elicit-support.ts";
+import { selectionSchema } from "../../examples/chat-prototype/elicit-support.ts";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const sharedDeclaration = defineElicitPlugins<{ choice: "flight-1" | "flight-2" }>()(

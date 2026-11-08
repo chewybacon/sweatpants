@@ -5,12 +5,12 @@ import { createPullStream, type Runtime } from "@sweatpan.ts/runtime";
 import { createLatch, createSqliteDatabaseRig } from "@sweatpan.ts/testing";
 import type { Outcome } from "@standard-durability/core";
 import type { ModelInfo, ModelStreamEvent, ModelResponse } from "@sweatpan.ts/providers";
-import { createTextSampling } from "../../../../../apps/yo-chat-v2/src/model.ts";
+import { createTextSampling } from "../../examples/chat-prototype/model.ts";
 import type { ChatSamplingError, ChatLoopSample } from "@sweatpan.ts/chat";
-import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
-import { createBrowserChat } from "../../../../../apps/yo-chat-v2/src/transport.ts";
-import { Chat, ChatProvider } from "../../../../../apps/yo-chat-v2/src/ui.tsx";
-import type { TextSampling } from "../../../../../apps/yo-chat-v2/src/sampling.ts";
+import { createApplication } from "../../examples/chat-prototype/application.ts";
+import { createBrowserChat } from "../../examples/chat-prototype/transport.ts";
+import { Chat, ChatProvider } from "../../examples/chat-prototype/ui.tsx";
+import type { TextSampling } from "../../examples/chat-prototype/sampling.ts";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 const model: ModelInfo = {

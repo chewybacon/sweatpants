@@ -149,7 +149,11 @@ function Composer() {
   const { view, submit: send, refresh } = useChat();
   const [text, setText] = useState("");
   const [codeMode, setCodeMode] = useState(false);
-  const [pending, setPending] = useState<Submission>();
+  const [pending, setPending] = useState<{
+    command: Submission;
+    send: typeof send;
+    refresh: typeof refresh;
+  }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<"rejected" | "uncertain">();
   const canSubmit =
@@ -161,17 +165,23 @@ function Composer() {
     if (!canSubmit || !view) {
       return;
     }
-    const command = pending ?? {
-      command: crypto.randomUUID(),
-      prompt: text,
-      after: view.latest,
-      mode: codeMode ? ("code" as const) : ("tools" as const),
+    // An uncertain command retains its originating session even if the provider
+    // changes. New commands use the current session after this attempt settles.
+    const attempt = pending ?? {
+      command: {
+        command: crypto.randomUUID(),
+        prompt: text,
+        after: view.latest,
+        mode: codeMode ? ("code" as const) : ("tools" as const),
+      },
+      send,
+      refresh,
     };
-    setPending(command);
+    setPending(attempt);
     setBusy(true);
     setError(undefined);
     try {
-      await send(command);
+      await attempt.send(attempt.command);
       setPending(undefined);
       setText("");
     } catch (failure) {
@@ -182,7 +192,7 @@ function Composer() {
         setError("uncertain");
       }
     } finally {
-      await refresh().catch(() => undefined);
+      await attempt.refresh().catch(() => undefined);
       setBusy(false);
     }
   }

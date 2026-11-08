@@ -1,5 +1,4 @@
 import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 interface Application {
@@ -19,13 +18,6 @@ export function createNodeServer(app: Application) {
       const path = req.url ?? "/";
       if (path === "/" && req.method === "GET") {
         res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" }).end(html);
-        return;
-      }
-      if ((path === "/client.js" || path === "/client.css") && req.method === "GET") {
-        const content = await readFile(new URL(`../dist${path}`, import.meta.url));
-        res
-          .writeHead(200, { "Content-Type": path.endsWith(".js") ? "text/javascript" : "text/css" })
-          .end(content);
         return;
       }
       const chunks: Buffer[] = [];

@@ -39,8 +39,8 @@ compatible with retained work and use distinct program/tool identities for incom
 authored changes. The local projection retains schema references and is not a
 browser-safe extraction mechanism. Authentication, wire limits, generated schema identities and provider/context registration DX remain
 outside this experiment. The shared declarations and responder now live in `@sweatpan.ts/tools`; the React
-adapter, wire schemas and frontend dispatcher remain in `apps/yo-chat-v2/src`. The React experiment
-below remains useful for evaluating the contract without promoting a framework API.
+adapter is promoted in `@sweatpan.tsx/chat`. The retired wire schemas and frontend
+dispatcher remain in `examples/chat-prototype` for acceptance evidence.
 
 Evidence: `elicit-support.acceptance.test.tsx` executes the real flight tool/chat
 host under Effect and Effection with SQLite reopen, simulated model responses,
@@ -102,7 +102,7 @@ come from the authoritative conversation view. No React elements are persisted.
 - **Application assembly:** selected plugin registration and explicit handler task
   ownership remain outside `useChat`. Mounting a message component should not create
   another handler owner.
-- **Application follow-up:** yo-chat-v2 now owns a frontend dispatcher that reconciles
+- **Application follow-up:** the retired chat-prototype fixture owns a frontend dispatcher that reconciles
   snapshots, deduplicates local handlers, removes obsolete renders and retains an
   ambiguous answer for explicit identical retry. Its demo flight and seat pickers
   sit under their assistant turn. General nested tool history, module-level plugin

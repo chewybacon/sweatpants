@@ -1,7 +1,7 @@
 import { expect, it, onTestFinished } from "vitest";
-import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
-import { viewSchema } from "../../../../../apps/yo-chat-v2/src/contracts.ts";
-import { chooseFlight } from "../../../../../apps/yo-chat-v2/src/flight.ts";
+import { createApplication } from "../../examples/chat-prototype/application.ts";
+import { viewSchema } from "../../examples/chat-prototype/contracts.ts";
+import { chooseFlight } from "../../examples/chat-prototype/flight.ts";
 import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { createSqliteDatabaseRig } from "@sweatpan.ts/testing";
 import type { ChatSampling } from "@sweatpan.ts/chat";

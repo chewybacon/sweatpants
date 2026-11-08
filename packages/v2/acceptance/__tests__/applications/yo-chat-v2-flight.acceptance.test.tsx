@@ -1,10 +1,10 @@
 import { act, fireEvent, render, within, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { expect, it, onTestFinished } from "vitest";
-import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
-import { createBrowserChat } from "../../../../../apps/yo-chat-v2/src/transport.ts";
-import { createFlightFrontend } from "../../../../../apps/yo-chat-v2/src/flight-frontend.tsx";
-import { Chat, ChatProvider } from "../../../../../apps/yo-chat-v2/src/ui.tsx";
+import { createApplication } from "../../examples/chat-prototype/application.ts";
+import { createBrowserChat } from "../../examples/chat-prototype/transport.ts";
+import { createFlightFrontend } from "../../examples/chat-prototype/flight-frontend.tsx";
+import { Chat, ChatProvider } from "../../examples/chat-prototype/ui.tsx";
 import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { createSqliteDatabaseRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";

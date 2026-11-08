@@ -1,0 +1,51 @@
+import { defineTheme } from "@astryxdesign/core/theme";
+import { neutralTheme } from "@astryxdesign/theme-neutral/built";
+
+export const rosePineTheme = defineTheme({
+  name: "rose-pine",
+  extends: neutralTheme,
+  tokens: {
+    "--color-accent": "#31748f",
+    "--color-accent-muted": "#243f4e",
+    "--color-on-accent": "#e0def4",
+    "--color-neutral": "#302c44",
+    "--color-background-body": "#191724",
+    "--color-background-surface": "#242132",
+    "--color-background-card": "#242132",
+    "--color-background-popover": "#26233a",
+    "--color-background-muted": "#26233a",
+    "--color-text-primary": "#e0def4",
+    "--color-text-secondary": "#908caa",
+    "--color-text-disabled": "#7d7894",
+    "--color-text-accent": "#9ccfd8",
+    "--color-icon-primary": "#e0def4",
+    "--color-icon-secondary": "#908caa",
+    "--color-icon-accent": "#9ccfd8",
+    "--color-border": "#514c65",
+    "--color-border-emphasized": "#7d7894",
+    "--color-overlay-hover": "rgba(144, 140, 170, 0.14)",
+    "--color-overlay-pressed": "rgba(144, 140, 170, 0.22)",
+    "--color-error": "#eb6f92",
+    "--color-error-muted": "#3e2630",
+    "--color-on-error": "#191724",
+    "--color-text-error": "#eb6f92",
+    "--color-warning": "#f6c177",
+    "--color-warning-muted": "#3e3222",
+    "--color-on-warning": "#191724",
+    "--color-text-warning": "#f6c177",
+    "--color-success": "#9ccfd8",
+    "--color-success-muted": "#223638",
+    "--color-on-success": "#191724",
+    "--color-text-success": "#9ccfd8",
+    "--color-info": "#9caae8",
+    "--color-info-muted": "#2a2640",
+    "--color-text-info": "#9caae8",
+    "--focus-outline-color": "#c4a7e7",
+    "--font-family-body":
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    "--font-family-heading":
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    "--font-family-code":
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+});

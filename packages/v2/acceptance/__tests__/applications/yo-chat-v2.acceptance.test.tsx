@@ -2,9 +2,9 @@ import { completedSampling } from "../../examples/yo-chat-sampling.ts";
 import { StrictMode } from "react";
 import { act, fireEvent, render, within, waitFor } from "@testing-library/react";
 import { expect, it, onTestFinished } from "vitest";
-import { createApplication } from "../../../../../apps/yo-chat-v2/src/application.ts";
-import { createBrowserChat } from "../../../../../apps/yo-chat-v2/src/transport.ts";
-import { Chat, ChatProvider } from "../../../../../apps/yo-chat-v2/src/ui.tsx";
+import { createApplication } from "../../examples/chat-prototype/application.ts";
+import { createBrowserChat } from "../../examples/chat-prototype/transport.ts";
+import { Chat, ChatProvider } from "../../examples/chat-prototype/ui.tsx";
 import { createSqliteDatabaseRig, createLatch } from "@sweatpan.ts/testing";
 import type { ChatSampling } from "@sweatpan.ts/chat";
 import type { ModelInfo } from "@sweatpan.ts/providers";
@@ -167,6 +167,126 @@ forEachRuntime(<Y,>(runtime: Runtime<Y>) => {
     );
     expect(foreign.status).toBe(403);
   });
+  for (const lostReceipt of ["before-acceptance", "after-acceptance"] as const) {
+    it(`${runtime.name}: retained submission retries stay with their original client after replacement (${lostReceipt})`, async () => {
+      function session(label: string) {
+        const database = createSqliteDatabaseRig();
+        let samples = 0;
+        const sampling: ChatSampling<Y> = {
+          *sample() {
+            samples++;
+            return {
+              ok: true,
+              value: {
+                model,
+                response: {
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: `Reply from ${label}` }],
+                  },
+                  source: null,
+                  usage: null,
+                  stopReason: "stop",
+                  responseId: null,
+                  errorMessage: null,
+                },
+              },
+            };
+          },
+        };
+        const app = createApplication(runtime, database.database, {
+          sampling: completedSampling(runtime, sampling),
+        });
+        const posts: string[] = [];
+        let reads = 0;
+        let lose = label === "A";
+        const send: typeof fetch = async (input, init) => {
+          const post = init?.method === "POST";
+          if (post) {
+            posts.push(String(init?.body));
+          } else {
+            reads++;
+          }
+          if (post && lose && lostReceipt === "before-acceptance") {
+            lose = false;
+            throw new Error("Disconnected before delivery");
+          }
+          const response = await app.fetch(
+            new Request(new URL(String(input), "http://localhost"), init),
+          );
+          if (post && lose && response.ok) {
+            lose = false;
+            throw new Error("Disconnected after acceptance");
+          }
+          return response;
+        };
+        const client = createBrowserChat(send);
+        onTestFinished(async () => {
+          client.close();
+          await app.close();
+          database.close();
+        });
+        return { client, posts, samples: () => samples, reads: () => reads };
+      }
+      const a = session("A"),
+        b = session("B");
+      await a.client.refresh();
+      await b.client.refresh();
+      const ui = render(
+        <StrictMode>
+          <ChatProvider client={a.client}>
+            <Chat />
+          </ChatProvider>
+        </StrictMode>,
+      );
+      onTestFinished(() => ui.unmount());
+      const current = within(ui.container);
+      fireEvent.change(current.getByLabelText("Message"), { target: { value: "For A" } });
+      fireEvent.click(current.getByRole("button", { name: "Send" }));
+      await waitFor(() => {
+        expect(current.getByRole("alert").textContent).toContain("Submission not confirmed");
+        expect(
+          (current.getByRole("button", { name: "Retry same message" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(false);
+      });
+      ui.rerender(
+        <StrictMode>
+          <ChatProvider client={b.client}>
+            <Chat />
+          </ChatProvider>
+        </StrictMode>,
+      );
+      const aReads = a.reads(),
+        bReads = b.reads();
+      fireEvent.click(current.getByRole("button", { name: "Retry same message" }));
+      await waitFor(() => expect(current.queryByRole("alert")).toBeNull());
+      await waitFor(() =>
+        expect(
+          (current.getByRole("button", { name: "Send" }) as HTMLButtonElement).textContent,
+        ).toBe("Send"),
+      );
+      expect(a.posts).toHaveLength(2);
+      expect(a.posts[1]).toBe(a.posts[0]);
+      expect(b.posts).toEqual([]);
+      expect(a.reads()).toBe(aReads + 1);
+      expect(b.reads()).toBe(bReads);
+      await waitFor(() => expect(a.samples()).toBe(1));
+      expect(b.samples()).toBe(0);
+      expect(b.client.getSnapshot().view?.messages).toEqual([]);
+      // A later, new command uses the replacement client and its predecessor.
+      fireEvent.change(current.getByLabelText("Message"), { target: { value: "For B" } });
+      fireEvent.click(current.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(b.samples()).toBe(1));
+      expect(a.posts).toHaveLength(2);
+      expect(b.posts).toHaveLength(1);
+      expect(JSON.parse(b.posts[0]!)).toMatchObject({ prompt: "For B", after: null });
+      expect(JSON.parse(b.posts[0]!).command).not.toBe(JSON.parse(a.posts[0]!).command);
+      await act(async () => {
+        await b.client.refresh();
+      });
+    });
+  }
   for (const interruption of ["provider-failure", "shutdown"] as const) {
     it(`${runtime.name}: yo-chat-v2 preserves uncertain work after ${interruption}`, async () => {
       const database = createSqliteDatabaseRig();

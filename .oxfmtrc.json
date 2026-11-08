@@ -15,10 +15,13 @@
     "apps/**/docs/**",
     "packages/framework/docs/**",
     "apps/yo-chat/src/routeTree.gen.ts",
+    "apps/yo-chat-v2/src/routeTree.gen.ts",
     "apps/yo-chat/src/__generated__/**",
     "packages/flowmode-runtime-scheme/generated/**",
     "packages/v2/codemode-runtime-scheme/generated/**",
     "packages/flowmode-runtime-lua/generated/**",
-    "packages/standard-durability*/.cache/**"
+    "packages/standard-durability*/.cache/**",
+    "apps/yo-chat-v2/src/themes/rose-pine/rose-pine.*",
+    "apps/yo-chat-v2/src/astryx-themes.ts"
   ]
 }

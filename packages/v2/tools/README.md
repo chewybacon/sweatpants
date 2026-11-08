@@ -361,6 +361,6 @@ SQLite and React on both runtimes. It demonstrates one declaration bound to dist
 capability instances, scoped response middleware isolation, invalid context rejection,
 missing server-handler rejection, client-route preservation, reopen and exact-grant
 answering. Source/emitted checks preserve typed context, capabilities and responses.
-The yo-chat-v2 HTTP journey consumes the same implementation. React presentation and
+The retired chat-prototype HTTP acceptance journey consumes the same implementation. React presentation and
 the application-owned snapshot/handler dispatcher remain app-local, as do retries,
 frontend session replacement and multi-tab ownership policy.
