@@ -37,3 +37,8 @@ export interface EffectRouter {
 
 /** Journal-owned sampling preparation boundary. */
 export type JournalSamplingService = (input: Json, attach: AttachProgramRequest) => Operation<Json>;
+
+export interface AdvancementServices {
+  readonly effects?: EffectRouter;
+  readonly stageSampleInput?: JournalSamplingService;
+}

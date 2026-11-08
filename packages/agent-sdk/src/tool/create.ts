@@ -1,3 +1,4 @@
+import type { ToolDefinition } from "./definition.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import {
@@ -16,7 +17,6 @@ import type {
   ElicitDefinition,
   ElicitsMap,
   SamplesMap,
-  ToolDefinition,
   ToolExtensionMetadata,
   SchemaProjectionOptions,
 } from "./types.ts";
@@ -156,7 +156,7 @@ function finalizeCoreUnifiedTool(options: {
   annotations: Record<string, unknown>;
   extensions: ToolExtensionMetadata[];
   impl: (input: unknown, ctx: ToolCtx) => Operation<unknown>;
-}): ToolDefinition {
+}): ToolDefinition<StandardSchemaV1, unknown> {
   const normalizedElicits = normalizeCoreElicits(options.elicits);
   const normalizedSamples =
     options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
@@ -228,6 +228,7 @@ function finalizeCoreUnifiedTool(options: {
   };
 
   Object.defineProperties(factory, {
+    effects: { value: Object.freeze({}), enumerable: true },
     execution: { value: "ordinary", enumerable: true, writable: false, configurable: true },
     name: { value: options.name, enumerable: true, writable: false, configurable: true },
     description: {
@@ -251,12 +252,6 @@ function finalizeCoreUnifiedTool(options: {
     },
     samples: {
       value: normalizedSamples,
-      enumerable: true,
-      writable: false,
-      configurable: true,
-    },
-    schemas: {
-      value: { input: options.parameters, output: options.output },
       enumerable: true,
       writable: false,
       configurable: true,
@@ -297,7 +292,7 @@ function finalizeCoreUnifiedTool(options: {
     },
   });
 
-  return factory as unknown as ToolDefinition;
+  return factory as unknown as ToolDefinition<StandardSchemaV1, unknown>;
 }
 
 function describeIssues(issues: readonly ParseIssue[]): string {

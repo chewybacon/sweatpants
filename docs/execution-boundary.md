@@ -1,190 +1,102 @@
-# Shared execution boundary
+# Authored tools become acquired computations
 
-An execution advances to one suspension or terminal outcome. A suspension may
-represent a single operation, an all/race group, or a spawn/join operation; the
-request vocabulary belongs to the operation contracts, not the bridge.
+The current boundary is definition → preparation → GuestWork → Guest → Turn.
+The execution/journal loop receives computation capabilities, not an authoring
+contract from which it must choose an implementation.
 
-`foundation` declares `ExecutionBoundary`, `Execution`, `ExecutionState`, and
-`Executor`. These are live computation interfaces, not a wire protocol. Request,
-reply, output, and failure types are independent parameters. Transport errors
-throw rather than becoming application failures. Activation is reserved for the
-host episode. `ExecutionState` is only a handle/boundary pair, with no separate
-lifecycle.
+## Direct typed invocation
 
-See [Execution vocabulary and the episode analogy](./execution-vocabulary.md) for
-the collaborator responsibilities and the reasoning behind these names.
+A concrete definition preserves its generator return type without `.output(...)`
+or explicit result generics:
 
-## Shared live command primitive
+```ts
+import { createDurableTool } from "@sweatpants/agent-sdk";
+import { inProcess } from "@sweatpants/agent-host/server";
+import { z } from "zod";
 
-`createExecution({ initial, driver, middleware })` constructs a replay execution.
-The driver implements `resume`, `cancel`, and `dispose`; the factory validates
-suspension correlation, rejects overlapping commands, retains the current boundary,
-and handles terminal cancellation and idempotent disposal. An optional
-`validateReply` checks domain-specific reply correlation before advancement.
+const double = createDurableTool("double", { version: "1" })
+  .parameters(z.object({ value: z.number() }))
+  .execute(function* ({ value }) {
+    return { doubled: value * 2 };
+  });
 
-`createCheckpointExecution` accepts the same options with a driver that also
-implements `capture`. It returns `CheckpointExecution`, which extends `Execution`
-and `Checkpointing<Snapshot>`. Capture shares the execution's guard; it cannot
-race with advancement or disposal. Failed/interrupted read-only capture releases
-that guard without poisoning guest state. Replay handles expose no capture method.
+const prepared = inProcess().prepare(double, "direct");
+const acquire = prepared.guest({ value: 21 }, "call-1");
+// acquire returns GuestWork<{ doubled: number }, JournalRequest, ...>.
+// After acquisition, guest.start() completes with that same result type.
+```
 
-Both factories return `ExecutionState<E, B>`: an explicitly typed execution handle
-and its initial boundary. They expose no generic observation callback or controller.
+This is invocation through placement, including when compute stays in-process.
+The definition has no public `invoke`, callable body or `TOOL_BODY` member.
+An explicit output schema remains optional for runtime validation/transformation.
+TypeScript inference alone does not validate transported or persisted bytes.
 
-Middleware uses Effection's `Partial<Around<Api>>` shape. The first supplied
-entry is outermost. Construction composes each named operation around the built-in
-state machine, with no captured scope or new resource lifetime. These are per-instance,
-construction-time decorators, not a dynamically installed scoped Port. Every
-forwarded driver operation passes through execution discipline even with no user
-middleware. Middleware is trusted code: short-circuiting or changing an operation's
-result can change caller semantics, so observation middleware should forward the
-original arguments and preserve results. Middleware functions are never checkpointed.
+Concrete `local` placement requires a versioned iterator definition and a worker
+entry. Its prepare overload retains the same Result while native operations manage
+the worker transport. `routeTools` preserves concrete preparation when its selected
+adapters support it.
 
-Kernel adapters can still translate `resume`/`cancel` into their transport's
-`ExecutionCommand` and `turn(command)` mechanics inside the driver.
+## Current chat call path
 
-A dispatched command that throws or is abandoned leaves the handle in the
-unknown-outcome state. Only disposal remains available. This includes Effection
-scope cancellation, which unwinds through `finally` without entering `catch`.
+```text
+createPrimitiveChatApp
+  → execution.prepare(tools, "tools") / prepareChatExecution
+  → activateChat
+      → scoped effect bindings and placement setup
+      → activateJournal
+          → acquire createChatGuest(chatWork(..., bound invoke))
+          → start / replay / resume
+              → chatWork requests a registered tool
+              → bound GuestWork acquires the selected tool Guest
+              → child starts and yields JournalRequests
+          → handleChatRequest
+          → journal accepts Outcome
+          → resume Guest, or park and close it
+```
 
-The drivers contain only backend translation and domain-specific reply validation:
-kernel drivers call the evaluator; tool drivers issue host turns with their
-adapter-owned command IDs and cursors.
+Preparation checks registry/route coverage. The invocation callback binds the
+selected work before the chat cursor sees it. The private `invoke-tool` request
+carries that work in memory; it is intercepted by `createChatGuest` and never
+serialized as another journal protocol.
 
-This spike shares live command discipline. It does not introduce a remote wire
-protocol, a shared request pump, or a durable execution handle. Durable tool
-consumers still use `advanceToolInvocation` with journal-owned command identities.
+`createChatGuest` is a chat-specific composition adapter. Child completion uses
+`Outcome<Json, Json>`, and authored failure is converted back into an Error for the
+chat computation. It is not the universal execution model. Generic Guest and
+`activateJournal` already provide the computation boundary.
 
-## Current adapters
+## Responsibility and failure boundaries
 
-- `WorkflowKernel` directly implements `Executor.start(program, input)` and adds
-  snapshot restoration. Fresh and restored executions return the same
-  `WorkflowExecution`: the shared execution handle with a `capture()` capability.
-  Evaluators use `createKernelExecution({ initial, driver, middleware })` to install the shared
-  command state machine once. There is no forwarding executor or WeakMap of handles.
-  The evaluator supplies suspension IDs and converts its internal machine result
-  into the shared boundary at its edge; the backend performs no boundary conversion.
-- `tool-session.createToolInvocationExecutor(host)` starts and advances an
-  ordinary invocation through the existing host. Its suspension identity combines
-  the event cursor and request ID. Replies must also match the ask kind and request
-  ID. Existing command deduplication and event projection remain host-owned.
+- Tool compilation owns author schemas and request/reply typing.
+- Admission owns lookup, interface checks and binding placement.
+- Placement owns acquisition and transport; acquisition does not run the body.
+- Guest owns continuation advancement and physical disposal.
+- Handlers perform native work and return outcomes.
+- The journal owns attempt/acceptance ordering and replay policy.
+- The application owns authorization, commands, storage lifetime and projection.
 
-Both execution paths reject overlapping commands and stale replies. A failed advance
-makes the handle unavailable for further advancement: its remote outcome may be
-unknown. Disposal remains available. Callers must dispose handles in a finalizer.
-Cancellation may produce another suspension for cleanup; disposal does not promise
-logical cleanup. A terminal boundary cannot be resumed.
+Accepted raw answers replay through their authored schema boundary. Validation at
+admission must not substitute transformed output for the raw accepted value and
+thereby apply a transform again on replay. Concrete operation keys preserve reply
+typing at authoring; the generic journal/wire boundary uses validated JSON.
 
-### Lifecycle spike: ownership before and after startup
+Authored failures can be represented as completion data by the chat admission
+wrapper. Lost workers and transport defects remain native failures; they must not
+be accepted as ordinary tool-error results. Closing a parked Guest releases its
+continuation. Replay reconstructs it from the beginning and feeds accepted outcomes;
+it does not serialize a JS generator.
 
-The tool adapter owns cleanup after `host.start` succeeds and until the first
-boundary is obtained. If that advance throws or its scope is cancelled, a
-finalizer disposes the invocation: no execution handle has reached the caller.
-After successful startup, the caller owns disposal as before. Acquisition inside
-`host.start` remains the host's responsibility.
+## Remaining compatibility
 
-The shared handle separates revoking advancement from acknowledging release.
-Disposal immediately closes the handle to resume/cancel. Successful driver
-disposal makes subsequent disposal a no-op; failed or interrupted disposal allows
-the owner to retry. Concurrent disposal is rejected. There is no automatic retry.
-Drivers must tolerate partial release and repeated disposal after interruption.
+`routeTools`, `inProcess` and `local` still contain retained registry paths for
+ToolSession resources and ProgramDriver assembly. `RetainedPreparedToolExecution`
+exposes those capabilities explicitly. MCP also retains native-context execution.
+The public iterator path is implemented; the whole framework has not been migrated.
+Those adapters are compatibility boundaries, not a prescription for new author APIs.
 
-The executable examples are `foundation/src/__tests__/execution.test.ts` and
-the abandoned-startup scenario in `tool-session/src/__tests__/invocation-executor.test.ts`.
-This is a narrow spike: it does not establish retry-safe cleanup in every host or
-transport. In particular, a host that forgets an invocation before release
-finishes still needs its own ownership fix. Snapshot capture's lifecycle guard
-and a production placement/recovery matrix remain follow-up work.
-
-Suspension IDs are scoped to an adapter lifetime. They are not durable receipts,
-and must not be used to correlate commands across reconnection or restoration.
-The existing ProgramDriver retains execution epochs, ordered actions, authorization,
-accepted-result receipts, replay, and checkpoint provenance.
-
-The kernel backend starts through `Executor.start` and advances through the returned
-execution. It uses the kernel executor’s separate restore/capture capability for snapshots. Ordinary tool-runtime and durable
-ephemeral-tool consumers share the same boundary mapping through
-`advanceToolInvocation`. They supply their existing command IDs and persist the
-request cursor in their existing continuations; they do not use the live executor's
-random command namespace. Transport and journal protocols remain unchanged.
-The ordinary adapter exposes one ask per turn; it does not yet enforce one pending
-request inside an arbitrary concurrent tool generator. Grouping such requests and
-portable recovery capabilities are separate follow-up work.
-
-
-## Effection composition
-
-`KernelExecutor` and `ToolInvocationExecutor` use the existing
-`definePort` convention. Composition installs a driver in an Effection scope;
-consumers obtain the API facade with `Port.use()` or `Port.context.expect()`.
-Startup calls remain observable through `Port.api.around({ start })`. Missing
-configuration fails closed, and children inherit the installed driver.
-
-The kernel backend installs its executor within the computation's run scope.
-Both fresh and restored executions call its `start` operation. When recovery
-has selected a validated snapshot, inner startup middleware invokes concrete
-kernel restoration, so outer policy and observation surround either path.
-That middleware is scoped to the computation and cannot change a sibling's start.
-The backend retains concrete snapshot capture outside that run, reached through
-the existing `ProgramRecovery` checkpoint policy and shared driver. Returned
-execution handles remain bound to their live computation; resolving
-another executor in a child scope does not retarget an existing execution.
-Tool executor composition is exposed for live callers; durable tool paths
-continue to use their journal-owned turn commands.
-
-
-## Executor / transport / kernel spike
-
-`tool-runtime-local/src/styles/__tests__/fixtures/executor-transport.ts` is an isolated comparison.
-It is not installed in production paths. Its scoped `Executor` declaration has
-one `createExecutor(transport)` implementation for both placements:
-
-- Local transport constructs an operative in a resource scope.
-- Worker transport connects to the same operative dispatcher in a real worker.
-- Each connection owns one live execution and carries only start/resume/cancel/dispose
-  messages and boundary/disposal/rejection responses.
-- The operative owns the kernel and execution handle. No live handle crosses the
-  transport. Explicit disposal closes the worker scope; scope exit also closes it.
-
-The same scenario body runs a deterministic request-list program against both
-placements: question, model request, completion; cancellation with cleanup; and
-stale reply rejection. Local exchange clones payloads to match worker isolation.
-
-The fixture kernel implements the existing `Executor` interface on the operative
-side. This reveals a useful composition: an executor can itself be the implementation
-behind a transport-backed executor. A new universal kernel interface is not needed
-for this experiment. Production Scheme/Hoot integration, recovery, wire validation,
-multiplexing and remote authentication remain outside the spike.
-
-### Real Hoot recovery composition
-
-`experiments/workflow-kernel/executor-recovery` extends the comparison with the
-real Hoot fixture and existing `ProgramRecovery` middleware. `Executor.start`
-middleware selects recovery from an authority-planned input; mandatory validation
-surrounds the recovery policy. Scoped policy chooses snapshot + accepted suffix
-or full replay. Boundary response envelopes carry checkpoint metadata for the
-principal to persist; the common executor interface remains unchanged.
-
-Both local and worker tests destroy the first connection, restore an earlier
-checkpoint in a fresh connection, replay the suffix, and finish pending cleanup.
-They assert actual Hoot restore/start/resume events and independent connection
-policies. Receipts are manufactured fixtures, not an authority admission proof.
-
-Unlike the simple request-list fixture, this composition needs dispatch to stay
-inside its operative scope. Its local transport therefore uses a message queue
-owned by that scope: returning an API facade alone does not retain middleware.
-The backend now consumes the kernel's shared handle directly. Concrete capture
-and restore remain evaluator capabilities underneath the recovery policy.
-
-The kernel backend now uses this startup composition in its package implementation,
-with regression coverage for observing both paths and isolating restored/fresh
-siblings. The experiment's transport envelope and trusted-plan start payload
-remain experimental; they have not replaced the existing program driver protocol.
-
-## Attachment integration
-
-The attachment now drives both Effection and snapshot-capable kernels through
-`ProgramComputation.start()` and one shared execution loop. Backend-specific
-work is preparation, request/reply translation, and checkpoint support. See
-[Attachment container and evaluator kernels](effection-container.md) for the
-call stack and lifecycle responsibilities.
+Sources: [preparation](../packages/agent-host/src/primitive/activation.ts),
+[chat cursor](../packages/agent-host/src/primitive/guest.ts),
+[journal loop](../packages/primitive-journal/src/activation.ts),
+[typed placement](../packages/tool-session/src/execution/tool-placement.ts),
+[retained routing](../packages/tool-session/src/execution/placement.ts).
+Evidence: [typed local/routed invocation and acquisition](../acceptance/__tests__/application-composition/yo-chat-worker.acceptance.test.ts),
+[generic composition and transforms](../acceptance/__tests__/standard-durability/composition.acceptance.test.ts).

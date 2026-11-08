@@ -1,0 +1,41 @@
+{
+  "name": "@sweatpan.ts/codemode-compiler-lua",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts"
+      },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./link": {
+      "development": {
+        "types": "./src/link.ts",
+        "import": "./src/link.ts"
+      },
+      "types": "./dist/link.d.ts",
+      "import": "./dist/link.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "lint": "cd ../../.. && oxlint --type-aware packages/v2/codemode-compiler-lua",
+    "format:check": "cd ../../.. && oxfmt packages/v2/codemode-compiler-lua --check"
+  },
+  "dependencies": {
+    "@sweatpan.ts/codemode-compiler": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

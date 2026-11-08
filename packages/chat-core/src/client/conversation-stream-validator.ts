@@ -221,6 +221,14 @@ export class ConversationSegmentValidator {
       invalid("a finite response segment may contain only one RUN_STARTED");
     }
     if (type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR) {
+      if (
+        this.terminalAuthorityState === null &&
+        type === EventType.RUN_ERROR &&
+        event.code === "OUTCOME_UNKNOWN"
+      ) {
+        this.terminal = true;
+        return;
+      }
       if (this.terminalAuthorityState === null) {
         authorityMissing("terminal AG-UI event requires committed idle or parked authority first");
       }

@@ -215,7 +215,6 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
   }
 
   const task = draft.task(request.address.sessionId, request.address.taskId);
-  const session = draft.session(request.address.sessionId);
   const { checkpoint } = request;
   if (checkpoint !== undefined) {
     const replayItem = planned.replay.find(
@@ -242,6 +241,19 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
       },
     };
   }
+  return installTaskMandate(draft, request, row.groupContext);
+}
+
+/** Install only after the caller has atomically checked its admission policy. */
+export function installTaskMandate(
+  draft: DecisionDraft,
+  request: BindMandateRequest,
+  groupContext: Mandate["groupContext"],
+): BindMandateResult & { status: "bound" } {
+  const task = draft.task(request.address.sessionId, request.address.taskId);
+  const session = draft.session(request.address.sessionId);
+  const head = strandHead(task);
+  const groupRevision = currentForkGroupRevision(session, task.taskId);
   // The conditional state transition is the complete guard: no separate
   // validate/claim phase exists. Advancing the epoch fences every older bind.
   task.execution.epoch += 1;
@@ -289,7 +301,7 @@ export function bindMandate(draft: DecisionDraft, request: BindMandateRequest): 
       attachmentId: request.attachmentId,
       boundAtRevision: session.control.revision,
     },
-    groupContext: structuredClone(row.groupContext),
+    groupContext: structuredClone(groupContext),
     lease: { ownerId: request.ownerId, epoch: task.execution.epoch, expiresAtMs },
     boundFrontier: structuredClone(request.frontierProof),
     programCapability,

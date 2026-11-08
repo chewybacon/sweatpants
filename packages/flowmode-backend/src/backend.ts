@@ -2,33 +2,25 @@ import { resource, type Operation } from "effection";
 import { assertJson, canonicalDigest } from "@sweatpants/foundation";
 import {
   CrankError,
-  DurableProgramCancellation,
   type DurableOperationDescriptor,
   type DurableProgramManifest,
   type PinnedProgram,
-  type RecordAttemptContext,
 } from "@sweatpants/durable-execution";
-import {
-  InstalledEffectPort,
-  EffectionKernel,
-  ProgramEffectRuntimeContext,
-  type ProgramBackend,
-  type ProgramComputation,
-  type ProgramExecutionState,
+import type {
+  ProgramBackend,
+  ProgramComputation,
+  ProgramExecutionState,
 } from "@sweatpants/journal-authority";
 import {
   assertKernelCompatibility,
   KernelExecutor,
-  createWorkflowFlow,
   createWorkflowRuntime,
-  WorkflowFailure,
-  type WorkflowExchange,
   type WorkflowRuntimeOptions,
-  type WorkflowExecutionState,
   type ExchangeRequest,
   type KernelSnapshot,
 } from "@sweatpants/flowmode-runtime";
 import { prepareWorkflow, type KernelBackendDependencies } from "./prepare.ts";
+import { createKernelGuest, startKernelGuest, type KernelGuest } from "./guest.ts";
 
 const checkpointFormat = "sweatpants.kernel-backend.v1";
 
@@ -83,17 +75,15 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
           saved,
         );
         const kernelExecutor = prepared.kernel;
-        let executionState: WorkflowExecutionState | undefined;
-        let flowExecution: ProgramExecutionState["execution"] | undefined;
+        let cursor: KernelGuest | undefined;
+        let execution: ProgramExecutionState["execution"] | undefined;
         let disposed = false;
         let failed = false;
         function* disposeExecution(): Operation<void> {
-          // Revoke the live exchange before releasing the guest it would resume.
-          if (flowExecution) {
-            yield* flowExecution.dispose();
-          }
-          if (executionState) {
-            yield* executionState.execution.dispose();
+          if (execution) {
+            yield* execution.dispose();
+          } else if (cursor) {
+            yield* cursor.guest.close();
           }
         }
         const computation: ProgramComputation = {
@@ -114,68 +104,30 @@ export function createKernelProgramBackend(options: KernelProgramBackendOptions)
                 );
               }
               const executor = yield* KernelExecutor.use();
-              const flow = createWorkflowFlow(function* (input) {
-                executionState = yield* executor.start(prepared.program, input);
-                return executionState;
-              });
-              const exchange: WorkflowExchange = function* (exchangeRequest) {
-                const descriptor = options.bindOperation(exchangeRequest);
-                const runtime = yield* ProgramEffectRuntimeContext.expect();
-                const outcome = yield* runtime.perform({
-                  serializable: { type: "operation", descriptor },
-                  *execute(attempt: RecordAttemptContext) {
-                    if (descriptor.kind !== "effect") {
-                      throw new CrankError(
-                        "program_protocol_error",
-                        "Operation settles through the host",
-                      );
-                    }
-                    return yield* InstalledEffectPort.api.operations.run(descriptor, attempt);
-                  },
-                });
-                if (outcome.status === "cancelled") {
-                  throw new DurableProgramCancellation();
-                }
-                return outcome.status === "ok"
-                  ? { kind: "value", value: outcome.value }
-                  : { kind: "throw", value: assertJson(outcome.error) };
-              };
-              // The existing evaluator exposes Flow's exchanges as attachment
-              // boundaries. Its JS stack is ephemeral; capture still reads the VM.
-              const state = yield* EffectionKernel.start(function* (input) {
-                try {
-                  return yield* flow(input, exchange);
-                } catch (error) {
-                  if (!(error instanceof DurableProgramCancellation)) {
-                    failed = true;
-                  }
-                  if (error instanceof WorkflowFailure) {
-                    throw new CrankError("workflow_failed", error.message);
-                  }
-                  throw error;
-                }
-              }, request.input);
-              flowExecution = state.execution;
-              yield* provideExecution({
-                boundary: state.boundary,
-                execution: {
-                  resume: (id, reply) => state.execution.resume(id, reply),
-                  cancel: (reason) => state.execution.cancel(reason),
-                  dispose: disposeExecution,
+              cursor = yield* createKernelGuest(() =>
+                executor.start(prepared.program, request.input),
+              );
+              const state = yield* startKernelGuest(
+                cursor,
+                (exchangeRequest) => options.bindOperation(exchangeRequest),
+                () => {
+                  failed = true;
                 },
-              });
+              );
+              execution = state.execution;
+              yield* provideExecution(state);
             });
           },
           *capture() {
-            // A thrown evaluator error has no resumable boundary. Preserve the
+            // A failed guest or transport turn has no resumable boundary. Preserve the
             // failed frontier with replay rather than masking it with capture errors.
             if (failed) {
               return { kind: "replay" };
             }
-            if (disposed || !executionState) {
+            if (disposed || !cursor) {
               throw new CrankError("program_protocol_error", "Computation is unavailable");
             }
-            const snapshot = yield* executionState.execution.capture();
+            const snapshot = yield* cursor.capture();
             assertKernelCompatibility(options.kernelIdentity, prepared.program, snapshot);
             return {
               kind: "continuation",

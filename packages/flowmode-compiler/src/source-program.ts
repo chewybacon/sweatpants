@@ -90,8 +90,7 @@ export function createSourceProgram(source: WorkflowSource) {
         const specifier = (statement.moduleSpecifier as ts.StringLiteral).text;
         if (!specifier.startsWith(".")) {
           if (
-            (rootModule &&
-              ["@sweatpants/agent-sdk", "@sweatpants/agent-sdk/tool", "zod"].includes(specifier)) ||
+            (rootModule && ["@sweatpants/agent-sdk/legacy", "zod"].includes(specifier)) ||
             specifier === "effection"
           ) {
             continue;

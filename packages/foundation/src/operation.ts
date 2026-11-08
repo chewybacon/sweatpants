@@ -1,7 +1,11 @@
-import type { Api, Around, Middleware, Operation } from "effection";
+import type { Middleware, IterableOperation as Operation } from "./computation.ts";
 
-/** Construction-time Effection middleware. The first entry is outermost. */
-export type OperationMiddleware<Operations> = Partial<Around<Operations>>;
+/** Structural construction-time middleware. The first entry is outermost. */
+export type OperationMiddleware<Operations> = {
+  [K in keyof Operations]?: Operations[K] extends (...args: infer Args) => infer Result
+    ? Middleware<Args, Result>
+    : never;
+};
 
 /** Metadata stays on the driver; only the named operations are decorated. */
 export interface OperationOptions<Driver, Operations = Driver> {
@@ -11,20 +15,20 @@ export interface OperationOptions<Driver, Operations = Driver> {
 
 /** Preserve the caller's scope and resource lifetime; never capture a Scope. */
 export function composeOperation<Args extends unknown[], Result>(
-  operation: (...args: Args) => Operation<Result>,
-  middleware: readonly (Middleware<Args, Operation<Result>> | undefined)[],
-): (...args: Args) => Operation<Result> {
+  operation: (...args: Args) => Result,
+  middleware: readonly (Middleware<Args, Result> | undefined)[],
+): (...args: Args) => Result {
   return middleware.reduceRight(
     (next, around) => (around ? (...args) => around(args, next) : next),
     operation,
   );
 }
 
-/** Install the same middleware shape into an existing scoped Effection API. */
-export function* installOperationMiddleware<ApiShape>(
-  api: Pick<Api<ApiShape>, "around">,
+/** Install the same middleware shape into an existing scoped API. */
+export function* installOperationMiddleware<ApiShape, Y>(
+  api: { around(middleware: OperationMiddleware<ApiShape>): Operation<void, Y> },
   middleware: readonly OperationMiddleware<ApiShape>[],
-): Operation<void> {
+): Operation<void, Y> {
   for (const item of middleware) {
     yield* api.around(item);
   }

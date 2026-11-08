@@ -107,6 +107,39 @@
         "default": "./dist/parser.js"
       },
       "default": "./src/parser.ts"
+    },
+    "./computation": {
+      "development": {
+        "import": "./src/computation.ts",
+        "types": "./src/computation.ts"
+      },
+      "import": {
+        "types": "./dist/computation.d.ts",
+        "default": "./dist/computation.js"
+      },
+      "default": "./src/computation.ts"
+    },
+    "./journal": {
+      "development": {
+        "import": "./src/journal.ts",
+        "types": "./src/journal.ts"
+      },
+      "import": {
+        "types": "./dist/journal.d.ts",
+        "default": "./dist/journal.js"
+      },
+      "default": "./src/journal.ts"
+    },
+    "./execution": {
+      "development": {
+        "import": "./src/execution.ts",
+        "types": "./src/execution.ts"
+      },
+      "import": {
+        "types": "./dist/execution.d.ts",
+        "default": "./dist/execution.js"
+      },
+      "default": "./src/execution.ts"
     }
   },
   "scripts": {
@@ -123,6 +156,7 @@
   "dependencies": {
     "@noble/hashes": "^2.2.0",
     "@standard-schema/spec": "catalog:",
+    "@sweatpants/standard-durability": "workspace:*",
     "canonicalize": "5.1.0",
     "effection": "catalog:",
     "uuid": "11.1.0"

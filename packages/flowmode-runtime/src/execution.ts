@@ -1,3 +1,4 @@
+import type { Effect } from "effection";
 import type { WorkflowInspection } from "./inspection.ts";
 import type { Operation } from "effection";
 import {
@@ -23,8 +24,8 @@ import type {
 /** VM command transports may retain a turn protocol beneath the named execution API. */
 export interface WorkflowExecutionDriver
   extends
-    ExecutionDriver<ExchangeRequest, ExchangeReply, Json, Json>,
-    Checkpointing<KernelSnapshot> {
+    ExecutionDriver<ExchangeRequest, ExchangeReply, Json, Json, Effect<unknown>>,
+    Checkpointing<KernelSnapshot, Effect<unknown>> {
   inspect?(): Operation<WorkflowInspection>;
 }
 

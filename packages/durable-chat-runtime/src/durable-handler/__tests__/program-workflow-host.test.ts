@@ -1,6 +1,6 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { createDurableTool } from "@sweatpants/agent-sdk";
+import { createDurableTool } from "@sweatpants/agent-sdk/legacy";
 import { createCapabilityKeyring } from "@sweatpants/journal-authority";
 import { createMemoryExecutionStore } from "@sweatpants/journal-authority/memory";
 import type { ModelSamplingService } from "@sweatpants/model-sampling";

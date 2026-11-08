@@ -1,3 +1,5 @@
+import { toolFactory } from "@sweatpants/agent-sdk/internal/tool-execution";
+import type { NormalizedElicitsMap, NormalizedSamplesMap } from "@sweatpants/agent-sdk";
 /**
  * Bridge Runtime for In-App MCP Tool Execution
  *
@@ -320,7 +322,17 @@ export interface BridgeHostConfig<
   TSamples extends SamplesMap | true | undefined = SamplesMap | true | undefined,
 > {
   /** Tool being executed */
-  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>;
+  tool: ToolDefinition<
+    StandardSchemaV1<unknown, TParams>,
+    TResult,
+    NormalizedElicitsMap<TElicits>,
+    {},
+    TName
+  > & {
+    readonly samples: TSamples extends SamplesMap
+      ? NormalizedSamplesMap<TSamples>
+      : Readonly<Record<string, never>>;
+  };
   /** Optional execution limits (host-level; not a tool property) */
   limits?: McpToolLimits;
 
@@ -1184,16 +1196,7 @@ export function createBridgeHost<
           let result: TResult;
 
           const toolCtx = createBridgeContext(initialState);
-          // Factory-only path (ToolDefinition callable)
-          const toolFactory = tool as unknown as (
-            ctx: typeof toolCtx,
-          ) => Operation<(input: unknown) => Operation<TResult>>;
-          if (typeof toolFactory !== "function") {
-            throw new Error(
-              `Tool "${String((tool as { name?: string }).name ?? "<unknown>")}" is not a callable ToolDefinition factory`,
-            );
-          }
-          const invoke = yield* toolFactory(toolCtx);
+          const invoke = yield* toolFactory(tool)(toolCtx);
           result = yield* invoke(validatedParams);
 
           // Close channel when done
@@ -1253,7 +1256,13 @@ export function runBridgeTool<
   TResult,
   TElicits extends ElicitsMap,
 >(config: {
-  tool: ToolDefinition<TName, TParams, TResult, TElicits>;
+  tool: ToolDefinition<
+    StandardSchemaV1<unknown, TParams>,
+    TResult,
+    NormalizedElicitsMap<TElicits>,
+    {},
+    TName
+  >;
   params: TParams;
   samplingProvider: BridgeSamplingProvider;
   handlers: BridgeElicitHandlers<TElicits>;

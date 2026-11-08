@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "customConditions": ["development"],
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "rootDir": "../../.."
+  },
+  "include": [
+    "src/**/*.ts",
+    "__tests__/**/*.ts",
+    "vitest.config.ts",
+    "jsdom-with-node-runtime.ts",
+    "__tests__/**/*.tsx"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

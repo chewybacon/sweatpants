@@ -7,9 +7,6 @@
   "references": [
     {
       "path": "../../packages/agent-host/tsconfig.lib.json"
-    },
-    {
-      "path": "../../packages/tool-runtime-local/tsconfig.json"
     }
   ]
 }

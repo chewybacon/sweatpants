@@ -7,6 +7,8 @@ export function structuralCommandSessionId(command: AuthorityCommand): string | 
     return command.request.sessionId;
   }
   switch (command.type) {
+    case "execution.orphan-if-current":
+      return command.request.fence.address.sessionId;
     case "execution.bind-mandate":
       return command.request.address.sessionId;
     case "execution.bind-delivery-mandate":

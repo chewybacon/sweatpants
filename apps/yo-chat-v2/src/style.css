@@ -1,0 +1,4 @@
+@layer reset, astryx-base, astryx-theme;
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "./themes/rose-pine/rose-pine.css";

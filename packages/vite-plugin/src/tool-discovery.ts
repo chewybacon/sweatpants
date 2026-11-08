@@ -715,6 +715,7 @@ export function generateRegistryContent(
   const registryEntries: string[] = [];
   const ordinaryEntries: string[] = [];
   const durableEntries: string[] = [];
+  const journalEntries: string[] = [];
   const typeEntries: string[] = [];
 
   // Sort tools for deterministic output
@@ -733,6 +734,8 @@ export function generateRegistryContent(
     registryEntries.push(`  ${tool.variableName},`);
     if (tool.execution === "crank_native") {
       durableEntries.push(`  '${tool.toolName}': ${tool.variableName},`);
+    } else if (tool.execution === "journal") {
+      journalEntries.push(`  '${tool.toolName}': ${tool.variableName},`);
     } else {
       ordinaryEntries.push(`  '${tool.toolName}': ${tool.variableName},`);
     }
@@ -765,6 +768,11 @@ export const toolList = Object.values(tools)
 /** Ordinary executable definitions only; safe for ToolSession/worker routing. */
 export const ordinaryTools = {
 ${ordinaryEntries.join("\n")}
+} as const
+
+/** Portable journal tools; consumed by journal-capable hosts. */
+export const journalTools = {
+${journalEntries.join("\n")}
 } as const
 
 /** Crank-native definitions only; consumed by host ProgramDriver placement. */

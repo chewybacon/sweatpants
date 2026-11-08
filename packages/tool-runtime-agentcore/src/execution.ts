@@ -7,7 +7,10 @@ import type { AgentCoreRuntimeRelease } from "./placement/placement-types.ts";
 import { exactProgramKey } from "@sweatpants/durable-execution";
 import type { ProgramDriver, ProgramRoute } from "@sweatpants/durable-execution";
 import type { Operation } from "effection";
-import { isChatDurableTool, type ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
+import {
+  isChatDurableTool,
+  type RetainedToolExecutionAdapter,
+} from "@sweatpants/tool-session/execution";
 
 export interface AgentCoreExecutionOptions {
   readonly runtime:
@@ -26,7 +29,7 @@ export interface AgentCoreExecutionOptions {
 }
 
 /** Remote placement validates the exact durable release before exposing a tool. */
-export function agentCore(options: AgentCoreExecutionOptions): ToolExecutionAdapter {
+export function agentCore(options: AgentCoreExecutionOptions): RetainedToolExecutionAdapter {
   return {
     prepare(tools, routeId) {
       const driverKind = routeId === "tools" ? "agentcore" : routeId;

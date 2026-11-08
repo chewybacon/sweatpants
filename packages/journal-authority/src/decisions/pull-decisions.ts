@@ -33,6 +33,9 @@ import {
   type DraftPull,
   type DraftTask,
 } from "./decision-state.ts";
+import { installTaskMandate } from "./task-decisions.ts";
+import { planForestReplay, strandHead } from "../forest/forest-replay.ts";
+import { abandonAttempt } from "./execution-lifecycle-decisions.ts";
 import { consumeRestoredFrontier } from "./recovery-decisions.ts";
 import { endLiveLease } from "../store/live-lease.ts";
 import { pullKindPolicy } from "../pull-kinds/index.ts";
@@ -63,6 +66,8 @@ import type {
   MandateCompleteRequest,
   MandateEmissionRequest,
   MandateReserveRequest,
+  RecoverRecordRequest,
+  RecoverRecordResult,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolveOperationRequest,
@@ -176,6 +181,108 @@ export function completeUnderMandate(
     );
   }
   return result;
+}
+
+/** Explicit recovery permission, atomic with revocation. Does not unpark the strand. */
+export function recoverRecord(
+  draft: DecisionDraft,
+  request: RecoverRecordRequest,
+): RecoverRecordResult {
+  const task = draft.readTask(request.sessionId, request.taskId);
+  draft.assertProgram(request.programCapability, task, request.sessionId);
+  draft.assertActive(task);
+  const session = draft.readSession(request.sessionId);
+  if (
+    task.lifecycle.status !== "active" ||
+    task.lifecycle.cancellation.type !== "none" ||
+    task.origin.kind !== "root" ||
+    session.execution.tasks.size !== 1 ||
+    task.forkGroup !== undefined ||
+    task.execution.checkpoint !== undefined
+  ) {
+    throw new CrankError("invalid_command", "Recovery requires one uncancelled root strand");
+  }
+  if (
+    (task.execution.liveLease && draft.context.nowMs < task.execution.liveLease.expiresAtMs) ||
+    (session.control.activationLease &&
+      draft.context.nowMs < session.control.activationLease.expiresAtMs)
+  ) {
+    throw new CrankError("stale_program_capability", "Recovery cannot replace a live owner");
+  }
+  const action = task.actions.find((candidate) => candidate.actionIndex === request.actionIndex);
+  if (
+    request.turnId !== task.turnId ||
+    request.actionIndex !== task.nextActionIndex ||
+    action?.kind !== "pull" ||
+    action.pullIndex !== request.pullIndex ||
+    action.pull.pullId !== request.pullId ||
+    action.pull.resolution.status !== "open" ||
+    action.pull.resolution.revoked ||
+    action.pull.attempts.at(-1)?.attemptId !== request.expectedAttemptId
+  ) {
+    throw new CrankError("invalid_command", "Recovery occurrence or attempt is stale");
+  }
+  const pull = action.pull;
+  const descriptor = pull.request.acceptedDescriptor;
+  if (
+    descriptor.kind !== "record" ||
+    descriptor.retrySafety.mode !== "repeatable" ||
+    pull.request.proposedDescriptorDigest !==
+      digestCanonicalJson(request.descriptor as unknown as Json)
+  ) {
+    throw new CrankError("invalid_descriptor", "Recovery requires the same repeatable record");
+  }
+  const replacement = request.replacement;
+  const head = strandHead(task);
+  const plan = planForestReplay(
+    draft.state,
+    request.sessionId,
+    draft.context.journalHeadId,
+    draft.context.nowMs,
+  );
+  const row = plan.rows.find((candidate) => candidate.address.taskId === task.taskId)!;
+  if (
+    !replacement.ownerId ||
+    !replacement.attachmentId ||
+    replacement.attachmentId === task.execution.attachmentId ||
+    !Number.isSafeInteger(replacement.leaseDurationMs) ||
+    replacement.leaseDurationMs < 1 ||
+    replacement.leaseDurationMs > 300_000 ||
+    replacement.checkpoint !== undefined ||
+    replacement.address.sessionId !== request.sessionId ||
+    replacement.address.taskId !== task.taskId ||
+    replacement.address.turnId !== task.turnId ||
+    replacement.strand !== task.taskId ||
+    replacement.program.id !== task.program.artifact.id ||
+    replacement.program.version !== task.program.artifact.version ||
+    replacement.program.digest !== task.program.artifact.digest ||
+    replacement.expected.leaseEpoch !== task.execution.epoch ||
+    replacement.expected.strandHeadDigest !== head.digest ||
+    replacement.expected.forkGroupRevision !== row.groupContext.groupRevision ||
+    replacement.frontierProof.strandHeadDigest !== head.digest ||
+    replacement.frontierProof.replayedThroughActionIndex !== head.actionIndex ||
+    replacement.frontierProof.cancellationReplayed ||
+    replacement.placement.route.kind !== "local" ||
+    replacement.placement.evaluatorKind !== "program"
+  ) {
+    throw new CrankError("invalid_command", "Recovery replacement identity or frontier differs");
+  }
+  // Revoke every old contender: detached attempts may still have settlement authority.
+  // Existing semantic records preserve lineage without a new persistence schema.
+  for (const attempt of pull.attempts) {
+    abandonAttempt(draft, {
+      sessionId: request.sessionId,
+      taskId: request.taskId,
+      pullId: pull.pullId,
+      attemptId: attempt.attemptId,
+      reason: "repeatable_record_recovery",
+    });
+  }
+  const owned = draft.task(request.sessionId, request.taskId);
+  // As with ordinary binding, a new epoch replaces an expired lease.
+  // Do not emit a release event: this transaction ends with a live replacement.
+  const { mandate } = installTaskMandate(draft, replacement, row.groupContext);
+  return { ...startAttempt(draft, owned, pullById(owned, pull.pullId)), mandate };
 }
 
 export function reservePull(
@@ -532,6 +639,11 @@ export function resolvePull(
     observedPull = pullById(observedTask, claims.pullId);
   } catch {
     return { status: "rejected", code: "pull_not_found" };
+  }
+  // Legacy query-issued tokens carry no attempt and cannot participate in
+  // attempt revocation. Reject before settlement/duplicate checks or lease release.
+  if (observedPull.resolutionAuthority.kind === "attempt" && claims.attemptId === "none") {
+    return { status: "rejected", code: "invalid_resolution_capability" };
   }
   const observedAttempt =
     claims.attemptId === "none"

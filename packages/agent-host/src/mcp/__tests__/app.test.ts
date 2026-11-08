@@ -1,30 +1,10 @@
 // @vitest-environment node
 import { createContext, ensure, suspend } from "effection";
-import { createTool } from "@sweatpants/agent-sdk";
-import type { ToolInvocationResource } from "@sweatpants/tool-session";
-import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import type { ToolExecutionAdapter } from "@sweatpants/tool-session/execution";
 import { createMcpApp } from "../index.ts";
 
 const secret = "mcp-application-test-secret-at-least-32-bytes";
 const identity = createContext<string>("test-identity");
-const execution: ToolExecutionAdapter = {
-  prepare() {
-    return {
-      *createResources() {
-        return {
-          *create() {
-            throw new Error("No tools registered");
-          },
-          *open() {
-            return null;
-          },
-        };
-      },
-    };
-  },
-};
 function discover(method = "server/discover", params: Record<string, unknown> = {}) {
   return new Request("http://localhost/mcp", {
     method: "POST",
@@ -52,75 +32,6 @@ function discover(method = "server/discover", params: Record<string, unknown> = 
 }
 
 describe("MCP application ownership", () => {
-  it("close releases an active invocation and settles a waiting response reader", async () => {
-    let invocation: ToolInvocationResource | null = null;
-    let waiting = 0;
-    let disposed = 0;
-    const tool = createTool("waiting")
-      .description("Wait until shutdown")
-      .parameters(z.object({}))
-      .execute(function* () {
-        return {};
-      });
-    const app = createMcpApp({
-      name: "test",
-      version: "1",
-      secret,
-      tools: [tool],
-      execution: {
-        prepare() {
-          return {
-            *createResources() {
-              return {
-                *create(request) {
-                  invocation = {
-                    id: request.invocationId,
-                    toolName: tool.name,
-                    elicitBindings: {},
-                    projection: {
-                      *events() {
-                        return {
-                          *next() {
-                            waiting++;
-                            yield* suspend();
-                            return { done: true as const, value: undefined };
-                          },
-                        };
-                      },
-                    },
-                    *resume() {},
-                    *dispose() {
-                      disposed++;
-                    },
-                  };
-                  return invocation;
-                },
-                *open() {
-                  return invocation;
-                },
-              };
-            },
-          };
-        },
-      },
-      *authenticate() {
-        return "alice";
-      },
-    });
-    try {
-      const response = await app.handler(
-        discover("tools/call", { name: "waiting", arguments: {} }),
-      );
-      const read = response.body!.getReader().read();
-      await vi.waitFor(() => expect(waiting).toBe(2));
-      await app.close();
-      expect(disposed).toBe(1);
-      expect(new TextDecoder().decode((await read).value)).toContain('"error"');
-    } finally {
-      await app.close();
-    }
-  });
-
   it("initializes once on demand, inherits scoped authentication, and awaits cleanup", async () => {
     let setups = 0;
     let finalized = 0;
@@ -130,7 +41,6 @@ describe("MCP application ownership", () => {
       version: "1",
       secret,
       tools: [],
-      execution,
       setup: {
         *application() {
           setups++;
@@ -167,7 +77,6 @@ describe("MCP application ownership", () => {
       version: "1",
       secret,
       tools: [],
-      execution,
       setup: { application: setup },
       *authenticate() {
         return "alice";
@@ -185,7 +94,6 @@ describe("MCP application ownership", () => {
       version: "1",
       secret,
       tools: [],
-      execution,
       setup: {
         *application() {
           yield* ensure(() => {
@@ -215,7 +123,6 @@ describe("MCP application ownership", () => {
       version: "1",
       secret,
       tools: [],
-      execution,
       setup: {
         *application() {
           yield* ensure(() => {

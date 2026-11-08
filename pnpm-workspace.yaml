@@ -2,6 +2,7 @@ packages:
   - acceptance
   - scripts
   - packages/*
+  - packages/v2/*
   - apps/*
 
 catalog:
@@ -37,6 +38,7 @@ catalog:
   compression: ^1.8.1
   drizzle-kit: 0.31.10
   drizzle-orm: 0.45.2
+  effect: ^4.0.6
   effection: 4.2.0
   express: ^5.2.1
   jsdom: ^27.0.0
@@ -67,3 +69,24 @@ onlyBuiltDependencies:
 
 syncInjectedDepsAfterScripts:
   - build
+
+# This workspace consumes ScriptC frontend IR, not its LLVM/native backends.
+ignoredOptionalDependencies:
+  - "@scriptc/llvm-darwin-arm64"
+  - "@scriptc/llvm-darwin-x64"
+  - "@scriptc/llvm-linux-x64-gnu"
+  - "@scriptc/llvm-linux-arm64-gnu"
+  - "@scriptc/llvm-linux-x64-musl"
+  - "@scriptc/llvm-linux-arm64-musl"
+  - "@scriptc/llvm-win32-x64-msvc"
+  - "@scriptc/runtime-darwin-arm64"
+  - "@scriptc/runtime-linux-x64-gnu"
+  - "@scriptc/runtime-linux-arm64-gnu"
+  - "@scriptc/runtime-darwin-x64"
+  - "@scriptc/runtime-linux-arm64-musl"
+  - "@scriptc/runtime-win32-x64-msvc"
+  - "@scriptc/runtime-wasm32-wasi"
+  - "@scriptc/runtime-linux-x64-musl"
+  - "@scriptc/runtime-ios-arm64"
+  - "@scriptc/runtime-ios-simulator-arm64"
+  - "@scriptc/runtime-android-arm64"

@@ -1,169 +1,92 @@
-# Protocol adapter boundaries
+# Protocol adapters and their boundaries
 
-Sweatpants uses protocols at its edges. The execution journal remains authoritative;
-Effection owns activation lifetime and pull-based delivery.
+An adapter translates a boundary and owns its transport lifetime. It does not gain
+journal authority simply because it carries a request or retains a live session.
+There are several current adapter families; they are not interchangeable execution
+engines.
 
-## Durable Streams
+## Local worker Guests
 
-`TokenBuffer.read(afterLSN, limit?)` supports bounded suffix reads. Its returned `lsn`
-is still the stream tail. The Effection pull subscription consumes a batch at a
-time without starting a background reader. Redis seeks by token LSN rather than
-materializing stream history. See `packages/durable-streams/README.md` for the
-response-buffer format and reset policy.
+The iterator worker path is:
 
-This is a token-delivery adapter, not a claim of full upstream byte-stream protocol
-conformance. Delivery offsets do not determine execution progress.
-
-## AG-UI 1.0
-
-All workspace consumers use `@ag-ui/core@1.0.1`. Runtime schemas come from
-`@ag-ui/core/schemas`; event types come from the main entry. Native run-start events
-declare protocol version `1.0`.
-
-The boundary supports ordered multimodal tool-result parts and defaults an omitted
-text-message role to assistant. Activity normalization preserves attribution and
-other validated envelope fields. File-handle content cannot be translated into
-canonical chat content until an explicit file resolver exists; conversion fails
-instead of inventing a URL or dropping the part.
-
-Native conversation streams still require Sweatpants authority and window ordering.
-They are not a generic tolerant AG-UI transport. Public child executions now carry
-stable, opaque `subagentRunId` attribution on their projected events and pending
-interrupts. Message attribution survives UI projection and hydration. The native
-validator checks message/tool/activity ownership, step ownership, and announced
-subagent lifecycle ordering, including ownership restored from window snapshots.
-Native producers use attribution-only streams; they do not yet emit subagent
-lifecycle announcements. Usage decoding does not imply usage accounting.
-
-## MCP 2026-07-28
-
-The public MCP endpoint implements only `2026-07-28`. Inspector is pinned to
-`2.9.0`, and yo-mcp launches it with `--protocol-era modern`. The migration removes
-initialize, protocol sessions, GET/DELETE transport routes, and Last-Event-ID
-resumption. Unsupported RPC methods fail explicitly; optional subscriptions,
-resources, prompts, roots and URL elicitation are not advertised.
-
-Application authors configure tools and execution once. The app owns lazy setup,
-Effection scopes, invocation resources and request cleanup:
-
-```ts
-import { createMcpApp } from "@sweatpants/agent-host/mcp";
-import { local } from "@sweatpants/tool-runtime-local";
-
-const app = createMcpApp({
-  name: "my-tools",
-  version: "0.1.0",
-  secret,
-  tools: [pickCard, greet],
-  execution: local({ worker: new URL("./tool-worker.mjs", import.meta.url) }),
-  *authenticate(request) {
-    return yield* authenticateCaller(request);
-  },
-  setup: {
-    application: installApplicationServices,
-  },
-});
-
-// Mount in an existing Fetch-based framework:
-export const POST = app.handler;
-// The owning framework calls app.close() during teardown.
+```text
+placement prepares definition identity and input
+  → GuestWork acquires a worker Guest
+  → start/resume commands cross the worker transport
+  → worker advances the tool and returns Turn data
+  → host handles JournalRequest and accepts Outcome
+  → accepted Outcome returns through resume
 ```
 
-`setup` is optional. It runs once before the first request; authentication inherits
-its scoped services. `authenticate` returns a trusted, stable caller ID to bind
-continuations, never self-reported MCP clientInfo. Origins default to same-origin;
-additional trusted origins can be listed in `allowedOrigins`. Authored `createTool`
-definitions and the execution host contract are unchanged. `execution` uses the
-same placement interface as chat, without importing any concrete runtime into
-Agent Host. This factory requires invocation resources; it does not install a
-journal host for crank-native durable programs.
+`createWorkerGuest` and `serveWorkerGuest` carry advancement across worker threads.
+The yo-chat worker selects its registered definition by name, version and interface
+digest. Acquisition must not advance the authored body. Closing the Guest joins
+transport cleanup; it is not a durable cancellation command.
 
-For standalone Node hosting:
+The concrete placement API retains Result inference. The worker registry and wire
+payloads are dynamic boundaries: JSON shape, declaration identity and authored
+schemas still need validation. A TypeScript cast cannot establish wire correctness.
+Transport loss escapes as failure instead of being accepted as authored error data.
 
-```ts
-import { serve } from "@sweatpants/agent-host/node";
+## HTTP chat
 
-const server = await serve(app, { hostname: "127.0.0.1", port: 3001 });
-// During shutdown: stops ingress, cancels connections, awaits app cleanup.
-await server.close();
-```
+The primitive chat host validates command envelopes, authorizes conversation access
+and owns admission, persistence and projection. Public clients send commands and
+consume projected conversation state. Reconnect observes accepted state and pending
+interactions; it does not take ownership of a tool continuation.
 
-`serve` uses srvx 1.0.5's Node adapter and leaves process signal handling to the
-entry point. It accepts optional srvx middleware for application HTTP policy,
-such as the local Inspector demo's CORS headers. Applications do not convert or
-pipe Readables. The transport stops pulling when socket writes need `drain` and
-cancels the Web reader on disconnect. MCP response streams keep a zero high-water
-mark; the socket has bounded transport buffering, not an eager response collector.
-The Node adapter is covered by a blocked-writable test and real socket disconnect
-tests, alongside MCP's one-notification-per-demand test.
+Provider events are provisional streaming output. The final model response becomes
+an accepted journal outcome before the computation resumes. UI rendering and network
+delivery are not themselves journal acceptance.
 
-Advanced hosts can mount `toNodeHandler(app.handler)` on an existing `node:http`
-server, retaining responsibility for `app.close()`. Scope-owning Effection hosts
-can use `createMcpHandler` from `@sweatpants/tool-session/mcp` after installing an
-invocation runtime; it uses the same `authenticate` option. Request-level errors
-are isolated from the application supervisor, while app shutdown cancels request
-scopes and runtime resources.
+## MCP
 
-Each POST carries version, method and optional target headers, plus request-local
-client capabilities. Annotated tool parameter headers are compiled and checked.
-Discovery and tool lists include cache policy; tool calls return request-scoped SSE
-notifications followed by one `complete` or `input_required` result. Log messages
-require an explicit request log level. The Web stream pulls projection records on
-demand; the Node demo propagates socket backpressure and cancellation.
+`tool-session/src/mcp` retains native-context tool execution, interaction handling,
+continuation transport and projection into MCP messages. The bridge uses the
+internal compiled factory accessor; it is not the generic iterator journal loop.
+MCP elicitation/sampling protocols need their own validation and correlation even
+when metadata originates from the same authored definition.
 
-### Continuations and authored interactions
+Keep these boundaries explicit when changing shared types. A native MCP session
+cannot be replaced by a JSON request union without preserving its continuation,
+resource lifetime and reply semantics. Conversely, the existence of retained MCP
+interfaces is not a reason to expose legacy factories to new tool authors.
 
-The yo-mcp `plan_trip` tool demonstrates multiple turns in a single invocation:
-it asks for a city, then an activity, then confirmation. Submitting an unchecked
-confirmation returns to the activity prompt while retaining the city and traveler.
-Confirming finishes the plan; decline or cancel ends the tool at any prompt.
-It uses ordinary `ctx.elicit` calls and a generator loop, with no protocol state
-or stream handling in the authored tool. It creates a suggested plan only and
-does not make bookings.
+## Retained ProgramDriver and remote adapters
 
-Elicitation and sampling use `inputRequests` embedded in `input_required`. The
-client retries the original method and arguments with a new JSON-RPC ID,
-`inputResponses`, and the signed `requestState`. Tokens bind the server, authenticated
-caller, method, arguments, invocation, pending cursor and expiry. Each retry checks
-current capabilities. The invocation host deduplicates the resume command and
-rejects changed answers. Independent initial calls get independent invocation IDs;
-JSON-RPC IDs are not an initial-call idempotency key.
+The local, AgentCore and Cloudflare packages also retain ProgramDriver/session
+paths. `RetainedPreparedToolExecution` can contain resource factories, bindings,
+drivers and driver factories. `routeTools` still combines these alongside portable
+Guest acquisition; that compatibility assembly has not been deleted.
 
-Plain flat form schemas work directly. A rich authored interaction can install a
-MCP-only projection without changing its tool contract:
+Flowmode's backend is another explicit adapter: it maps kernel exchanges to host
+operation descriptors and correlated program boundaries. The kernel advances
+compute; the host interprets operations and owns durable acceptance.
 
-```ts
-forms: {
-  pick_card: {
-    choose: {
-      present(ask) {
-        return {
-          message: ask.message,
-          requestedSchema: {
-            type: "object",
-            properties: { rank: { type: "string", enum: ["A", "K"] } },
-            required: ["rank"],
-          },
-        };
-      },
-      accept(content) {
-        return { card: { rank: content.rank } };
-      },
-    },
-  },
-}
-```
+The old remote deployment apps were removed to stop constraining the rewrite.
+Framework adapter tests remain. Passing those tests demonstrates the exercised
+runtime contract, not a working deployment of the current yo-chat host to every
+remote target.
 
-The runtime still validates the mapped authored response. Decline and cancel pass
-through unchanged. Sampling preserves tool-use responses for agent-like tools.
+## Rules that survive translation
 
-Transport tokens are signed references, not execution state or authority. Durable
-restart guarantees remain those of the installed runtime. The yo-mcp demo uses a
-live worker runtime; this endpoint does not turn it into a durable journal. The
-separate `apps/yo-chat/acceptance/mcp-pick-card-tracer.test.ts` proves continuation
-reconstruction and deduplication against the durable journal, including nested
-card projection. It is a test fixture, not a second production endpoint.
+1. Preserve request/reply correlation. Keyed author declarations retain concrete
+   reply types; dynamic registries validate the selected operation at runtime.
+2. Preserve raw acceptance and transformation ownership. Transport/admission may
+   validate a reply without replacing the raw value later replayed at the author
+   boundary. Do not feed transformed output back through an input schema.
+3. Distinguish authored failure, transport loss and uncertain dispatch. Their
+   recovery policies differ.
+4. Keep logical cancellation separate from close/disposal. Cleanup can yield more
+   requests; abandoning transport must not masquerade as accepted cancellation.
+5. Do not use one identifier for commands, model calls, suspension correlation,
+   journal positions and worker generations.
 
-`createMcpContinuations` remains available for adapters integrating directly with
-a journal. It supports verification-key rotation and a configurable TTL;
-`decodeMcpFormResponse` validates exactly the pending response key and flat content.
+Sources: [worker client](../packages/tool-runtime-local/src/worker-guest.ts),
+[worker server](../packages/tool-runtime-local/src/guest-worker.ts),
+[MCP bridge](../packages/tool-session/src/mcp/bridge-runtime.ts),
+[MCP handler](../packages/tool-session/src/mcp/handler/mcp-handler.ts),
+[retained placement](../packages/tool-session/src/execution/placement.ts).
+Evidence: [worker exchanges](../acceptance/__tests__/tool-runtimes/local-worker/exchange.acceptance.test.tsx),
+[MCP continuations](../acceptance/__tests__/protocols/mcp/continuations.acceptance.test.ts),
+[Cloudflare executor](../acceptance/__tests__/tool-runtimes/cloudflare/executor.acceptance.test.ts).

@@ -1,0 +1,2345 @@
+{
+  "irVersion": 16,
+  "sourceFile": "review.ts",
+  "functions": [
+    {
+      "name": "%m0.message",
+      "sourceName": "message",
+      "ownsPrototype": true,
+      "params": [
+        {
+          "localId": "prefix.0",
+          "name": "prefix",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "localId": "value.0",
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returnType": {
+        "kind": "string"
+      },
+      "locals": [
+        {
+          "id": "prefix.0",
+          "name": "prefix",
+          "type": {
+            "kind": "string"
+          },
+          "mutable": true,
+          "source": {
+            "loc": {
+              "file": "helper.ts",
+              "start": 24,
+              "end": 30
+            },
+            "scope": {
+              "file": "helper.ts",
+              "start": 0,
+              "end": 91
+            }
+          }
+        },
+        {
+          "id": "value.0",
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "mutable": true,
+          "source": {
+            "loc": {
+              "file": "helper.ts",
+              "start": 40,
+              "end": 45
+            },
+            "scope": {
+              "file": "helper.ts",
+              "start": 0,
+              "end": 91
+            }
+          }
+        }
+      ],
+      "body": [
+        {
+          "kind": "return",
+          "value": {
+            "kind": "strConcat",
+            "left": {
+              "kind": "varRef",
+              "localId": "prefix.0",
+              "type": {
+                "kind": "string"
+              },
+              "loc": {
+                "file": "helper.ts",
+                "start": 74,
+                "end": 80
+              }
+            },
+            "right": {
+              "kind": "varRef",
+              "localId": "value.0",
+              "type": {
+                "kind": "string"
+              },
+              "loc": {
+                "file": "helper.ts",
+                "start": 83,
+                "end": 88
+              }
+            },
+            "type": {
+              "kind": "string"
+            },
+            "loc": {
+              "file": "helper.ts",
+              "start": 74,
+              "end": 88
+            }
+          },
+          "loc": {
+            "file": "helper.ts",
+            "start": 67,
+            "end": 89
+          }
+        }
+      ],
+      "loc": {
+        "file": "helper.ts",
+        "start": 0,
+        "end": 91
+      }
+    },
+    {
+      "name": "review",
+      "sourceName": "review",
+      "params": [
+        {
+          "localId": "title.0",
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returnType": {
+        "kind": "string"
+      },
+      "locals": [
+        {
+          "id": "title.0",
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "mutable": true,
+          "source": {
+            "loc": {
+              "file": "review.ts",
+              "start": 65,
+              "end": 70
+            },
+            "scope": {
+              "file": "review.ts",
+              "start": 41,
+              "end": 530
+            }
+          }
+        },
+        {
+          "id": "decision.0",
+          "name": "decision",
+          "type": {
+            "kind": "union",
+            "unionId": "u0"
+          },
+          "mutable": false,
+          "source": {
+            "loc": {
+              "file": "review.ts",
+              "start": 207,
+              "end": 215
+            },
+            "scope": {
+              "file": "review.ts",
+              "start": 195,
+              "end": 438
+            }
+          }
+        }
+      ],
+      "body": [
+        {
+          "kind": "exprStmt",
+          "expr": {
+            "kind": "strLit",
+            "value": "use workflow",
+            "type": {
+              "kind": "string"
+            },
+            "loc": {
+              "file": "review.ts",
+              "start": 173,
+              "end": 187
+            }
+          },
+          "loc": {
+            "file": "review.ts",
+            "start": 173,
+            "end": 187
+          }
+        },
+        {
+          "kind": "tryCatch",
+          "tryBody": [
+            {
+              "kind": "varDecl",
+              "localId": "decision.0",
+              "init": {
+                "kind": "yieldExpr",
+                "value": {
+                  "kind": "arrayLit",
+                  "elems": [
+                    {
+                      "kind": "strLit",
+                      "value": "effect",
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 225,
+                        "end": 233
+                      }
+                    },
+                    {
+                      "kind": "strLit",
+                      "value": "scriptc.review.approval",
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 235,
+                        "end": 260
+                      }
+                    },
+                    {
+                      "kind": "call",
+                      "callee": "%m0.message",
+                      "args": [
+                        {
+                          "kind": "strLit",
+                          "value": "approve:",
+                          "type": {
+                            "kind": "string"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 270,
+                            "end": 280
+                          }
+                        },
+                        {
+                          "kind": "varRef",
+                          "localId": "title.0",
+                          "type": {
+                            "kind": "string"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 282,
+                            "end": 287
+                          }
+                        }
+                      ],
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 262,
+                        "end": 288
+                      }
+                    }
+                  ],
+                  "type": {
+                    "kind": "array",
+                    "elem": {
+                      "kind": "string"
+                    }
+                  },
+                  "loc": {
+                    "file": "review.ts",
+                    "start": 224,
+                    "end": 289
+                  }
+                },
+                "type": {
+                  "kind": "union",
+                  "unionId": "u0"
+                },
+                "loc": {
+                  "file": "review.ts",
+                  "start": 218,
+                  "end": 289
+                }
+              },
+              "loc": {
+                "file": "review.ts",
+                "start": 207,
+                "end": 289
+              }
+            },
+            {
+              "kind": "if",
+              "cond": {
+                "kind": "unionDisc",
+                "unionId": "u0",
+                "field": "ok",
+                "value": {
+                  "kind": "varRef",
+                  "localId": "decision.0",
+                  "type": {
+                    "kind": "union",
+                    "unionId": "u0"
+                  },
+                  "loc": {
+                    "file": "review.ts",
+                    "start": 299,
+                    "end": 307
+                  }
+                },
+                "type": {
+                  "kind": "bool"
+                },
+                "loc": {
+                  "file": "review.ts",
+                  "start": 299,
+                  "end": 310
+                }
+              },
+              "then": [
+                {
+                  "kind": "return",
+                  "value": {
+                    "kind": "call",
+                    "callee": "%m0.message",
+                    "args": [
+                      {
+                        "kind": "strLit",
+                        "value": "approved:",
+                        "type": {
+                          "kind": "string"
+                        },
+                        "loc": {
+                          "file": "review.ts",
+                          "start": 335,
+                          "end": 346
+                        }
+                      },
+                      {
+                        "kind": "recordGet",
+                        "obj": {
+                          "kind": "unionNarrow",
+                          "unionId": "u0",
+                          "tag": 0,
+                          "value": {
+                            "kind": "varRef",
+                            "localId": "decision.0",
+                            "type": {
+                              "kind": "union",
+                              "unionId": "u0"
+                            },
+                            "loc": {
+                              "file": "review.ts",
+                              "start": 348,
+                              "end": 356
+                            }
+                          },
+                          "type": {
+                            "kind": "record",
+                            "shapeId": "r0"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 348,
+                            "end": 356
+                          }
+                        },
+                        "shapeId": "r0",
+                        "field": "value",
+                        "type": {
+                          "kind": "string"
+                        },
+                        "loc": {
+                          "file": "review.ts",
+                          "start": 348,
+                          "end": 362
+                        }
+                      }
+                    ],
+                    "type": {
+                      "kind": "string"
+                    },
+                    "loc": {
+                      "file": "review.ts",
+                      "start": 327,
+                      "end": 363
+                    }
+                  },
+                  "loc": {
+                    "file": "review.ts",
+                    "start": 320,
+                    "end": 364
+                  }
+                }
+              ],
+              "else_": [
+                {
+                  "kind": "return",
+                  "value": {
+                    "kind": "call",
+                    "callee": "%m0.message",
+                    "args": [
+                      {
+                        "kind": "strLit",
+                        "value": "rejected:",
+                        "type": {
+                          "kind": "string"
+                        },
+                        "loc": {
+                          "file": "review.ts",
+                          "start": 399,
+                          "end": 410
+                        }
+                      },
+                      {
+                        "kind": "recordGet",
+                        "obj": {
+                          "kind": "unionNarrow",
+                          "unionId": "u0",
+                          "tag": 1,
+                          "value": {
+                            "kind": "varRef",
+                            "localId": "decision.0",
+                            "type": {
+                              "kind": "union",
+                              "unionId": "u0"
+                            },
+                            "loc": {
+                              "file": "review.ts",
+                              "start": 412,
+                              "end": 420
+                            }
+                          },
+                          "type": {
+                            "kind": "record",
+                            "shapeId": "r1"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 412,
+                            "end": 420
+                          }
+                        },
+                        "shapeId": "r1",
+                        "field": "error",
+                        "type": {
+                          "kind": "string"
+                        },
+                        "loc": {
+                          "file": "review.ts",
+                          "start": 412,
+                          "end": 426
+                        }
+                      }
+                    ],
+                    "type": {
+                      "kind": "string"
+                    },
+                    "loc": {
+                      "file": "review.ts",
+                      "start": 391,
+                      "end": 427
+                    }
+                  },
+                  "loc": {
+                    "file": "review.ts",
+                    "start": 384,
+                    "end": 428
+                  }
+                }
+              ],
+              "loc": {
+                "file": "review.ts",
+                "start": 295,
+                "end": 434
+              }
+            }
+          ],
+          "catchBody": null,
+          "catchLocalId": null,
+          "finallyBody": [
+            {
+              "kind": "exprStmt",
+              "expr": {
+                "kind": "yieldExpr",
+                "value": {
+                  "kind": "arrayLit",
+                  "elems": [
+                    {
+                      "kind": "strLit",
+                      "value": "effect",
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 460,
+                        "end": 468
+                      }
+                    },
+                    {
+                      "kind": "strLit",
+                      "value": "scriptc.review.cleanup",
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 470,
+                        "end": 494
+                      }
+                    },
+                    {
+                      "kind": "call",
+                      "callee": "%m0.message",
+                      "args": [
+                        {
+                          "kind": "strLit",
+                          "value": "release:",
+                          "type": {
+                            "kind": "string"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 504,
+                            "end": 514
+                          }
+                        },
+                        {
+                          "kind": "varRef",
+                          "localId": "title.0",
+                          "type": {
+                            "kind": "string"
+                          },
+                          "loc": {
+                            "file": "review.ts",
+                            "start": 516,
+                            "end": 521
+                          }
+                        }
+                      ],
+                      "type": {
+                        "kind": "string"
+                      },
+                      "loc": {
+                        "file": "review.ts",
+                        "start": 496,
+                        "end": 522
+                      }
+                    }
+                  ],
+                  "type": {
+                    "kind": "array",
+                    "elem": {
+                      "kind": "string"
+                    }
+                  },
+                  "loc": {
+                    "file": "review.ts",
+                    "start": 459,
+                    "end": 523
+                  }
+                },
+                "type": {
+                  "kind": "union",
+                  "unionId": "u0"
+                },
+                "loc": {
+                  "file": "review.ts",
+                  "start": 453,
+                  "end": 523
+                }
+              },
+              "loc": {
+                "file": "review.ts",
+                "start": 453,
+                "end": 523
+              }
+            }
+          ],
+          "loc": {
+            "file": "review.ts",
+            "start": 191,
+            "end": 528
+          }
+        },
+        {
+          "kind": "runtimeFence",
+          "code": "SC9002",
+          "message": "unreachable: a non-void function completed without returning (the checker proved every path returns) — please report this",
+          "loc": {
+            "file": "review.ts",
+            "start": 41,
+            "end": 530
+          }
+        }
+      ],
+      "loc": {
+        "file": "review.ts",
+        "start": 41,
+        "end": 530
+      },
+      "generator": {
+        "yieldT": {
+          "kind": "array",
+          "elem": {
+            "kind": "string"
+          }
+        },
+        "nextT": {
+          "kind": "union",
+          "unionId": "u0"
+        },
+        "resultType": {
+          "kind": "record",
+          "shapeId": "r2"
+        }
+      }
+    },
+    {
+      "name": "%init.0",
+      "params": [],
+      "returnType": {
+        "kind": "void"
+      },
+      "locals": [],
+      "body": [
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "varRef",
+            "localId": "%g.m0.%loaded",
+            "type": {
+              "kind": "bool"
+            },
+            "loc": {
+              "file": "helper.ts",
+              "start": 0,
+              "end": 0
+            }
+          },
+          "then": [
+            {
+              "kind": "return",
+              "value": null,
+              "loc": {
+                "file": "helper.ts",
+                "start": 0,
+                "end": 0
+              }
+            }
+          ],
+          "else_": null,
+          "loc": {
+            "file": "helper.ts",
+            "start": 0,
+            "end": 0
+          }
+        },
+        {
+          "kind": "assign",
+          "localId": "%g.m0.%loaded",
+          "value": {
+            "kind": "boolLit",
+            "value": true,
+            "type": {
+              "kind": "bool"
+            },
+            "loc": {
+              "file": "helper.ts",
+              "start": 0,
+              "end": 0
+            }
+          },
+          "loc": {
+            "file": "helper.ts",
+            "start": 0,
+            "end": 0
+          }
+        }
+      ],
+      "loc": {
+        "file": "helper.ts",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%init.1",
+      "params": [],
+      "returnType": {
+        "kind": "void"
+      },
+      "locals": [],
+      "body": [
+        {
+          "kind": "if",
+          "cond": {
+            "kind": "varRef",
+            "localId": "%g.e.%loaded",
+            "type": {
+              "kind": "bool"
+            },
+            "loc": {
+              "file": "review.ts",
+              "start": 0,
+              "end": 0
+            }
+          },
+          "then": [
+            {
+              "kind": "return",
+              "value": null,
+              "loc": {
+                "file": "review.ts",
+                "start": 0,
+                "end": 0
+              }
+            }
+          ],
+          "else_": null,
+          "loc": {
+            "file": "review.ts",
+            "start": 0,
+            "end": 0
+          }
+        },
+        {
+          "kind": "assign",
+          "localId": "%g.e.%loaded",
+          "value": {
+            "kind": "boolLit",
+            "value": true,
+            "type": {
+              "kind": "bool"
+            },
+            "loc": {
+              "file": "review.ts",
+              "start": 0,
+              "end": 0
+            }
+          },
+          "loc": {
+            "file": "review.ts",
+            "start": 0,
+            "end": 0
+          }
+        },
+        {
+          "kind": "exprStmt",
+          "expr": {
+            "kind": "call",
+            "callee": "%init.0",
+            "args": [],
+            "type": {
+              "kind": "void"
+            },
+            "loc": {
+              "file": "review.ts",
+              "start": 1,
+              "end": 39
+            }
+          },
+          "loc": {
+            "file": "review.ts",
+            "start": 1,
+            "end": 39
+          }
+        }
+      ],
+      "loc": {
+        "file": "review.ts",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%main",
+      "params": [],
+      "returnType": {
+        "kind": "void"
+      },
+      "locals": [],
+      "body": [
+        {
+          "kind": "exprStmt",
+          "expr": {
+            "kind": "call",
+            "callee": "%init.1",
+            "args": [],
+            "type": {
+              "kind": "void"
+            },
+            "loc": {
+              "file": "review.ts",
+              "start": 0,
+              "end": 0
+            }
+          },
+          "loc": {
+            "file": "review.ts",
+            "start": 0,
+            "end": 0
+          }
+        }
+      ],
+      "loc": {
+        "file": "review.ts",
+        "start": 0,
+        "end": 0
+      }
+    }
+  ],
+  "classes": [
+    {
+      "name": "%Error",
+      "runtime": true,
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%TypeError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%RangeError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%SyntaxError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%DOMException",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%ReferenceError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%EvalError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%URIError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%AggregateError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%AssertionError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    },
+    {
+      "name": "%SuppressedError",
+      "runtime": true,
+      "base": "%Error",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%cause",
+          "type": {
+            "kind": "dyn"
+          }
+        },
+        {
+          "name": "%causeEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messagePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%messageEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%namePresent",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%nameEnumerable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%stackFrames",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%stack",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemErrno",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "%systemCall",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemPath",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemDest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemMessage",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%systemCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "%nativePlain",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "%errnoOrder",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "loc": {
+        "file": "<builtin>",
+        "start": 0,
+        "end": 0
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "r0",
+      "fields": [
+        {
+          "name": "ok",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "declaredOrder": [
+        "ok",
+        "value"
+      ]
+    },
+    {
+      "id": "r1",
+      "fields": [
+        {
+          "name": "error",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ok",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "declaredOrder": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "id": "r2",
+      "fields": [
+        {
+          "name": "done",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "union",
+            "unionId": "u1"
+          }
+        }
+      ],
+      "declaredOrder": [
+        "value",
+        "done"
+      ]
+    }
+  ],
+  "unions": [
+    {
+      "id": "u0",
+      "arms": [
+        {
+          "kind": "record",
+          "shapeId": "r0"
+        },
+        {
+          "kind": "record",
+          "shapeId": "r1"
+        }
+      ],
+      "discriminant": {
+        "field": "ok",
+        "cases": [
+          {
+            "tag": 0,
+            "values": [
+              true
+            ]
+          },
+          {
+            "tag": 1,
+            "values": [
+              false
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "u1",
+      "arms": [
+        {
+          "kind": "array",
+          "elem": {
+            "kind": "string"
+          }
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "undefinedT"
+        }
+      ]
+    }
+  ],
+  "globals": [
+    {
+      "id": "%g.m0.%loaded",
+      "name": "%loaded",
+      "type": {
+        "kind": "bool"
+      },
+      "mutable": true
+    },
+    {
+      "id": "%g.e.%loaded",
+      "name": "%loaded",
+      "type": {
+        "kind": "bool"
+      },
+      "mutable": true
+    }
+  ],
+  "entry": "%main"
+}

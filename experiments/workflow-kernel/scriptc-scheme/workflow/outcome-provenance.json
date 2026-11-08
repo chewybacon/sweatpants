@@ -1,0 +1,31 @@
+{
+  "compiler": "@scriptc/compiler@0.3.6",
+  "hashes": {
+    "source": "88d1d73b234c43281e0fa1e3eee49a2c9e991b1b4644b9662af058f7973c841a",
+    "helper": "96636100339b7fad88371096794f09b28e64ccb8be4fee24de9833364b1cfd61",
+    "normalized": "3c3bae9fc2274f1490d0fddae8070170ba0d1096edb812d61177fb2d0ef70cbf",
+    "ir": "3e4063ab5a1aa28e2462b318ff6f817f1e991b6c8fd9318b3754d44c2f4c4de6"
+  },
+  "sites": {
+    "218": {
+      "start": 268,
+      "key": "approval",
+      "effect": "scriptc.review.approval",
+      "unwrap": false,
+      "line": 7,
+      "column": 22,
+      "sourceId": "review.workflow.ts"
+    },
+    "453": {
+      "start": 502,
+      "key": "cleanup",
+      "effect": "scriptc.review.cleanup",
+      "unwrap": false,
+      "line": 14,
+      "column": 5,
+      "sourceId": "review.workflow.ts"
+    }
+  },
+  "preflight": [],
+  "diagnostics": []
+}

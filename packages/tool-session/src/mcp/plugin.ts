@@ -22,7 +22,6 @@ import {
   type InteractionBinding,
   type ToolContract,
   type ToolElicitSchemaArtifact,
-  type ToolExecutionKind,
   type ElicitExchangeCompletion,
 } from "@sweatpants/agent-sdk";
 
@@ -82,14 +81,13 @@ export interface ClientPlugin<TCapabilities = unknown> {
   readonly client: ClientPluginRegistration<TCapabilities>;
 }
 
-export type PluginToolContract<TElicits extends ElicitsMap = ElicitsMap> = ToolContract<
-  string,
-  any,
-  any,
-  TElicits,
-  any
+export type PluginToolContract<TElicits extends ElicitsMap = ElicitsMap> = Omit<
+  ToolContract<string, any, any, TElicits, any>,
+  "execution" | "elicits"
 > & {
-  readonly execution: ToolExecutionKind;
+  readonly elicits: Readonly<
+    Record<string, ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>>
+  >;
 };
 
 export interface PluginBuilder<TContract extends PluginToolContract, TCapabilities> {

@@ -1,3 +1,4 @@
+import { toolFactory } from "../execution.ts";
 import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
@@ -19,7 +20,7 @@ describe("builder validation behavior", () => {
         return { doubled: count * 2 };
       });
 
-    const invoke = yield* Tool(baseCtx);
+    const invoke = yield* toolFactory(Tool)(baseCtx);
 
     try {
       yield* invoke({ count: "nope" } as unknown as { count: number });
@@ -39,7 +40,7 @@ describe("builder validation behavior", () => {
         return { doubled: count * 2 };
       });
 
-    const invoke = yield* Tool(baseCtx);
+    const invoke = yield* toolFactory(Tool)(baseCtx);
 
     try {
       // Undecodable model output reaches the only authority that may judge it.
@@ -65,7 +66,7 @@ describe("builder validation behavior", () => {
         return { ok: "nope" } as unknown as { ok: boolean };
       });
 
-    const invoke = yield* Tool(baseCtx);
+    const invoke = yield* toolFactory(Tool)(baseCtx);
 
     try {
       yield* invoke({});

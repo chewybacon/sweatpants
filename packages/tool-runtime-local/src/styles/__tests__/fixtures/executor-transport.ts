@@ -1,5 +1,5 @@
 /** Isolated composition spike: one live execution per connection, no journal or retries. */
-import { resource, createQueue, spawn, suspend, type Operation } from "effection";
+import { resource, createQueue, spawn, suspend, type Operation, type Effect } from "effection";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
 import {
   createExecution,
@@ -12,7 +12,7 @@ import {
 } from "@sweatpants/foundation";
 
 export type Boundary = ExecutionBoundary<Json, Json, Json>;
-export type Kernel = ExecutorContract<Json, Json, Json, Json, Json, Json>;
+export type Kernel = ExecutorContract<Json, Json, Json, Json, Json, Json, Effect<unknown>>;
 export type Command =
   | { kind: "start"; program: Json; input: Json }
   | ExecutionCommand<Json>
@@ -38,7 +38,7 @@ export const Executor = definePort<Kernel>("executor-transport-spike", {
 
 /** Operative-side dispatcher; the kernel and live handles never cross the connection. */
 export function createOperative(kernel: Kernel): Connection {
-  let execution: Execution<Json, Json, Json, Json> | undefined;
+  let execution: Execution<Json, Json, Json, Json, Effect<unknown>> | undefined;
   let started = false;
   let closed = false;
   let busy = false;

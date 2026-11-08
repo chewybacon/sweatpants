@@ -1,0 +1,547 @@
+import type { Signal } from "@sweatpan.ts/runtime";
+import type { Api, Operation, Outcome } from "@standard-durability/core";
+import type { Execution, ScopeBoundary, RestoredGuest } from "@sweatpan.ts/execution";
+
+/** Immutable accepted history supplied by a trusted host; receipts identify accepted entries. */
+export interface Accepted<Q, V, E> {
+  readonly sequence: number;
+  readonly receipt: string;
+  readonly request: Q;
+  readonly scope?: ScopeBoundary;
+  readonly outcome: Outcome<V, E>;
+}
+
+/** Evaluator state anchored to a program and accepted history prefix. */
+export interface Checkpoint<S> {
+  readonly program: string;
+  /**
+   * Adapter format identifier. Include a version component when serialization changes
+   * incompatibly. Checkpoint middleware restores only an exact adapter-format match;
+   * an unsupported format delegates to the next recovery policy before acquisition.
+   */
+  readonly format: string;
+  /** Number of accepted outcomes already reflected in evaluator state. */
+  readonly position: number;
+  /** Last accepted receipt reflected in this checkpoint; null when position is zero.
+   * The journal may already contain entries beyond this checkpoint's accepted prefix.
+   */
+  readonly receipt: string | null;
+  readonly state: S;
+}
+
+/** Accepted count and the identity of the last accepted entry. */
+export interface JournalPosition {
+  readonly position: number;
+  /** Last accepted receipt in this history prefix; null when position is zero. */
+  readonly receipt: string | null;
+}
+
+/** Immutable history prefix. Reads never include entries beyond the captured end. */
+export interface AcceptedHistory<Q, V, E, Y> {
+  readonly end: JournalPosition;
+  at(sequence: number): Operation<Accepted<Q, V, E> | undefined, Y>;
+  read(from: number, limit: number): Operation<readonly Accepted<Q, V, E>[], Y>;
+}
+
+/** Trusted accepted history and an optional acceleration checkpoint. */
+export interface RecoveryPlan<Q, V, E, S, Y> {
+  readonly history: AcceptedHistory<Q, V, E, Y>;
+  readonly checkpoint?: Checkpoint<S>;
+  readonly cancellation?: RootCancellation<Q>;
+}
+
+/** Live recovered continuation owned by the executing scope. */
+export interface Recovered<R, Q, Y, V, E> extends RestoredGuest<R, Q, Y, V, E> {
+  readonly program: string;
+  /** Receipt anchoring the accepted prefix already consumed by this Guest. */
+  readonly receipt: string | null;
+  readonly position: number;
+}
+
+/** Scoped recovery hooks; reconstruction never invokes a business handler. */
+export interface RecoveryMethods<R, Q, Y, V, E, S> {
+  /** Replay accepted Outcomes, or restore through installed checkpoint middleware. */
+  recover(plan: RecoveryPlan<Q, V, E, S, Y>): Operation<Recovered<R, Q, Y, V, E>, Y>;
+  /**
+   * Reconcile a live continuation with accepted history and cancellation control.
+   * Its execution driver and owning scope must still be live. Does not acquire,
+   * restore, deliver work or select a Guest lifetime policy.
+   */
+  advance(
+    current: Recovered<R, Q, Y, V, E>,
+    plan: RecoveryPlan<Q, V, E, S, Y>,
+  ): Operation<Recovered<R, Q, Y, V, E>, Y>;
+  /** Capture an owned suspended evaluator; undefined means capture is unavailable. */
+  checkpoint(
+    recovered: Recovered<R, Q, Y, V, E>,
+    position: JournalPosition,
+  ): Operation<Checkpoint<S> | undefined, Y>;
+}
+
+/** Stable delivery identity for an unanswered journal request. */
+export interface PendingRequest<Q> {
+  readonly id: string;
+  readonly sequence: number;
+  readonly request: Q;
+  readonly scope?: ScopeBoundary;
+}
+
+/** An owned call belongs to one exact parent boundary, including across replay. */
+export interface ChildLink {
+  readonly parentId: string;
+  readonly requestId: string;
+  readonly childId: string;
+  readonly program: string;
+  readonly input: unknown;
+}
+
+/** Detached execution state; revision guards activation writes. */
+export type JournalSnapshot<R, Q, S> = {
+  readonly program: string;
+  readonly revision: number;
+  readonly frontier: JournalPosition;
+  /** Normalized root invocation input, pinned before execution; absent for unadmitted journals. */
+  readonly admission?: { readonly input: unknown };
+  readonly checkpoint?: Checkpoint<S>;
+  readonly cancellation?: RootCancellation<Q>;
+} & (
+  | {
+      readonly status: "running";
+      readonly pending?: PendingRequest<Q>;
+      /** Ordered active owned call. Parent waits until every sibling has settled. */
+      readonly children?: readonly ChildLink[];
+      /** Intent waiting for an owned child to drain; not yet supplied to the evaluator. */
+      readonly cancellationRequested?: RootCancellation<Q>;
+    }
+  | { readonly status: "completed"; readonly value: R }
+  | { readonly status: "cancelled"; readonly reason: string; readonly failure?: string }
+);
+
+/** Bound to one execution. Mutations are atomic; revisions reject stale activation writes. */
+export interface Journal<R, Q, V, E, S, Y> {
+  /** Optional atomic root cancellation; evaluator support is also required. */
+  readonly cancellation?: CancellationJournal<Q, Y>;
+  /** Read current state without acquiring or advancing computation. */
+  read(): Operation<
+    JournalSnapshot<R, Q, S> & {
+      readonly history: AcceptedHistory<Q, V, E, Y>;
+      /** Existing registration for the current pending request, read atomically with
+       * state. Absent before registration or after acceptance; never creates authority. */
+      readonly interaction?: InteractionRegistration;
+    },
+    Y
+  >;
+  /**
+   * Commit a pending request and optional checkpoint at the expected revision.
+   * Throws on stale revision, divergent pending request or invalid checkpoint anchor.
+   * Undefined means queued cancellation won at this boundary; reactivate to unwind.
+   */
+  park(
+    revision: number,
+    request: Q,
+    checkpoint?: Checkpoint<S>,
+    scope?: ScopeBoundary,
+  ): Operation<PendingRequest<Q> | undefined, Y>;
+  /**
+   * Trusted external-answer acceptance; identical redelivery returns its original
+   * entry and conflicting delivery fails. Not an authenticated grant endpoint.
+   */
+  accept(id: string, outcome: Outcome<V, E>): Operation<Acceptance<Q, V, E>, Y>;
+  /** Persist completion at the expected revision; an unanswered request prevents completion. */
+  complete(revision: number, value: R): Operation<void, Y>;
+}
+
+/** A bounded activation leaves either a pending request or a persisted result. */
+export type Activation<R, Q> =
+  | { readonly state: "parked"; readonly pending: PendingRequest<Q> }
+  | { readonly state: "completed"; readonly value: R }
+  | { readonly state: "cancelled"; readonly reason: string; readonly failure?: string };
+
+/** Whether another delivery is permitted after an unresolved attempt. */
+export type RetrySafety = "repeatable" | "unsafe";
+
+/** A process-local grant is correlation, not an authenticated wire credential. */
+export interface AttemptGrant {
+  readonly requestId: string;
+  readonly attemptId: string;
+  readonly retrySafety: RetrySafety;
+}
+
+/** Receipt of accepted history, including acknowledgement of identical redelivery. */
+export interface Acceptance<Q, V, E> {
+  readonly entry: Accepted<Q, V, E>;
+  readonly duplicate: boolean;
+}
+
+/** Optional capability for executing effects; external answers need no attempt. */
+export interface Attempts<Q, V, E, Y> {
+  /**
+   * Commit a grant before delivery, or report the current occupied/invalidated attempt.
+   * Replacement compares the explicitly observed grant and requires recorded and
+   * current policy to be repeatable. Throws for stale requests, stale replacement
+   * or unsafe retry. No timeout implies permission to replace an owner.
+   */
+  begin(
+    requestId: string,
+    retrySafety: RetrySafety,
+    replace?: AttemptGrant,
+  ): Operation<
+    | { readonly state: "granted"; readonly grant: AttemptGrant }
+    | { readonly state: "occupied"; readonly grant: AttemptGrant }
+    | { readonly state: "invalidated"; readonly grant: AttemptGrant; readonly reason: string },
+    Y
+  >;
+  /**
+   * Accept only a current, eligible grant's Outcome. Invalidated grants throw;
+   * eligibility and acceptance must share an atomic boundary. Replaced grants throw even after the
+   * winner completes. Identical redelivery by the winner returns its original
+   * entry; a conflicting Outcome throws. Completion of this operation acknowledges
+   * acceptance, not exactly-once execution by an external service.
+   */
+  settle(grant: AttemptGrant, outcome: Outcome<V, E>): Operation<Acceptance<Q, V, E>, Y>;
+}
+
+/** Correlates participant resolution with one registered interaction; not a wire credential. */
+export interface ResolutionGrant {
+  readonly requestId: string;
+  readonly resolutionId: string;
+}
+
+/** Registration survives host disposal; invalidation preserves its original reason. */
+export type InteractionRegistration =
+  | { readonly state: "waiting"; readonly grant: ResolutionGrant }
+  | { readonly state: "invalidated"; readonly grant: ResolutionGrant; readonly reason: string };
+
+/** The first committed resolution wins: invalidation cannot erase an accepted answer. */
+export type Invalidation<Q, V, E> =
+  | { readonly state: "invalidated"; readonly reason: string }
+  | { readonly state: "accepted"; readonly acceptance: Acceptance<Q, V, E> };
+
+/** Durable participant registration and resolution without an executing handler attempt. */
+export interface Interactions<Q, V, E, Y> {
+  /**
+   * Resolve the stored request for this exact resolution grant, including accepted
+   * redeliveries. Unknown/revoked grants reject. This read does not reserve authority;
+   * answer must recheck it atomically after any external validation.
+   */
+  request(grant: ResolutionGrant): Operation<Q, Y>;
+  /** Register a pending request once, or return its existing registration/invalidation. */
+  register(requestId: string): Operation<InteractionRegistration, Y>;
+  /** Accept with current authority; identical redelivery is acknowledged, revoked authority rejects. */
+  answer(grant: ResolutionGrant, outcome: Outcome<V, E>): Operation<Acceptance<Q, V, E>, Y>;
+  /**
+   * Atomically invalidate an unanswered interaction. Late answers reject. If an answer
+   * already won, return its acceptance instead. This fences replies; it does not
+   * inject workflow cancellation or claim that logical cleanup has completed.
+   */
+  invalidate(grant: ResolutionGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
+}
+
+/**
+ * Proposed alarm scheduling intent, owned by one durable execution.
+ * This is data only: constructing it does not persist or install an alarm.
+ * The future deadline transition must record it atomically with scope state.
+ */
+export interface AlarmIntent {
+  /** Stable, unique deadline-instance ID within the execution; use a new ID when rescheduling. */
+  readonly id: string;
+  /** Absolute Unix time in milliseconds, resolved once and retained across replay. */
+  readonly dueAt: number;
+}
+
+/** Durable eligibility of an exact attempt; acceptance and invalidation are mutually exclusive. */
+export type AttemptState<Q, V, E> = { readonly state: "active" } | Invalidation<Q, V, E>;
+
+/** Optional control of executing attempts, bound to the same journal as Attempts. */
+export interface AttemptControl<Q, V, E, Y> {
+  /** Read eligibility, rejecting stale/replaced grants. Used once after subscribing, not before each write. */
+  inspect(grant: AttemptGrant): Operation<AttemptState<Q, V, E>, Y>;
+  /**
+   * Atomically revoke an exact grant or return the acceptance that won first.
+   * Repeated invalidation retains its first reason. Subsequent settle and replacement
+   * must reject. No authored failure is recorded and no logical cleanup is implied.
+   * Storage must check eligibility within settle's atomic write, not via a prior read.
+   */
+  invalidate(grant: AttemptGrant, reason: string): Operation<Invalidation<Q, V, E>, Y>;
+}
+
+/** Control history anchored before the next accepted outcome; never a fabricated domain failure. */
+export interface RootCancellation<Q> {
+  readonly position: number;
+  readonly requestId: string;
+  readonly request: Q;
+  readonly scope?: ScopeBoundary;
+  readonly reason: string;
+  /** Failure from a drained owned child, retained while parent cleanup runs. */
+  readonly failure?: string;
+  /** Revoked delivery, retained so repeated commands can retry notification. */
+  readonly attempt?: AttemptGrant;
+  /** Live descendant deliveries revoked in the same transaction, retained for notification retry. */
+  readonly descendants?: readonly AttemptGrant[];
+}
+
+/** Root cancellation at an observed parked request, bound to this journal. */
+export interface CancellationJournal<Q, Y> {
+  /**
+   * Atomically record intent and revoke the pending attempt/interaction. Stale request
+   * IDs reject. Repeating the original ID preserves the first reason, including during
+   * cleanup; it never invalidates cleanup grants. An active owned child retains the
+   * parent boundary as cancellationRequested until child settlement releases it.
+   * Does not advance authored code.
+   */
+  request(requestId: string, reason: string): Operation<RootCancellation<Q>, Y>;
+  /** Commit cancelled completion at the expected revision after cleanup has drained. */
+  finish(revision: number, failure?: string): Operation<void, Y>;
+}
+
+/** Recovery policy plus its inferred, scoped evaluator API; raw Guests retain checkpoint identity. */
+export interface Recovery<R, Q, Y, V, E, S> extends Api<RecoveryMethods<R, Q, Y, V, E, S>, Y> {
+  readonly execution: Execution<R, Q, Y, V, E>;
+}
+
+/** An exact attempt revoked by committed cancellation or explicit invalidation. */
+export interface AttemptRevocation {
+  readonly execution: string;
+  readonly grant: AttemptGrant;
+}
+
+/** Trusted journal assembly. Equality defines duplicate domain delivery. */
+export interface JournalBindingOptions {
+  readonly program: string;
+  readonly equals: (left: unknown, right: unknown) => boolean;
+  /**
+   * Producer-only connection for committed revocations; send must be synchronous
+   * nonthrowing local bookkeeping. The journal neither subscribes nor closes it.
+   * Supply an assembly-owned Signal here; subscription and relay lifetimes
+   * belong to that assembly. Establish subscribers before writers; no replay is supplied.
+   * Ordinary cancellation preserves critical/cleanup attempts; explicit invalidation
+   * can revoke them and is reported. Includes race losers and owned descendants;
+   * excludes participant waits and repeatable replacement. Repeated commands do not re-emit.
+   * Configure on every committing store assembly. The producer connection belongs to the writer,
+   * not the live attempt owner. Route using execution identity plus the exact grant.
+   * Do not perform remote IO here. This observation is not a durable outbox or replay
+   * feed. Producer failure is a post-commit defect and cannot roll back authority.
+   */
+  readonly revocations?: Pick<Signal<AttemptRevocation, unknown, unknown>, "send">;
+}
+
+/** Owned call assembly; program/input are compared on reacquisition. */
+export interface OwnedChildOptions<R, V, E> {
+  readonly program: string;
+  readonly input: unknown;
+  /** Pure terminal projection. Must not perform effects; failures leave both journals unchanged. */
+  readonly outcome: (value: R) => Outcome<V, E>;
+}
+
+/** Nonempty owned call group. Projection runs after every child is terminal. */
+export interface OwnedChildrenOptions<C, V, E> {
+  /** all by default; race atomically pins the first completed child and stops siblings. */
+  readonly join?: "all" | "race";
+  readonly children: readonly { readonly program: string; readonly input: unknown }[];
+  /**
+   * all supplies values in declaration order; race supplies only the pinned winner.
+   * Runs after loser cleanup drains. Must perform no effects. Cleanup failures follow
+   * owned cancellation semantics rather than silently returning the winner.
+   */
+  readonly outcome: (values: readonly C[]) => Outcome<V, E>;
+}
+
+/** Connection-bound observation of one execution and its persisted direct children.
+ * Child payloads are heterogeneous and must be decoded by the application. Reads
+ * across the tree are separate snapshots, not an atomic frontier. This trusted
+ * storage capability supplies no authentication or redaction.
+ */
+export interface JournalReader<R, Q, V, E, S = unknown, Y = never> extends Pick<
+  Journal<R, Q, V, E, S, Y>,
+  "read"
+> {
+  readonly id: string;
+  /** Read persisted direct children in declaration order for a pending request ID
+   * or accepted receipt. Unknown/non-child boundaries return an empty list. Retained
+   * links survive completion; this neither creates children nor advances execution. */
+  readChildren(requestId: string): Operation<readonly ChildLink[], Y>;
+  /** Open an existing direct child, including a retained historical child.
+   * Rejects unrelated/missing identities. Creates no child, installs no result
+   * projection, and acquires no Guest. Reopen through a fresh parent after closing
+   * the storage connection. Returned handles expose observation only.
+   */
+  openChild(
+    childId: string,
+  ): Operation<JournalReader<unknown, unknown, unknown, unknown, unknown, Y>, Y>;
+}
+
+/** Typed journal capabilities sharing the adapter's atomic transaction boundary. */
+export interface OwnedJournal<R, Q, V, E, S = unknown, Y = never>
+  extends Journal<R, Q, V, E, S, Y>, JournalReader<R, Q, V, E, S, Y> {
+  /**
+   * Pin normalized root input atomically before execution. Program must match this
+   * journal. Equal resubmissions return the stored value; conflicting input rejects,
+   * including after completion. First admission rejects an already advanced journal
+   * or an owned child (whose input is pinned by ensureChild). No schema runs here.
+   * A successful first admission increments revision without appending history.
+   */
+  admit(program: string, input: unknown): Operation<unknown, Y>;
+  readonly cancellation: CancellationJournal<Q, Y>;
+  readonly attempts: Attempts<Q, V, E, Y>;
+  readonly attemptControl: AttemptControl<Q, V, E, Y>;
+  readonly interactions: Interactions<Q, V, E, Y>;
+  /**
+   * Reopen only request/answer authority for an existing direct child, including
+   * historical children. Verifies stored ownership and the expected program; creates
+   * no child, installs no result projection, and grants no execution/registration API.
+   * CQ/CV/CE are supplied by trusted assembly for that pinned program, not decoded
+   * from persisted bytes. Answer acceptance still rechecks the exact resolution grant.
+   * Connection-bound: reopen through a fresh parent after closing storage.
+   */
+  openChildInteractions<CQ, CV, CE>(
+    childId: string,
+    program: string,
+  ): Operation<OwnedChildInteractions<CQ, CV, CE, Y>, Y>;
+  /**
+   * Open only request/answer authority for an existing descendant at any depth.
+   * In one transaction, verify every persisted parent edge back to this owner;
+   * reject unrelated, missing, cyclic or inconsistent ancestry and the owner itself.
+   * Uses stored links, not caller paths or active-frontier caches. Historical children
+   * remain reachable while ownership evidence is retained. Installs no projections.
+   * Payloads are unknown: trusted application code must check the returned program
+   * and decode requests before accepting input. No caller authentication is implied.
+   * The returned narrow handle remains tied to the current storage connection.
+   */
+  openDescendantInteractions(
+    execution: string,
+  ): Operation<OwnedChildInteractions<unknown, unknown, unknown, Y>, Y>;
+  /**
+   * Atomically acquire a nonempty ordered sibling group at one pending boundary.
+   * Reacquisition checks count, order, programs and inputs, retaining the original
+   * projection within this open assembly. A fresh assembly supplies fresh bindings.
+   * Cancellation fences active descendants together and joins every child's logical
+   * cleanup before parent unwind. Completed siblings are retained, never redelivered.
+   * Delivery exceptions remain unsettled attempts; they are not durable child failures.
+   */
+  ensureChildren<C, CQ, CV, CE, CS = unknown>(
+    requestId: string,
+    options: OwnedChildrenOptions<C, V, E>,
+  ): Operation<readonly OwnedChild<C, CQ, CV, CE, CS, Y>[], Y>;
+  /**
+   * Bind one child to the exact pending call. Reacquisition checks program/input;
+   * callers must use the same type contract for that program. Reacquisition returns
+   * a fresh handle to the same stored child and retains its original result projection within that open assembly.
+   * This is trusted local assembly, not wire validation. Child creation and ownership
+   * publish together; child completion atomically settles the parent in the same tree.
+   */
+  ensureChild<C, CQ, CV, CE, CS = unknown>(
+    requestId: string,
+    options: OwnedChildOptions<C, V, E>,
+  ): Operation<OwnedChild<C, CQ, CV, CE, CS, Y>, Y>;
+}
+
+/** Narrow writable binding; no advancement or parent result projection is available. */
+export interface OwnedChildInteractions<Q, V, E, Y> {
+  readonly link: ChildLink;
+  readonly journal: {
+    readonly id: string;
+    readonly interactions: Pick<Interactions<Q, V, E, Y>, "request" | "answer">;
+  };
+}
+
+/** The child journal is driven with ordinary recovery/hosting, without a handler attempt for the call. */
+export interface OwnedChild<R, Q, V, E, S = unknown, Y = never> {
+  readonly link: ChildLink;
+  readonly journal: OwnedJournal<R, Q, V, E, S, Y>;
+}
+
+/** Current state of one member of a colocated owned execution tree. */
+export interface JournalRecord<R = unknown, Q = unknown, S = unknown> {
+  snapshot: JournalSnapshot<R, Q, S>;
+  queuedStop?: string;
+  parent?: ChildLink;
+}
+
+/** Retained authority for one request; never grows with unrelated requests. */
+export interface RequestRecord {
+  grant?: AttemptGrant;
+  revoked?: string;
+  registration?: InteractionRegistration;
+  children?: readonly ChildLink[];
+  join?: "all" | "race";
+  /** First completed child in a race; committed with terminal state and loser fencing. */
+  winner?: string;
+}
+
+/** Transaction-local storage access. Reads are detached; writes publish only on commit. */
+export interface JournalRecords<Y> {
+  get(id: string): Operation<JournalRecord | undefined, Y>;
+  /** Normal writes request root activation. Only refreshing an already-pending
+   * boundary's revision/checkpoint may preserve the existing intent token. */
+  set(id: string, record: JournalRecord, activation?: "preserve"): Operation<void, Y>;
+  request(id: string, requestId: string): Operation<RequestRecord | undefined, Y>;
+  setRequest(id: string, requestId: string, record: RequestRecord): Operation<void, Y>;
+  accepted(
+    id: string,
+    receipt: string,
+  ): Operation<Accepted<unknown, unknown, unknown> | undefined, Y>;
+  append(id: string, entry: Accepted<unknown, unknown, unknown>): Operation<void, Y>;
+}
+
+declare const transactionInstruction: unique symbol;
+/** Opaque local registration consumed by the transaction interpreter, never persisted. */
+export interface TransactionInstruction {
+  readonly [transactionInstruction]: true;
+}
+
+/** One transaction's record access and commit obligations. */
+export interface JournalTransaction<Y> {
+  readonly records: JournalRecords<Y>;
+  /**
+   * Register when advanced. On confirmed commit, publish synchronously in registration
+   * order before releasing ownership or suspending. Rollback discards registrations.
+   * Trusted nonthrowing local bookkeeping only: no asynchronous work or remote effects.
+   * Retained operations cannot register in another or already-closed transaction.
+   */
+  onCommit(publish: () => void): Operation<void, TransactionInstruction>;
+}
+
+/** Adapter port. One serializable ownership domain, including absent records. */
+export interface JournalBackend<Y> {
+  /**
+   * Invoke work once; only storage operations may suspend inside the transaction.
+   * Resolve external dependencies before locking. Publish after commit; roll back
+   * uncommitted work on failure/disposal and drain cleanup before releasing locks.
+   * After confirmed commit, run registered publications synchronously, exactly once, before another
+   * transaction in this assembly can begin or any suspension/cancellation point. Discard registrations on
+   * rollback. Publications are trusted local bookkeeping, not asynchronous effects.
+   * Adapters must protect commit confirmation and publication from interruption, including
+   * joining an in-flight commit during disposal. A lost caller acknowledgement does not
+   * undo publication. Unknown database commit outcomes require durable reconciliation.
+   * No implicit retries.
+   */
+  transact<T>(
+    work: (transaction: JournalTransaction<Y>) => Operation<T, Y | TransactionInstruction>,
+  ): Operation<T, Y>;
+  /** Immutable accepted rows in [from, end), limited to at most limit entries. No write lock. */
+  history(
+    id: string,
+    from: number,
+    end: number,
+    limit: number,
+  ): Operation<readonly Accepted<unknown, unknown, unknown>[], Y>;
+}
+
+/** Coalesced activation intent for one root tree. Opaque token changes on transactions that introduce activation-relevant writes. */
+export interface PendingActivation {
+  readonly execution: string;
+  readonly token: string;
+}
+
+/** Store-owned reconciliation intent, atomic with activation-relevant journal mutations in its root tree.
+ * This is neither a process lease nor effect authority. Reads do not claim work. */
+export interface ActivationIntents<Y> {
+  /** Read the current pending token, or undefined when acknowledged. */
+  read(): Operation<PendingActivation | undefined, Y>;
+  /** Explicitly request activation, including for a new root with no journal writes.
+   * Repeated requests coalesce, but replace the token so stale acknowledgements fail. */
+  request(): Operation<PendingActivation, Y>;
+  /** Clear only the exact observed token. False means it is no longer current;
+   * a foreign execution rejects. Never clears newer work or changes journal authority. */
+  acknowledge(observed: PendingActivation): Operation<boolean, Y>;
+}

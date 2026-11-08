@@ -30,4 +30,6 @@ export {
   type DurableToolSessionFacadeOptions,
 } from "./durable-tool-session-facade.ts";
 
-export { local, type LocalExecutionOptions } from "./execution.ts";
+export { local, type LocalExecutionOptions, type PortableToolWorkerInput } from "./execution.ts";
+
+export { createWorkerGuest, type WorkerGuestOptions } from "./worker-guest.ts";

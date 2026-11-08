@@ -1,3 +1,4 @@
+import type { Effect } from "effection";
 import type { WorkflowInspection } from "./inspection.ts";
 import type { Operation } from "effection";
 import type {
@@ -56,7 +57,8 @@ export interface WorkflowExecution extends CheckpointExecution<
   ExchangeReply,
   Json,
   Json,
-  KernelSnapshot
+  KernelSnapshot,
+  Effect<unknown>
 > {
   /** Optional, detached diagnostics; never a recovery capability. */
   inspect?(): Operation<WorkflowInspection>;
@@ -80,7 +82,8 @@ export interface WorkflowKernel extends Executor<
   ExchangeRequest,
   ExchangeReply,
   Json,
-  Json
+  Json,
+  Effect<unknown>
 > {
   readonly identity: KernelIdentity;
   start(program: WorkflowProgram, input: Json): Operation<WorkflowExecutionState>;

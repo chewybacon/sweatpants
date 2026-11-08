@@ -6,8 +6,9 @@ Adapts a `WorkflowKernel` to the shared `ProgramBackend` contract exported by
 ```text
 ProgramPeer → createWorkflowProgramDriver(backend)
   → shared attachment (ordering, receipts, attempts, pending operations)
-    → ProgramComputation.run()
-      → kernel start / restore / resume / cancel
+    → driveProgramExecution → ProgramComputation.start()
+      → operation-backed primitive Guest → native start / restore / resume
+      → direct ProgramExecutionState bridge (foundation createExecution)
 ```
 
 The same driver accepts a durable-tool registry, which selects the ordinary
@@ -27,7 +28,26 @@ const driver = createWorkflowProgramDriver(backend);
 `bindOperation` maps kernel requests to existing durable operation descriptors,
 including child invocations. The shared host owns child routing, journal admission,
 effect placement, and authorization. Installed effect attempts use the existing
-`InstalledEffectPort`. Kernels receive accepted results through the shared runtime.
+`InstalledEffectPort`. Kernels receive accepted results through the shared runtime. The production backend
+uses primitive `GuestWork` to acquire a `Guest`: start/resume/close perform the native
+operations, and accepted success/failure Outcomes select native value/throw replies.
+The direct bridge binds generic descriptors and exposes one record boundary per
+native suspension. It has no inner Flow loop, event queue, or Effection evaluator.
+The shared `driveProgramExecution` loop alone interprets those boundaries; ordinary
+developer generators still use `EffectionKernel`.
+
+Logical cancellation is a separate native command and may yield cleanup requests.
+It is not a primitive failure Outcome or physical close. Failed native diagnostics
+retain `workflow_failed`; startup, binding and transport failures preserve the failed
+frontier with a replay checkpoint. Terminal compute stays live for capture until
+its owner disposes it. Scoped executor middleware observes restored startup through
+the same start seam without installing restore behavior on fresh siblings.
+
+This adopts the operation-backed Guest composition, not the primitive SQLite
+journal or its serialized single-writer authority. Existing admission, receipts,
+installed-effect attempt closures, structured descriptors and stores remain owned
+by the shared attachment/authority. Kernel snapshot and driver envelope formats are
+unchanged.
 
 ## Recovery and lifetime
 

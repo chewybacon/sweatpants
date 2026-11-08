@@ -1,3 +1,5 @@
+import { CrankError } from "@sweatpants/durable-execution";
+
 import { stableTupleHash } from "@sweatpants/foundation";
 
 import type {
@@ -22,6 +24,15 @@ interface ResolutionCapabilitySigningRequest {
 /** Signs one complete resolution authority fact without command or draft authority. */
 export function signResolutionCapability(request: ResolutionCapabilitySigningRequest): string {
   const { context, state, task, pull } = request;
+  if (
+    pull.resolutionAuthority.kind === "attempt" &&
+    (request.attemptId === undefined || request.attemptId === "none")
+  ) {
+    throw new CrankError(
+      "invalid_resolution_capability",
+      "Attempt authority requires an attempt ID",
+    );
+  }
   return signCapability(
     {
       journalId: context.journalIdentity.id,

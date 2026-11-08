@@ -1,0 +1,29 @@
+{
+  "name": "@sweatpan.ts/deployment-lambda",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts"
+      },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "lint": "cd ../../.. && oxlint --type-aware packages/v2/deployment-lambda",
+    "format:check": "cd ../../.. && oxfmt packages/v2/deployment-lambda --check"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}
