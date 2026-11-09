@@ -17,7 +17,23 @@ const investigate = defineTool("investigate")
   });
 ```
 
-## Hosted application entry point
+## Choose the host composition
+
+For tools participating in chat, register them with `createChatToolBinding` in a
+`defineChatProgram` binding (`@sweatpan.ts/chat-host`). The conversation host owns
+child journals and advancement. Install each tool's capabilities and middleware in
+that binding's scoped `configure`; register its frontend UI separately. See the
+[card-chat integration](../../../apps/yo-chat-v2/README.md#start-with-the-conversation).
+There is no separate tool application to construct for each chat participant.
+
+For an independently callable tool, use `createToolApplication`: a durable RPC-style
+composition that accepts input, can wait for participant answers, and eventually
+returns the tool's inferred result. It owns per-command assembly around an execution
+ID, without requiring a conversation or model. The
+[standalone picker](../../../apps/yo-chat-v2/README.md#standalone-picker-durable-rpc)
+demonstrates this path.
+
+## Standalone tool application
 
 `createToolApplication` assembles an authored tool into scoped `start`, `run`, `read`
 and `answer` commands. It supplies local replay by default. Storage and compatible
@@ -445,3 +461,15 @@ answering. Source/emitted checks preserve typed context, capabilities and respon
 The retired chat-prototype HTTP acceptance journey consumes the same implementation. React presentation and
 the application-owned snapshot/handler dispatcher remain app-local, as do retries,
 frontend session replacement and multi-tab ownership policy.
+
+## HTTP and presentation belong to the adapter
+
+The tools package does not select HTTP verbs, serialization, browser storage or UI
+history. `createToolApplication.read()` returns a detached execution snapshot; it
+neither scans question history nor acquires a Guest. For history, use an explicitly
+owned journal/presentation-reader scope and project only what the application intends to publish.
+
+The [standalone example](../../../apps/yo-chat-v2/README.md#standalone-picker-durable-rpc)
+assembles Start handlers around the shared commands. Its local adapter chooses
+answer-then-advance behavior and builds detached question history inside its connection
+scope. Its JSON envelopes are example policy, not a public tool wire protocol.

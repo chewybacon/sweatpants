@@ -347,6 +347,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const snapshot = await runtime.start(() => app.operations.read("detached")).result;
     expect(snapshot).toMatchObject({ status: "completed", value: true, frontier: { position: 1 } });
     expect(snapshot).not.toHaveProperty("history");
+    expect(snapshot).not.toHaveProperty("questions");
+    expectTypeOf<"questions" extends keyof typeof snapshot ? true : false>().toEqualTypeOf<false>();
     expectTypeOf<"history" extends keyof typeof snapshot ? true : false>().toEqualTypeOf<false>();
     expect(structuredClone(snapshot)).toEqual(snapshot);
     expect(connections).toHaveLength(2);

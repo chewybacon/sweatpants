@@ -107,3 +107,68 @@ Selecting a response completes local UI work; only the server's accepted receipt
 establishes the answer. Accepted-history presentation comes from the conversation
 view, not retained live React nodes. Completed-component replay, progressive Markdown,
 and a general nested render pipeline remain separate work.
+
+## Register a tool UI and choose its placement
+
+```tsx
+const cardUI = defineToolUI(pickCard, {
+  chooseCard: ({ input, respond, disabled, outcome }) => (
+    <CardChoices
+      cards={input.cards}
+      disabled={disabled}
+      selected={outcome?.ok ? outcome.value : undefined}
+      onChoose={respond}
+    />
+  ),
+});
+
+// The application supplies a transport-independent presentation source.
+<ToolUIProvider source={presentation} plugins={[cardUI]}>
+  <ToolOutlet />
+</ToolUIProvider>;
+```
+
+The declaration infers each component's input and response from the authored tool.
+`submitted` contains the original response input; `outcome` contains the accepted,
+schema-transformed result. Renderers must not transform accepted results again.
+`state` reports the last observed question state: pending, answered, cancelled or failed.
+`delivery` independently reports local answer delivery: idle, sending or unconfirmed.
+`disabled` comes from the source's `canRespond` policy, not from either state alone.
+For example, a pending question can be disabled while another command is unresolved;
+an accepted answer can be observed while its local delivery is still finishing.
+Idle delivery does not prove acceptance. These are rendering facts, not a prescribed
+transition sequence or authority to answer. A domain decline is
+an error Outcome, not workflow cancellation.
+
+A conversation adapter supplies the same `ToolPresentationSource`: a stable snapshot
+and subscription over its validated question history and receiver-bound commands.
+The source supplies schema-decoded context, accepted Outcomes, and invocation/question
+identities. It owns delivery policy; renderer registration does not validate an
+arbitrary source or confer answer authority. The flight-chat acceptance consumer
+adapts its existing conversation vocabulary and renders each question with
+`<ToolOutlet question={part.id} />` inside the message tree. Surrounding text, nested
+sampling, tool progress and results remain in that tree.
+
+For an external surface, select `placement={(question) => question.state === "pending"
+? "sidebar" : "inline"}` on the provider and render `<ToolOutlet placement="sidebar" />`
+in the sidebar. Keep one matching outlet per destination/selector; registration does
+not enforce exclusive ownership between duplicate outlets. Placement only selects
+where a question appears. Moving/unmounting an outlet never answers, starts, cancels
+or closes its source. The owner still chooses when to connect, refresh and retry.
+
+Applications reconstruct answered components from their accepted history. Connection,
+command retention and retries belong to their client/transport assembly; this package
+exports no standalone-tool lifecycle hook. `createReactElicitHost` remains available
+for generator handlers that need multiple renders or other scoped work. Those live
+render slots and durable question presentation have different lifetimes; neither runs
+the other's handlers.
+
+Sources omit `decline` when domain failure answers are unsupported. A renderer can
+conditionally offer it with `decline && ...`; its argument still has the authored
+failure type. An accepted decline is `state: "answered"` with `outcome.ok === false`,
+not cancellation or delivery failure. Calls revalidate current session availability;
+stale callbacks are inert. Awaiting `respond` or `decline` does not establish acceptance:
+render accepted results from `outcome`, and uncertainty from `delivery`/`error`.
+Unknown programs and effects render a status fallback without hiding other questions.
+An outlet renders nothing when placement selects another destination; the application
+must provide that destination's outlet.

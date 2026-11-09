@@ -9,3 +9,10 @@ export type {
   ElicitRenderSource,
   ElicitViewsProps,
 } from "./contracts.ts";
+export { defineToolUI, ToolUIProvider, ToolOutlet } from "./tool-ui.ts";
+export type {
+  ToolUIProps,
+  ToolUIPlugin,
+  ToolUIProviderProps,
+  ToolOutletProps,
+} from "./contracts.ts";

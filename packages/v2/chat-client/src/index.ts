@@ -15,3 +15,4 @@ export type {
   ChatClientOptions,
   ChatClient,
 } from "./contracts.ts";
+export type { ToolPresentationQuestion, ToolPresentationSource } from "./contracts.ts";

@@ -40,8 +40,17 @@ export function SiteChrome({ pathname, children }: { pathname: string; children:
             yo-chat
           </RouterLink>
           <HStack as="nav" aria-label="Main navigation" gap={2}>
-            <RouterLink to="/" aria-current={pathname === "/" ? "page" : undefined}>
-              Home
+            <RouterLink
+              to="/chat/cards"
+              aria-current={pathname === "/chat/cards" ? "page" : undefined}
+            >
+              Card chat
+            </RouterLink>
+            <RouterLink
+              to="/examples/tool-rpc"
+              aria-current={pathname === "/examples/tool-rpc" ? "page" : undefined}
+            >
+              Standalone picker
             </RouterLink>
           </HStack>
         </HStack>

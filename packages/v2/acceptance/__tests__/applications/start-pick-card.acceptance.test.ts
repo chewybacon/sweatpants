@@ -40,40 +40,50 @@ forEachRuntime((runtime) => {
       (await handlers.POST(context("POST", undefined, execution, "https://foreign.example")))
         .status,
     ).toBe(403);
-    expect((await handlers.GET(context("GET", undefined, "invalid-id"))).status).toBe(400);
+    expect((await handlers.GET(context("GET", undefined, "bad/id"))).status).toBe(400);
     expect((await handlers.GET(context("GET"))).status).toBe(404);
 
-    const started = await handlers.POST(context("POST"));
+    const started = await handlers.POST(context("POST", { input: {} }));
     expect(started.status).toBe(200);
     const waiting = await started.json();
     expect(waiting).toMatchObject({
       execution,
       status: "waiting",
-      question: { message: "Pick a card" },
+      question: { input: { prompt: "Pick one of these 3 cards:" } },
     });
-    expect(waiting.question.cards.map((card: { id: string }) => card.id)).toEqual([
-      "ace-of-spades",
-      "queen-of-hearts",
-      "seven-of-clubs",
-    ]);
+    expect(waiting.question.input.cards).toHaveLength(3);
+    expect(
+      new Set(waiting.question.input.cards.map((card: { display: string }) => card.display)).size,
+    ).toBe(3);
+    const [otherCard, selectedCard] = waiting.question.input.cards;
 
     // No retained host or database survives a request. Reconstruct from the file.
     handlers = createCardHandlers(runtime, open);
     expect(await (await handlers.GET(context("GET"))).json()).toEqual(waiting);
-    expect(await (await handlers.POST(context("POST"))).json()).toEqual(waiting);
+    expect(await (await handlers.POST(context("POST", { input: {} }))).json()).toEqual(waiting);
 
     // Invalid values and another execution's grant cannot change this question.
-    expect(
-      (await handlers.PUT(context("PUT", { grant: waiting.grant, card: "joker" }))).status,
-    ).toBe(400);
-    const foreignId = crypto.randomUUID();
-    const foreign = await (await handlers.POST(context("POST", undefined, foreignId))).json();
     await expect(
-      handlers.PUT(context("PUT", { grant: foreign.grant, card: "ace-of-spades" })),
+      handlers.PUT(
+        context("PUT", { grant: waiting.question.grant, outcome: { ok: true, value: "joker" } }),
+      ),
+    ).rejects.toThrow();
+    const foreignId = crypto.randomUUID();
+    const foreign = await (await handlers.POST(context("POST", { input: {} }, foreignId))).json();
+    await expect(
+      handlers.PUT(
+        context("PUT", {
+          grant: foreign.question.grant,
+          outcome: { ok: true, value: otherCard },
+        }),
+      ),
     ).rejects.toThrow();
     expect(await (await handlers.GET(context("GET"))).json()).toEqual(waiting);
 
-    const command = { grant: waiting.grant, card: "queen-of-hearts" };
+    const command = {
+      grant: waiting.question.grant,
+      outcome: { ok: true, value: selectedCard },
+    };
     const concurrent = await Promise.all([
       handlers.PUT(context("PUT", command)).then((response) => response.json()),
       handlers.PUT(context("PUT", command)).then((response) => response.json()),
@@ -83,16 +93,18 @@ forEachRuntime((runtime) => {
     const answered = concurrent.find((result) => !result.duplicate)!;
     expect(answered).toMatchObject({
       duplicate: false,
-      view: { execution, status: "completed", value: { card: "queen-of-hearts" } },
+      view: { execution, status: "completed", value: { card: selectedCard } },
     });
     handlers = createCardHandlers(runtime, open);
     const retried = await (await handlers.PUT(context("PUT", command))).json();
     expect(retried).toEqual({ ...answered, duplicate: true });
     await expect(
-      handlers.PUT(context("PUT", { ...command, card: "ace-of-spades" })),
+      handlers.PUT(context("PUT", { ...command, outcome: { ok: true, value: otherCard } })),
     ).rejects.toThrow();
     expect(await (await handlers.GET(context("GET"))).json()).toEqual(answered.view);
-    expect(await (await handlers.POST(context("POST"))).json()).toEqual(answered.view);
+    expect(await (await handlers.POST(context("POST", { input: {} }))).json()).toEqual(
+      answered.view,
+    );
     expect(await (await handlers.GET(context("GET", undefined, foreignId))).json()).toEqual(
       foreign,
     );
@@ -105,6 +117,7 @@ forEachRuntime((runtime) => {
         request: new Request("http://localhost/api/cards/aborted", {
           method: "POST",
           signal: cancelled.signal,
+          body: JSON.stringify({ input: {} }),
         }),
       }),
     ).rejects.toThrow();
