@@ -112,3 +112,44 @@ export interface ChatClient<V, Command, Receipt> extends ChatViewSource<V> {
    * Further refresh/answer/subscribe calls fail. */
   close(): void;
 }
+
+/** Transport-independent, schema-decoded presentation of one tool question.
+ * Answer callbacks belong to the producing session, never to a React mount.
+ * Sources must maintain these relationships:
+ * - outcome is present exactly when state is answered (including domain declines).
+ * - submitted is present exactly when delivery is not idle, in original input form.
+ * - canRespond implies pending state and idle delivery; the converse is not required.
+ * Terminal observation can coexist with in-flight or unconfirmed delivery.
+ * A domain decline is an answered error Outcome; failed denotes delivery failure. */
+export interface ToolPresentationQuestion {
+  readonly id: string;
+  readonly execution: string;
+  readonly program: string;
+  readonly effect: string;
+  readonly input: unknown;
+  /** Last observed durable question state; pending includes blocked work and does not imply locally answerable. */
+  readonly state: "pending" | "answered" | "cancelled" | "failed";
+  /** Local answer delivery only. Idle makes no claim about acceptance. */
+  readonly delivery: "idle" | "sending" | "unconfirmed";
+  /** Current source policy permits a response. Advisory; the command still validates authority. */
+  readonly canRespond: boolean;
+  /** Original handler input while delivery is uncertain. */
+  readonly submitted?: Outcome<unknown, unknown>;
+  /** Accepted, schema-transformed domain result. Not the original submitted value. */
+  readonly outcome?: Outcome<unknown, unknown>;
+  readonly error?: string;
+  /** Revalidate the owning session at call time; stale/disallowed calls are inert.
+   * Resolution means the local attempt settled, not acceptance. Observe outcome for
+   * acceptance and delivery/error for uncertainty; rejection alone proves no rollback. */
+  respond(value: unknown): Promise<void>;
+  /** Absent when this source does not support domain declines. Same call rules as respond. */
+  decline?(error: unknown): Promise<void>;
+}
+/** getSnapshot returns the same immutable snapshot until it changes. Publish the new
+ * snapshot before notifying subscribers; unsubscribe stops future notifications.
+ * An immutable source may have a no-op subscription if its owner replaces the source
+ * object when data changes (and propagates that replacement to consumers). */
+export interface ToolPresentationSource {
+  getSnapshot(): readonly ToolPresentationQuestion[];
+  subscribe(notify: () => void): () => void;
+}

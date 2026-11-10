@@ -132,9 +132,9 @@ Validation is not a transaction over external effects or a guarantee that concur
 first submissions run schema code exactly once.
 
 The tool binding captures normalized input and result inference before heterogeneous
-catalog storage. It owns fresh effect capabilities, acquisition, recovery and Hosting
-for each child run. It installs grant admission, per-run Guest retention and default
-participant routing. `configure` receives these same instances; policy can wrap them
+catalog storage. It delegates to `createToolSession` for fresh effect capabilities, acquisition, recovery
+and Hosting for each child run. It installs grant admission, per-run Guest retention and default
+participant routing. `configure` receives the same host, effects, typed acquisition and recovery instances; policy can wrap them
 using their existing middleware APIs. It is trusted assembly code and can deliberately
 short-circuit middleware. Required wiring is not an optional installation left to callers.
 

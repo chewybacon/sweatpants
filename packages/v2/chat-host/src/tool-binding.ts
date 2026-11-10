@@ -1,19 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { EffectDefinition, CapabilityRequest } from "@sweatpan.ts/core";
 import type { OwnedChild } from "@sweatpan.ts/durable";
-import {
-  createEffectCapabilities,
-  createHosting,
-  installGuestRetention,
-  childHostingResult,
-} from "@sweatpan.ts/hosting";
+import { childHostingResult } from "@sweatpan.ts/hosting";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import {
-  createToolAcquisition,
-  installElicitHandlers,
-  projectToolContract,
-  type ToolDefinition,
-} from "@sweatpan.ts/tools";
+import { createToolSession, projectToolContract, type ToolDefinition } from "@sweatpan.ts/tools";
 import type { ChatToolBinding, ChatToolBindingOptions } from "./contracts.ts";
 
 /** Capture one original tool's input/result types, hosting recipe and model metadata.
@@ -28,7 +18,7 @@ export function createChatToolBinding<
 >(
   runtime: Runtime<Y>,
   tool: ToolDefinition<S, D, L, R>,
-  options: ChatToolBindingOptions<NoInfer<R>, Y>,
+  options: ChatToolBindingOptions<NoInfer<R>, Y, StandardSchemaV1.InferOutput<S>>,
 ): ChatToolBinding<Y> {
   return {
     program: tool.id,
@@ -44,30 +34,14 @@ export function createChatToolBinding<
         // The catalog captures this program's result type before heterogeneous storage
         // erases it. Only a checked program binding restores that trusted protocol.
         const bound = child as OwnedChild<R, CapabilityRequest, unknown, string, unknown, Y>;
-        const effects = createEffectCapabilities(runtime, `chat-tool:${child.journal.id}`);
-        const acquisition = createToolAcquisition(runtime, effects, tool, `acquire:${tool.id}`);
-        const recovery = options.recovery<R>({
-          name: `recover:${child.journal.id}`,
-          program: tool.id,
-          matches: options.matches,
-          acquire: () =>
-            acquisition.operations.acquire(child.link.input as StandardSchemaV1.InferOutput<S>),
-        });
-        const host = createHosting(runtime.composition, {
-          name: `host:${child.journal.id}`,
+        const session = createToolSession(runtime, tool, {
           journal: bound.journal,
-          recovery: recovery.operations,
-          attempts: bound.journal.attempts,
-          interactions: bound.journal.interactions,
-          handle: acquisition.handle,
+          child: child.link,
+          recovery: options.recovery,
+          matches: options.matches,
+          configure: options.configure,
         });
-        yield* installGuestRetention(runtime.composition, host, recovery, bound.journal);
-        yield* host.around(acquisition.admission);
-        yield* installElicitHandlers(host, effects, tool);
-        if (options.configure) {
-          yield* options.configure({ host, effects });
-        }
-        return childHostingResult(yield* host.operations.run());
+        return childHostingResult(yield* session.run());
       });
     },
   };

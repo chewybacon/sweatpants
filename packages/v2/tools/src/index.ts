@@ -36,3 +36,14 @@ export type {
   ElicitPluginBuilder,
   ElicitResponder,
 } from "./contracts.ts";
+
+export { createToolSession } from "./session.ts";
+export { createToolApplication } from "./application.ts";
+export type {
+  ToolSession,
+  ToolSessionOptions,
+  ToolRecoveryFactory,
+  ToolApplicationSnapshot,
+  ToolApplicationMethods,
+  ToolApplicationOptions,
+} from "./contracts.ts";

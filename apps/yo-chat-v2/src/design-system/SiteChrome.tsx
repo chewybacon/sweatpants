@@ -18,8 +18,14 @@ const styles = stylex.create({
     "@media (max-width: 720px)": { width: "calc(100% - 1.75rem)" },
   },
   header: { borderBottom: "1px solid var(--color-border)" },
-  main: { flexGrow: 1, paddingBlock: "clamp(2rem, 6vw, 4.5rem)" },
+  main: { flexGrow: 1, paddingBlock: "var(--spacing-8)" },
+  active: {
+    color: "var(--color-text-primary)",
+    textDecoration: "underline",
+    textUnderlineOffset: "var(--spacing-2)",
+  },
   footer: { borderTop: "1px solid var(--color-border)" },
+  navigation: { width: { default: "auto", "@media (max-width: 40rem)": "100%" } },
   brand: { fontWeight: 650, letterSpacing: "-0.035em" },
 });
 
@@ -39,9 +45,32 @@ export function SiteChrome({ pathname, children }: { pathname: string; children:
           <RouterLink to="/" label="yo-chat home" xstyle={styles.brand}>
             yo-chat
           </RouterLink>
-          <HStack as="nav" aria-label="Main navigation" gap={2}>
-            <RouterLink to="/" aria-current={pathname === "/" ? "page" : undefined}>
-              Home
+          <HStack
+            as="nav"
+            aria-label="Main navigation"
+            gap={3}
+            wrap="wrap"
+            xstyle={styles.navigation}
+          >
+            <RouterLink
+              to="/chat/cards"
+              xstyle={pathname === "/chat/cards" && styles.active}
+              aria-current={pathname === "/chat/cards" ? "page" : undefined}
+            >
+              Card chat
+            </RouterLink>
+            <RouterLink
+              to="/chat/flight"
+              xstyle={pathname === "/chat/flight" && styles.active}
+              aria-current={pathname === "/chat/flight" ? "page" : undefined}
+            >
+              Flight chat
+            </RouterLink>
+            <RouterLink
+              to="/examples/tool-rpc"
+              aria-current={pathname === "/examples/tool-rpc" ? "page" : undefined}
+            >
+              Standalone picker
             </RouterLink>
           </HStack>
         </HStack>

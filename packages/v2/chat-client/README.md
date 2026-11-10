@@ -86,3 +86,34 @@ non-React consumers. They cover typed command/history rejection at compile time,
 answered and cancelled history after SQLite reopen, independent subscriber lifetimes,
 lost acknowledgements and overlapping/nested tools. The application decoders and
 renderers remain examples; no framework-specific render objects enter the shared view.
+
+## Tool presentation sources
+
+`ToolPresentationSource` is a transport-independent subscription boundary for typed
+UI registration. The application supplies stable question snapshots, decoded contexts,
+accepted Outcomes and receiver-bound commands. It does not prescribe HTTP methods,
+browser storage, retry or connection ownership.
+
+The [standalone example](../../../apps/yo-chat-v2/README.md#standalone-picker-durable-rpc)
+composes `createChatClient` with its own HTTP adapter and retained-command policy.
+The conversation example uses its own conversation projection. Neither requires a
+public tool-specific protocol or a second framework client implementation.
+
+Question snapshots separate durable observation (`state`), local answer delivery
+(`delivery`) and current response policy (`canRespond`). A pending question may be
+locally unavailable, and an answered question may coexist with an unresolved delivery.
+`idle` only means there is no local delivery to report. Sources choose retry and
+availability policy; callbacks still validate current identity and authority. Consumers
+must not infer permission from state or treat `canRespond` as a durable grant.
+
+Sources publish `outcome` exactly for answered questions and `submitted` whenever
+local delivery is sending or unconfirmed. A domain decline is an answered error
+Outcome. `unconfirmed` describes missing confirmation, not proof of an error.
+`pending` includes blocked work; it is not a promise that this session can advance it.
+Unsupported decline commands are absent. Commands revalidate at call time and stale
+or disallowed callbacks are inert; a resolved promise does not prove acceptance.
+
+Snapshots stay referentially stable until changed, and subscribers are notified after
+publication. Immutable sources can instead be replaced by their owner, provided that
+replacement reaches consumers; they need no notifications for internal changes because
+they never change internally.

@@ -1,13 +1,7 @@
 import type { Operation, Outcome } from "@standard-durability/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { CapabilityRequest, EffectDefinition } from "@sweatpan.ts/core";
-import type {
-  Acceptance,
-  OwnedChild,
-  OwnedJournal,
-  Recovery,
-  ResolutionGrant,
-} from "@sweatpan.ts/durable";
+import type { Acceptance, OwnedChild, OwnedJournal, ResolutionGrant } from "@sweatpan.ts/durable";
 import type { GuestWork } from "@sweatpan.ts/execution";
 import type {
   ChildHostingResult,
@@ -18,7 +12,12 @@ import type {
 } from "@sweatpan.ts/hosting";
 import type { ChatToolDefinition } from "@sweatpan.ts/providers";
 import type { Stream } from "@sweatpan.ts/runtime";
-import type { ToolInteraction, ToolInteractionContract } from "@sweatpan.ts/tools";
+import type {
+  ToolInteraction,
+  ToolInteractionContract,
+  ToolRecoveryFactory,
+  ToolSession,
+} from "@sweatpan.ts/tools";
 import type {
   ChatHistoryMessage,
   ChatLoopResult,
@@ -62,25 +61,20 @@ export interface ChatProgram<R> {
 
 /** Explicit recovery/placement adapter. Must retain the supplied program, equality
  * and acquisition semantics; no testing package or concrete codec is selected here. */
-export interface ChatRecoveryFactory<Y> {
-  <R>(options: {
-    readonly name: string;
-    readonly program: string;
-    readonly acquire: GuestWork<R, CapabilityRequest, Y, unknown, string>;
-    readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
-  }): Recovery<R, CapabilityRequest, Y, unknown, string, unknown>;
-}
+export type ChatRecoveryFactory<Y> = ToolRecoveryFactory<Y>;
 
 /** Typed construction recipe; captures a tool's result type before catalog erasure. */
-export interface ChatToolBindingOptions<R, Y> {
+export interface ChatToolBindingOptions<R, Y, Input = unknown> {
   readonly definition: ChatToolDefinition;
   readonly recovery: ChatRecoveryFactory<Y>;
   readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
   /** Install capability implementations and optional Host policies. */
-  configure?(context: {
-    readonly host: Hosting<R, CapabilityRequest, unknown, string, Y>;
-    readonly effects: EffectCapabilities<Y>;
-  }): Operation<void, Y>;
+  configure?(
+    context: Pick<
+      ToolSession<unknown, Input, R, Y>,
+      "host" | "effects" | "recovery" | "acquisition"
+    >,
+  ): Operation<void, Y>;
 }
 
 /** Server-only catalog binding. Use createChatToolBinding to preserve author inference.

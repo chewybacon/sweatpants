@@ -10,12 +10,32 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ExamplesToolRpcRouteImport } from './routes/examples.tool-rpc'
+import { Route as ChatFlightRouteImport } from './routes/chat.flight'
+import { Route as ChatCardsRouteImport } from './routes/chat.cards'
 import { Route as ApiHealthRouteImport } from './routes/api.health'
+import { Route as ApiFlightChatThreadRouteImport } from './routes/api.flight-chat.$thread'
 import { Route as ApiCardsExecutionRouteImport } from './routes/api.cards.$execution'
+import { Route as ApiCardChatThreadRouteImport } from './routes/api.card-chat.$thread'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExamplesToolRpcRoute = ExamplesToolRpcRouteImport.update({
+  id: '/examples/tool-rpc',
+  path: '/examples/tool-rpc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatFlightRoute = ChatFlightRouteImport.update({
+  id: '/chat/flight',
+  path: '/chat/flight',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatCardsRoute = ChatCardsRouteImport.update({
+  id: '/chat/cards',
+  path: '/chat/cards',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -23,40 +43,95 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlightChatThreadRoute = ApiFlightChatThreadRouteImport.update({
+  id: '/api/flight-chat/$thread',
+  path: '/api/flight-chat/$thread',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCardsExecutionRoute = ApiCardsExecutionRouteImport.update({
   id: '/api/cards/$execution',
   path: '/api/cards/$execution',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCardChatThreadRoute = ApiCardChatThreadRouteImport.update({
+  id: '/api/card-chat/$thread',
+  path: '/api/card-chat/$thread',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/chat/cards': typeof ChatCardsRoute
+  '/chat/flight': typeof ChatFlightRoute
+  '/examples/tool-rpc': typeof ExamplesToolRpcRoute
+  '/api/card-chat/$thread': typeof ApiCardChatThreadRoute
   '/api/cards/$execution': typeof ApiCardsExecutionRoute
+  '/api/flight-chat/$thread': typeof ApiFlightChatThreadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/chat/cards': typeof ChatCardsRoute
+  '/chat/flight': typeof ChatFlightRoute
+  '/examples/tool-rpc': typeof ExamplesToolRpcRoute
+  '/api/card-chat/$thread': typeof ApiCardChatThreadRoute
   '/api/cards/$execution': typeof ApiCardsExecutionRoute
+  '/api/flight-chat/$thread': typeof ApiFlightChatThreadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
+  '/chat/cards': typeof ChatCardsRoute
+  '/chat/flight': typeof ChatFlightRoute
+  '/examples/tool-rpc': typeof ExamplesToolRpcRoute
+  '/api/card-chat/$thread': typeof ApiCardChatThreadRoute
   '/api/cards/$execution': typeof ApiCardsExecutionRoute
+  '/api/flight-chat/$thread': typeof ApiFlightChatThreadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/health' | '/api/cards/$execution'
+  fullPaths:
+    | '/'
+    | '/api/health'
+    | '/chat/cards'
+    | '/chat/flight'
+    | '/examples/tool-rpc'
+    | '/api/card-chat/$thread'
+    | '/api/cards/$execution'
+    | '/api/flight-chat/$thread'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/health' | '/api/cards/$execution'
-  id: '__root__' | '/' | '/api/health' | '/api/cards/$execution'
+  to:
+    | '/'
+    | '/api/health'
+    | '/chat/cards'
+    | '/chat/flight'
+    | '/examples/tool-rpc'
+    | '/api/card-chat/$thread'
+    | '/api/cards/$execution'
+    | '/api/flight-chat/$thread'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/health'
+    | '/chat/cards'
+    | '/chat/flight'
+    | '/examples/tool-rpc'
+    | '/api/card-chat/$thread'
+    | '/api/cards/$execution'
+    | '/api/flight-chat/$thread'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ChatCardsRoute: typeof ChatCardsRoute
+  ChatFlightRoute: typeof ChatFlightRoute
+  ExamplesToolRpcRoute: typeof ExamplesToolRpcRoute
+  ApiCardChatThreadRoute: typeof ApiCardChatThreadRoute
   ApiCardsExecutionRoute: typeof ApiCardsExecutionRoute
+  ApiFlightChatThreadRoute: typeof ApiFlightChatThreadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +143,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/examples/tool-rpc': {
+      id: '/examples/tool-rpc'
+      path: '/examples/tool-rpc'
+      fullPath: '/examples/tool-rpc'
+      preLoaderRoute: typeof ExamplesToolRpcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/flight': {
+      id: '/chat/flight'
+      path: '/chat/flight'
+      fullPath: '/chat/flight'
+      preLoaderRoute: typeof ChatFlightRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/cards': {
+      id: '/chat/cards'
+      path: '/chat/cards'
+      fullPath: '/chat/cards'
+      preLoaderRoute: typeof ChatCardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/flight-chat/$thread': {
+      id: '/api/flight-chat/$thread'
+      path: '/api/flight-chat/$thread'
+      fullPath: '/api/flight-chat/$thread'
+      preLoaderRoute: typeof ApiFlightChatThreadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cards/$execution': {
@@ -82,13 +185,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCardsExecutionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/card-chat/$thread': {
+      id: '/api/card-chat/$thread'
+      path: '/api/card-chat/$thread'
+      fullPath: '/api/card-chat/$thread'
+      preLoaderRoute: typeof ApiCardChatThreadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ChatCardsRoute: ChatCardsRoute,
+  ChatFlightRoute: ChatFlightRoute,
+  ExamplesToolRpcRoute: ExamplesToolRpcRoute,
+  ApiCardChatThreadRoute: ApiCardChatThreadRoute,
   ApiCardsExecutionRoute: ApiCardsExecutionRoute,
+  ApiFlightChatThreadRoute: ApiFlightChatThreadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
