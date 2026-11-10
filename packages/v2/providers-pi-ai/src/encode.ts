@@ -4,7 +4,6 @@ import type {
   Message,
   SimpleStreamOptions,
   AssistantMessage,
-  Usage,
 } from "@earendil-works/pi-ai";
 import type { ChatMessagePart, ModelRequest } from "@sweatpan.ts/providers";
 
@@ -52,7 +51,6 @@ function assistant(part: ChatMessagePart): AssistantMessage["content"][number] {
 export function encode(
   request: ModelRequest,
   model: Model<string>,
-  accounting: ReadonlyMap<number, Usage> = new Map(),
 ): { context: Context; options: SimpleStreamOptions } {
   const context = structuredClone(request.context);
   const { responseFormat, topP, topK, thinking, toolChoice, ...options } = structuredClone(
@@ -89,7 +87,7 @@ export function encode(
   const instructions: string[] = [];
   const pending = new Map<string, string>();
   const seen = new Set<string>();
-  for (const [index, message] of context.messages.entries()) {
+  for (const message of context.messages) {
     if (message.role === "system" || message.role === "developer") {
       if (messages.length) {
         throw new Error("Pi-ai instructions must precede conversation messages");
@@ -135,7 +133,7 @@ export function encode(
           api: model.api,
           provider: model.provider,
           model: model.id,
-          usage: structuredClone(accounting.get(index) ?? usage),
+          usage: structuredClone(usage),
           stopReason: pending.size ? "toolUse" : "stop",
           timestamp: 0,
         });

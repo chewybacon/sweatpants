@@ -175,8 +175,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       value: { message: { content: [{ type: "text", text: "Complete" }] } },
     });
     expect(peer.requests[0]?.context).toMatchObject({
-      systemPrompt: "Keep the instructions",
       messages: [
+        { role: "system", content: "Keep the instructions" },
         { role: "user", content: [{ type: "text", text: "Check" }] },
         {
           role: "assistant",
@@ -213,6 +213,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await local.result;
     expect(peer.requests[1]?.context).toMatchObject({
       messages: [
+        { role: "system", content: "Keep the instructions" },
         { role: "user" },
         {
           role: "assistant",

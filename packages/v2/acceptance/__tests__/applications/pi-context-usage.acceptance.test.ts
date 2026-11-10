@@ -1,5 +1,4 @@
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-responses";
-import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { prepareChatInference } from "@sweatpan.ts/chat";
 import {
@@ -20,6 +19,8 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     const paths: string[] = [];
     const estimates: ReturnType<typeof estimateContextTokens>[] = [];
     let limit = 50000;
+    let nativeEdit = false;
+    let prepareCalls = 0;
     const server = createServer(async (request, response) => {
       let body = "";
       for await (const chunk of request) {
@@ -64,8 +65,28 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       const provider = createPiAiProvider(runtime, {
         model: selected,
         apiKey: "test-only",
-        stream(selected, context, options) {
-          const transcript = normalizeContext(context);
+        prepareContext(context) {
+          prepareCalls++;
+          // Preparation cannot smuggle an unvalidated accounting baseline into pi.
+          for (const message of context.messages) {
+            if (message.role === "assistant") {
+              message.usage.totalTokens = 999999;
+            }
+          }
+          if (nativeEdit) {
+            for (const message of context.messages) {
+              if (message.role === "assistant") {
+                for (const part of message.content) {
+                  if (part.type === "text") {
+                    part.textSignature = JSON.stringify({ v: 1, id: "msg_1", phase: "commentary" });
+                  }
+                }
+              }
+            }
+          }
+          return context;
+        },
+        stream(selected, transcript, options) {
           const estimate = estimateContextTokens(transcript);
           estimates.push(estimate);
           return streamSimple({ ...selected, api: "openai-responses" }, transcript, {
@@ -154,6 +175,37 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       expect(estimates.at(-1)?.usageTokens).toBe(6005);
       expect(estimates.at(-1)?.trailingTokens).toBeGreaterThan(0);
       expect(JSON.stringify(sent.at(-1))).not.toContain("contextUsage");
+      expect(JSON.stringify(sent.at(-1))).toContain("msg_1");
+      nativeEdit = true;
+      await run(continuation);
+      expect(estimates.at(-1)?.usageTokens).toBe(0);
+      expect(JSON.stringify(sent.at(-1))).toContain("commentary");
+      nativeEdit = false;
+      await run(continuation);
+      expect(estimates.at(-1)?.usageTokens).toBe(6005);
+      const legacy = structuredClone(continuation);
+      const legacyRequest: ModelRequest = {
+        ...legacy,
+        context: {
+          ...legacy.context,
+          messages: legacy.context.messages.map((message) =>
+            message.role === "assistant" && message.contextUsage
+              ? {
+                  ...message,
+                  contextUsage: {
+                    ...message.contextUsage,
+                    basis: {
+                      ...message.contextUsage.basis,
+                      format: "sweatpants/pi-context-usage/1",
+                    },
+                  },
+                }
+              : message,
+          ),
+        },
+      };
+      await run(legacyRequest);
+      expect(estimates.at(-1)?.usageTokens).toBe(0);
       for (const change of ["prefix", "tools", "compaction", "output", "unknown"] as const) {
         let messages = [...structuredClone(continuation.context.messages)];
         if (change === "prefix") {
@@ -198,6 +250,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       await expect(run(continuation)).rejects.toThrow();
       expect(sent).toHaveLength(before);
       expect(paths.every((path) => path === "/responses")).toBe(true);
+      expect(prepareCalls).toBe(estimates.length);
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

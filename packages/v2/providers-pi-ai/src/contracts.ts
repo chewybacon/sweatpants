@@ -1,5 +1,6 @@
 import type {
   Context,
+  TranscriptContext,
   Model,
   SimpleStreamOptions,
   ImageModel,
@@ -19,11 +20,15 @@ export interface PiAiProviderOptions {
   readonly model: Model<string>;
   /** Optional credential; default SDK resolution applies when absent. */
   readonly apiKey?: string;
+  /** Restore native history details before normalization and usage validation.
+   * Synchronous, selected at construction; must preserve message roles/order.
+   * The returned context is snapshotted. Do not transform history in stream(). */
+  readonly prepareContext?: (context: Context) => Context;
   /** SDK streamSimple driver from the host-owned model registry.
    * Must honor signal abortion and release pending iterator reads so return() can join. */
   readonly stream: (
     model: Model<string>,
-    context: Context,
+    context: TranscriptContext,
     options: SimpleStreamOptions,
   ) => PiAiStream;
 }

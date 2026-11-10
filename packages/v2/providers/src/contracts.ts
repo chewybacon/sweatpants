@@ -108,7 +108,12 @@ export interface ChatAssistantMessage {
   /** Provider accounting tied to an adapter-validated context prefix. Never model input. */
   readonly contextUsage?: {
     readonly usage: ModelUsage;
-    readonly basis: { readonly format: string; readonly key: string };
+    readonly basis: {
+      readonly format: string;
+      readonly key: string;
+      /** Adapter-owned replay data used to validate the accounting basis. */
+      readonly data?: Json;
+    };
   };
 }
 

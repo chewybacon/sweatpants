@@ -1,8 +1,16 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import type { Operation } from "@standard-durability/core";
 import type { ModelProvider, ModelResponse, ModelStreamEvent } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { PiAiProviderOptions } from "./contracts.ts";
-import { contextUsageFormat, contextUsageKey, restoreContextUsage } from "./context-usage.ts";
+import {
+  contextUsageData,
+  contextUsageFormat,
+  contextUsageKey,
+  restoreContextUsage,
+  restoreNativeContent,
+} from "./context-usage.ts";
 import { encode } from "./encode.ts";
 import { event, response } from "./decode.ts";
 
@@ -17,13 +25,35 @@ export function createPiAiProvider<Y>(
   const model = structuredClone(options.model);
   const open = options.stream;
   const apiKey = options.apiKey;
+  const prepare = options.prepareContext;
   return {
     *stream(request) {
       const input = structuredClone(request);
-      const accounting = yield* runtime.fromPromise(() =>
-        restoreContextUsage(input.context, model),
-      );
-      const encoded = encode(input, model, accounting);
+      const encoded = encode(input, model);
+      restoreNativeContent(encoded.context, input.context);
+      const roles = encoded.context.messages.map((message) => message.role);
+      const prepared = structuredClone(prepare ? prepare(encoded.context) : encoded.context);
+      if (
+        JSON.stringify(roles) !== JSON.stringify(prepared.messages.map((message) => message.role))
+      ) {
+        throw new Error("Pi context preparation must preserve message roles and order");
+      }
+      const transcript = normalizeContext(prepared);
+      // Historical telemetry can only enter through a validated retained stamp.
+      for (const message of transcript.messages) {
+        if (message.role === "assistant") {
+          message.usage = {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          };
+        }
+        message.timestamp = 0;
+      }
+      yield* runtime.fromPromise(() => restoreContextUsage(transcript, input.context, model));
       const controller = new AbortController();
       let iterator: AsyncIterator<unknown> | undefined;
       let active = true;
@@ -54,7 +84,7 @@ export function createPiAiProvider<Y>(
           yield* runtime.fromPromise(() => iterator!.return!());
         }
       });
-      const source = open(structuredClone(model), encoded.context, {
+      const source = open(structuredClone(model), structuredClone(transcript), {
         ...encoded.options,
         apiKey,
         maxRetries: 0,
@@ -93,8 +123,8 @@ export function createPiAiProvider<Y>(
                     const key = yield* wait(() =>
                       contextUsageKey(
                         {
-                          ...input.context,
-                          messages: [...input.context.messages, completed!.message],
+                          ...transcript,
+                          messages: [...transcript.messages, result as AssistantMessage],
                         },
                         model,
                       ),
@@ -105,7 +135,11 @@ export function createPiAiProvider<Y>(
                         ...completed.message,
                         contextUsage: {
                           usage: structuredClone(completed.usage),
-                          basis: { format: contextUsageFormat, key },
+                          basis: {
+                            format: contextUsageFormat,
+                            key,
+                            data: contextUsageData(result as AssistantMessage),
+                          },
                         },
                       },
                     };
