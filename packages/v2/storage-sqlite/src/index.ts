@@ -5,5 +5,9 @@ export type {
   SqliteJournalOptions,
   SqliteJournalStore,
   SqliteRow,
+  SqliteHistoryEntry,
+  SqliteHistoryReader,
+  SqliteHistoryReaderOptions,
 } from "./contracts.ts";
 export { createDurableObjectSqliteConnection } from "./durable-object.ts";
+export { createSqliteHistoryReader } from "./inspection.ts";

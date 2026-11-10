@@ -93,3 +93,41 @@ started by this adapter. See [deployment reconciliation](../deployment/README.md
 Acceptance: `hosting/durable-object-journal.acceptance.test.ts` runs a parked
 approval in a Miniflare Durable Object under both runtimes, restarts workerd with
 persisted storage, answers, and completes without redelivering the executed effect.
+
+## Read-only database inspection
+
+ONI's call inspector needs all episodes and completed child calls in SQLite insertion
+order so it can associate calls with preceding model samples. A known-root
+`JournalReader` cannot supply database discovery or that cross-execution ordering;
+opening the normal store also performs schema setup and uses write transactions.
+
+`createSqliteHistoryReader({ connection, serializer })` is a synchronous adapter
+capability for this consumer. It is exported from the package root and the
+`@sweatpan.ts/storage-sqlite/inspection` entry, which has no runtime dependency on
+writer assembly. Construction performs no IO. `read({ after: 0, limit: 128 })`
+returns a bounded page of `{ position, tree, execution, accepted }` records. Pass
+its last `position` as `after` for the next page; an empty page is exhausted at that
+read. The caller selects page size; it bounds record count, not payload bytes.
+
+Bind an already acquired serializer and a connection exposing `all`. Format identity
+is checked before decoding; application payloads remain unknown. No schema creation,
+write, execution acquisition or attempt resolution occurs. With Node, open
+`DatabaseSync(file, { readOnly: true })`, adapt it with `createNodeSqliteConnection`,
+and explicitly own `BEGIN`/`COMMIT` and disposal around a scan when it needs one
+consistent snapshot. This does not use the connection's write-transaction helper.
+Without a caller-owned read transaction, separate pages may observe later commits.
+
+Positions are SQLite row IDs for this database, not portable journal cursors. They
+must not be reused after database replacement, export/import, retention or schema
+migration. Insertion order is not external effect completion order or a distributed
+timeline. This API reads accepted outcomes only: pending attempts, execution heads,
+model/tool decoding, filtering, redaction and reporting remain separate concerns.
+It supports the current schema and rejects mismatched serialization formats; it
+provides no migration or heuristic decoding of older layouts.
+
+`applications/sqlite-history-inspection.acceptance.test.ts` exercises read-only WAL
+snapshot isolation while another connection commits, cross-tree ordering, bounded
+pages, reopen and format rejection under both runtimes. ONI's actual inspector
+acceptance additionally checks completed children, occupied pending attempts,
+round attribution, filtering, redaction and page boundaries. This is in-process
+SQLite evidence, not process-crash durability or a live game test.

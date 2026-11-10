@@ -279,9 +279,10 @@ Atomic transitions, projections, commit publication and record access remain pri
 
 ## Read-only owned-tree navigation
 
-`OwnedJournal` also implements `JournalReader`: `id`, `read()` and
-`openChild(childId)`. Opening a child checks the persisted direct parent link and
-retained parent request, then returns only those three observation members. It does
+`OwnedJournal` also implements `JournalReader`: `id`, `read()`,
+`readChildren(requestId)` and `openChild(childId)`. Opening a child checks the
+persisted direct parent link and retained parent request, then returns only those
+four observation members. It does
 not create children, acquire Guests, install result projections or mutate journal
 state. Active links come from a running snapshot's `children`; a saved historical
 direct-child identity remains readable after settlement. Navigate each level rather

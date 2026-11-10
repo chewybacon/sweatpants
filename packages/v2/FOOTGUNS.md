@@ -216,3 +216,18 @@ cancellation state; matching requests alone do not establish a matching revision
 implicitly acquire/advance a Guest on reads, expose private state to authored code,
 or substitute diagnostic state for journal-selected recovery. See the experimental
 [linked workflow journey](../../experiments/workflow-kernel/scriptc-scheme/README.md#registered-caller-and-compiled-callee-slice).
+
+## FG-013 — Treating a read-only handle as a read-only storage connection
+
+An operator opens a SQLite file read-only, but constructing a journal store performs
+schema setup and journal head reads use `BEGIN IMMEDIATE`. Removing mutators from a
+handle does not remove the adapter's write-lock requirements. Per-execution history
+also cannot reconstruct database-wide insertion order by walking a completed tree.
+
+**Boundary:** Use the SQLite history inspection capability when the consumer needs
+accepted rows across a database without writer assembly. Its positions belong to
+that database, not a portable execution timeline or durable reconnect protocol.
+
+**Author responsibility:** Own the read snapshot and connection, select the serializer,
+and retain application correlation and disclosure policy. A pending external attempt
+is not an accepted history entry. See [SQLite inspection](./storage-sqlite/README.md#read-only-database-inspection).

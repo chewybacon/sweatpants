@@ -23,6 +23,14 @@
       },
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./inspection": {
+      "development": {
+        "types": "./src/inspection.ts",
+        "import": "./src/inspection.ts"
+      },
+      "types": "./dist/inspection.d.ts",
+      "import": "./dist/inspection.js"
     }
   },
   "scripts": {
