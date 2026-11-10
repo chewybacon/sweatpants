@@ -26,7 +26,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-ai": "1.5.1",
     "@standard-durability/core": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "@stylexjs/unplugin": "0.19.1",
@@ -49,7 +49,6 @@
     "@sweatpan.ts/hosting": "workspace:*",
     "@sweatpan.ts/hosting-cloudflare": "workspace:*",
     "@sweatpan.ts/providers": "workspace:*",
-    "@sweatpan.ts/providers-openai": "workspace:*",
     "@sweatpan.ts/providers-pi-ai": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",
     "@sweatpan.ts/runtime-effect": "workspace:*",

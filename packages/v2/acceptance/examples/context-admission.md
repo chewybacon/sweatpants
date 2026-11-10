@@ -23,18 +23,24 @@ reasoning, image payloads, retrievable originals, archive failure, unchanged sou
 history, checkpoint contents and separation from previous-response usage. This is
 local protocol evidence, not live-provider accounting or crash recovery.
 
-## Promoted boundary
+## Pi composition
 
-The consumer subsequently added real provider input counting. The supported boundary
-is now the [Responses input counter](../../providers-openai/README.md), a protocol
-adapter for explicit model/input/tools. ONI owns inference encoding and supplies the
-matching fields, chooses model limits and an output reservation, uses existing
-`measureContextBudget`, then gates inference. An unavailable count stops dispatch;
-wire-byte size remains an independent guard.
+`providers-pi-ai` owns the [Responses input counter](../../providers-pi-ai/README.md#responses-preflight-through-pi).
+The real pi-ai 1.5.1 transport prepares the payload; the host's existing async
+`onPayload` hook applies final output policy, counts model/input/tools, checks the
+budget, and returns the admitted payload. Count failure stops inference. No new
+Sweatpants hook or generic context-manager primitive is required.
 
-The original generic admission helper remains removed. No new context-manager
-primitive is needed: the missing capability was a provider-specific count, with
-explicit cancellation and no implicit fallback or retry. Summary generation,
-checkpoint persistence, fresh-run admission and external-effect reconciliation remain
-application responsibilities. This integration does not establish summary accuracy,
-crash recovery or live-gateway compatibility.
+Low-level pi transports require `normalizeContext` in this version so tools and
+system instructions enter the transcript. `streamSimple` may clamp output tokens
+using an estimate, so a host with an explicit reservation sets it before counting.
+The real HTTP/SSE acceptance journey exercises the complete composition under both
+runtimes, including exact-fit admission, overflow, count failure and cancellation.
+
+ONI translates its retained Responses history into the provider view, preserving
+native reasoning signatures, text phases and call/item IDs. Application-owned image
+metadata is omitted only from that view. Pi owns inference encoding and streamed
+decoding; ONI retains its raw completed Responses output for journal compatibility.
+Summary generation, checkpoint persistence, fresh-run admission and external-effect
+reconciliation remain application responsibilities. The separate OpenAI package is
+not part of this composition.
