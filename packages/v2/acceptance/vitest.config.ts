@@ -1,6 +1,8 @@
+import { unplugin as stylex } from "@stylexjs/unplugin";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [stylex.vite({ useCSSLayers: true })],
   resolve: { conditions: ["development"] },
   test: {
     projects: [

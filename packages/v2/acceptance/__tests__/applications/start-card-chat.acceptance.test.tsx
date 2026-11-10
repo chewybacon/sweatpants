@@ -1,3 +1,8 @@
+import { createReadableStream } from "@sweatpan.ts/runtime";
+import {
+  createCardChatRun,
+  type CardRunEvent,
+} from "../../../../../apps/yo-chat-v2/src/server/card-chat-run.ts";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -174,5 +179,234 @@ forEachRuntime((runtime) => {
     for (const db of connections) {
       expect(() => db.prepare("SELECT 1")).toThrow();
     }
+  });
+});
+
+forEachRuntime((runtime) => {
+  it(`${runtime.name}: run readers pull independently, reconnect by offset, and never own production`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "card-run-"));
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const db = new DatabaseSync(join(directory, "chat.sqlite"));
+      connections.push(db);
+      return db;
+    };
+    const run = createCardChatRun(
+      runtime,
+      open,
+      async (publish) => ({
+        *sample() {
+          calls++;
+          publish("Hello");
+          yield* runtime.fromPromise(() => ready);
+          publish("Hello world");
+          return {
+            ok: true as const,
+            value: {
+              model: { id: "scripted", api: "scripted", provider: "scripted" },
+              response: {
+                message: {
+                  role: "assistant" as const,
+                  content: [{ type: "text" as const, text: "Hello world" }],
+                },
+                source: null,
+                usage: null,
+                stopReason: null,
+                responseId: null,
+                errorMessage: null,
+              },
+            },
+          };
+        },
+      }),
+      "stream-test",
+      { type: "message", command: crypto.randomUUID(), prompt: "Hello", after: null },
+    );
+    const first = createReadableStream(runtime, run.events()).getReader();
+    const second = createReadableStream(runtime, run.events()).getReader();
+    expect(calls).toBe(0);
+    const owner = runtime.start(() => run.run());
+    onTestFinished(async () => {
+      release();
+      await first.cancel();
+      await second.cancel();
+      await owner.cancel();
+      rmSync(directory, { recursive: true, force: true });
+    });
+    const prefix: CardRunEvent[] = [];
+    for (let index = 0; index < 3; index++) {
+      const a = await first.read();
+      const b = await second.read();
+      expect(a).toEqual(b);
+      expect(a.done).toBe(false);
+      prefix.push(a.value!);
+    }
+    expect(prefix.map((event) => event.type)).toEqual([
+      "RUN_STARTED",
+      "TEXT_MESSAGE_START",
+      "TEXT_MESSAGE_CONTENT",
+    ]);
+    await first.cancel();
+    // This offset belongs to this retained attempt only, not to the journal.
+    const resumed = createReadableStream(runtime, run.events(prefix.length)).getReader();
+    onTestFinished(() => resumed.cancel());
+    const pending = resumed.read();
+    release();
+    expect((await pending).value).toEqual({
+      type: "TEXT_MESSAGE_CONTENT",
+      messageId: (prefix[2] as { messageId: string }).messageId,
+      delta: " world",
+    });
+    const suffix: CardRunEvent[] = [];
+    while (true) {
+      const item = await resumed.read();
+      if (item.done) {
+        break;
+      }
+      suffix.push(item.value);
+    }
+    expect(suffix.map((event) => event.type)).toEqual([
+      "TEXT_MESSAGE_END",
+      "CUSTOM",
+      "RUN_FINISHED",
+    ]);
+    const view = await owner.result;
+    expect(view.turns[0]?.status).toBe("completed");
+    expect(calls).toBe(1);
+    // A slow reader sees all retained events even after production has completed.
+    const slow: CardRunEvent[] = [];
+    while (true) {
+      const item = await second.read();
+      if (item.done) {
+        break;
+      }
+      slow.push(item.value);
+    }
+    expect(slow.slice(1)).toEqual(suffix);
+    // A fresh request reconstructs accepted history without replaying transient deltas.
+    const reopened = createCardChatRun(
+      runtime,
+      open,
+      async () => {
+        throw new Error("Read cannot resolve provider");
+      },
+      "stream-test",
+    );
+    const replay = createReadableStream(runtime, reopened.events()).getReader();
+    const readOwner = runtime.start(() => reopened.run());
+    const restored: CardRunEvent[] = [];
+    while (true) {
+      const item = await replay.read();
+      if (item.done) {
+        break;
+      }
+      restored.push(item.value);
+    }
+    await readOwner.result;
+    expect(restored.map((event) => event.type)).toEqual(["RUN_STARTED", "CUSTOM", "RUN_FINISHED"]);
+    expect(restored.find((event) => event.type === "CUSTOM")).toMatchObject({ value: view });
+    for (const db of connections) {
+      expect(() => db.prepare("SELECT 1")).toThrow();
+    }
+  });
+
+  it(`${runtime.name}: an aborted request closes the stream even before production begins`, async () => {
+    const handlers = createCardChatHandlers(
+      runtime,
+      () => {
+        throw new Error("Must not open");
+      },
+      async () => {
+        throw new Error("Must not sample");
+      },
+    );
+    const signal = AbortSignal.abort(new Error("Disconnected"));
+    const response = await handlers.GET({
+      request: new Request("http://localhost/api/card-chat/aborted", { signal }),
+      params: { thread: "aborted" },
+    });
+    expect(await response.text()).toBe("");
+  });
+});
+
+forEachRuntime((runtime) => {
+  it(`${runtime.name}: the HTTP owner joins interruption without logically cancelling the turn`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "card-request-owner-"));
+    const connections: DatabaseSync[] = [];
+    let latePublish: ((text: string) => void) | undefined;
+    const handlers = createCardChatHandlers(
+      runtime,
+      () => {
+        const db = new DatabaseSync(join(directory, "chat.sqlite"));
+        connections.push(db);
+        return db;
+      },
+      async (publish) => {
+        latePublish = publish;
+        return {
+          *sample() {
+            publish("Working");
+            return yield* runtime.fromPromise<never>(
+              (signal) =>
+                new Promise((_, reject) => {
+                  signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+                  if (signal.aborted) {
+                    reject(signal.reason);
+                  }
+                }),
+            );
+          },
+        };
+      },
+    );
+    const response = await handlers.POST({
+      request: new Request("http://localhost/api/card-chat/interruption", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "message",
+          command: crypto.randomUUID(),
+          prompt: "Hello",
+          after: null,
+        }),
+      }),
+      params: { thread: "interruption" },
+    });
+    // Neither an unconsumed response nor its construction owns active work yet.
+    expect(connections).toHaveLength(0);
+    const reader = response.body!.getReader();
+    onTestFinished(async () => {
+      await reader.cancel();
+      rmSync(directory, { recursive: true, force: true });
+    });
+    const decoder = new TextDecoder();
+    while (true) {
+      const item = await reader.read();
+      expect(item.done).toBe(false);
+      if (decoder.decode(item.value).includes("TEXT_MESSAGE_CONTENT")) {
+        break;
+      }
+    }
+    await reader.cancel();
+    expect(connections.length).toBeGreaterThan(0);
+    for (const db of connections) {
+      expect(() => db.prepare("SELECT 1")).toThrow();
+    }
+    expect(() => latePublish?.("Late provider callback")).not.toThrow();
+    const reopened = await handlers.GET({
+      request: new Request("http://localhost/api/card-chat/interruption"),
+      params: { thread: "interruption" },
+    });
+    const events = (await reopened.text())
+      .split("\n\n")
+      .filter(Boolean)
+      .map((event) => JSON.parse(event.slice(6)));
+    const view = events.find((event) => event.type === "CUSTOM").value;
+    expect(view.turns).toHaveLength(1);
+    expect(view.turns[0].status).toBe("running");
   });
 });

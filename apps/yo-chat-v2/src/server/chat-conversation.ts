@@ -7,7 +7,7 @@ import type { CapabilityRequest } from "@sweatpan.ts/core";
 import type { ChatHistoryMessage, ChatLoopResult } from "@sweatpan.ts/chat";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
-import { bindCardChat, cardChatProgram, systemMessage } from "./card-chat-program.ts";
+import type { ChatDemo } from "./chat-demo.ts";
 import type { ChatSampling } from "@sweatpan.ts/chat";
 
 type Turn = {
@@ -28,13 +28,15 @@ export type ConversationSubmission = {
 /** Application-local SQLite conversation policy: one active turn, explicit predecessor,
  * idempotent submission IDs. Caller authorizes conversation access and owns the DB.
  * Reservation and journal admission are separate durable steps; retry repairs the gap. */
-export function createCardConversation<Y>(
+export function createDemoConversation<Y>(
+  demo: ChatDemo,
   runtime: Runtime<Y>,
   db: DatabaseSync,
   conversation: string,
   dependencies: ChatSampling<Y>,
   afterReservation?: () => Operation<void, Y>,
 ) {
+  conversation = demo.namespace + conversation;
   db.exec(`CREATE TABLE IF NOT EXISTS card_chat_turns (
     conversation TEXT NOT NULL, ordinal INTEGER NOT NULL, command TEXT NOT NULL,
     execution TEXT NOT NULL UNIQUE, prompt TEXT NOT NULL, previous TEXT, input BLOB NOT NULL, program TEXT NOT NULL,
@@ -57,14 +59,14 @@ export function createCardConversation<Y>(
     if (!owned) {
       throw new Error("Execution outside this conversation");
     }
-    if (owned.program !== cardChatProgram.id) {
+    if (owned.program !== demo.program.id) {
       throw new Error("Unavailable conversation program");
     }
     return createSqliteJournalStore<ChatLoopResult, CapabilityRequest, unknown, string, unknown, Y>(
       {
         connection: createNodeSqliteConnection(db),
         id: execution,
-        program: cardChatProgram.id,
+        program: demo.program.id,
         equals: isDeepStrictEqual,
         serialization: {
           *resolve() {
@@ -96,7 +98,7 @@ export function createCardConversation<Y>(
         if ((previous?.execution ?? null) !== input.after) {
           throw new Error("Stale conversation predecessor");
         }
-        let history: readonly ChatHistoryMessage[] = [systemMessage];
+        let history: readonly ChatHistoryMessage[] = [demo.systemMessage];
         if (previous) {
           const state = yield* journal(previous.execution).read();
           if (state.status !== "completed") {
@@ -118,7 +120,7 @@ export function createCardConversation<Y>(
             }
             row = {
               execution: JSON.stringify([conversation, input.command]),
-              program: cardChatProgram.id,
+              program: demo.program.id,
               ordinal: (previous?.ordinal ?? 0) + 1,
               command: input.command,
               prompt: input.prompt,
@@ -152,7 +154,7 @@ export function createCardConversation<Y>(
     },
     /** Bind only a root enrolled in this conversation; descendant answers use its own authority. */
     turn(execution: string) {
-      return bindCardChat(runtime, journal(execution), dependencies);
+      return demo.bind(runtime, journal(execution), dependencies);
     },
     /** Retained sequence, not a cached execution-status projection. */
     turns() {

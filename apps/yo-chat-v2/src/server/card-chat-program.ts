@@ -8,6 +8,8 @@ import type { Runtime } from "@sweatpan.ts/runtime";
 import { pickCard } from "../tools/pick-card.ts";
 
 import { installCardDeck } from "./card-capabilities.ts";
+import type { ChatDemo } from "./chat-demo.ts";
+import { selectionInput, playingCard } from "../cards/contracts.ts";
 import { cardResult } from "../cards/contracts.ts";
 
 const input = z.object({
@@ -63,3 +65,25 @@ export function bindCardChat<Y>(
     ],
   });
 }
+
+/** Card-specific policy plugged into the shared app-local conversation assembly. */
+export const cardDemo = {
+  namespace: "",
+  viewEvent: "card-chat-view",
+  program: cardChatProgram,
+  systemMessage,
+  tools: [pickCard],
+  bind: bindCardChat,
+  decodeInput(_effect: string, value: unknown) {
+    return selectionInput.parse(value);
+  },
+  validateAnswer(_effect: string, input: unknown, value: unknown) {
+    const selected = playingCard.parse(value);
+    if (!selectionInput.parse(input).cards.some((card) => isDeepStrictEqual(card, selected))) {
+      throw new Error("Selected card was not offered");
+    }
+  },
+  formatResult(value: unknown) {
+    return cardResult.parse(value).card.display;
+  },
+} satisfies ChatDemo;

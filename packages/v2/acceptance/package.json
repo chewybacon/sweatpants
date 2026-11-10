@@ -29,6 +29,7 @@
     "@earendil-works/pi-ai": "1.0.1",
     "@standard-durability/core": "workspace:*",
     "@standard-schema/spec": "catalog:",
+    "@stylexjs/unplugin": "0.19.1",
     "@sweatpan.ts/chat": "workspace:*",
     "@sweatpan.ts/chat-client": "workspace:*",
     "@sweatpan.ts/chat-host": "workspace:*",
