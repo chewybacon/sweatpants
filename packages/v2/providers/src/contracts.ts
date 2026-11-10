@@ -105,6 +105,11 @@ export interface ChatUserMessage {
 export interface ChatAssistantMessage {
   readonly role: "assistant";
   readonly content: readonly ChatMessagePart[];
+  /** Provider accounting tied to an adapter-validated context prefix. Never model input. */
+  readonly contextUsage?: {
+    readonly usage: ModelUsage;
+    readonly basis: { readonly format: string; readonly key: string };
+  };
 }
 
 /** System instructions supplied in inference context. */

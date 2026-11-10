@@ -15,14 +15,6 @@
       },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./responses-count": {
-      "development": {
-        "types": "./src/responses-count.ts",
-        "import": "./src/responses-count.ts"
-      },
-      "types": "./dist/responses-count.d.ts",
-      "import": "./dist/responses-count.js"
     }
   },
   "scripts": {

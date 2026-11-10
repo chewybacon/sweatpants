@@ -19,8 +19,8 @@ fresh request. It supports text and inline base64 images in user/tool inputs, re
 settled tool-call/result history. Leading system/developer instructions combine into
 the SDK system prompt, as in v1. Instructions after conversation content are rejected.
 Duplicate call IDs, unmatched results and unfinished tool groups reject before dispatch.
-SDK bookkeeping timestamps and prior usage are synthetic; canonical messages do not
-claim historical SDK telemetry.
+SDK timestamps are synthetic. Applicable prior response usage is restored from
+canonical assistant metadata, as described below.
 
 The chat adapter uses `streamSimple`: auto/none tool choice, temperature, output-token
 limits, reasoning levels (including `max`), and per-level thinking budgets are forwarded.
@@ -78,42 +78,44 @@ failed results, model projections, reasoning budgets and per-request context bud
 on both runtimes. These are scripted SDK-boundary tests, not live model capability
 or media-decoding tests.
 
-## Responses preflight through pi
+## Local context admission through pi
 
-The v2 adapter uses pi-ai 1.5.1. Its host-supplied stream driver can install pi's
-existing async `onPayload` hook; no extra Sweatpants interception API is needed.
-The hook runs after pi encodes the provider payload and before HTTP inference.
-Registry `Models.streamSimple` normalizes canonical SDK contexts itself. When
-calling the low-level `api/openai-responses` transport directly, first call
-`normalizeContext` from `utils/transcript`; otherwise tools are not folded into the
-transcript that the new transport expects.
+The adapter uses pi-ai 1.5.1. Hosts can call its existing
+`estimateContextTokens(normalizeContext(context))` from `utils/estimate` and
+`utils/transcript` inside their supplied stream driver. The estimate combines the
+last applicable provider usage with estimates of trailing messages, or estimates
+all content when no applicable usage remains. No separate counting request is needed.
+Pi estimates text at 3.5 characters per token and uses a fixed image allowance;
+this is an estimate, including when its prefix comes from provider usage.
 
-`createResponsesInputCounter({ endpoint, headers })`, also exported from
-`@sweatpan.ts/providers-pi-ai/responses-count`, performs one native
-`POST /responses/input_tokens` call with explicit `model`, `input`, and `tools`.
-It returns a validated `{ tokens, kind: "measured" }` count. This deliberately narrow
-input subset rejects extra fields; it does not guess how to count server-side
-conversation state or separate instructions. It has no construction IO, automatic
-retry, inference dispatch or estimate fallback. The caller owns credentials, timeout
-and AbortSignal. HTTP error bodies are withheld from status errors.
+Successful terminal responses attach optional `message.contextUsage` metadata.
+Its fingerprint binds usage to the selected model/provider/API/base URL, tool
+schemas and canonical message prefix through that assistant response. Chat inference
+preserves it for the same model, and it survives JSON history persistence. On the
+next request the adapter restores only the newest retained stamp if its fingerprint
+matches. Edited, projected or compacted prefixes and changed tools/models fall back
+to local estimation. Missing/incomplete usage is not a measured zero. Accounting
+metadata never enters provider input; the fingerprint grants no authority.
 
-The host's pi `onPayload` policy selects its final generation controls, counts the
-payload's model/input/tools, calls existing `measureContextBudget`, and returns that
-same payload only if admitted. Pi 1.5.1's `streamSimple` estimates context size and
-may clamp `maxTokens`; an application requiring a fixed reservation must select that
-reservation before counting and verify the actual `max_output_tokens`. A successful
-count remains an observation, not an inference receipt or durable acceptance.
+Host changes to the native context or payload beyond this canonical view are outside
+that validity check. Hosts that change its meaning must discard the usage stamp or
+clear native assistant usage before estimating. Preserve metadata when keeping a
+message unchanged; discard it when replacing its contents with a summary.
 
-The acceptance journey uses the real pi Responses transport and local HTTP/SSE
-peers under both runtimes. It checks that schemas/media survive normalization, the
-count matches the inference input, exact fit proceeds, overflow/count failure stops,
-and cancellation during counting prevents inference. The counter journey also
-covers input snapshotting, malformed counts and cancellation. Live gateway support
-and process-crash recovery are not established by these tests.
+Admission and safety margins remain application policy. ONI adds the larger of
+4096 tokens or 15% to pi's estimate, then uses `measureContextBudget` with an explicit
+output reservation and `kind: "estimated"`. Its independent byte guard remains.
+Estimates cannot guarantee provider acceptance; provider context-limit rejection
+still routes to checkpoint/compaction. No tokenizer or remote counter is added.
 
-The ONI consumer uses this composition with its retained Responses journal format:
-it projects media metadata out of the provider view, preserves raw reasoning/text
-phases/call IDs, and lets pi handle encoding and streamed response decoding. That
-migration remains application assembly rather than a new generic context manager.
+Pi's existing `onPayload` hook runs after provider encoding and before inference.
+A host requiring a fixed output reservation sets the final output cap there because
+`streamSimple` can clamp it. Low-level transports need `normalizeContext` so schemas
+and system instructions enter their transcript; registry `Models.streamSimple`
+already normalizes contexts.
 
-Protocol reference: [Responses input counts](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count).
+The real Responses HTTP/SSE acceptance journey under both runtimes verifies usage
+persistence, trailing estimates, invalidation, media/schema encoding, local overflow
+refusal and absence of counting requests. ONI additionally exercises cancellation,
+retained reasoning and exact retry bodies. These local peers do not establish live
+provider accuracy or process-crash recovery.

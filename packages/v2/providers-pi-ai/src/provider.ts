@@ -2,6 +2,7 @@ import type { Operation } from "@standard-durability/core";
 import type { ModelProvider, ModelResponse, ModelStreamEvent } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { PiAiProviderOptions } from "./contracts.ts";
+import { contextUsageFormat, contextUsageKey, restoreContextUsage } from "./context-usage.ts";
 import { encode } from "./encode.ts";
 import { event, response } from "./decode.ts";
 
@@ -18,7 +19,11 @@ export function createPiAiProvider<Y>(
   const apiKey = options.apiKey;
   return {
     *stream(request) {
-      const encoded = encode(request, model);
+      const input = structuredClone(request);
+      const accounting = yield* runtime.fromPromise(() =>
+        restoreContextUsage(input.context, model),
+      );
+      const encoded = encode(input, model, accounting);
       const controller = new AbortController();
       let iterator: AsyncIterator<unknown> | undefined;
       let active = true;
@@ -84,6 +89,27 @@ export function createPiAiProvider<Y>(
                   }
                   const result = yield* wait(() => source.result());
                   completed = response(result);
+                  if (completed.usage) {
+                    const key = yield* wait(() =>
+                      contextUsageKey(
+                        {
+                          ...input.context,
+                          messages: [...input.context.messages, completed!.message],
+                        },
+                        model,
+                      ),
+                    );
+                    completed = {
+                      ...completed,
+                      message: {
+                        ...completed.message,
+                        contextUsage: {
+                          usage: structuredClone(completed.usage),
+                          basis: { format: contextUsageFormat, key },
+                        },
+                      },
+                    };
+                  }
                   return { done: true, value: completed };
                 },
                 function* (error) {
