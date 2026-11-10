@@ -176,6 +176,7 @@ Root `pnpm land` runs this suite under its own coverage identity
 | `history`                               | `@sweatpan.ts/history`                               |
 | `providers`                             | `@sweatpan.ts/providers`                             |
 | `providers-pi-ai`                       | `@sweatpan.ts/providers-pi-ai`                       |
+| `providers-openai`                      | `@sweatpan.ts/providers-openai`                      |
 | `workspace`                             | `@sweatpan.ts/workspace`                             |
 | `workspace-local`                       | `@sweatpan.ts/workspace-local`                       |
 | `workspace-lambda`                      | `@sweatpan.ts/workspace-lambda`                      |

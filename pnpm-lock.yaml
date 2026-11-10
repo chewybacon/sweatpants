@@ -720,9 +720,6 @@ importers:
 
   apps/yo-chat-v2:
     dependencies:
-      '@standard-schema/spec':
-        specifier: 'catalog:'
-        version: 1.1.0
       '@astryxdesign/core':
         specifier: ^0.7.11
         version: 0.7.11(@stylexjs/stylex@0.19.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -735,6 +732,9 @@ importers:
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../../packages/v2/standard-durability
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@stylexjs/stylex':
         specifier: 0.19.1
         version: 0.19.1
@@ -2918,6 +2918,9 @@ importers:
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../providers
+      '@sweatpan.ts/providers-openai':
+        specifier: workspace:*
+        version: link:../providers-openai
       '@sweatpan.ts/providers-pi-ai':
         specifier: workspace:*
         version: link:../providers-pi-ai
@@ -3411,6 +3414,16 @@ importers:
       '@sweatpan.ts/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/v2/providers-openai:
+    dependencies:
+      '@sweatpan.ts/providers':
+        specifier: workspace:*
+        version: link:../providers
     devDependencies:
       typescript:
         specifier: 'catalog:'
