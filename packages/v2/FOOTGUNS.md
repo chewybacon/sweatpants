@@ -231,3 +231,18 @@ that database, not a portable execution timeline or durable reconnect protocol.
 **Author responsibility:** Own the read snapshot and connection, select the serializer,
 and retain application correlation and disclosure policy. A pending external attempt
 is not an accepted history entry. See [SQLite inspection](./storage-sqlite/README.md#read-only-database-inspection).
+
+## FG-014 — Publishing terminal success before native cleanup joins
+
+A command returns a view but its resource cleanup fails. Publishing `RUN_FINISHED`
+inside that command's scope advertises success before the owner has its outcome.
+Native scope failures can also bypass a surrounding generator `catch`.
+
+**Boundary:** The AG-UI run adapter joins a nested command scope before publishing
+success. Its outer finalizer emits a public failure fallback if execution began but
+no terminal event was published, then closes readers. Pre-aborted work emits no run.
+
+**Author responsibility:** Keep public error text separate from private exceptions.
+An attempt's terminal frame is a presentation fact, not durable cancellation,
+rollback, objective verification or permission to retry an uncertain external effect.
+See [run projection](./protocols-ag-ui/README.md).

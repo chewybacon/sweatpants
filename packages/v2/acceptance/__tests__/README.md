@@ -685,3 +685,14 @@ ephemeral loopback port, with in-process HTTP peers for Host/Origin/body limits,
 stalled uploads and joined shutdown. No live model or subprocess is required.
 
 These historical yo-chat-v2 journeys do not test the replacement TanStack Start app.
+
+### Public AG-UI run projection
+
+`applications/ag-ui-run.acceptance.test.ts` exercises the promoted
+`createAgUiRun` adapter: parked attempt completion, text replacement, public error
+projection, detached custom data per reader, native cancellation, joined cleanup,
+late callbacks and single-use execution. The existing `start-card-chat` journey now
+runs its actual app through the adapter, retaining independent-reader, offset-resume,
+pre-aborted request and SQLite reconstruction coverage. Other yo-chat-v2 wrappers
+share the migrated implementation. No objective assessment or agent continuation
+policy is introduced. Offsets and retained events remain attempt-local and in-memory.

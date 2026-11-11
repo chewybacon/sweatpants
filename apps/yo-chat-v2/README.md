@@ -91,15 +91,16 @@ The server selects Pi's OpenAI provider by default (`CHAT_PROVIDER`, `CHAT_MODEL
 default `gpt-6.1-sol`). `OPENAI_BASE_URL` supports the CLI proxy; credentials belong
 in the server environment (`OPENAI_API_KEY`), never client code or committed files.
 The request-owned SSE stream uses AG-UI text/run event names and a `CUSTOM`
-`card-chat-view` event for this application's validated detached snapshot. This is
-an application adapter, not a general AG-UI client implementation. Provisional text
+`card-chat-view` event for this application's validated detached snapshot. The run/text/custom projection comes from
+`@sweatpan.ts/protocols-ag-ui`; this is not a general AG-UI client implementation. Provisional text
 is replaced by accepted history when the command completes. Disconnect stops local
 request work, not durable cancellation; interrupted/uncertain work remains visible
 with explicit retry/check-status/continue actions. No automatic model retry is added.
 
 ### Run events are a stream
 
-`server/chat-run.ts` is the shared app-local assembly experiment. The card wrapper
+`server/chat-run.ts` supplies application commands and public views to the framework
+`createAgUiRun` adapter. The card wrapper
 `server/card-chat-run.ts` supplies card-specific policy. It uses the existing
 runtime `Stream` and buffered signal; constructing it starts no work. The caller
 explicitly owns production, and each reader pulls independently:
@@ -133,8 +134,8 @@ establishes the stream consumption boundary without inventing that policy.
 
 Acceptance covers two readers, a slow reader, disconnection, same-attempt offset
 resume, persisted reconstruction and pre-aborted requests under both runtimes.
-The runtime buffer is memory-only and unbounded over one attempt; a longer-lived
-run service would need an explicit retention policy before promotion.
+The promoted adapter retains the memory-only buffer for one attempt. It is unbounded;
+a longer-lived run service still needs an explicit retention and ownership policy.
 
 The acceptance journey uses the actual React composer and picker, SSE handlers,
 SQLite reopen and both native runtimes with a scripted model exchange. It covers

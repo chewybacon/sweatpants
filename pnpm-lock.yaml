@@ -756,6 +756,9 @@ importers:
       '@sweatpan.ts/hosting':
         specifier: workspace:*
         version: link:../../packages/v2/hosting
+      '@sweatpan.ts/protocols-ag-ui':
+        specifier: workspace:*
+        version: link:../../packages/v2/protocols-ag-ui
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../../packages/v2/providers
@@ -2915,6 +2918,9 @@ importers:
       '@sweatpan.ts/hosting-cloudflare':
         specifier: workspace:*
         version: link:../hosting-cloudflare
+      '@sweatpan.ts/protocols-ag-ui':
+        specifier: workspace:*
+        version: link:../protocols-ag-ui
       '@sweatpan.ts/providers':
         specifier: workspace:*
         version: link:../providers
@@ -3386,6 +3392,13 @@ importers:
         version: 7.0.2
 
   packages/v2/protocols-ag-ui:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       typescript:
         specifier: 'catalog:'
