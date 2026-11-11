@@ -35,6 +35,10 @@ export interface AgUiRunOptions<R, V, Y> {
   /** Public-safe failure text; the original error still propagates to the owner. */
   readonly errorMessage: string;
   execute(publish: AgUiRunPublisher<V>): Operation<R, Y>;
+  /** Synchronous public outcome projection after successful execution and joined
+   * cleanup. Omit/return undefined for a plain attempt finish. The adapter clones
+   * the projection; discovery, answer validation and continuation remain host-owned. */
+  outcome?(result: R): RunFinishedEvent["outcome"];
 }
 export interface AgUiRun<R, V, Y> {
   /** Explicit, single-use producer. Caller owns cancellation and joins cleanup.

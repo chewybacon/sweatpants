@@ -132,6 +132,15 @@ explicit attempt for the same turn. A full turn-following stream across parked
 requests still needs an owner/notification and retention policy. This experiment
 establishes the stream consumption boundary without inventing that policy.
 
+When public questions remain open, `RUN_FINISHED.outcome` has type `interrupt` and
+includes every answerable question. Interrupt IDs are the public question IDs;
+`metadata["sweatpants/question"]` carries the same root, execution, resolution grant,
+effect and input as the custom view. GET reconstructs these interrupts from SQLite.
+Answered, blocked and cancelled questions are excluded. With no open questions the
+terminal event omits `outcome`; it does not assert objective success. Answers still
+use the existing validated command route, not AG-UI resume input. The metadata is
+public presentation data, not participant authentication or answer authority.
+
 Acceptance covers two readers, a slow reader, disconnection, same-attempt offset
 resume, persisted reconstruction and pre-aborted requests under both runtimes.
 The promoted adapter retains the memory-only buffer for one attempt. It is unbounded;

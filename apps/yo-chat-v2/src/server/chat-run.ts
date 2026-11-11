@@ -26,6 +26,22 @@ export function createDemoRun<Y>(
     threadId: thread,
     errorMessage:
       "The request did not finish. Check server configuration or retry the same command. Progress may already be saved.",
+    outcome(view) {
+      const interrupts = view.turns.flatMap((turn) =>
+        turn.parts.flatMap((part) =>
+          part.type === "tool"
+            ? part.questions
+                .filter((question) => question.state === "open" && question.grant !== undefined)
+                .map((question) => ({
+                  id: question.id,
+                  reason: "input_required",
+                  metadata: { "sweatpants/question": question },
+                }))
+            : [],
+        ),
+      );
+      return interrupts.length ? { type: "interrupt", interrupts } : undefined;
+    },
     *execute(publish) {
       const provider: ChatSampling<Y> = command
         ? yield* runtime.fromPromise(() => sampling(publish.text))

@@ -38,6 +38,22 @@ public error message. Native interruption closes readers after joined cleanup an
 must not be interpreted as durable cancellation or safe retry authority. A pre-aborted
 signal starts no execution. Late publisher calls after completion/disposal are ignored.
 
+Optional `outcome(result)` synchronously projects a successful command result into
+the official `RunFinishedEvent["outcome"]`, after command cleanup joins. It can
+return `{ type: "interrupt", interrupts }` for public pending questions. Omit it or
+return `undefined` to keep a plain attempt finish. The adapter clones this value
+before publication and per reader. Projection or cloning failures publish the public
+`RUN_ERROR` and propagate the original error to the owner. Execution, cleanup and
+cancellation failures never invoke the projection.
+
+The demo projects every open, answerable public question into an interrupt using
+its public question ID and `metadata["sweatpants/question"]`. That metadata retains
+the existing root, execution, grant, effect and public input. Answered, blocked and
+cancelled questions are excluded; no interrupt outcome is emitted for an empty list.
+Reconnecting reconstructs these questions from durable state. The custom view stays
+available for the demo UI. Applications still own authentication, answer validation,
+interaction discovery and command routing; AG-UI resume input is not implemented.
+
 `text` accepts cumulative provisional text: matching prefixes emit only the delta;
 a replacement closes the old message and opens a new one. `endText` closes it
 explicitly, and terminal success/failure closes any remaining text. `custom` publishes
@@ -52,7 +68,7 @@ and output and release old run objects. Durable reconstruction belongs to the jo
 presentation/application layer. No registry, background scheduler, public event store,
 client acknowledgement store or cross-process notification transport is supplied.
 
-The execute operation and public error text are construction-selected host policy.
+The execute operation, outcome projection and public error text are construction-selected host policy.
 It can invoke existing scoped capabilities and middleware. This adapter does not
 select continuation, assessment, budgets or what the application considers complete.
 

@@ -89,10 +89,17 @@ export function createAgUiRun<R, V, Y>(
           try {
             // Publish terminal success only after command-owned cleanup has joined.
             const result = yield* runtime.composition.scoped(() => options.execute(publish));
+            const outcome = structuredClone(options.outcome?.(result));
             publish.endText();
             active = false;
             terminal = true;
-            events.send({ type: EventType.RUN_FINISHED, threadId: options.threadId, runId });
+            events.send({
+              type: EventType.RUN_FINISHED,
+              threadId: options.threadId,
+              runId,
+              // CONDITIONAL-SPREAD: An absent projection must omit the optional wire field.
+              ...(outcome === undefined ? {} : { outcome }),
+            });
             return result;
           } catch (error) {
             publish.endText();

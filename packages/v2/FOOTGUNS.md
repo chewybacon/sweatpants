@@ -241,6 +241,8 @@ Native scope failures can also bypass a surrounding generator `catch`.
 **Boundary:** The AG-UI run adapter joins a nested command scope before publishing
 success. Its outer finalizer emits a public failure fallback if execution began but
 no terminal event was published, then closes readers. Pre-aborted work emits no run.
+Application-selected terminal outcome projection runs after successful cleanup;
+projection or cloning failure publishes a public error instead of `RUN_FINISHED`.
 
 **Author responsibility:** Keep public error text separate from private exceptions.
 An attempt's terminal frame is a presentation fact, not durable cancellation,
