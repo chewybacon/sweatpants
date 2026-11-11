@@ -27,6 +27,10 @@ const body = createReadableStream(runtime, run.events());
 
 Construction starts no work. `run` is single-use and owns a scope that joins resource
 cleanup before returning. The caller owns the producer task and cancellation.
+`createSession` from runtime can compose this producer into a scope-owned attempt
+handle with independent `events()` and a host `result()` operation. The actual HTTP
+demo uses that composition in its request delivery scope; the run adapter itself
+does not acquire a session or change its caller's ownership policy.
 Readers are independent: subscribing, slowing down or disconnecting does not start,
 stall or cancel execution. An HTTP route may explicitly connect request cancellation
 to owner cancellation. SSE encoding remains a transport adapter responsibility.

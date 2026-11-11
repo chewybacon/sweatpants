@@ -113,7 +113,13 @@ const body = createReadableStream(runtime, run.events());
 // The owner must eventually be awaited or explicitly cancelled.
 ```
 
-The Start handler adapts that stream to SSE. Each browser `.read()` requests one
+The Start handler acquires `createSession` inside the response-consumption scope.
+Its attempt factory supplies `createDemoRun` and the request signal; `send` starts
+one producer and returns independent `events()` and host-only `result()` access.
+The session owns producer shutdown and joined cleanup. It does not own command
+admission, answer validation, outcome projection or the shape of the public view.
+
+The handler adapts that stream to SSE. Each browser `.read()` requests one
 runtime stream item; waiting readers wake from the existing signal, without polling.
 Slow readers do not stall execution, and cancelling one subscription does not cancel
 production. The route deliberately adds request ownership: cancelling its response

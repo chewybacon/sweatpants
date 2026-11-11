@@ -1,7 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
-import { createReadableStream, type Runtime, type Stream } from "@sweatpan.ts/runtime";
+import {
+  createReadableStream,
+  createSession,
+  type Runtime,
+  type Stream,
+} from "@sweatpan.ts/runtime";
 import type { ChatSampling } from "@sweatpan.ts/chat";
-import { chatCommand } from "../chat/contract.ts";
+import { chatCommand, type ChatCommand } from "../chat/contract.ts";
 import { createDemoRun } from "./chat-run.ts";
 import type { ChatDemo } from "./chat-demo.ts";
 
@@ -33,19 +38,17 @@ export function createDemoHandlers<Y>(
       return Response.json({ error: "Invalid command" }, { status: 400 });
     }
     const command = parsed?.data;
-    const run = createDemoRun(demo, runtime, openDatabase, sampling, thread, command);
     const encoder = new TextEncoder();
     // The request owns production; the web reader only pulls delivery.
     // Start inside the delivery scope so an unread/cancelled response starts no work.
     const source: Stream<Uint8Array, void, Y> = {
       *[Symbol.iterator]() {
-        const owner = runtime.start(() => run.run(request.signal));
-        // Failure is represented on the event stream. Keep the owner rejection observed.
-        void owner.result.catch(() => undefined);
-        yield* runtime.composition.ensure(function* () {
-          yield* runtime.fromPromise(() => owner.cancel());
+        const session = yield* createSession(runtime, (input: ChatCommand | undefined) => {
+          const run = createDemoRun(demo, runtime, openDatabase, sampling, thread, input);
+          return { run: () => run.run(request.signal), events: run.events };
         });
-        const events = yield* run.events();
+        const attempt = yield* session.send(command);
+        const events = yield* attempt.events();
         return {
           *next() {
             const item = yield* events.next();

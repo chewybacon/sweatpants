@@ -1,4 +1,5 @@
-export type { Runtime, RuntimeExecution } from "./contracts.ts";
+export type { Runtime, RuntimeExecution, Attempt, AttemptProducer, Session } from "./contracts.ts";
+export { createSession } from "./session.ts";
 export type {
   RuntimeType,
   Computation,

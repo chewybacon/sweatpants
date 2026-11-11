@@ -277,3 +277,53 @@ without exposing the merger as an argument.
 
 See [Composition guidance](./COMPOSITION.md) for choosing construction-time,
 acquisition-time or per-operation policy, including synchronous consumers.
+
+## Scoped sessions
+
+`createSession(runtime, createAttempt)` acquires an owner for native attempts in
+the executing scope. The factory maps one application input to a fresh, unstarted
+`AttemptProducer<Event, End, Y>` with `run()` and independent `events(offset?)`.
+`createAgUiRun` satisfies this shape; runtime does not depend on AG-UI or chat.
+
+```ts
+const session = yield * createSession(runtime, makeAttempt);
+const attempt = yield * session.send(input);
+const reader = yield * attempt.events();
+const first = yield * reader.next();
+const end = yield * attempt.result();
+```
+
+Acquisition starts no work. Executing `send` constructs and starts exactly one
+producer through `runtime.start`, then returns its attempt handle. This acknowledges
+attempt creation, not durable message admission or answer acceptance. Construction
+errors fail `send`; execution/cleanup failures remain in that attempt's host result.
+The session observes rejections even if the host only reads public events, without
+failing other attempts. The producer owns public-safe error and terminal events.
+
+Each handle forwards subscriptions to the same producer. Neither reader disposal
+nor cancelling a `result()` waiter stops production. Repeated `result()` calls wait
+for the same retained execution and joined cleanup, without starting more work.
+The host result is not cloned or implicitly serialized into the event stream;
+its type is independent of the event type. A protocol adapter must explicitly emit
+any terminal wire summary. Retention, offset validation and event value isolation
+follow the producer; the session does not introduce another event buffer.
+
+The scope that acquired the session owns every outstanding attempt, even if a send
+executes in a shorter child scope. Its finalizer closes the session, starts every
+outstanding cancellation before joining them, and waits for all cleanup. Later
+sends reject before invoking the factory. Native shutdown does not record durable
+workflow cancellation, roll back accepted answers or authorize retries.
+
+Ownership does not capture execution context: `runtime.start` creates the existing
+host boundary. Bind dependencies explicitly or install required capabilities inside
+the producer. Factory selection happens at acquisition; no scoped dispatch API or
+middleware registry is introduced. Admission, validation, conflicting-send policy,
+batching and continuation remain application responsibilities.
+
+Yo-chat acquires a session inside HTTP response consumption, with a factory creating
+its AG-UI attempt and forwarding the request signal. Unread responses start no work;
+request disposal closes the owner scope and joins its attempt. There is no background
+service, cross-request session registry or durable stream cursor. Acceptance exercises
+acquisition vs send scope ownership, production without readers, independent readers
+and result waiters, typed results, offset replay, concurrent shutdown barriers and
+execution/cleanup errors on both runtimes, plus the real HTTP chat journeys.
