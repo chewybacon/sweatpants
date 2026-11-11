@@ -248,18 +248,3 @@ projection or cloning failure publishes a public error instead of `RUN_FINISHED`
 An attempt's terminal frame is a presentation fact, not durable cancellation,
 rollback, objective verification or permission to retry an uncertain external effect.
 See [run projection](./protocols-ag-ui/README.md).
-
-## FG-015 — Depending on contextual callback order for view inference
-
-A view run's generator and question selector share a view type. With an unannotated
-generator parameter and a selector written first, TypeScript can infer `unknown`
-before it reaches the generator's return value.
-
-**Boundary:** Question selection consumes the view type through `NoInfer`; it does
-not define a broader result contract. The view-run assembly preserves the command's
-view as its owner result and custom-event payload.
-
-**Author responsibility:** Supply the named `<View, Y>` types, or annotate the
-generator's text parameter as `(snapshot: string) => void` to infer its returned view
-independently of property order. Public acceptance covers the selector-first form
-with an annotated generator parameter. See [view runs](./protocols-ag-ui/README.md).

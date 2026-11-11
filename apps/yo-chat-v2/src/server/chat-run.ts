@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Runtime } from "@sweatpan.ts/runtime";
-import { createAgUiViewRun, type AgUiRunEvent } from "@sweatpan.ts/protocols-ag-ui";
+import { createAgUiRun, type AgUiRunEvent } from "@sweatpan.ts/protocols-ag-ui";
 import type { ChatSampling } from "@sweatpan.ts/chat";
 import { type ChatCommand, type ChatView } from "../chat/contract.ts";
 import { createDemoConversation } from "./chat-conversation.ts";
@@ -22,25 +22,29 @@ export function createDemoRun<Y>(
   thread: string,
   command?: ChatCommand,
 ) {
-  return createAgUiViewRun<ChatView, Y>(runtime, {
+  return createAgUiRun<ChatView, ChatView, Y>(runtime, {
     threadId: thread,
-    viewEvent: demo.viewEvent,
     errorMessage:
       "The request did not finish. Check server configuration or retry the same command. Progress may already be saved.",
-    pendingQuestions(view) {
-      return view.turns.flatMap((turn) =>
+    outcome(view) {
+      const interrupts = view.turns.flatMap((turn) =>
         turn.parts.flatMap((part) =>
           part.type === "tool"
-            ? part.questions.filter(
-                (question) => question.state === "open" && question.grant !== undefined,
-              )
+            ? part.questions
+                .filter((question) => question.state === "open" && question.grant !== undefined)
+                .map((question) => ({
+                  id: question.id,
+                  reason: "input_required",
+                  metadata: { "sweatpants/question": question },
+                }))
             : [],
         ),
       );
+      return interrupts.length ? { type: "interrupt", interrupts } : undefined;
     },
-    *execute(text) {
+    *execute(publish) {
       const provider: ChatSampling<Y> = command
-        ? yield* runtime.fromPromise(() => sampling(text))
+        ? yield* runtime.fromPromise(() => sampling(publish.text))
         : {
             *sample() {
               throw new Error("Read cannot sample");
@@ -93,6 +97,8 @@ export function createDemoRun<Y>(
         latest: turns.at(-1)?.execution ?? null,
         turns,
       } satisfies ChatView;
+      publish.endText();
+      publish.custom(demo.viewEvent, view);
       return view;
     },
   });
