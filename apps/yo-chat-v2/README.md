@@ -137,7 +137,7 @@ includes every answerable question. Interrupt IDs are the public question IDs;
 `metadata["sweatpants/question"]` carries the same root, execution, resolution grant,
 effect and input as the custom view. GET reconstructs these interrupts from SQLite.
 Answered, blocked and cancelled questions are excluded. With no open questions the
-terminal event omits `outcome`; it does not assert objective success. Answers still
+serialized terminal event omits `outcome`; it does not assert objective success. Answers still
 use the existing validated command route, not AG-UI resume input. The metadata is
 public presentation data, not participant authentication or answer authority.
 

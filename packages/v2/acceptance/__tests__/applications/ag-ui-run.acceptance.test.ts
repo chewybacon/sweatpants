@@ -141,18 +141,16 @@ forEachRuntime((runtime) => {
           type: "RUN_FINISHED",
           threadId: "thread",
           runId: "attempt",
-          // CONDITIONAL-SPREAD: Verify that a plain finish omits the optional wire field.
-          ...(ending === "parked"
-            ? {
-                outcome: {
+          outcome:
+            ending === "parked"
+              ? {
                   type: "interrupt",
                   interrupts: [
                     { id: "question-1", reason: "input_required", metadata: { state: "waiting" } },
                     { id: "question-2", reason: "input_required", metadata: { state: "waiting" } },
                   ],
-                },
-              }
-            : {}),
+                }
+              : undefined,
         });
         const terminal = events.find((event) => event.type === EventType.RUN_FINISHED);
         if (terminal?.outcome?.type === "interrupt") {

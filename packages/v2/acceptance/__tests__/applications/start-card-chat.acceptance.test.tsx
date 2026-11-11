@@ -291,7 +291,7 @@ forEachRuntime((runtime) => {
       "CUSTOM",
       "RUN_FINISHED",
     ]);
-    expect(suffix.at(-1)).not.toHaveProperty("outcome");
+    expect(suffix.find((event) => event.type === EventType.RUN_FINISHED)?.outcome).toBeUndefined();
     const view = await owner.result;
     expect(view.turns[0]?.status).toBe("completed");
     expect(calls).toBe(1);

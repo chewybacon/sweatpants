@@ -97,8 +97,7 @@ export function createAgUiRun<R, V, Y>(
               type: EventType.RUN_FINISHED,
               threadId: options.threadId,
               runId,
-              // CONDITIONAL-SPREAD: An absent projection must omit the optional wire field.
-              ...(outcome === undefined ? {} : { outcome }),
+              outcome,
             });
             return result;
           } catch (error) {
