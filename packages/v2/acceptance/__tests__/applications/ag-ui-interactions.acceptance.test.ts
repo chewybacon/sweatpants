@@ -4,12 +4,89 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, expectTypeOf, it, onTestFinished } from "vitest";
+import { createAgUiViewRun, type AgUiRunEvent } from "@sweatpan.ts/protocols-ag-ui";
 import { createCardChatHandlers } from "../../../../../apps/yo-chat-v2/src/server/card-chat-handlers.ts";
 import { chatView, type ChatCommand } from "../../../../../apps/yo-chat-v2/src/chat/contract.ts";
 import { forEachRuntime } from "../runtime/assembly.ts";
 
 forEachRuntime((runtime) => {
+  it(`${runtime.name}: a public-view run composes snapshot publication and pending questions`, async () => {
+    for (const selectQuestions of [true, false]) {
+      const view = {
+        title: "Document approval",
+        questions: [
+          { id: "approval", prompt: "Publish this document?", target: { document: "draft" } },
+        ],
+      };
+      let closed = false;
+      const run = createAgUiViewRun(runtime, {
+        threadId: "documents",
+        viewEvent: "document-view",
+        errorMessage: "Public failure",
+        pendingQuestions: selectQuestions
+          ? (result) => {
+              expect(closed).toBe(true);
+              return result.questions;
+            }
+          : undefined,
+        *execute(text: (snapshot: string) => void) {
+          yield* runtime.composition.ensure(function* () {
+            closed = true;
+          });
+          text("Checking document");
+          return view;
+        },
+      });
+      const result = await runtime.start(() => run.run()).result;
+      expectTypeOf(result).toEqualTypeOf<typeof view>();
+      expect(result).toEqual(view);
+      expect(closed).toBe(true);
+      const events = await runtime.start(function* () {
+        const source = yield* run.events();
+        const frames: AgUiRunEvent<typeof view>[] = [];
+        while (true) {
+          const item = yield* source.next();
+          if (item.done) {
+            return frames;
+          }
+          frames.push(item.value);
+        }
+      }).result;
+      for (const event of events) {
+        expect(EventSchemas.safeParse(event).success).toBe(true);
+      }
+      expect(events.map((event) => event.type)).toEqual([
+        "RUN_STARTED",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CONTENT",
+        "TEXT_MESSAGE_END",
+        "CUSTOM",
+        "RUN_FINISHED",
+      ]);
+      expect(events.find((event) => event.type === EventType.CUSTOM)).toEqual({
+        type: "CUSTOM",
+        name: "document-view",
+        value: view,
+      });
+      const outcome = events.find((event) => event.type === EventType.RUN_FINISHED)?.outcome;
+      if (selectQuestions) {
+        expect(outcome).toEqual({
+          type: "interrupt",
+          interrupts: [
+            {
+              id: "approval",
+              reason: "input_required",
+              metadata: { "sweatpants/question": view.questions[0] },
+            },
+          ],
+        });
+      } else {
+        expect(outcome).toBeUndefined();
+      }
+    }
+  });
+
   it(`${runtime.name}: AG-UI interrupts reconstruct all pending questions and disappear after durable answers`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "ag-ui-interactions-"));
     onTestFinished(() => rmSync(directory, { recursive: true, force: true }));

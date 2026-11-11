@@ -100,7 +100,9 @@ with explicit retry/check-status/continue actions. No automatic model retry is a
 ### Run events are a stream
 
 `server/chat-run.ts` supplies application commands and public views to the framework
-`createAgUiRun` adapter. The card wrapper
+`createAgUiViewRun` assembly. It selects public pending questions from the returned
+view; the assembly publishes the custom snapshot and terminal interrupts through
+the lower-level `createAgUiRun` adapter. The card wrapper
 `server/card-chat-run.ts` supplies card-specific policy. It uses the existing
 runtime `Stream` and buffered signal; constructing it starts no work. The caller
 explicitly owns production, and each reader pulls independently:

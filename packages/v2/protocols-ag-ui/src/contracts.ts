@@ -40,6 +40,25 @@ export interface AgUiRunOptions<R, V, Y> {
    * the projection; discovery, answer validation and continuation remain host-owned. */
   outcome?(result: R): RunFinishedEvent["outcome"];
 }
+
+/** Public-view assembly over one AG-UI attempt. Application code supplies domain
+ * work and disclosure policy; the assembly publishes the view and pending inputs. */
+export interface AgUiViewRunOptions<V, Y> extends Omit<
+  AgUiRunOptions<V, V, Y>,
+  "execute" | "outcome"
+> {
+  /** Application-selected custom event name for the returned public view. */
+  readonly viewEvent: string;
+  /** Execute domain work and return its public view. Text accepts cumulative
+   * snapshots; the assembly closes it before publishing the returned view. */
+  execute(text: (snapshot: string) => void): Operation<V, Y>;
+  /** Synchronously select public pending questions from the returned view after
+   * cleanup joins. Each complete object is disclosed in interrupt metadata using
+   * its id; select only cloneable public data, never raw ToolInteraction handles.
+   * Omit or return an empty iterable for a plain attempt finish. This selection
+   * neither discovers durable interactions nor grants answer authority. */
+  pendingQuestions?(view: NoInfer<V>): Iterable<{ readonly id: string }>;
+}
 export interface AgUiRun<R, V, Y> {
   /** Explicit, single-use producer. Caller owns cancellation and joins cleanup.
    * Finished denotes this attempt, which may leave a durable turn parked. */

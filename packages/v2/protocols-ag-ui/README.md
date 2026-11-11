@@ -1,8 +1,11 @@
 # AG-UI run projection
 
-`createAgUiRun(runtime, options)` projects one explicitly owned command attempt into
-AG-UI run, assistant-text and custom events. It is the supported subset extracted
-from yo-chat-v2, not a complete AG-UI protocol implementation or an agent loop.
+`createAgUiViewRun(runtime, options)` composes one explicitly owned command attempt
+with public-view publication and pending-question interrupts. Applications return
+their public view and select public pending questions; they do not construct AG-UI
+custom events or terminal outcomes. This assembly uses `createAgUiRun`, the lower
+level run/text/custom adapter extracted from yo-chat-v2. Neither implements the
+complete AG-UI protocol or an agent loop.
 
 `AgUiRunEvent<V>` uses the official `@ag-ui/core` 1.0.4 event types for this subset,
 with assistant-only text starts and a typed custom-event payload. Emitted events use
@@ -10,15 +13,14 @@ the official `EventType` constants and are assignable to `AGUIEvent`. Acceptance
 validates emitted events against the official schemas.
 
 ```ts
-const run = createAgUiRun(runtime, {
+const run = createAgUiViewRun(runtime, {
   threadId,
+  viewEvent: "public-view",
   errorMessage: "Request failed; accepted progress may remain.",
-  *execute(publish) {
+  pendingQuestions: (view) => view.questions.filter((question) => question.state === "open"),
+  *execute(text: (snapshot: string) => void) {
     // Application owns commands, storage, sampling and disclosure policy.
-    const view = yield* executeCommand(publish.text);
-    publish.endText();
-    publish.custom("public-view", view);
-    return view;
+    return yield* executeCommand(text);
   },
 });
 const owner = runtime.start(() => run.run());
@@ -38,7 +40,25 @@ public error message. Native interruption closes readers after joined cleanup an
 must not be interpreted as durable cancellation or safe retry authority. A pre-aborted
 signal starts no execution. Late publisher calls after completion/disposal are ignored.
 
-Optional `outcome(result)` synchronously projects a successful command result into
+The view assembly closes provisional text and publishes the returned view under
+`viewEvent`. After command cleanup joins, its optional `pendingQuestions(view)`
+selects the public pending objects. Each must have an `id`; the complete selected
+object is published as `metadata["sweatpants/question"]` on an interrupt with reason
+`input_required`. Omit the selector or return an empty iterable for a plain finish.
+View layout, pending-state vocabulary, public data selection and answer targets
+belong to the application. This is snapshot selection, not journal traversal: do
+not pass raw `ToolInteraction` objects containing executable declarations.
+
+`createAgUiViewRun` adds no producer, scope or buffer. It delegates to
+`createAgUiRun`, retaining its lifetime, cancellation, cloning and error behavior.
+The returned owner result and custom-event payload retain the public view's type.
+The example annotates the generator's text parameter so TypeScript can infer the
+view even when the dependent selector appears first. When the view is already
+named, supplying `<View, Y>` explicitly is also supported, as in yo-chat-v2.
+The lower-level adapter remains available when applications need to publish their
+own custom events or choose a different terminal outcome policy.
+
+On the lower-level adapter, optional `outcome(result)` synchronously projects a successful command result into
 the official `RunFinishedEvent["outcome"]`, after command cleanup joins. It can
 return `{ type: "interrupt", interrupts }` for public pending questions. Omit it or
 return `undefined` to keep a plain attempt finish. The adapter clones this value
@@ -46,8 +66,8 @@ before publication and per reader. Projection or cloning failures publish the pu
 `RUN_ERROR` and propagate the original error to the owner. Execution, cleanup and
 cancellation failures never invoke the projection.
 
-The demo projects every open, answerable public question into an interrupt using
-its public question ID and `metadata["sweatpants/question"]`. That metadata retains
+The demo selects every open, answerable public question from its view. The assembly
+projects them into interrupts using their public IDs. The question metadata retains
 the existing root, execution, grant, effect and public input. Answered, blocked and
 cancelled questions are excluded; no interrupt outcome is emitted for an empty list.
 Reconnecting reconstructs these questions from durable state. The custom view stays
@@ -68,11 +88,14 @@ and output and release old run objects. Durable reconstruction belongs to the jo
 presentation/application layer. No registry, background scheduler, public event store,
 client acknowledgement store or cross-process notification transport is supplied.
 
-The execute operation, outcome projection and public error text are construction-selected host policy.
-It can invoke existing scoped capabilities and middleware. This adapter does not
+The execute operation, question selection, lower-level outcome projection and public
+error text are construction-selected host policy. Execution can invoke existing
+scoped capabilities and middleware. This adapter does not
 select continuation, assessment, budgets or what the application considers complete.
 
-The actual yo-chat-v2 card, flight and code wrappers use this adapter. Acceptance
+The actual yo-chat-v2 card, flight and code wrappers use the public-view assembly.
+An independent document-approval view exercises its inferred types, text/view event
+ordering, optional question selection and selection after cleanup. Acceptance also
 covers independent readers, offset resume, database reconstruction, parked results,
 text replacement, error disclosure, cancellation, joined cleanup and late callbacks
 on both native runtimes. These are in-process tests, not deployment evidence.
