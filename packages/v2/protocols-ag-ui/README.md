@@ -4,6 +4,11 @@
 AG-UI run, assistant-text and custom events. It is the supported subset extracted
 from yo-chat-v2, not a complete AG-UI protocol implementation or an agent loop.
 
+`AgUiRunEvent<V>` uses the official `@ag-ui/core` 1.0.4 event types for this subset,
+with assistant-only text starts and a typed custom-event payload. Emitted events use
+the official `EventType` constants and are assignable to `AGUIEvent`. Acceptance
+validates emitted events against the official schemas.
+
 ```ts
 const run = createAgUiRun(runtime, {
   threadId,

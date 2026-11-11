@@ -1,14 +1,24 @@
+import type {
+  CustomEvent,
+  RunErrorEvent,
+  RunFinishedEvent,
+  RunStartedEvent,
+  TextMessageContentEvent,
+  TextMessageEndEvent,
+  TextMessageStartEvent,
+} from "@ag-ui/core";
 import type { Operation } from "@standard-durability/core";
 import type { Stream } from "@sweatpan.ts/runtime";
 
 /** Supported run/text/custom projection subset, not the complete AG-UI protocol. */
 export type AgUiRunEvent<V> =
-  | { type: "RUN_STARTED" | "RUN_FINISHED"; threadId: string; runId: string }
-  | { type: "TEXT_MESSAGE_START"; messageId: string; role: "assistant" }
-  | { type: "TEXT_MESSAGE_CONTENT"; messageId: string; delta: string }
-  | { type: "TEXT_MESSAGE_END"; messageId: string }
-  | { type: "CUSTOM"; name: string; value: V }
-  | { type: "RUN_ERROR"; message: string };
+  | RunStartedEvent
+  | RunFinishedEvent
+  | (TextMessageStartEvent & { role: "assistant" })
+  | TextMessageContentEvent
+  | TextMessageEndEvent
+  | (Omit<CustomEvent, "value"> & { value: V })
+  | RunErrorEvent;
 
 /** Host-selected public projection. Never send private journal/provider data blindly.
  * Publications after execution ends are ignored. Custom values must be cloneable. */

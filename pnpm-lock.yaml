@@ -2852,6 +2852,9 @@ importers:
 
   packages/v2/acceptance:
     devDependencies:
+      '@ag-ui/core':
+        specifier: 1.0.4
+        version: 1.0.4(zod@4.6.5)
       '@earendil-works/pi-ai':
         specifier: 1.5.1
         version: 1.5.1(@aws-sdk/credential-provider-node@3.972.95)(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(@smithy/signature-v4@5.7.5)(undici@8.11.2)(ws@8.22.2)(zod@4.6.5)
@@ -3393,6 +3396,9 @@ importers:
 
   packages/v2/protocols-ag-ui:
     dependencies:
+      '@ag-ui/core':
+        specifier: 1.0.4
+        version: 1.0.4(zod@4.6.5)
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
@@ -3858,6 +3864,14 @@ packages:
 
   '@ag-ui/core@1.0.1':
     resolution: {integrity: sha512-Q6pxgI7gcey/0pHfM37S7GNrsYqTrrjjFLpi1dckHNGX2l9VTL0CjnyNc44lwPfHIzFmmEvQfbrAeEPINGGg/Q==}
+    peerDependencies:
+      zod: ^3.25.18 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+
+  '@ag-ui/core@1.0.4':
+    resolution: {integrity: sha512-Z/G3UXYRyZ/1LcOtCCf6RJiFPTjRqaNublW/kQ7wsfiP4Qw5oIVmvO6NkUQYoqCoMXuXggyD3MMH2Td5OVKECQ==}
     peerDependencies:
       zod: ^3.25.18 || ^4.0.0
     peerDependenciesMeta:
@@ -13477,6 +13491,10 @@ snapshots:
   '@ag-ui/core@1.0.1(zod@4.1.13)':
     optionalDependencies:
       zod: 4.1.13
+
+  '@ag-ui/core@1.0.4(zod@4.6.5)':
+    optionalDependencies:
+      zod: 4.6.5
 
   '@alcalzone/ansi-tokenize@0.2.5':
     dependencies:

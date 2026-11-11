@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import { createBufferedSignal, type Runtime } from "@sweatpan.ts/runtime";
 import type { AgUiRun, AgUiRunEvent, AgUiRunOptions, AgUiRunPublisher } from "./contracts.ts";
 
@@ -37,10 +38,10 @@ export function createAgUiRun<R, V, Y>(
           // the public fallback only after those resources have unwound.
           if (began && !terminal) {
             if (textId) {
-              events.send({ type: "TEXT_MESSAGE_END", messageId: textId });
+              events.send({ type: EventType.TEXT_MESSAGE_END, messageId: textId });
             }
             terminal = true;
-            events.send({ type: "RUN_ERROR", message: options.errorMessage });
+            events.send({ type: EventType.RUN_ERROR, message: options.errorMessage });
           }
           active = false;
           events.close();
@@ -53,12 +54,16 @@ export function createAgUiRun<R, V, Y>(
             if (!textId || !text.startsWith(lastText)) {
               publish.endText();
               textId = crypto.randomUUID();
-              events.send({ type: "TEXT_MESSAGE_START", messageId: textId, role: "assistant" });
+              events.send({
+                type: EventType.TEXT_MESSAGE_START,
+                messageId: textId,
+                role: "assistant",
+              });
             }
             const delta = text.slice(lastText.length);
             lastText = text;
             if (delta) {
-              events.send({ type: "TEXT_MESSAGE_CONTENT", messageId: textId, delta });
+              events.send({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: textId, delta });
             }
           },
           endText() {
@@ -66,34 +71,34 @@ export function createAgUiRun<R, V, Y>(
               return;
             }
             if (textId) {
-              events.send({ type: "TEXT_MESSAGE_END", messageId: textId });
+              events.send({ type: EventType.TEXT_MESSAGE_END, messageId: textId });
             }
             textId = undefined;
             lastText = "";
           },
           custom(name, value) {
             if (active) {
-              events.send({ type: "CUSTOM", name, value: structuredClone(value) });
+              events.send({ type: EventType.CUSTOM, name, value: structuredClone(value) });
             }
           },
         };
         return yield* runtime.withSignal(signal, function* () {
           const runId = options.runId ?? crypto.randomUUID();
           began = true;
-          events.send({ type: "RUN_STARTED", threadId: options.threadId, runId });
+          events.send({ type: EventType.RUN_STARTED, threadId: options.threadId, runId });
           try {
             // Publish terminal success only after command-owned cleanup has joined.
             const result = yield* runtime.composition.scoped(() => options.execute(publish));
             publish.endText();
             active = false;
             terminal = true;
-            events.send({ type: "RUN_FINISHED", threadId: options.threadId, runId });
+            events.send({ type: EventType.RUN_FINISHED, threadId: options.threadId, runId });
             return result;
           } catch (error) {
             publish.endText();
             active = false;
             terminal = true;
-            events.send({ type: "RUN_ERROR", message: options.errorMessage });
+            events.send({ type: EventType.RUN_ERROR, message: options.errorMessage });
             throw error;
           }
         });

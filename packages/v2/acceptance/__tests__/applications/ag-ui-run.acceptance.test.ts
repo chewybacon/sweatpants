@@ -1,3 +1,5 @@
+import type { AGUIEvent } from "@ag-ui/core";
+import { EventSchemas } from "@ag-ui/core/schemas";
 import { expect, it, onTestFinished } from "vitest";
 import {
   createAgUiRun,
@@ -94,6 +96,10 @@ forEachRuntime((runtime) => {
         }).result;
       }
       const events = await read();
+      const protocolEvents: AGUIEvent[] = events;
+      for (const event of protocolEvents) {
+        expect(EventSchemas.safeParse(event).success).toBe(true);
+      }
       expect(events[0]).toEqual({ type: "RUN_STARTED", threadId: "thread", runId: "attempt" });
       expect(events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => e.delta)).toEqual([
         "Old",
