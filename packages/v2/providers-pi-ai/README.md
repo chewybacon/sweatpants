@@ -19,8 +19,8 @@ fresh request. It supports text and inline base64 images in user/tool inputs, re
 settled tool-call/result history. Leading system/developer instructions combine into
 the SDK system prompt, as in v1. Instructions after conversation content are rejected.
 Duplicate call IDs, unmatched results and unfinished tool groups reject before dispatch.
-SDK bookkeeping timestamps and prior usage are synthetic; canonical messages do not
-claim historical SDK telemetry.
+SDK timestamps are synthetic. Applicable prior response usage is restored from
+canonical assistant metadata, as described below.
 
 The chat adapter uses `streamSimple`: auto/none tool choice, temperature, output-token
 limits, reasoning levels (including `max`), and per-level thinking budgets are forwarded.
@@ -77,3 +77,55 @@ Media acceptance additionally exercises image input, generation, cancellation an
 failed results, model projections, reasoning budgets and per-request context budgets
 on both runtimes. These are scripted SDK-boundary tests, not live model capability
 or media-decoding tests.
+
+## Local context admission through pi
+
+The adapter uses pi-ai 1.5.1. Hosts can call its existing
+`estimateContextTokens(context)` from `utils/estimate` inside their supplied stream
+driver. The adapter supplies a normalized pi transcript. The estimate combines the
+last applicable provider usage with estimates of trailing messages, or estimates
+all content when no applicable usage remains. No separate counting request is needed.
+Pi estimates text at 3.5 characters per token and uses a fixed image allowance;
+this is an estimate, including when its prefix comes from provider usage.
+
+Successful terminal responses attach optional `message.contextUsage` metadata.
+Its fingerprint binds usage to the selected model/provider/API/base URL, tool
+schemas and normalized native transcript through that assistant response. Chat
+inference preserves it for the same model, and it survives JSON history persistence. On the
+next request the adapter restores only the newest retained stamp if its fingerprint
+matches. Edited, projected or compacted prefixes and changed tools/models fall back
+to local estimation. Missing/incomplete usage is not a measured zero. Accounting
+metadata never enters provider input; the fingerprint grants no authority.
+
+Native response content (including text signatures/phases) is retained in the
+pi-specific `contextUsage.basis.data`. It is restored only if its decoded canonical
+content still matches the assistant message. This avoids losing SDK details during
+JSON persistence without replacing edited canonical content with old native content.
+Version 1 canonical fingerprints fall back to local estimation.
+
+Hosts restoring native history details supply the synchronous `prepareContext`
+function at provider construction. It runs once per acquisition after canonical
+encoding/native restoration and before normalization and usage validation. It must
+preserve message roles and order; content, prompt and tool changes enter the hash.
+The adapter snapshots its result and clears unvalidated usage/timestamps. The
+`stream` driver receives the normalized transcript for estimation and dispatch.
+Do not alter history there or in `onPayload`; later changes fall outside this check.
+No new scoped API or asynchronous policy lifecycle is introduced.
+
+Admission and safety margins remain application policy. ONI adds the larger of
+4096 tokens or 15% to pi's estimate, then uses `measureContextBudget` with an explicit
+output reservation and `kind: "estimated"`. Its independent byte guard remains.
+Estimates cannot guarantee provider acceptance; provider context-limit rejection
+still routes to checkpoint/compaction. No tokenizer or remote counter is added.
+
+Pi's existing `onPayload` hook runs after provider encoding and before inference.
+A host requiring a fixed output reservation sets the final output cap there because
+`streamSimple` can clamp it. The adapter now calls `normalizeContext`, so both
+low-level transports and registry
+`Models.streamSimple` receive the same prepared transcript.
+
+The real Responses HTTP/SSE acceptance journey under both runtimes verifies usage
+persistence, trailing estimates, native-phase invalidation, media/schema encoding,
+local overflow refusal and absence of counting requests. ONI additionally exercises cancellation,
+retained reasoning and exact retry bodies. These local peers do not establish live
+provider accuracy or process-crash recovery.

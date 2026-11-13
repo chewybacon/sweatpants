@@ -15,7 +15,7 @@ const tool = z.object({
   namespace: z.never().optional(),
 });
 const part = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("text"), text: z.string(), textSignature: z.string().optional() }),
   z.object({
     type: z.literal("thinking"),
     thinking: z.string(),
@@ -24,6 +24,7 @@ const part = z.discriminatedUnion("type", [
   }),
   tool,
 ]);
+export const piContentSchema = z.array(part);
 const amount = z.number().finite().nonnegative();
 export const usageSchema = z.object({
   input: amount,
@@ -43,7 +44,7 @@ export const usageSchema = z.object({
 });
 const message = z.object({
   role: z.literal("assistant"),
-  content: z.array(part),
+  content: piContentSchema,
   api: z.string(),
   provider: z.string(),
   model: z.string(),
@@ -63,7 +64,9 @@ function call(value: z.infer<typeof tool>): ChatToolCall {
     thoughtSignature: value.thoughtSignature ?? null,
   };
 }
-function content(value: z.infer<typeof message>): ChatAssistantMessage {
+export function decodeAssistantContent(value: {
+  content: z.infer<typeof piContentSchema>;
+}): ChatAssistantMessage {
   return {
     role: "assistant",
     content: value.content.map((p) => {
@@ -103,7 +106,7 @@ export function response(value: unknown): ModelResponse {
     throw new Error("Duplicate pi-ai tool call identity");
   }
   return {
-    message: content(result),
+    message: decodeAssistantContent(result),
     source: {
       api: result.api,
       provider: result.provider,
@@ -146,7 +149,7 @@ export function event(value: unknown): ModelStreamEvent {
     }
     return { type: "done", reason: e.reason, message: final.message };
   }
-  const partial = content(e.partial);
+  const partial = decodeAssistantContent(e.partial);
   if (e.type === "start") {
     return { type: "start", partial };
   }

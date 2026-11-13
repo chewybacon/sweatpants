@@ -37,7 +37,7 @@
     "effection": "catalog:"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-ai": "1.5.1",
     "@standard-schema/spec": "catalog:",
     "@sweatpan.ts/codemode-compiler-lua": "workspace:*",
     "@sweatpan.ts/codemode-compiler-scheme": "workspace:*",

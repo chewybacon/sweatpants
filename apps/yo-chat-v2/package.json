@@ -14,7 +14,7 @@
   "dependencies": {
     "@astryxdesign/core": "^0.7.11",
     "@astryxdesign/theme-neutral": "^0.7.11",
-    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-ai": "1.5.1",
     "@standard-durability/core": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "@stylexjs/stylex": "0.19.1",

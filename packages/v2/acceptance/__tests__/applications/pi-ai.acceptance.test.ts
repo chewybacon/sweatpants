@@ -110,9 +110,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       redacted: true,
     });
     expect(peer.requests[0]?.context).toMatchObject({
-      systemPrompt: "Be concise",
-      messages: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
-      tools: [{ name: "confirm", parameters: { type: "object" } }],
+      messages: [
+        {
+          role: "system",
+          content: "Be concise",
+          toolsAdded: [{ name: "confirm", parameters: { type: "object" } }],
+        },
+        { role: "user", content: [{ type: "text", text: "Hello" }] },
+      ],
     });
     expect(peer.released).toBe(1);
     expect(peer.signals[0]?.aborted).toBe(true);
@@ -142,6 +147,7 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     await continuation.result;
     expect(peer.requests[1]?.context).toMatchObject({
       messages: [
+        { role: "system", content: "Be concise" },
         { role: "user" },
         {
           role: "assistant",

@@ -38,7 +38,11 @@ export function prepareChatInference(input: ChatInferenceOptions): ChatInference
         }
       }
       if (content.length || !foreign || message.content.length === 0) {
-        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "assistant",
+          content,
+          contextUsage: foreign ? undefined : message.contextUsage,
+        });
       }
     } else {
       messages.push(message);
