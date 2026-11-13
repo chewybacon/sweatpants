@@ -215,3 +215,28 @@ new run. Unchanged builds still support Restore in fresh instance.
 
 `execution:compile` remains the standalone artifact build used by the Node
 conformance fixtures; it is not the application startup path.
+
+### Python in the Playground
+
+Choose **Python** in `/playground` and describe a workflow, or use **Play Rock,
+Paper, Scissors**. The model writes an `async def main()` program using real
+`sandbox` imports. Ask cards, random results, documents and model capabilities
+use the existing durable contracts. The Python source and timeline appear in the
+conversation; reloading while an Ask is pending resumes the same interaction.
+
+For an existing trusted Codex CLI proxy profile (Responses API), launch locally:
+
+```sh
+python3 scripts/dev-cli-profile.py --config /absolute/path/to/config.toml --port 8112
+```
+
+Run from this app's directory; Python 3.11+ is required. An optional `--profile`
+selects a named profile. The launcher executes the config's authentication
+command, passes its credential only to child processes, and uses the configured
+model/base URL. It does not import credentials into the repository's auth store.
+Only use a config you trust. The default `dev:cloudflare` provider setup remains
+available. Decision has its own existing provider binding; the proxy launcher
+configures the authoring/sampling provider, not that separate decision service.
+
+See `docs/language-parity.md` for the bounded Python API and cancellation limits.
+The `/execution` page remains the fixed runtime inspection demo.

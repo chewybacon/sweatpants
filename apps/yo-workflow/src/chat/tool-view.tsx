@@ -10,7 +10,7 @@ import { PendingToolReply, readReply, stringField } from "./reply.tsx";
 type ToolPart = Extract<ReactChatUIPart, { type: "tool-call" }>;
 
 function ToolCard({ part }: { part: ToolPart }) {
-  const isWorkflow = part.name === "scheme" || part.name === "lua";
+  const isWorkflow = part.name === "scheme" || part.name === "lua" || part.name === "python";
   const complete = part.state === "output-available";
   const status = toolStatus(part);
   const failure = workflowFailure(part);
@@ -85,9 +85,9 @@ function ToolCard({ part }: { part: ToolPart }) {
         {isWorkflow && source !== undefined && part.state !== "input-streaming" && (
           <section className="workflow-program" aria-label="Workflow program">
             <h3>Program</h3>
-            {part.name === "lua" ? (
+            {part.name !== "scheme" ? (
               <details className="source">
-                <summary>Lua source</summary>
+                <summary>{part.name === "python" ? "Python" : "Lua"} source</summary>
                 <pre>
                   <code>{source}</code>
                 </pre>

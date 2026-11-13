@@ -1,4 +1,4 @@
-import { builtinModules, createRequire } from "node:module";
+import { builtinModules } from "node:module";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,10 +7,25 @@ import { Miniflare, type MiniflareOptions } from "miniflare";
 import { initializeD1Storage } from "@sweatpants/storage-d1";
 import type { TestModelInstallation } from "@sweatpants/test-rig";
 
-export async function startCloudflareHost(model: TestModelInstallation, installEvaluation = true) {
+export async function startCloudflareHost(
+  model: TestModelInstallation,
+  installEvaluation = true,
+  language?: "scheme" | "lua" | "python",
+) {
   const directory = await mkdtemp(join(tmpdir(), "yo-workflow-cloudflare-"));
   const bundle = await build({
     entryPoints: [new URL("./cloudflare-worker.ts", import.meta.url).pathname],
+    plugins: [
+      {
+        name: "monty-wasm",
+        setup(builder) {
+          builder.onResolve({ filter: /monty\.component\.core[0-9]*\.wasm$/ }, (args) => ({
+            path: args.path.split("/").pop()!,
+            external: true,
+          }));
+        },
+      },
+    ],
     bundle: true,
     write: false,
     format: "esm",
@@ -63,12 +78,34 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
               },
               ...Object.fromEntries(
                 await Promise.all(
+                  ["", "2", "3", "4"].map(async (suffix) => {
+                    const name = `monty.component.core${suffix}.wasm`;
+                    return [
+                      name,
+                      {
+                        type: "wasm" as const,
+                        contents: await readFile(
+                          new URL(
+                            `../../../../../packages/flowmode-runtime-monty/generated/${name}`,
+                            import.meta.url,
+                          ),
+                        ),
+                      },
+                    ];
+                  }),
+                ),
+              ),
+              ...Object.fromEntries(
+                await Promise.all(
                   ["kernel", "reflect", "wtf8"].map(async (name) => [
                     `scheme-${name}.wasm`,
                     {
                       type: "wasm" as const,
                       contents: await readFile(
-                        createRequire(import.meta.url).resolve(`#scheme-${name}-wasm`),
+                        new URL(
+                          `../../../../../packages/flowmode-runtime-scheme/generated/${name}.wasm`,
+                          import.meta.url,
+                        ),
                       ),
                     },
                   ]),
@@ -123,9 +160,13 @@ export async function startCloudflareHost(model: TestModelInstallation, installE
   }
   return {
     async handle(request: Request): Promise<Response> {
+      const headers = new Headers(request.headers);
+      if (language) {
+        headers.set("X-Workflow-Language", language);
+      }
       const response = (await worker.dispatchFetch(request.url, {
         method: request.method,
-        headers: Object.fromEntries(request.headers),
+        headers: Object.fromEntries(headers),
         body: request.body ? await request.text() : undefined,
         signal: request.signal,
       })) as unknown as Response;

@@ -1,3 +1,5 @@
+import { createMontyStack } from "./monty.mjs";
+import { loadMontyModule } from "@sweatpants/flowmode-runtime-monty/worker";
 import { reviewDraft } from "./review-draft.workflow.ts";
 import { getCompiledWorkflow } from "@sweatpants/flowmode-runtime/compiled-tool";
 import luaWasm from "#execution-lua-wasm";
@@ -17,6 +19,7 @@ import { createWorkflowModels } from "../src/server/cloudflare/model-catalog.ts"
 import { authorCaller } from "../src/execution/author.ts";
 
 const { createExecutionService, validateCaller, languages, authoring } = executionServiceFactory([
+  createMontyStack(loadMontyModule),
   schemeStack(
     createHootAuthoring({
       loadMachine: loadWorkerMachine,

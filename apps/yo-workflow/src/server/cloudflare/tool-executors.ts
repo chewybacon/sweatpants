@@ -1,3 +1,8 @@
+import { loadMontyModule } from "@sweatpants/flowmode-runtime-monty/worker";
+import {
+  MontyEvaluationPort,
+  createMontyEvaluationDriver,
+} from "@sweatpants/flowmode-runtime-monty/evaluation";
 import luaWasm from "#execution-lua-wasm";
 import { createWasmLuaInvoker } from "@sweatpants/flowmode-runtime-lua/wasm";
 import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
@@ -9,6 +14,7 @@ import { programs } from "../../workflow/agent.ts";
 export const ToolExecutors = createToolExecutorObject({
   tools: programs,
   *setup() {
+    yield* MontyEvaluationPort.installDriver(createMontyEvaluationDriver(loadMontyModule));
     yield* LuaEvaluationPort.installDriver({ execute: createWasmLuaInvoker(async () => luaWasm) });
     yield* SchemeEvaluationPort.installDriver(createWorkerSchemeDriver());
   },

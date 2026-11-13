@@ -7,6 +7,7 @@ import { clientContractPlugin, workflowPlugin } from "@sweatpants/vite-plugin";
 export default defineConfig({
   output: "server",
   session: false,
+  server: { allowedHosts: ["p-8112.fff-fun.home.arpa"] },
   adapter: cloudflare({
     imageService: "passthrough",
     persistState: { path: process.env.WORKFLOW_LOCAL_STATE_PATH ?? ".wrangler/worker-state" },

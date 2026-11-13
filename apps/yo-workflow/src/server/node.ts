@@ -1,3 +1,8 @@
+import { loadMontyModule } from "@sweatpants/flowmode-runtime-monty/node";
+import {
+  MontyEvaluationPort,
+  createMontyEvaluationDriver,
+} from "@sweatpants/flowmode-runtime-monty/evaluation";
 import { LuaEvaluationPort } from "@sweatpants/flowmode-runtime-lua";
 import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
 import { workflowLanguage, type WorkflowLanguage } from "../workflow/language.ts";
@@ -21,6 +26,7 @@ function application(language: WorkflowLanguage) {
     decisionProvider: createPiAiDecisionProvider(),
     execution: inProcess({
       *setup() {
+        yield* MontyEvaluationPort.installDriver(createMontyEvaluationDriver(loadMontyModule));
         yield* LuaEvaluationPort.installDriver({ execute: invokeWasm });
         yield* SchemeEvaluationPort.installDriver(createNodeSchemeDriver());
       },

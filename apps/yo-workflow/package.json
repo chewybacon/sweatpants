@@ -32,7 +32,8 @@
     "lint:fix": "cd ../.. && oxlint --type-aware apps/yo-workflow --fix",
     "format": "cd ../.. && oxfmt apps/yo-workflow",
     "format:check": "cd ../.. && oxfmt apps/yo-workflow --check",
-    "build:clean": "tsx ../../scripts/clean-build.ts ."
+    "build:clean": "tsx ../../scripts/clean-build.ts .",
+    "execution:demo": "tsx scripts/dev-execution.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
@@ -49,6 +50,7 @@
     "@sweatpants/flowmode-backend": "workspace:*",
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/flowmode-runtime-lua": "workspace:*",
+    "@sweatpants/flowmode-runtime-monty": "workspace:*",
     "@sweatpants/flowmode-runtime-scheme": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
     "@sweatpants/frame-renderer": "workspace:*",

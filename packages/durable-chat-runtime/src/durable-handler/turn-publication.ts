@@ -1,4 +1,9 @@
-import { createChatTurnCompletedFact, projectChatTurnFacts } from "@sweatpants/chat-core";
+import { EventType } from "@ag-ui/core";
+import {
+  createChatTurnCompletedFact,
+  projectChatTurnFacts,
+  CONVERSATION_AUTHORITY_FRAME_TYPE,
+} from "@sweatpants/chat-core";
 import { assertJson, stableTupleHash } from "@sweatpants/foundation";
 import { LOW_CHECKPOINT_TARGETS } from "@sweatpants/history-store";
 import { conversationAuthority } from "../conversation-authority.ts";
@@ -60,7 +65,7 @@ export function createTurnPublishers(
         },
         createdAt: Date.now(),
       });
-      return {
+      const publication = {
         authority: conversationAuthority(requestedConversationId, persisted.head),
         /* CONDITIONAL-SPREAD: Expose window only when its backing capability exists; callers inspect supported methods. */
         ...(projectionTokens
@@ -76,6 +81,17 @@ export function createTurnPublishers(
             }
           : {}),
       };
+      const interrupt = events.filter((event) => event.type === EventType.RUN_FINISHED).at(-1);
+      if (interrupt) {
+        liveActivation?.publication.resolve([
+          ...(publication.window
+            ? [publication.window]
+            : events.filter((event) => event.type !== EventType.RUN_FINISHED)),
+          { type: CONVERSATION_AUTHORITY_FRAME_TYPE, authority: publication.authority },
+          interrupt,
+        ]);
+      }
+      return publication;
     },
     publishTerminal: function* ({ outcome, disposition, events }) {
       if (!authorityTurn) {
@@ -100,7 +116,7 @@ export function createTurnPublishers(
       if (disposition === "cancelled") {
         cancelOpenInterruptsForThread(agUiThreadId);
       }
-      liveActivation?.terminal.resolve(undefined);
+      liveActivation?.publication.resolve([]);
       const terminalCheckpoint = terminalHead?.checkpoint
         ? yield* stores.conversation.getCheckpoint(terminalHead.checkpoint)
         : null;

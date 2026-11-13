@@ -1,3 +1,4 @@
+import { createPythonTool } from "./python/tool.ts";
 import { computationApproval } from "./tools/computation-approval.ts";
 import { createLuaTool } from "./lua/tool.ts";
 import type { WorkflowLanguage } from "./language.ts";
@@ -24,7 +25,14 @@ const primitives: readonly BoundTool[] = [
 ];
 export const scheme = createSchemeTool(primitives);
 export const lua: ReturnType<typeof createLuaTool> = createLuaTool(primitives);
-export const programs: readonly BoundTool[] = [scheme, lua, computationApproval, ...primitives];
+export const python: ReturnType<typeof createPythonTool> = createPythonTool(primitives);
+export const programs: readonly BoundTool[] = [
+  scheme,
+  lua,
+  python,
+  computationApproval,
+  ...primitives,
+];
 export function createWorkflowExposure(language: WorkflowLanguage = "scheme"): ToolExposurePolicy {
   return {
     *filter({ entries }) {

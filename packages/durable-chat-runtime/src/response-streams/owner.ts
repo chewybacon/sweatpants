@@ -119,31 +119,47 @@ export function* createDurableTurnOwner(
     },
   };
 
-  let resolveReady!: () => void;
+  let resolveReady!: (result: { ok: true } | { ok: false; error: unknown }) => void;
   let rejectReady!: (error: unknown) => void;
-  const ready = new Promise<void>((resolve, reject) => {
+  const ready = new Promise<{ ok: true } | { ok: false; error: unknown }>((resolve, reject) => {
     resolveReady = resolve;
     rejectReady = reject;
   });
   void containerScope
     .run(function* () {
-      scope = yield* useScope();
-      yield* installDurableStreamsOwner(owner);
-      if (setup) {
-        yield* setup();
+      try {
+        scope = yield* useScope();
+        yield* installDurableStreamsOwner(owner);
+        if (setup) {
+          yield* setup();
+        }
+        resolveReady({ ok: true });
+      } catch (error) {
+        // Contain hook failures inside their structural Host child. Keep its
+        // resources alive until the requesting operation destroys the owner;
+        // a Promise rejection handler is too late to protect sibling Turns.
+        resolveReady({ ok: false, error });
       }
-      resolveReady();
       yield* suspend();
     })
     .catch(rejectReady);
+  let transferred = false;
   try {
-    yield* call(() => ready);
-  } catch (error) {
-    yield* call(() => destroyScope());
-    throw error;
+    const result = yield* call(() => ready);
+    if (!result.ok) {
+      throw result.error;
+    }
+    host.register(owner);
+    transferred = true;
+    return owner;
+  } finally {
+    // Until registration succeeds, initialization owns teardown, including
+    // request cancellation while the hook is suspended. Effection halt skips
+    // the catch above and remains structural cancellation, never readiness.
+    if (!transferred) {
+      yield* owner.abort();
+    }
   }
-  host.register(owner);
-  return owner;
 }
 
 const DurableStreamsOwnerContext = createContext<DurableStreamsOwner | undefined>(

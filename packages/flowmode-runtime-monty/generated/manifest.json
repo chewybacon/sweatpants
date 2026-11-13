@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "1667caad8e01be119074f64fc066c5bc61ad3a66",
+  "sourceState": "clean",
+  "associationOrigin": "playground/coroutine-implementation/cancelled-error1/build1/native-async-association.json",
+  "dumpVersion": 36,
+  "minimumReaderVersion": 36,
+  "artifacts": {
+    "monty.component.core.wasm": "e93810f5fe8555e63f210884a1f14d3e0cc07bc03b2717057cfc5c2c615e8384",
+    "monty.component.core4.wasm": "85022c45607e585ab1f7bd648ecd60907ec8ec91d37461a7919c6539714723e8",
+    "monty.component.core3.wasm": "f6ca4d98715d3eb51fb58a9cfc6ee558fd2bc7ca8eee48bdea9dda96e6334186",
+    "monty.component.core2.wasm": "e764a442d40199804739a8fcf8b06897d9cd21dc8aae33c067fbe9d38eaaf73e",
+    "monty.component.js": "16e3bee6f8f062704cb575aeccf057828d4da2f159b6b7512593ee3cff51eddc"
+  },
+  "previousAssociationSha256": "2f286b64cd32f8e8a4f9f5e871c26cab63ee3f8afbe79d1c25b6c251b3f7f7d3",
+  "associationSha256": "f7bf7e974f582f30d7b373631d1dcb7aa3bc15272548d51d325d77d4a8fba391",
+  "buildSourceCommit": "e5077481b13a4e9de83cdaca90aff3ae638281be",
+  "buildSourcePatchSha256": "40e5439a7474743a16168bc7caa92864a2073d8c4e8e10b7fdb5c9ff38f0d8bb"
+}

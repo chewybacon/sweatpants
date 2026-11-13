@@ -3,7 +3,7 @@
 The composer selects the language for the next task. The message stays unchanged.
 `src/chat/authoring.ts` sends the selection and language-specific authoring policy;
 `src/server/cloudflare.ts` selects the model-facing inventory through
-`src/workflow/agent.ts`. Both durable tools remain registered so earlier work can
+`src/workflow/agent.ts`. All durable tools remain registered so earlier work can
 resume. The selection is disabled during an active task and remembered per thread
 in this browser. The authoritative execution language is the journaled tool call.
 
@@ -241,3 +241,38 @@ resolved both issues without changing expectations, skip baselines or timeouts;
 all 20 Redis tests ran and passed. The existing PostgreSQL service was untouched.
 Owned app and test services were stopped after validation. Broad `land:live` was
 not run; the live evidence above is targeted real-provider computer use.
+
+## Python Playground
+
+The language selector now exposes Python to the authoring model through the
+`python` durable tool (`src/workflow/python/tool.ts`). It executes ordinary
+`async def main()` code using real `from sandbox import ask, random, ...` imports.
+The shared Ask, Echo, Random, Sample, Decision and document contracts are supplied
+by the host. Each accepts one request dictionary; Ask returns its existing
+accept/decline/cancel envelope. This is separate from the fixed `/execution`
+read-file example and its intentionally disabled model-authoring control.
+
+The host journals compressed Monty snapshots at compute boundaries and disposes
+the Wasm instance before waiting for a capability. Replaying an accepted turn
+reuses its recorded result; it does not redraw randomness or repeat a human
+question. The tool identity includes the runtime identity and capability bindings.
+Node and workerd install the same evaluator, with their respective module loaders.
+
+`asyncio.gather` admits distinct capability calls concurrently. This first
+Playground adapter services the frontier in admission order. Standard TaskGroup,
+Queue, timers, arbitrary Python packages and filesystem access are not exposed.
+Validation executes through the first host boundary without performing host
+effects; later branches and request schemas remain unchecked. Native turn/time
+and memory limits apply; there is no cooperative computation-approval UI yet.
+The chat Stop command does not promise guest unwind; an Ask cancel action returns
+to Python for explicit handling. Kernel cancellation and yielding cleanup are
+separately tested.
+
+Public evidence: `acceptance/__tests__/monty/playground.acceptance.test.ts` proves
+random-result retention, Ask accept/decline/cancel, fresh-instance recovery,
+gather and cancellation cleanup. `playground-cloudflare.acceptance.test.ts`
+exercises the real model protocol (controlled provider), validation feedback,
+generated Python tool invocation and Ask recovery across workerd replacement.
+A live CLI-proxy run with gpt-6.1-sol also authored, validated, and completed a
+rock-paper-scissors game after a browser reload on the pending Ask (2026-10-29).
+The controlled-provider test remains the repeatable regression gate.
