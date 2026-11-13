@@ -26,6 +26,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
+    "@ag-ui/core": "1.0.4",
     "@earendil-works/pi-ai": "1.5.1",
     "@standard-durability/core": "workspace:*",
     "@standard-schema/spec": "catalog:",
@@ -48,6 +49,7 @@
     "@sweatpan.ts/execution-worker": "workspace:*",
     "@sweatpan.ts/hosting": "workspace:*",
     "@sweatpan.ts/hosting-cloudflare": "workspace:*",
+    "@sweatpan.ts/protocols-ag-ui": "workspace:*",
     "@sweatpan.ts/providers": "workspace:*",
     "@sweatpan.ts/providers-pi-ai": "workspace:*",
     "@sweatpan.ts/runtime": "workspace:*",

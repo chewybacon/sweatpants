@@ -23,6 +23,11 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/protocols-ag-ui",
     "format:check": "cd ../../.. && oxfmt packages/v2/protocols-ag-ui --check"
   },
+  "dependencies": {
+    "@ag-ui/core": "1.0.4",
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:"
   }

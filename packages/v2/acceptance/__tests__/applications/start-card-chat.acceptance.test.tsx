@@ -1,3 +1,5 @@
+import { EventType } from "@ag-ui/core";
+import { EventSchemas } from "@ag-ui/core/schemas";
 import { createReadableStream } from "@sweatpan.ts/runtime";
 import {
   createCardChatRun,
@@ -126,9 +128,23 @@ forEachRuntime((runtime) => {
       .split("\n\n")
       .filter((event) => event.startsWith("data: "))
       .map((event) => JSON.parse(event.slice(6)));
-    const observed = events.find((event) => event.type === "CUSTOM").value;
+    const observed = events.find((event) => event.type === EventType.CUSTOM).value;
     const question = observed.turns[0].parts.find((part: { type: string }) => part.type === "tool")
       .questions[0];
+    expect(events.at(-1)).toMatchObject({
+      type: "RUN_FINISHED",
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: question.id,
+            reason: "input_required",
+            metadata: { "sweatpants/question": question },
+          },
+        ],
+      },
+    });
+    expect(EventSchemas.safeParse(events.at(-1)).success).toBe(true);
     const rejected = await handlers.POST({
       request: new Request(`http://localhost/api/card-chat/${retained.current}`, {
         method: "POST",
@@ -275,6 +291,7 @@ forEachRuntime((runtime) => {
       "CUSTOM",
       "RUN_FINISHED",
     ]);
+    expect(suffix.find((event) => event.type === EventType.RUN_FINISHED)?.outcome).toBeUndefined();
     const view = await owner.result;
     expect(view.turns[0]?.status).toBe("completed");
     expect(calls).toBe(1);
@@ -309,7 +326,9 @@ forEachRuntime((runtime) => {
     }
     await readOwner.result;
     expect(restored.map((event) => event.type)).toEqual(["RUN_STARTED", "CUSTOM", "RUN_FINISHED"]);
-    expect(restored.find((event) => event.type === "CUSTOM")).toMatchObject({ value: view });
+    expect(restored.find((event) => event.type === EventType.CUSTOM)).toMatchObject({
+      value: view,
+    });
     for (const db of connections) {
       expect(() => db.prepare("SELECT 1")).toThrow();
     }
@@ -405,7 +424,7 @@ forEachRuntime((runtime) => {
       .split("\n\n")
       .filter(Boolean)
       .map((event) => JSON.parse(event.slice(6)));
-    const view = events.find((event) => event.type === "CUSTOM").value;
+    const view = events.find((event) => event.type === EventType.CUSTOM).value;
     expect(view.turns).toHaveLength(1);
     expect(view.turns[0].status).toBe("running");
   });

@@ -91,15 +91,16 @@ The server selects Pi's OpenAI provider by default (`CHAT_PROVIDER`, `CHAT_MODEL
 default `gpt-6.1-sol`). `OPENAI_BASE_URL` supports the CLI proxy; credentials belong
 in the server environment (`OPENAI_API_KEY`), never client code or committed files.
 The request-owned SSE stream uses AG-UI text/run event names and a `CUSTOM`
-`card-chat-view` event for this application's validated detached snapshot. This is
-an application adapter, not a general AG-UI client implementation. Provisional text
+`card-chat-view` event for this application's validated detached snapshot. The run/text/custom projection comes from
+`@sweatpan.ts/protocols-ag-ui`; this is not a general AG-UI client implementation. Provisional text
 is replaced by accepted history when the command completes. Disconnect stops local
 request work, not durable cancellation; interrupted/uncertain work remains visible
 with explicit retry/check-status/continue actions. No automatic model retry is added.
 
 ### Run events are a stream
 
-`server/chat-run.ts` is the shared app-local assembly experiment. The card wrapper
+`server/chat-run.ts` supplies application commands and public views to the framework
+`createAgUiRun` adapter. The card wrapper
 `server/card-chat-run.ts` supplies card-specific policy. It uses the existing
 runtime `Stream` and buffered signal; constructing it starts no work. The caller
 explicitly owns production, and each reader pulls independently:
@@ -112,7 +113,13 @@ const body = createReadableStream(runtime, run.events());
 // The owner must eventually be awaited or explicitly cancelled.
 ```
 
-The Start handler adapts that stream to SSE. Each browser `.read()` requests one
+The Start handler acquires `createSession` inside the response-consumption scope.
+Its attempt factory supplies `createDemoRun` and the request signal; `send` starts
+one producer and returns independent `events()` and host-only `result()` access.
+The session owns producer shutdown and joined cleanup. It does not own command
+admission, answer validation, outcome projection or the shape of the public view.
+
+The handler adapts that stream to SSE. Each browser `.read()` requests one
 runtime stream item; waiting readers wake from the existing signal, without polling.
 Slow readers do not stall execution, and cancelling one subscription does not cancel
 production. The route deliberately adds request ownership: cancelling its response
@@ -131,10 +138,19 @@ explicit attempt for the same turn. A full turn-following stream across parked
 requests still needs an owner/notification and retention policy. This experiment
 establishes the stream consumption boundary without inventing that policy.
 
+When public questions remain open, `RUN_FINISHED.outcome` has type `interrupt` and
+includes every answerable question. Interrupt IDs are the public question IDs;
+`metadata["sweatpants/question"]` carries the same root, execution, resolution grant,
+effect and input as the custom view. GET reconstructs these interrupts from SQLite.
+Answered, blocked and cancelled questions are excluded. With no open questions the
+serialized terminal event omits `outcome`; it does not assert objective success. Answers still
+use the existing validated command route, not AG-UI resume input. The metadata is
+public presentation data, not participant authentication or answer authority.
+
 Acceptance covers two readers, a slow reader, disconnection, same-attempt offset
 resume, persisted reconstruction and pre-aborted requests under both runtimes.
-The runtime buffer is memory-only and unbounded over one attempt; a longer-lived
-run service would need an explicit retention policy before promotion.
+The promoted adapter retains the memory-only buffer for one attempt. It is unbounded;
+a longer-lived run service still needs an explicit retention and ownership policy.
 
 The acceptance journey uses the actual React composer and picker, SSE handlers,
 SQLite reopen and both native runtimes with a scripted model exchange. It covers

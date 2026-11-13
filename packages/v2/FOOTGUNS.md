@@ -231,3 +231,37 @@ that database, not a portable execution timeline or durable reconnect protocol.
 **Author responsibility:** Own the read snapshot and connection, select the serializer,
 and retain application correlation and disclosure policy. A pending external attempt
 is not an accepted history entry. See [SQLite inspection](./storage-sqlite/README.md#read-only-database-inspection).
+
+## FG-014 — Publishing terminal success before native cleanup joins
+
+A command returns a view but its resource cleanup fails. Publishing `RUN_FINISHED`
+inside that command's scope advertises success before the owner has its outcome.
+Native scope failures can also bypass a surrounding generator `catch`.
+
+**Boundary:** The AG-UI run adapter joins a nested command scope before publishing
+success. Its outer finalizer emits a public failure fallback if execution began but
+no terminal event was published, then closes readers. Pre-aborted work emits no run.
+Application-selected terminal outcome projection runs after successful cleanup;
+projection or cloning failure publishes a public error instead of `RUN_FINISHED`.
+
+**Author responsibility:** Keep public error text separate from private exceptions.
+An attempt's terminal frame is a presentation fact, not durable cancellation,
+rollback, objective verification or permission to retry an uncertain external effect.
+See [run projection](./protocols-ag-ui/README.md).
+
+## FG-015 — Confusing session ownership with native context inheritance
+
+A session acquired in a parent scope can receive sends from a shorter child scope.
+Registering attempt shutdown in that child would stop work as soon as the send
+returns. Conversely, `runtime.start` creates a host root; lifetime ownership does
+not automatically carry the acquiring scope's installed middleware into production.
+
+**Boundary:** `createSession` registers cleanup at acquisition, tracks outstanding
+native executions and starts every cancellation before joining cleanup. A result
+waiter or reader owns only its observation. Production uses the existing runtime
+host boundary; the factory and producer must bind/install their dependencies.
+
+**Author responsibility:** Acquire the session in the intended owning scope and
+give each send a fresh producer. Keep command acceptance, validation and conflicting
+input policy explicit. A successfully returned attempt handle is not an admission
+receipt. See [scoped sessions](./runtime/README.md#scoped-sessions).

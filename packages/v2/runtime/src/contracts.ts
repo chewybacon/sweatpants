@@ -42,6 +42,33 @@ export interface Runtime<Yielded> extends Streams<Yielded> {
   start<T>(work: Work<T, Yielded>): RuntimeExecution<T>;
 }
 
+/** One started execution, with independent event readers and a retained host result. */
+export interface Attempt<Event, End, Y> {
+  /** Observe this attempt without starting or stopping its producer. Retention,
+   * offset validation and value isolation follow the supplied producer. */
+  events(offset?: number): Stream<Event, void, Y>;
+  /** Wait for the same execution and joined cleanup; repeated reads never execute
+   * again. Original failures propagate here. Cancelling a waiter stops only its wait. */
+  result(): Operation<End, Y>;
+}
+
+/** Fresh unstarted producer. Own event closure, disclosure and terminal protocol
+ * projection; events must support independent readers without starting production. */
+export interface AttemptProducer<Event, End, Y> {
+  /** Execute once, joining command-owned resources before returning. */
+  run(): Operation<End, Y>;
+  /** Read retained events independently of production. */
+  events(offset?: number): Stream<Event, void, Y>;
+}
+
+/** Acquisition-scope owner of native attempts. No admission, queue or retry policy. */
+export interface Session<Input, Event, End, Y> {
+  /** Construct and start one producer. Returning acknowledges attempt creation,
+   * not durable input acceptance. Rejects after the acquisition scope exits.
+   * Conflicting inputs must be rejected/serialized by the application. */
+  send(input: Input): Operation<Attempt<Event, End, Y>, Y>;
+}
+
 /** Scoped subscription; one next operation at a time. Sources define pull/broadcast behavior. */
 export interface Subscription<T, Close, Y> {
   /** Wait for the next value or completion. Rejects use after the subscribing scope exits. */
