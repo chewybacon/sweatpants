@@ -213,3 +213,67 @@ forEachRuntime((runtime) => {
     });
   }
 });
+
+forEachRuntime((runtime) => {
+  it(`${runtime.name}: typed publisher extensions preserve lifecycle ownership and detached delivery`, async () => {
+    let publisher: AgUiRunPublisher<unknown> | undefined;
+    const snapshot = { progress: { count: 1 } };
+    const run = createAgUiRun(runtime, {
+      threadId: "extended",
+      errorMessage: "Public failure",
+      *execute(publish) {
+        publisher = publish;
+        publish.event({
+          type: EventType.TOOL_CALL_START,
+          toolCallId: "call",
+          toolCallName: "read",
+        });
+        publish.event({
+          type: EventType.TOOL_CALL_ARGS,
+          toolCallId: "call",
+          delta: '{"path":"guide"}',
+        });
+        publish.event({ type: EventType.TOOL_CALL_END, toolCallId: "call" });
+        publish.event({
+          type: EventType.TOOL_CALL_RESULT,
+          toolCallId: "call",
+          messageId: "result",
+          role: "tool",
+          content: '"done"',
+        });
+        publish.event({ type: EventType.STATE_SNAPSHOT, snapshot });
+        snapshot.progress.count = 99;
+        expect(() => {
+          // @ts-expect-error Run lifecycle remains owned by createAgUiRun.
+          publish.event({ type: EventType.RUN_ERROR, message: "forged" });
+        }).toThrow("owned");
+        return "done";
+      },
+    });
+    await runtime.start(() => run.run()).result;
+    publisher!.event({ type: EventType.TOOL_CALL_END, toolCallId: "late" });
+    const events = await runtime.start(function* () {
+      const stream = yield* run.events();
+      const values: AGUIEvent[] = [];
+      while (true) {
+        const item = yield* stream.next();
+        if (item.done) {
+          return values;
+        }
+        values.push(EventSchemas.parse(item.value));
+      }
+    }).result;
+    expect(events.map((event) => event.type)).toEqual([
+      EventType.RUN_STARTED,
+      EventType.TOOL_CALL_START,
+      EventType.TOOL_CALL_ARGS,
+      EventType.TOOL_CALL_END,
+      EventType.TOOL_CALL_RESULT,
+      EventType.STATE_SNAPSHOT,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(events.find((event) => event.type === EventType.STATE_SNAPSHOT)?.snapshot).toEqual({
+      progress: { count: 1 },
+    });
+  });
+});

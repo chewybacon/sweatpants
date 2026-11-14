@@ -231,3 +231,20 @@ attempt occupied; explicit subsequent runs do not fabricate a tool result or ret
 the provider. Every advancement is caller-invoked. Booking services are simulated;
 structured output, progress projection, MCP delegation and scheduling remain outside
 this experiment.
+
+## Recorded chat presentation
+
+`createChatPresentation({ program, execution, emit })` consumes
+`ExecutionPresentationFrame` through its `present` method and emits typed
+`ChatPresentationEvent` values. Use the complete `ChatProgram.id` and root journal id.
+It decodes only that recorded-chat/v1 sample/batch protocol, associates model requests
+with persisted child links, and projects calls, child results, waiting state, accepted
+assistant text/usage and underlying operations. The same mapper handles live frames
+and retained replay. Each instance owns its correlation/deduplication state.
+
+Call presentation IDs use execution/sample/content position; they never copy opaque
+provider call IDs or thought signatures. The chat protocol itself rejects reused model
+call IDs. Provider continuation envelopes, accumulated model context and reasoning
+are excluded. Operation inputs/results remain trusted application data: consumers
+must select their public fields. A terminal child emits its own result while siblings
+may remain parked. This adapter has no AG-UI dependency and owns no execution.

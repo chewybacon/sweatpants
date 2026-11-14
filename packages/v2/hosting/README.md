@@ -1002,3 +1002,34 @@ Their schema lookup, role filtering, JSON projection, answer validation, edge en
 and historical command routes remain local. The focused suites cover 76 tree cases
 across memory/SQLite and both runtimes, plus 16 chat cases. Additional type evidence
 checks unknown node payloads and preservation of the runtime yield type.
+
+## Scoped middleware and execution presentation
+
+`installHostingMiddleware(composition, { install(host, journal) })` selects a
+middleware installer in the current native scope. Every `createHosting` run in that
+scope or a descendant installs it inside its own run scope, including tool children.
+Installers use the existing `host.around` and `host.attempts.around` APIs. The generic
+install signature preserves each host's request/result types. Construction performs
+no installation; a new `runtime.start` root must install its own policy.
+
+Built-in retained activation and child routing are inner (`min`) implementation
+layers. Outer middleware can observe their returned boundaries even when those
+implementations do not call next. User middleware can still short-circuit; this
+mechanism does not bypass author-selected policies or provide transaction hooks.
+
+`createExecutionPresentation(composition, emit)` assembles that middleware with
+incremental journal observation. Call `restore(rootReader)` once for retained history,
+then `install()` before driving hosts. The sink receives typed
+`ExecutionPresentationFrame` values: accepted exchanges, child links, execution
+state, and delivery start/failure. Live reads inspect only the current execution;
+restoration traverses retained historical and active child links without acquiring
+Guests. Cursors and deduplication last for this presentation instance, not globally.
+
+The adapter observes owned journals (id/read/readChildren/openChild). Plain Journal
+implementations remain usable by hosting but do not supply this tree projection.
+Snapshots are not an atomic tree frontier. This is not a cross-process subscription:
+external writers and answer-only commands require a fresh read/restoration; an answer
+followed by run is observed by the resumed child's host. Presentation failure after
+settlement cannot undo acceptance and must never trigger handler redispatch. Native
+interruption is not converted into an accepted failure. Sinks own data disclosure,
+retention and transport; frames carry neither checkpoints nor resolution authority.

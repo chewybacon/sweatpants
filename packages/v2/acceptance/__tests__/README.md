@@ -696,3 +696,7 @@ runs its actual app through the adapter, retaining independent-reader, offset-re
 pre-aborted request and SQLite reconstruction coverage. Other yo-chat-v2 wrappers
 share the migrated implementation. No objective assessment or agent continuation
 policy is introduced. Offsets and retained events remain attempt-local and in-memory.
+
+- `applications/run-presentation.acceptance.test.ts`: scoped root/child presentation,
+  waiting siblings, accepted answers, stable replay and provider-field exclusion on
+  both native runtimes; `ag-ui-run` also covers typed publisher extension ownership.

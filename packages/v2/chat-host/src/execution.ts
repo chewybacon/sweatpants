@@ -69,72 +69,75 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
         });
         yield* installGuestRetention(runtime.composition, host, recovery, journal);
         yield* host.around(grant.admission);
-        yield* host.around({
-          *child([pending], next) {
-            if (pending.request.effect !== options.batch.effect) {
-              return yield* next(pending);
-            }
-            const calls = options.batch.calls(pending.request.input);
-            if (!calls.length) {
-              throw new Error("Empty chat tool batch");
-            }
-            const routes = calls.map((call) => {
-              const route = names.get(call.name);
-              if (!route) {
-                throw new Error("Unknown model tool");
+        yield* host.around(
+          {
+            *child([pending], next) {
+              if (pending.request.effect !== options.batch.effect) {
+                return yield* next(pending);
               }
-              return route;
-            });
-            const state = yield* journal.read();
-            if (state.status !== "running" || state.pending?.id !== pending.id) {
-              throw new Error("Chat batch boundary changed");
-            }
-            const stored = state.children;
-            if (
-              stored &&
-              (stored.length !== routes.length ||
-                stored.some((link, i) => link.program !== routes[i]!.program))
-            ) {
-              throw new Error("Stored chat batch differs from catalog");
-            }
-            const inputs: unknown[] = [];
-            for (const [index, call] of calls.entries()) {
-              if (stored) {
-                inputs.push(stored[index]!.input);
-              } else {
-                const parsed = yield* runtime.fromPromise(async () =>
-                  routes[index]!.context["~standard"].validate(call.input),
-                );
-                if (parsed.issues) {
-                  throw new Error("Invalid chat tool input");
+              const calls = options.batch.calls(pending.request.input);
+              if (!calls.length) {
+                throw new Error("Empty chat tool batch");
+              }
+              const routes = calls.map((call) => {
+                const route = names.get(call.name);
+                if (!route) {
+                  throw new Error("Unknown model tool");
                 }
-                inputs.push(parsed.value);
+                return route;
+              });
+              const state = yield* journal.read();
+              if (state.status !== "running" || state.pending?.id !== pending.id) {
+                throw new Error("Chat batch boundary changed");
               }
-            }
-            const children = yield* journal.ensureChildren<
-              unknown,
-              CapabilityRequest,
-              unknown,
-              string
-            >(pending.id, {
-              children: routes.map((route, index) => ({
-                program: route.program,
-                input: inputs[index],
-              })),
-              outcome: options.batch.outcome,
-            });
-            return {
-              id: pending.id,
-              *run() {
-                return joinChildHostingResults(
-                  yield* runtime.all(
-                    children.map((child, index) => () => routes[index]!.run(child)),
-                  ),
-                );
-              },
-            };
+              const stored = state.children;
+              if (
+                stored &&
+                (stored.length !== routes.length ||
+                  stored.some((link, i) => link.program !== routes[i]!.program))
+              ) {
+                throw new Error("Stored chat batch differs from catalog");
+              }
+              const inputs: unknown[] = [];
+              for (const [index, call] of calls.entries()) {
+                if (stored) {
+                  inputs.push(stored[index]!.input);
+                } else {
+                  const parsed = yield* runtime.fromPromise(async () =>
+                    routes[index]!.context["~standard"].validate(call.input),
+                  );
+                  if (parsed.issues) {
+                    throw new Error("Invalid chat tool input");
+                  }
+                  inputs.push(parsed.value);
+                }
+              }
+              const children = yield* journal.ensureChildren<
+                unknown,
+                CapabilityRequest,
+                unknown,
+                string
+              >(pending.id, {
+                children: routes.map((route, index) => ({
+                  program: route.program,
+                  input: inputs[index],
+                })),
+                outcome: options.batch.outcome,
+              });
+              return {
+                id: pending.id,
+                *run() {
+                  return joinChildHostingResults(
+                    yield* runtime.all(
+                      children.map((child, index) => () => routes[index]!.run(child)),
+                    ),
+                  );
+                },
+              };
+            },
           },
-        });
+          { at: "min" },
+        );
         if (options.configure) {
           yield* options.configure({ host, effects });
         }

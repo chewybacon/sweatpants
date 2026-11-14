@@ -82,91 +82,94 @@ export function createOwnedGroup<C, I, Y>(
       return group;
     },
     *install({ host, journal, recovery, run }) {
-      yield* host.around({
-        *child([pending], next) {
-          if (pending.request.effect !== effect.id) {
-            return yield* next(pending);
-          }
-          // Trusted local request: membership is checked against live reconstructed
-          // bindings below. Remote ingress must authenticate/decode before this layer.
-          const position = pending.request.input as Position;
-          return {
-            id: pending.id,
-            run() {
-              return runtime.composition.scoped(function* () {
-                const state = yield* journal.read();
-                if (state.status !== "running" || state.pending?.id !== pending.id) {
-                  return true; // Parent advanced; ask its host to reactivate.
-                }
-                // Never inherit an ancestor's registry. Every routed group rebuilds
-                // its own parent in this scope, even if a same-slot registry is visible.
-                yield* current.set(new Map());
-                const restored = yield* recovery.operations.recover({
-                  ...state,
-                  checkpoint: undefined,
+      yield* host.around(
+        {
+          *child([pending], next) {
+            if (pending.request.effect !== effect.id) {
+              return yield* next(pending);
+            }
+            // Trusted local request: membership is checked against live reconstructed
+            // bindings below. Remote ingress must authenticate/decode before this layer.
+            const position = pending.request.input as Position;
+            return {
+              id: pending.id,
+              run() {
+                return runtime.composition.scoped(function* () {
+                  const state = yield* journal.read();
+                  if (state.status !== "running" || state.pending?.id !== pending.id) {
+                    return true; // Parent advanced; ask its host to reactivate.
+                  }
+                  // Never inherit an ancestor's registry. Every routed group rebuilds
+                  // its own parent in this scope, even if a same-slot registry is visible.
+                  yield* current.set(new Map());
+                  const restored = yield* recovery.operations.recover({
+                    ...state,
+                    checkpoint: undefined,
+                  });
+                  const turn = restored.turn;
+                  const actual =
+                    turn.kind === "suspended" ? (turn.request.input as Position) : undefined;
+                  if (
+                    turn.kind !== "suspended" ||
+                    turn.request.effect !== effect.id ||
+                    actual?.slot !== position.slot ||
+                    actual?.count !== position.count ||
+                    turn.scope?.scopeId !== pending.scope?.scopeId ||
+                    turn.scope?.frameId !== pending.scope?.frameId ||
+                    turn.scope?.phase !== pending.scope?.phase ||
+                    turn.scope?.critical !== pending.scope?.critical
+                  ) {
+                    throw new Error("Owned group replay differs from pending boundary");
+                  }
+                  const bindings = yield* current.get();
+                  const factories = bindings?.get(position.slot);
+                  if (!factories || factories.length !== position.count) {
+                    throw new Error("Owned branch bindings unavailable");
+                  }
+                  const children = yield* runtime.composition.catchError(
+                    function* () {
+                      return yield* journal.ensureChildren<
+                        unknown,
+                        CapabilityRequest,
+                        unknown,
+                        string
+                      >(pending.id, {
+                        join,
+                        children: factories.map((_, index) => ({
+                          program: `${state.program}/${effect.id}/${join}:${position.slot}/branch:${index}`,
+                          input: { slot: position.slot, index },
+                        })),
+                        outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
+                      });
+                    },
+                    function* (error) {
+                      if (!(error instanceof JournalConflict)) {
+                        throw error;
+                      }
+                      return undefined;
+                    },
+                  );
+                  if (!children) {
+                    return true;
+                  }
+                  const settled = yield* runtime.all(
+                    children.map(
+                      (child, index) =>
+                        function* () {
+                          return yield* run(child, factories[index]!, index);
+                        },
+                    ),
+                  );
+                  // Join every child before releasing replay-reconstructed factories. A yield
+                  // is not terminal settlement and must reach the owning parent Host.
+                  return joinChildHostingResults(settled);
                 });
-                const turn = restored.turn;
-                const actual =
-                  turn.kind === "suspended" ? (turn.request.input as Position) : undefined;
-                if (
-                  turn.kind !== "suspended" ||
-                  turn.request.effect !== effect.id ||
-                  actual?.slot !== position.slot ||
-                  actual?.count !== position.count ||
-                  turn.scope?.scopeId !== pending.scope?.scopeId ||
-                  turn.scope?.frameId !== pending.scope?.frameId ||
-                  turn.scope?.phase !== pending.scope?.phase ||
-                  turn.scope?.critical !== pending.scope?.critical
-                ) {
-                  throw new Error("Owned group replay differs from pending boundary");
-                }
-                const bindings = yield* current.get();
-                const factories = bindings?.get(position.slot);
-                if (!factories || factories.length !== position.count) {
-                  throw new Error("Owned branch bindings unavailable");
-                }
-                const children = yield* runtime.composition.catchError(
-                  function* () {
-                    return yield* journal.ensureChildren<
-                      unknown,
-                      CapabilityRequest,
-                      unknown,
-                      string
-                    >(pending.id, {
-                      join,
-                      children: factories.map((_, index) => ({
-                        program: `${state.program}/${effect.id}/${join}:${position.slot}/branch:${index}`,
-                        input: { slot: position.slot, index },
-                      })),
-                      outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
-                    });
-                  },
-                  function* (error) {
-                    if (!(error instanceof JournalConflict)) {
-                      throw error;
-                    }
-                    return undefined;
-                  },
-                );
-                if (!children) {
-                  return true;
-                }
-                const settled = yield* runtime.all(
-                  children.map(
-                    (child, index) =>
-                      function* () {
-                        return yield* run(child, factories[index]!, index);
-                      },
-                  ),
-                );
-                // Join every child before releasing replay-reconstructed factories. A yield
-                // is not terminal settlement and must reach the owning parent Host.
-                return joinChildHostingResults(settled);
-              });
-            },
-          };
+              },
+            };
+          },
         },
-      });
+        { at: "min" },
+      );
     },
   };
 }
