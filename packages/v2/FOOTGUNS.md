@@ -265,3 +265,18 @@ host boundary; the factory and producer must bind/install their dependencies.
 give each send a fresh producer. Keep command acceptance, validation and conflicting
 input policy explicit. A successfully returned attempt handle is not an admission
 receipt. See [scoped sessions](./runtime/README.md#scoped-sessions).
+
+## FG-016 — Requiring a live parent grant to resume an owned child
+
+A tool parent parks while its child awaits approval. On reopen, durable activation
+resumes the stored child before reacquiring the parent body. Admission that looks up
+a grant installed only by that body acquisition fails despite a valid stored call.
+
+**Boundary:** Child admission checks the tool's selected declarations independently
+of acquisition. Recorded callbacks and effect delivery keep per-incarnation scoped
+grants; replay must not share or retain one body's callback implementation in another.
+
+**Author responsibility:** Install admission before routing, preserve the selected
+program's declarations on reopen, and retain each acquired body's scope through
+recorded delivery. A route alone is not a grant. See the native and recorded-parent
+reopen journeys in [tool application acceptance](./acceptance/__tests__/applications/tool-application.acceptance.test.ts).

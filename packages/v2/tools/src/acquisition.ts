@@ -30,6 +30,10 @@ export function createToolAcquisition<
   function fresh() {
     return effects.grant(selected, { record: true });
   }
+  // A persisted child can resume before parent acquisition. Admission depends
+  // only on declared effects (including recorded work), not on a live body's
+  // scoped record implementation. Each acquired body still gets its own grant.
+  const admission = fresh().admission;
   const current = runtime.composition.createContext<ReturnType<typeof fresh>>(`${name}:grant`);
   const api = runtime.composition.createApi<{
     acquire: ToolAcquisition<StandardSchemaV1.InferOutput<S>, R, Y>["operations"]["acquire"];
@@ -62,12 +66,7 @@ export function createToolAcquisition<
   });
   return {
     ...api,
-    admission: {
-      *child(args, next) {
-        const grant = yield* current.expect();
-        return yield* grant.admission.child(args, next);
-      },
-    },
+    admission,
     *handle(request) {
       const grant = yield* current.expect();
       return yield* grant.handle(request);

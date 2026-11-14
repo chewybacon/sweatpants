@@ -13,7 +13,9 @@ import {
   createToolSession,
   defineTool,
   installElicitHandlers,
+  installToolRouting,
 } from "@sweatpan.ts/tools";
+import { childHostingResult } from "@sweatpan.ts/hosting";
 import { createHostedRecovery, createSqliteJournalRig } from "@sweatpan.ts/testing";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import { forEachRuntime } from "../runtime/assembly.ts";
@@ -30,6 +32,130 @@ const approve = defineEffect({
 });
 
 forEachRuntime(<Y>(runtime: Runtime<Y>) => {
+  for (const recording of [false, true]) {
+    it(`${runtime.name} recorded=${recording}: reopened tool parents admit owned children without reacquiring their bodies`, async () => {
+      let reads = 0;
+      let parentAcquisitions = 0;
+      let childRuns = 0;
+      let answerChild = false;
+      const records: string[] = [];
+      const child = defineTool("tool-app/nested-child/1")
+        .parameters(z.string())
+        .capabilities({ lookup })
+        .elicits({ approve })
+        .execute(function* (input, ctx) {
+          const found = yield* ctx.capabilities.lookup(input);
+          const answer = yield* ctx.elicit("approve", input);
+          if (!found.ok || !answer.ok || !answer.value) {
+            throw new Error("Child rejected");
+          }
+          return found.value;
+        });
+      const parent = defineTool("tool-app/nested-parent/1")
+        .parameters(z.string())
+        .capabilities({ child })
+        .execute(function* (input, ctx) {
+          parentAcquisitions++;
+          if (recording) {
+            yield* ctx.await(
+              async () => {
+                records.push("before");
+                return "before";
+              },
+              { record: { key: "before" } },
+            );
+          }
+          const result = yield* ctx.capabilities.child(input);
+          if (!result.ok) {
+            throw new Error("Child failed");
+          }
+          if (recording) {
+            yield* ctx.await(
+              async () => {
+                records.push("after");
+                return "after";
+              },
+              { record: { key: "after" } },
+            );
+          }
+          return result.value;
+        });
+      const otherChild = defineTool("tool-app/other-child/1")
+        .parameters(child.context)
+        .capabilities(child.capabilities)
+        .elicits(child.elicits)
+        .execute(child.body);
+      const store = createSqliteJournalRig<string, CapabilityRequest, unknown, string, unknown, Y>({
+        program: parent.id,
+        equals: isDeepStrictEqual,
+      });
+      onTestFinished(() => store.close());
+      const invoke = (start = false, granted = true) =>
+        runtime.start(function* () {
+          const session = createToolSession(
+            runtime,
+            granted ? parent : { ...parent, capabilities: { child: otherChild } },
+            {
+              journal: store.open(),
+              matches: isDeepStrictEqual,
+              *configure({ host, journal }) {
+                yield* installToolRouting(runtime, host, journal, {
+                  tool: child,
+                  outcome(value: string) {
+                    return { ok: true, value: { ok: true, value } };
+                  },
+                  *run(owned) {
+                    childRuns++;
+                    const childSession = createToolSession(runtime, child, {
+                      journal: owned.journal,
+                      child: owned.link,
+                      matches: isDeepStrictEqual,
+                      *configure({ effects }) {
+                        yield* effects.install(lookup, function* (input) {
+                          reads++;
+                          return { ok: true, value: `found:${input}` };
+                        });
+                      },
+                    });
+                    let result = yield* childSession.run();
+                    if (answerChild && result.state === "waiting") {
+                      yield* childSession.answer(result.grant, { ok: true, value: true });
+                      result = yield* childSession.run();
+                    }
+                    return childHostingResult(result);
+                  },
+                });
+              },
+            },
+          );
+          return yield* start ? session.start("colony") : session.run();
+        }).result;
+      const parked = await invoke(true);
+      expect(parked.state).toBe("child");
+      expect(parentAcquisitions).toBe(1);
+      expect(reads).toBe(1);
+      store.reopen();
+      await expect(invoke()).resolves.toEqual(parked);
+      expect(parentAcquisitions).toBe(1);
+      expect(reads).toBe(1);
+      expect(childRuns).toBe(2);
+      // A route does not grant authority, including for a persisted child.
+      await expect(invoke(false, false)).rejects.toThrow("Effect is not granted");
+      expect(childRuns).toBe(2);
+      answerChild = true;
+      store.reopen();
+      await expect(invoke()).resolves.toEqual({ state: "completed", value: "found:colony" });
+      expect(parentAcquisitions).toBe(2);
+      expect(reads).toBe(1);
+      expect(records).toEqual(recording ? ["before", "after"] : []);
+      store.reopen();
+      await expect(invoke()).resolves.toEqual({ state: "completed", value: "found:colony" });
+      expect(parentAcquisitions).toBe(2);
+      expect(reads).toBe(1);
+      expect(childRuns).toBe(3);
+    });
+  }
+
   for (const placement of ["local", "serialized"] as const) {
     it(`${runtime.name} ${placement}: application commands preserve scoped drivers, middleware and admitted recovery`, async () => {
       let normalizations = 0;
