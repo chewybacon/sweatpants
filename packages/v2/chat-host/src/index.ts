@@ -9,3 +9,5 @@ export type {
   ChatToolBindingOptions,
   ChatRecoveryFactory,
 } from "./contracts.ts";
+export { createChatPresentation } from "./presentation.ts";
+export type { ChatPresentationEvent } from "./presentation.ts";

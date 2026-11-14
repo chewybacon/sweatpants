@@ -280,3 +280,19 @@ grants; replay must not share or retain one body's callback implementation in an
 program's declarations on reopen, and retain each acquired body's scope through
 recorded delivery. A route alone is not a grant. See the native and recorded-parent
 reopen journeys in [tool application acceptance](./acceptance/__tests__/applications/tool-application.acceptance.test.ts).
+
+## FG-017 — Installing observation on one host and expecting every child to inherit it
+
+Child scopes inherit middleware for an API identity, but each tool has its own host.
+A root host's middleware does not intercept separately constructed child APIs. Inner
+routing or retained-activation layers can also return without calling next.
+
+**Boundary:** Install host middleware through `installHostingMiddleware` inside the
+producer's native root. Hosts apply that scoped policy in each run; built-in routing
+and retained activation use the inner layer so observation can surround them. Use
+execution presentation for local accepted-history reads and retained tree restoration.
+
+**Author responsibility:** Install again across runtime.start boundaries, keep the
+storage connection alive through host cleanup, and distinguish committed outcomes
+from provisional delivery. Presentation errors cannot roll back a commit. Standalone
+external answers require fresh observation; this is not a global commit/event bus.

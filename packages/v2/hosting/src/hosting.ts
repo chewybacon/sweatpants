@@ -1,3 +1,4 @@
+import { configureHostingMiddleware } from "./scope.ts";
 import type { Api, Composition } from "@standard-durability/core";
 import {
   createAttempts,
@@ -31,6 +32,7 @@ export function createHosting<R, Q, V, E, S, Y>(
   >(options.name, {
     run(replace) {
       return composition.scoped(function* () {
+        yield* configureHostingMiddleware(composition, host, options.journal);
         let expected = replace;
         while (true) {
           const decision = yield* api.operations.continuation();
@@ -155,5 +157,6 @@ export function createHosting<R, Q, V, E, S, Y>(
       return "unsafe";
     },
   });
-  return { ...api, delivery, attempts };
+  const host = { ...api, delivery, attempts };
+  return host;
 }
