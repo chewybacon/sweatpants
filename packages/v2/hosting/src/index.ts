@@ -44,3 +44,6 @@ export { childHostingResult, joinChildHostingResults } from "./child-result.ts";
 
 export { createJournalTreeStream } from "./journal-tree-stream.ts";
 export type { JournalTreeObservation } from "./contracts.ts";
+
+export { installHostingMiddleware } from "./scope.ts";
+export type { HostingMiddleware } from "./scope.ts";

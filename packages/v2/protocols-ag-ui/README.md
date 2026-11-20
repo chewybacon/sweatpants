@@ -80,3 +80,10 @@ The actual yo-chat-v2 card, flight and code wrappers use this adapter. Acceptanc
 covers independent readers, offset resume, database reconstruction, parked results,
 text replacement, error disclosure, cancellation, joined cleanup and late callbacks
 on both native runtimes. These are in-process tests, not deployment evidence.
+
+`publish.event(event)` accepts the typed `AgUiPresentationEvent` extension: tool call
+start/arguments/end/result, step start/finish, and state snapshot/delta. Values use the
+same publication cloning, reader isolation and active lifetime as custom events.
+Run lifecycle and streamed-text lifecycle remain owned by the adapter; unsupported
+kinds reject even from untyped callers. Tool-call END closes arguments, not execution.
+This removes the need to tunnel standard events inside CUSTOM envelopes.
