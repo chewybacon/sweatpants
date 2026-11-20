@@ -73,35 +73,41 @@ export function* installToolRouting<
     run,
     outcome = (value: R) => ({ ok: true as const, value: { ok: true, value } }),
   } = route;
-  yield* host.around({
-    *child([pending], next) {
-      if (pending.request.effect !== tool.id) {
-        return yield* next(pending);
-      }
-      const snapshot = yield* journal.read();
-      const links = snapshot.status === "running" ? snapshot.children : undefined;
-      const existing = links?.[0];
-      if (links && (links.length !== 1 || existing?.program !== tool.id)) {
-        throw new Error("Stored child does not match named tool route");
-      }
-      let input = existing?.input;
-      if (!existing) {
-        const parsed = yield* runtime.fromPromise(async () =>
-          tool.context["~standard"].validate(pending.request.input),
-        );
-        if (parsed.issues) {
-          throw new Error("Invalid tool input");
+  yield* host.around(
+    {
+      *child([pending], next) {
+        if (pending.request.effect !== tool.id) {
+          return yield* next(pending);
         }
-        input = parsed.value;
-      }
-      const child = yield* journal.ensureChild<R, CapabilityRequest, unknown, string>(pending.id, {
-        program: tool.id,
-        input,
-        outcome,
-      });
-      return { id: child.link.childId, run: () => run(child) };
+        const snapshot = yield* journal.read();
+        const links = snapshot.status === "running" ? snapshot.children : undefined;
+        const existing = links?.[0];
+        if (links && (links.length !== 1 || existing?.program !== tool.id)) {
+          throw new Error("Stored child does not match named tool route");
+        }
+        let input = existing?.input;
+        if (!existing) {
+          const parsed = yield* runtime.fromPromise(async () =>
+            tool.context["~standard"].validate(pending.request.input),
+          );
+          if (parsed.issues) {
+            throw new Error("Invalid tool input");
+          }
+          input = parsed.value;
+        }
+        const child = yield* journal.ensureChild<R, CapabilityRequest, unknown, string>(
+          pending.id,
+          {
+            program: tool.id,
+            input,
+            outcome,
+          },
+        );
+        return { id: child.link.childId, run: () => run(child) };
+      },
     },
-  });
+    { at: "min" },
+  );
 }
 
 /** Apply a retained selection through existing elicit delivery middleware.

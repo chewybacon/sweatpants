@@ -1002,3 +1002,18 @@ Their schema lookup, role filtering, JSON projection, answer validation, edge en
 and historical command routes remain local. The focused suites cover 76 tree cases
 across memory/SQLite and both runtimes, plus 16 chat cases. Additional type evidence
 checks unknown node payloads and preservation of the runtime yield type.
+
+## Scoped hosting middleware
+
+`installHostingMiddleware(composition, { install(host, journal) })` selects a
+middleware installer in the current native scope. Every `createHosting` run in that
+scope or a descendant installs it inside its own run scope, including separately
+constructed tool children. Installers use the existing `host.around` and
+`host.attempts.around` APIs. Construction performs no installation; a new
+`runtime.start` root must install its own policy.
+
+Built-in retained activation and child routing are inner (`min`) implementation
+layers. Outer middleware can observe their returned boundaries even when those
+implementations do not call next. Middleware remains trusted policy: a failure before
+`handle` reaches its handler is treated like any other delivery failure. Observation
+middleware should forward work and contain its own publication failures.

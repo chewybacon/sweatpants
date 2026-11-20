@@ -92,16 +92,19 @@ export function installGuestRetention<R, Q, V, E, S, Y>(
             return current;
           },
         };
-        yield* host.around({
-          *activate() {
-            while (true) {
-              const activation = yield* advanceJournal(driver, journal);
-              if (activation) {
-                return activation;
+        yield* host.around(
+          {
+            *activate() {
+              while (true) {
+                const activation = yield* advanceJournal(driver, journal);
+                if (activation) {
+                  return activation;
+                }
               }
-            }
+            },
           },
-        });
+          { at: "min" },
+        );
         return yield* next(...args);
       });
     },

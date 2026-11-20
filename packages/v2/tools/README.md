@@ -139,9 +139,11 @@ const guest = yield * acquisition.operations.acquire(normalizedInput);
 
 Acquisition grants the tool's declared capabilities, elicits and local recording.
 Declarations alone still confer no authority. Capability and elicitation aliases
-occupy separate namespaces. `handle` and `admission` resolve the current incarnation's
-grant from its owning scope; using them after that scope exits fails. Each incarnation
-needs its own scope. Native recorded callbacks require that scope to be retained
+occupy separate namespaces. Child `admission` checks the selected declarations without
+requiring a live parent incarnation: recovery can resume a persisted child before
+reacquiring its parent. Installing a route still cannot admit an undeclared effect.
+`handle` resolves the current incarnation's grant from its owning scope; using it
+after that scope exits fails. Each incarnation needs its own scope. Native recorded callbacks require that scope to be retained
 through delivery; `installGuestRetention` supplies that hosting policy.
 
 The API supports acquisition middleware for observation and placement selection.
