@@ -324,6 +324,15 @@ reopen, either answer order, occupied/yielded siblings, cancellation, invalid ow
 navigation, and historical child reads. SQLite evidence is in-process connection
 reopen; no process-crash, cross-journal snapshot or external-service guarantee is added.
 
+`readAcceptedHistoryPage(execution, snapshot.history, after, limit)` reads a bounded
+page from the accepted prefix captured by `journal.read()`. It verifies execution,
+position and receipt in the supplied cursor, contiguous entry sequences and the
+captured final receipt. The result contains `entries`, an `after` cursor and
+`caughtUp`. Consumers advance their cursor after applying the complete page.
+Keep the same captured `snapshot.history` while rebuilding one view, then obtain a
+fresh snapshot to include later acceptances. Hosting presentation and recorded-chat
+history reconstruction share this helper.
+
 ## Descendant answer ingress
 
 `owner.openDescendantInteractions(executionId)` opens only request/answer methods for

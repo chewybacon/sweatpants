@@ -10,7 +10,7 @@ import type {
   HostedResult,
   Hosting,
 } from "@sweatpan.ts/hosting";
-import type { ChatToolDefinition } from "@sweatpan.ts/providers";
+import type { ChatToolCall, ChatToolDefinition } from "@sweatpan.ts/providers";
 import type { Stream } from "@sweatpan.ts/runtime";
 import type {
   ToolInteraction,
@@ -24,7 +24,6 @@ import type {
   ChatSampling,
   ChatToolResult,
 } from "@sweatpan.ts/chat";
-import type { ChatToolCall } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 /** Immutable application policy around the versioned recorded chat protocol.
@@ -46,6 +45,8 @@ export interface ChatProgramBinding<R, Y> {
   readonly tools: readonly ChatToolBinding<Y>[];
   readonly recovery: ChatRecoveryFactory<Y>;
   readonly sampling: ChatSampling<Y>;
+  /** Prefix the projected history with immutable messages referenced by admission. */
+  readonly historySource?: ChatHistorySource<Y>;
   readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
   /** Optional root policy; child policy belongs to each tool binding. */
   configure?(host: Hosting<R, CapabilityRequest, unknown, string, Y>): Operation<void, Y>;
@@ -56,7 +57,7 @@ export interface ChatProgram<R> {
   /** Persist this complete ID, including the framework protocol revision, at admission. */
   readonly id: string;
   /** Pure connection-bound assembly. Creates no Guest or native task until run. */
-  bind<Y>(runtime: Runtime<Y>, options: ChatProgramBinding<R, Y>): ChatExecution<R, Y>;
+  bind<Y>(runtime: Runtime<Y>, options: ChatProgramBinding<R, Y>): RecordedChatExecution<R, Y>;
 }
 
 /** Explicit recovery/placement adapter. Must retain the supplied program, equality
@@ -134,4 +135,16 @@ export interface ChatExecution<R, Y> {
   ): Operation<Acceptance<CapabilityRequest, unknown, string>, Y>;
   /** Fresh read-only pull stream, owned by the subscribing native scope. */
   interactions(): Stream<ToolInteraction, void, Y>;
+}
+
+/** Application-owned read of messages that precede an admitted conversation.
+ * Runs before the first sample and history read; changed content diverges on replay. */
+export interface ChatHistorySource<Y> {
+  read(admittedInput: unknown): Operation<readonly ChatHistoryMessage[], Y>;
+}
+
+/** Reconstructs accepted messages without acquiring a Guest or advancing delivery.
+ * One connection-bound cache; callers serialize history() and run(). */
+export interface RecordedChatExecution<R, Y> extends ChatExecution<R, Y> {
+  history(): Operation<readonly ChatHistoryMessage[], Y>;
 }

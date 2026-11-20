@@ -33,7 +33,7 @@ surface. Its one-question, ten-question and asymmetric body/cleanup journeys all
 the same declaration and binding recipe.
 
 Declaration is immutable and starts no work. `program.id` includes the framework
-protocol suffix `/recorded-chat/v1`; it is the identity to persist, not just the
+protocol suffix `/recorded-chat/v2`; it is the identity to persist, not just the
 application ID passed to the factory. The sampling and tool effects derive their IDs
 from that full identity. Changing application projections, catalog meaning or other
 replay behavior requires a new application ID. Future framework protocol changes need
@@ -55,8 +55,43 @@ not rolled back when a projection throws. Return the whole `completed` value to 
 `ChatLoopResult` instead of a text response; its inferred result type is retained by
 the bound execution and journal.
 
+The sampling effect stores only `round`, `historyLength` and `historyHash`.
+The SHA-256 digest covers a deterministic encoding of the tool catalog and ordered
+conversation, preserving UTF-16 code units, signed zero and optional fields.
+Initial messages come from admitted input, assistant messages from accepted sampling
+outcomes, and tool messages from accepted batch outcomes through the pinned
+`toolResult` projection. Message content is reconstructed from those records instead
+of being repeated in every sampling request.
+
+Each connection-bound chat binding owns a private cache over an accepted journal prefix. The first
+fresh sampling delivery rebuilds it through bounded history queries; subsequent
+samples read only newly accepted entries. Shared `readAcceptedHistoryPage` paging
+verifies sequence/receipt anchors. One protocol decoder supplies typed sample and
+batch entries using the same decoders as effect admission. The cache verifies the
+conversation digest before claiming an unsafe attempt, and binds the detached
+provider request to that exact pending request. Reconstruction failures reset the
+cache and leave provider delivery unclaimed; actual provider exceptions retain the
+existing uncertainty fence. Reopening creates a fresh cache. Recovery still validates compact
+requests and consumes retained outcomes without dispatching accepted model calls.
+Changed instructions, catalog or tool formatting diverge during replay. This
+protocol revision intentionally does not read recorded-chat/v1 journals.
+
+`chat.history()` reconstructs the accepted conversation without acquiring a Guest,
+advancing execution or invoking tools or sampling. Serialize it with `run()` on the
+same binding. Applications can use compact completion projections and query this
+history for transient presentation or continuation. The cache resets after a failed
+or cancelled reconstruction, allowing the same binding to retry safely.
+
+For conversations spanning journals, optional binding `historySource.read(admitted)`
+resolves immutable messages that precede the pure `history(admitted)` projection. The application owns references, predecessor validation and retention;
+the framework fingerprints the resulting history normally. Source reads may yield
+storage operations and must not invoke provider/tool effects. Changing inherited
+content is replay divergence. This capability does not automatically remove history
+from application admissions or result projections; choose compact references and
+completion values in the owning assembly.
+
 Sampling remains the existing typed `ChatSampling` capability. The internal schemas
-check local envelopes: round/arrays, nonempty model identity and assistant content
+check local envelopes: round/conversation boundary, nonempty model identity and assistant content
 array, batch identities and result arrays. They are not a complete provider message,
 media, JSON or security validator. The sampling adapter must decode external input
 and honor its typed contract. A malformed success envelope fails before journal

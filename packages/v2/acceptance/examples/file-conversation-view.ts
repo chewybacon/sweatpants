@@ -55,7 +55,7 @@ export interface ConversationAnswerReceipt {
   readonly duplicate: boolean;
 }
 
-// Decode only the pinned application's recorded-chat/v1 sample envelope. This is
+// Decode only the pinned application's recorded-chat/v2 sample envelope. This is
 // display policy, not a general public model codec. Never publish reasoning, model
 // request history, arbitrary tool arguments, executable declarations or raw failures.
 const sample = z.object({

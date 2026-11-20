@@ -49,3 +49,6 @@ export { createAttempts } from "./apis.ts";
 
 export type { PendingActivation, ActivationIntents } from "./contracts.ts";
 export { createActivationIntents } from "./apis.ts";
+
+export { readAcceptedHistoryPage } from "./history.ts";
+export type { AcceptedHistoryCursor, AcceptedHistoryPage } from "./contracts.ts";
