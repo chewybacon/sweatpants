@@ -255,7 +255,22 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       (row) =>
         deserialize(row.payload as Uint8Array) as Accepted<CapabilityRequest, unknown, string>,
     );
-    const boundaries = entries.filter((entry) => entry.request.effect === program.id + "/sample");
+    const boundaries = entries.filter((entry) => program.decode(entry)?.kind === "sample");
+    const batches = entries.flatMap((entry) => {
+      const record = program.decode(entry);
+      return record?.kind === "tools" ? [record.calls] : [];
+    });
+    expect(batches).toHaveLength(12);
+    expect(batches[0]).toEqual([{ id: "call-0", name: "read", input: 0 }]);
+    expect(program.decode(boundaries[12]!)).toMatchObject({
+      kind: "sample",
+      round: 12,
+      state: "accepted",
+    });
+    expect(program.decode({ request: boundaries[0]!.request })).toMatchObject({
+      round: 0,
+      state: "pending",
+    });
     expect(boundaries).toHaveLength(13);
     for (const entry of boundaries) {
       expect(Object.keys(entry.request.input as object).sort()).toEqual([
@@ -502,6 +517,9 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(first.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
     (first as ChatHistoryMessage[]).splice(0);
     expect((await runtime.start(() => restored.history()).result).length).toBe(3);
+    const latest = await runtime.start(() => restored.latestSample()).result;
+    expect(latest).toMatchObject({ round: 0, sequence: 0 });
+    expect(latest?.sample.response.message.content).toEqual([{ type: "text", text: "Complete" }]);
     expect(await runtime.start(() => restored.run()).result).toMatchObject({
       state: "completed",
       value: "done",

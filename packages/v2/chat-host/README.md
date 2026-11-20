@@ -82,6 +82,17 @@ same binding. Applications can use compact completion projections and query this
 history for transient presentation or continuation. The cache resets after a failed
 or cancelled reconstruction, allowing the same binding to retry safely.
 
+`program.decode({ request, outcome })` decodes one of this program's journal
+requests for readers that traverse accepted history or pending requests themselves,
+such as presentation. Samples report `pending`, `accepted` (with the sample) or
+`denied`; tool batches report their model calls in child order. Other effects return
+`undefined`. It is pure and applies no disclosure policy.
+
+`chat.latestSample()` reads backward from the accepted frontier and returns the newest
+accepted model sample with its round, sequence and receipt. Denied samples are
+skipped. Use it when application policy needs to verify what the model was offered
+or produced; the stored request and outcome envelopes stay private.
+
 For conversations spanning journals, optional binding `historySource.read(admitted)`
 resolves immutable messages that precede the pure `history(admitted)` projection. The application owns references, predecessor validation and retention;
 the framework fingerprints the resulting history normally. Source reads may yield

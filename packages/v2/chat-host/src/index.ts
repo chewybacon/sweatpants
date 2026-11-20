@@ -9,4 +9,9 @@ export type {
   ChatToolBindingOptions,
   ChatRecoveryFactory,
 } from "./contracts.ts";
-export type { RecordedChatExecution, ChatHistorySource } from "./contracts.ts";
+export type {
+  RecordedChatExecution,
+  RecordedChatSample,
+  RecordedChatRecord,
+  ChatHistorySource,
+} from "./contracts.ts";

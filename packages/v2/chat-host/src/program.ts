@@ -6,6 +6,7 @@ import { createHistoryFingerprint, createRecordedHistory } from "./history.ts";
 import {
   decodeRecordedChatCalls,
   decodeRecordedChatRequest,
+  decodeRecordedChatSampleOutcome,
   recordedChatRequestSchema,
   recordedChatSampleSchema,
   recordedChatCallsSchema,
@@ -19,6 +20,7 @@ import type {
   ChatProgramOptions,
   ChatProgramBinding,
   RecordedChatExecution,
+  RecordedChatRecord,
 } from "./contracts.ts";
 import type { RecordedChatRequest } from "./types.ts";
 
@@ -43,8 +45,29 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
     context: recordedChatCallsSchema,
     response: recordedChatValuesSchema,
   });
+  function decode(entry: {
+    readonly request: unknown;
+    readonly outcome?: unknown;
+  }): RecordedChatRecord | undefined {
+    const request = entry.request as { readonly effect?: unknown; readonly input?: unknown } | null;
+    if (request?.effect === sample.id) {
+      const round = decodeRecordedChatRequest(request.input).round;
+      if (!("outcome" in entry) || entry.outcome === undefined) {
+        return { kind: "sample", round, state: "pending" };
+      }
+      const value = decodeRecordedChatSampleOutcome(entry.outcome);
+      return value
+        ? { kind: "sample", round, state: "accepted", sample: structuredClone(value) }
+        : { kind: "sample", round, state: "denied" };
+    }
+    if (request?.effect === batch.id) {
+      return { kind: "tools", calls: structuredClone(decodeRecordedChatCalls(request.input)) };
+    }
+    return undefined;
+  }
   return Object.freeze({
     id,
+    decode,
     bind<Y>(runtime: Runtime<Y>, binding: ChatProgramBinding<R, Y>): RecordedChatExecution<R, Y> {
       let initial: readonly ChatHistoryMessage[] | undefined;
       function* initialHistory(input: unknown): Operation<readonly ChatHistoryMessage[], Y> {
@@ -164,6 +187,28 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
         *history() {
           const snapshot = yield* retained.snapshot();
           return snapshot.history;
+        },
+        *latestSample() {
+          const snapshot = yield* binding.journal.read();
+          if (snapshot.program !== id) {
+            throw new Error("Recorded chat history requires its admitted program");
+          }
+          for (let position = snapshot.history.end.position - 1; position >= 0; position--) {
+            const entry = yield* snapshot.history.at(position);
+            if (!entry || entry.sequence !== position) {
+              throw new Error("Invalid accepted history sequence");
+            }
+            const record = decode(entry);
+            if (record?.kind === "sample" && record.sample) {
+              return {
+                round: record.round,
+                sequence: entry.sequence,
+                receipt: entry.receipt,
+                sample: record.sample,
+              };
+            }
+          }
+          return undefined;
         },
       };
     },
