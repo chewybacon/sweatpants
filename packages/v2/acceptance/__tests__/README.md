@@ -494,7 +494,7 @@ validation remains server-side. Empty questions do not imply completion. Full re
 replaces client state; there is no cursor protocol, pagination, automatic reconnect,
 optimistic answer acceptance or transport retry. Projection of tool results/media,
 byte limits and archival retention remain product work. The view is coupled to this
-application's pinned recorded-chat/v1 protocol, not a generic journal decoder.
+application's pinned recorded-chat/v2 protocol, not a generic journal decoder.
 
 Evidence is a serialized in-process peer and real SQLite connection reopen, not a
 browser, React hook, deployed HTTP service or OS-process crash test.

@@ -43,6 +43,18 @@ export interface AcceptedHistory<Q, V, E, Y> {
   read(from: number, limit: number): Operation<readonly Accepted<Q, V, E>[], Y>;
 }
 
+/** Reader-owned cursor identifying an applied prefix of one execution. */
+export interface AcceptedHistoryCursor extends JournalPosition {
+  readonly execution: string;
+}
+
+/** A bounded page from an immutable accepted prefix. */
+export interface AcceptedHistoryPage<Q, V, E> {
+  readonly entries: readonly Accepted<Q, V, E>[];
+  readonly after: AcceptedHistoryCursor;
+  readonly caughtUp: boolean;
+}
+
 /** Trusted accepted history and an optional acceleration checkpoint. */
 export interface RecoveryPlan<Q, V, E, S, Y> {
   readonly history: AcceptedHistory<Q, V, E, Y>;

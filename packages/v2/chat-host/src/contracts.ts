@@ -10,7 +10,7 @@ import type {
   HostedResult,
   Hosting,
 } from "@sweatpan.ts/hosting";
-import type { ChatToolDefinition } from "@sweatpan.ts/providers";
+import type { ChatToolCall, ChatToolDefinition } from "@sweatpan.ts/providers";
 import type { Stream } from "@sweatpan.ts/runtime";
 import type {
   ToolInteraction,
@@ -21,10 +21,10 @@ import type {
 import type {
   ChatHistoryMessage,
   ChatLoopResult,
+  ChatLoopSample,
   ChatSampling,
   ChatToolResult,
 } from "@sweatpan.ts/chat";
-import type { ChatToolCall } from "@sweatpan.ts/providers";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
 /** Immutable application policy around the versioned recorded chat protocol.
@@ -46,17 +46,45 @@ export interface ChatProgramBinding<R, Y> {
   readonly tools: readonly ChatToolBinding<Y>[];
   readonly recovery: ChatRecoveryFactory<Y>;
   readonly sampling: ChatSampling<Y>;
+  /** Prefix the projected history with immutable messages referenced by admission. */
+  readonly historySource?: ChatHistorySource<Y>;
   readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
   /** Optional root policy; child policy belongs to each tool binding. */
   configure?(host: Hosting<R, CapabilityRequest, unknown, string, Y>): Operation<void, Y>;
 }
 
+/** A recorded-chat journal request, decoded without exposing its stored envelope. */
+export type RecordedChatRecord =
+  | {
+      readonly kind: "sample";
+      /** Zero-based round within the execution. */
+      readonly round: number;
+      /** Pending has no outcome yet; denied is an accepted sampling-policy rejection. */
+      readonly state: "pending" | "accepted" | "denied";
+      readonly sample?: ChatLoopSample;
+    }
+  | {
+      readonly kind: "tools";
+      /** Model calls in batch order, matching the owned child links of the request. */
+      readonly calls: readonly {
+        readonly id: string;
+        readonly name: string;
+        readonly input: unknown;
+      }[];
+    };
+
 /** Recorded sampling and owned tool-batch protocol, shared by every binding/reopen. */
 export interface ChatProgram<R> {
   /** Persist this complete ID, including the framework protocol revision, at admission. */
   readonly id: string;
+  /** Decode this program's request and optional accepted outcome. Other effects return
+   * undefined. Pure; trusted journal data only, and no disclosure policy is applied. */
+  decode(entry: {
+    readonly request: unknown;
+    readonly outcome?: unknown;
+  }): RecordedChatRecord | undefined;
   /** Pure connection-bound assembly. Creates no Guest or native task until run. */
-  bind<Y>(runtime: Runtime<Y>, options: ChatProgramBinding<R, Y>): ChatExecution<R, Y>;
+  bind<Y>(runtime: Runtime<Y>, options: ChatProgramBinding<R, Y>): RecordedChatExecution<R, Y>;
 }
 
 /** Explicit recovery/placement adapter. Must retain the supplied program, equality
@@ -134,4 +162,28 @@ export interface ChatExecution<R, Y> {
   ): Operation<Acceptance<CapabilityRequest, unknown, string>, Y>;
   /** Fresh read-only pull stream, owned by the subscribing native scope. */
   interactions(): Stream<ToolInteraction, void, Y>;
+}
+
+/** Application-owned read of messages that precede an admitted conversation.
+ * Runs before the first sample and history read; changed content diverges on replay. */
+export interface ChatHistorySource<Y> {
+  read(admittedInput: unknown): Operation<readonly ChatHistoryMessage[], Y>;
+}
+
+/** One accepted model sample in a recorded conversation. Denied samples are omitted. */
+export interface RecordedChatSample {
+  /** Zero-based round within this execution. */
+  readonly round: number;
+  /** Accepted journal position of the sample. */
+  readonly sequence: number;
+  readonly receipt: string;
+  readonly sample: ChatLoopSample;
+}
+
+/** Reconstructs accepted messages without acquiring a Guest or advancing delivery.
+ * One connection-bound cache; callers serialize history() and run(). */
+export interface RecordedChatExecution<R, Y> extends ChatExecution<R, Y> {
+  history(): Operation<readonly ChatHistoryMessage[], Y>;
+  /** Newest accepted sample, read backward from the current accepted frontier. */
+  latestSample(): Operation<RecordedChatSample | undefined, Y>;
 }

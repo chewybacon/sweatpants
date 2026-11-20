@@ -24,6 +24,7 @@
     "format:check": "cd ../../.. && oxfmt packages/v2/chat-host --check"
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "@standard-durability/core": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "@sweatpan.ts/chat": "workspace:*",

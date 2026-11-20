@@ -3040,6 +3040,9 @@ importers:
 
   packages/v2/chat-host:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability
