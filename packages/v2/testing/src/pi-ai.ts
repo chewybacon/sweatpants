@@ -1,15 +1,30 @@
 import type { PiAiProviderOptions, PiAiImageProviderOptions } from "@sweatpan.ts/providers-pi-ai";
 import { createProtocolRig } from "./protocol.ts";
 
+interface PiAiStreamRig {
+  stream: PiAiProviderOptions["stream"];
+  peer: ReturnType<typeof createProtocolRig>;
+  requests: { model: PiAiProviderOptions["model"]; context: unknown; options: unknown }[];
+  signals: AbortSignal[];
+  readonly released: number;
+}
+
+interface PiAiImageRig {
+  generate: PiAiImageProviderOptions["generate"];
+  peer: ReturnType<typeof createProtocolRig>;
+  requests: { context: unknown }[];
+  signals: AbortSignal[];
+  readonly released: number;
+}
+
 /** Scripted SDK peer. Optional pause blocks before an event until replied to or aborted. */
 export function createPiAiStreamRig(options: {
   readonly events: readonly unknown[];
   readonly result: unknown;
   readonly pauseAfter?: number;
-}) {
+}): PiAiStreamRig {
   const peer = createProtocolRig();
-  const requests: { model: PiAiProviderOptions["model"]; context: unknown; options: unknown }[] =
-    [];
+  const requests: PiAiStreamRig["requests"] = [];
   const signals: AbortSignal[] = [];
   let released = 0;
   const stream: NonNullable<PiAiProviderOptions["stream"]> = (model, context, settings) => {
@@ -56,9 +71,9 @@ export function createPiAiStreamRig(options: {
 }
 
 /** Scripted image-generation peer with an optional pending operation for cancellation. */
-export function createPiAiImageRig(result: unknown, pause = false) {
+export function createPiAiImageRig(result: unknown, pause = false): PiAiImageRig {
   const peer = createProtocolRig();
-  const requests: { context: unknown }[] = [];
+  const requests: PiAiImageRig["requests"] = [];
   const signals: AbortSignal[] = [];
   let released = 0;
   const generate: PiAiImageProviderOptions["generate"] = async (_model, context, options) => {
