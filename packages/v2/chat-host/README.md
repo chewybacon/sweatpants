@@ -277,3 +277,18 @@ attempt occupied; explicit subsequent runs do not fabricate a tool result or ret
 the provider. Every advancement is caller-invoked. Booking services are simulated;
 structured output, progress projection, MCP delegation and scheduling remain outside
 this experiment.
+
+## Returning rejected tool calls to the model
+
+By default, an unknown tool name or invalid tool input stops a recorded chat.
+Supply a pure `rejectToolCall` projection to `defineChatProgram` to turn either
+case into an application value. The existing `toolResult(value, call)` projection
+can format that value as feedback with `isError: true`. Invalid-input rejections
+include Standard Schema issues. The original call, including its name and ID,
+stays in history. Valid siblings run under their own bindings.
+
+The batch persists each rejection value in an owned child with no capabilities.
+A parked sibling can resume after reopen without repeating validation or rejection
+formatting. Changing this policy requires a new application program identity.
+Duplicate call IDs, schema exceptions, changed stored bindings and failures after
+admission still raise errors through their existing paths.

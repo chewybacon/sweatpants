@@ -34,7 +34,7 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
     throw new Error("Empty chat program ID");
   }
   const id = `${options.id}/recorded-chat/v2`;
-  const { history, toolResult, result } = options;
+  const { history, toolResult, rejectToolCall, result } = options;
   const sample = defineEffect({
     key: `${id}/sample`,
     context: recordedChatRequestSchema,
@@ -94,6 +94,7 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
         effects: { sample, batch },
         batch: {
           effect: batch.id,
+          rejectToolCall,
           calls: decodeRecordedChatCalls,
           outcome: (values) => ({ ok: true, value: { ok: true, value: values } }),
         },
@@ -108,6 +109,7 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
             let historyLength = 0;
             const completed = yield* runChat(scope, {
               history: initial,
+              allowUnknownToolNames: !!rejectToolCall,
               tools: definitions.map((definition) => ({ definition })),
               *sample(request) {
                 for (const message of request.history.slice(historyLength)) {
