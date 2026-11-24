@@ -369,6 +369,8 @@ a production authorization layer, deployed provider test or OS-crash guarantee.
   model order and emits the existing per-tool start/completion events.
 - Explicit executor: catalog entries need only `definition`, and `executeTools(calls)`
   receives the complete nonempty model call set after call-ID and catalog validation.
+  With `allowUnknownToolNames: true`, the executor also receives unlisted nonempty
+  names so it can return a correlated rejection. Call IDs still undergo validation.
   Tool input schemas and invocation authority still belong to the executor/Host assembly.
   Any per-tool callbacks present on reused entries are ignored in this mode.
 

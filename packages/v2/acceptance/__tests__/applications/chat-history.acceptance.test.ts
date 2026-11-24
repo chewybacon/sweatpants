@@ -29,15 +29,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
       response: z.boolean(),
     });
     const detail = "retained tool detail ".repeat(1024) + "🔬".slice(0, 1);
+    const rejected: string[] = [];
+    const bodyInputs: number[] = [];
+    let completedSiblings = 0;
     const tool = defineTool("history/tool")
       .parameters(z.number())
       .elicits({ confirm })
       .execute(function* (round, context) {
+        bodyInputs.push(round);
         if (round === 3) {
           const answer = yield* context.elicit("confirm", round);
           if (!answer.ok || !answer.value) {
             throw new Error("Approval required");
           }
+          completedSiblings++;
         }
         return { round, detail };
       });
@@ -91,13 +96,20 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
         }
         return changedInstructions ? [{ role: "user", content: "changed" }] : initial;
       },
+      rejectToolCall(error) {
+        rejected.push(error.name);
+        if (error.reason === "invalid-input") {
+          expect(error.issues.length).toBeGreaterThan(0);
+        }
+        return error.reason;
+      },
       toolResult(value, call) {
         return {
           content: toolContent(
             changedFormatting ? { changed: value } : value,
             call.thoughtSignature,
           ),
-          isError: false,
+          isError: typeof value === "string",
         };
       },
       result(value) {
@@ -166,6 +178,28 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
                     content:
                       round < 12
                         ? [
+                            ...(round === 3
+                              ? [
+                                  {
+                                    type: "tool-call" as const,
+                                    toolCall: {
+                                      id: "unknown",
+                                      name: "missing",
+                                      input: null,
+                                      thoughtSignature: "original",
+                                    },
+                                  },
+                                  {
+                                    type: "tool-call" as const,
+                                    toolCall: {
+                                      id: "invalid",
+                                      name: "read",
+                                      input: "bad",
+                                      thoughtSignature: null,
+                                    },
+                                  },
+                                ]
+                              : []),
                             {
                               type: "tool-call",
                               toolCall: {
@@ -187,6 +221,24 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
               };
               expected.push({ ...structuredClone(sample.response.message), model: sample.model });
               if (round < 12) {
+                if (round === 3) {
+                  expected.push(
+                    {
+                      role: "tool",
+                      toolCallId: "unknown",
+                      name: "missing",
+                      content: toolContent("unknown-tool", "original"),
+                      isError: true,
+                    },
+                    {
+                      role: "tool",
+                      toolCallId: "invalid",
+                      name: "read",
+                      content: toolContent("invalid-input", null),
+                      isError: true,
+                    },
+                  );
+                }
                 expected.push({
                   role: "tool",
                   toolCallId: "call-" + round,
@@ -214,7 +266,11 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
             { ok: true, value: true },
           );
         }
-        return yield* chat.run();
+        const outcome = yield* chat.run();
+        if (mode === "replay" && outcome.state === "completed") {
+          expect(yield* chat.history()).toEqual(expected);
+        }
+        return outcome;
       });
       onTestFinished(() => owner.cancel());
       return await owner.result;
@@ -283,8 +339,14 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     expect(
       boundaries.reduce((size, entry) => size + serialize(entry.request).byteLength, 0),
     ).toBeLessThan(4096);
+    expect(rejected).toEqual(["missing", "read"]);
+    expect(bodyInputs.every(Number.isInteger)).toBe(true);
+    expect(completedSiblings).toBe(1);
+    const entriesBeforeReplay = bodyInputs.length;
     database.reopen();
     expect((await command("replay")).state).toBe("completed");
+    expect(bodyInputs).toHaveLength(entriesBeforeReplay);
+    expect(rejected).toEqual(["missing", "read"]);
     expect(samples).toBe(13);
   });
 

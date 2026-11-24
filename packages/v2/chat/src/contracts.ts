@@ -120,9 +120,12 @@ export type ChatStreamOptions = {
   | {
       readonly tools: readonly ChatLoopTool[];
       readonly executeTools?: never;
+      readonly allowUnknownToolNames?: never;
     }
   | {
       readonly tools: readonly Pick<ChatLoopTool, "definition">[];
+      /** Delegate unknown names to the batch executor for correlated rejection results. */
+      readonly allowUnknownToolNames?: boolean;
       /** Run the entire nonempty validated call set through domain exchanges.
        * Choose sequential or owned-concurrent execution in assembly. Return exactly
        * one result per call ID; return order may differ. No per-tool callbacks run

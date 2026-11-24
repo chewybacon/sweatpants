@@ -8,7 +8,8 @@ import {
 } from "@sweatpan.ts/hosting";
 import { createPullStream, type Runtime, type Subscription } from "@sweatpan.ts/runtime";
 import { createToolInteractionStream, type ToolInteraction } from "@sweatpan.ts/tools";
-import type { ChatExecution, ChatExecutionOptions } from "./contracts.ts";
+import { admitCall, createRejectionBinding } from "./batch-admission.ts";
+import type { ChatExecution, ChatExecutionOptions, ChatToolBinding } from "./contracts.ts";
 
 /** Validation failed before this invocation submitted to journal answer ingress.
  * Does not prove that another invocation has never accepted the same grant. */
@@ -36,6 +37,16 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
     throw new Error("Chat batch effect is not granted");
   }
   const contracts = new Map(options.tools.map((tool) => [tool.program, tool.contract]));
+  const reject = options.batch.rejectToolCall;
+  const fallback = reject
+    ? createRejectionBinding(runtime, options.program, options.recovery, options.matches)
+    : undefined;
+  if (fallback) {
+    if (programs.has(fallback.program)) {
+      throw new Error("Chat rejection program conflicts with tool catalog");
+    }
+    contracts.set(fallback.program, fallback.contract);
+  }
   function* verifyProgram() {
     const snapshot = yield* journal.read();
     if (snapshot.program !== options.program) {
@@ -79,38 +90,29 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
               if (!calls.length) {
                 throw new Error("Empty chat tool batch");
               }
-              const routes = calls.map((call) => {
-                const route = names.get(call.name);
-                if (!route) {
-                  throw new Error("Unknown model tool");
-                }
-                return route;
-              });
+              if (!reject && calls.some((call) => !names.has(call.name))) {
+                throw new Error("Unknown model tool");
+              }
               const state = yield* journal.read();
               if (state.status !== "running" || state.pending?.id !== pending.id) {
                 throw new Error("Chat batch boundary changed");
               }
               const stored = state.children;
-              if (
-                stored &&
-                (stored.length !== routes.length ||
-                  stored.some((link, i) => link.program !== routes[i]!.program))
-              ) {
+              if (stored && stored.length !== calls.length) {
                 throw new Error("Stored chat batch differs from catalog");
               }
-              const inputs: unknown[] = [];
+              const routes: { binding: ChatToolBinding<Y>; input: unknown }[] = [];
               for (const [index, call] of calls.entries()) {
-                if (stored) {
-                  inputs.push(stored[index]!.input);
-                } else {
-                  const parsed = yield* runtime.fromPromise(async () =>
-                    routes[index]!.context["~standard"].validate(call.input),
-                  );
-                  if (parsed.issues) {
-                    throw new Error("Invalid chat tool input");
-                  }
-                  inputs.push(parsed.value);
-                }
+                routes.push(
+                  yield* admitCall(
+                    runtime,
+                    call,
+                    names.get(call.name),
+                    stored?.[index],
+                    fallback,
+                    reject,
+                  ),
+                );
               }
               const children = yield* journal.ensureChildren<
                 unknown,
@@ -118,9 +120,9 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
                 unknown,
                 string
               >(pending.id, {
-                children: routes.map((route, index) => ({
-                  program: route.program,
-                  input: inputs[index],
+                children: routes.map(({ binding, input }) => ({
+                  program: binding.program,
+                  input,
                 })),
                 outcome: options.batch.outcome,
               });
@@ -129,7 +131,7 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
                 *run() {
                   return joinChildHostingResults(
                     yield* runtime.all(
-                      children.map((child, index) => () => routes[index]!.run(child)),
+                      children.map((child, index) => () => routes[index]!.binding.run(child)),
                     ),
                   );
                 },

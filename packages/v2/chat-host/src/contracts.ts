@@ -27,6 +27,15 @@ import type {
 } from "@sweatpan.ts/chat";
 import type { Runtime } from "@sweatpan.ts/runtime";
 
+/** A routing or schema error before authored tool execution. */
+export type ChatToolRejection =
+  | { readonly reason: "unknown-tool"; readonly name: string }
+  | {
+      readonly reason: "invalid-input";
+      readonly name: string;
+      readonly issues: readonly StandardSchemaV1.Issue[];
+    };
+
 /** Immutable application policy around the versioned recorded chat protocol.
  * All projections are synchronous, pure and replay-stable. Bump id when changing
  * their meaning, the tool catalog or other authored behavior for existing journals. */
@@ -36,6 +45,8 @@ export interface ChatProgramOptions<R> {
   history(admittedInput: unknown): readonly ChatHistoryMessage[];
   /** Format a terminal tool value for the model. Correlation is supplied internally. */
   toolResult(value: unknown, call: ChatToolCall): Pick<ChatToolResult, "content" | "isError">;
+  /** Opt in to recording an application value for an uncallable tool. toolResult formats it. */
+  rejectToolCall?(rejection: ChatToolRejection): unknown;
   /** Application result projection; use identity to retain the complete chat result. */
   result(result: ChatLoopResult): R;
 }
@@ -139,6 +150,8 @@ export interface ChatExecutionOptions<R, D extends Record<string, EffectDefiniti
     readonly effect: string;
     /** Decode the pinned program's batch envelope. Model names resolve in tools. */
     calls(input: unknown): readonly { readonly name: string; readonly input: unknown }[];
+    /** Optional pure projection for routing and validation failures at initial admission. */
+    rejectToolCall?(rejection: ChatToolRejection): unknown;
     /** Pure parent projection, in call order. No effect execution or mutable policy. */
     outcome(values: readonly unknown[]): Outcome<unknown, string>;
   };
