@@ -47,6 +47,26 @@ export function createAgUiRun<R, V, Y>(
           events.close();
         });
         const publish: AgUiRunPublisher<V> = {
+          event(event) {
+            if (!active) {
+              return;
+            }
+            if (
+              ![
+                "TOOL_CALL_START",
+                "TOOL_CALL_ARGS",
+                "TOOL_CALL_END",
+                "TOOL_CALL_RESULT",
+                "STEP_STARTED",
+                "STEP_FINISHED",
+                "STATE_SNAPSHOT",
+                "STATE_DELTA",
+              ].includes(event.type)
+            ) {
+              throw new Error("Event is owned by the AG-UI run adapter");
+            }
+            events.send(structuredClone(event));
+          },
           text(text) {
             if (!active) {
               return;

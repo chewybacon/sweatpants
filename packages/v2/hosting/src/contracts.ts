@@ -4,7 +4,7 @@ import type { Api, Context, Handler, Operation, Outcome } from "@standard-durabi
 import type {
   ChildLink,
   Accepted,
-  JournalPosition,
+  AcceptedHistoryCursor,
   OwnedChild,
   OwnedJournal,
   Recovery,
@@ -347,9 +347,7 @@ export interface HostedActivationOptions<Frame, Result, Y> {
 
 /** Reader-owned acknowledgement of an applied accepted prefix, bound to one execution.
  * This is not authority or proof of delivery; callers advance it only after applying a page. */
-export interface PresentationCursor extends JournalPosition {
-  readonly execution: string;
-}
+export type PresentationCursor = AcceptedHistoryCursor;
 
 /** Current durable presentation state, without evaluator checkpoints or admission input. */
 export type JournalPresentationState<R, Q> = { readonly revision: number } & (

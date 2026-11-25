@@ -1,5 +1,13 @@
 import type {
   CustomEvent,
+  ToolCallStartEvent,
+  ToolCallArgsEvent,
+  ToolCallEndEvent,
+  ToolCallResultEvent,
+  StepStartedEvent,
+  StepFinishedEvent,
+  StateSnapshotEvent,
+  StateDeltaEvent,
   RunErrorEvent,
   RunFinishedEvent,
   RunStartedEvent,
@@ -10,8 +18,20 @@ import type {
 import type { Operation } from "@standard-durability/core";
 import type { Stream } from "@sweatpan.ts/runtime";
 
-/** Supported run/text/custom projection subset, not the complete AG-UI protocol. */
+/** Additional presentation events. Run lifecycle and streamed text remain adapter-owned. */
+export type AgUiPresentationEvent =
+  | ToolCallStartEvent
+  | ToolCallArgsEvent
+  | ToolCallEndEvent
+  | ToolCallResultEvent
+  | StepStartedEvent
+  | StepFinishedEvent
+  | StateSnapshotEvent
+  | StateDeltaEvent;
+
+/** Supported run/text/custom and extension projection. */
 export type AgUiRunEvent<V> =
+  | AgUiPresentationEvent
   | RunStartedEvent
   | RunFinishedEvent
   | (TextMessageStartEvent & { role: "assistant" })
@@ -23,6 +43,8 @@ export type AgUiRunEvent<V> =
 /** Host-selected public projection. Never send private journal/provider data blindly.
  * Publications after execution ends are ignored. Custom values must be cloneable. */
 export interface AgUiRunPublisher<V> {
+  /** Publish a detached protocol extension; cannot forge run lifecycle events. */
+  event(event: AgUiPresentationEvent): void;
   /** Cumulative provisional text. A non-prefix replacement opens a new message. */
   text(snapshot: string): void;
   endText(): void;

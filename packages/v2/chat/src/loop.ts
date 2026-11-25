@@ -80,7 +80,10 @@ export function streamChat(
               if (!call.id.trim() || seen.has(call.id)) {
                 throw new Error("Duplicate or empty tool call identity");
               }
-              if (!catalog.has(call.name)) {
+              if (
+                !catalog.has(call.name) &&
+                !(options.executeTools && options.allowUnknownToolNames && call.name.trim())
+              ) {
                 throw new Error(`Tool is not in chat catalog: ${call.name}`);
               }
               seen.add(call.id);

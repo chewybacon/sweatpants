@@ -23,7 +23,18 @@
     "lint": "cd ../../.. && oxlint --type-aware packages/v2/agent",
     "format:check": "cd ../../.. && oxfmt packages/v2/agent --check"
   },
+  "dependencies": {
+    "@standard-durability/core": "workspace:*",
+    "@sweatpan.ts/chat-host": "workspace:*",
+    "@sweatpan.ts/core": "workspace:*",
+    "@sweatpan.ts/durable": "workspace:*",
+    "@sweatpan.ts/hosting": "workspace:*",
+    "@sweatpan.ts/runtime": "workspace:*",
+    "@sweatpan.ts/tools": "workspace:*",
+    "zod": "catalog:"
+  },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:"
   }
 }

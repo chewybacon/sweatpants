@@ -2867,6 +2867,9 @@ importers:
       '@stylexjs/unplugin':
         specifier: 0.19.1
         version: 0.19.1(unplugin@2.3.11)
+      '@sweatpan.ts/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@sweatpan.ts/chat':
         specifier: workspace:*
         version: link:../chat
@@ -2998,7 +3001,35 @@ importers:
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.33.0)(tsx@4.21.0)(yaml@2.9.1)
 
   packages/v2/agent:
+    dependencies:
+      '@standard-durability/core':
+        specifier: workspace:*
+        version: link:../standard-durability
+      '@sweatpan.ts/hosting':
+        specifier: workspace:*
+        version: link:../hosting
+      '@sweatpan.ts/chat-host':
+        specifier: workspace:*
+        version: link:../chat-host
+      '@sweatpan.ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sweatpan.ts/durable':
+        specifier: workspace:*
+        version: link:../durable
+      '@sweatpan.ts/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@sweatpan.ts/tools':
+        specifier: workspace:*
+        version: link:../tools
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -3040,6 +3071,9 @@ importers:
 
   packages/v2/chat-host:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@standard-durability/core':
         specifier: workspace:*
         version: link:../standard-durability

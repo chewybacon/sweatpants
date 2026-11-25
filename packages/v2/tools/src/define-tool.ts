@@ -8,13 +8,25 @@ import type { ToolBuilder, ToolDefinition } from "./contracts.ts";
  * This creates no runtime or grant. Definitions retain schemas and executable
  * bodies; importing one is not a browser-safe contract splitting mechanism.
  */
-export function defineTool(name: string): {
+export function defineTool(name: string) {
+  return Object.freeze({
+    ...parameterBuilder(name),
+    description(text: string) {
+      return parameterBuilder(name, text);
+    },
+  });
+}
+
+function parameterBuilder(
+  name: string,
+  description?: string,
+): {
   /** Set the schema converting caller input to the body's normalized input. */
   parameters<S extends StandardSchemaV1>(schema: S): ToolBuilder<S>;
 } {
   return Object.freeze({
     parameters<S extends StandardSchemaV1>(schema: S): ToolBuilder<S> {
-      return builder(name, schema, Object.freeze({}), Object.freeze({}));
+      return builder(name, schema, Object.freeze({}), Object.freeze({}), description);
     },
   });
 }
@@ -23,13 +35,19 @@ function builder<
   S extends StandardSchemaV1,
   D extends Record<string, EffectDefinition>,
   L extends Record<string, EffectDefinition>,
->(name: string, schema: S, capabilities: D, elicits: L): ToolBuilder<S, D, L> {
+>(
+  name: string,
+  schema: S,
+  capabilities: D,
+  elicits: L,
+  description?: string,
+): ToolBuilder<S, D, L> {
   return Object.freeze({
     capabilities<const Next extends Record<string, EffectDefinition>>(definitions: Next) {
-      return builder(name, schema, Object.freeze({ ...definitions }), elicits);
+      return builder(name, schema, Object.freeze({ ...definitions }), elicits, description);
     },
     elicits<const Next extends Record<string, EffectDefinition>>(definitions: Next) {
-      return builder(name, schema, capabilities, Object.freeze({ ...definitions }));
+      return builder(name, schema, capabilities, Object.freeze({ ...definitions }), description);
     },
     execute<R>(body: ToolDefinition<S, D, L, R>["body"]): ToolDefinition<S, D, L, R> {
       const effect = defineEffect({ key: name, context: schema }, function* (): Operation<
@@ -40,6 +58,7 @@ function builder<
       });
       return Object.freeze({
         id: effect.id,
+        description,
         context: schema,
         call: effect.call,
         capabilities,
