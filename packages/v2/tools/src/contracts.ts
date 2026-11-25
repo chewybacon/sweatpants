@@ -68,6 +68,8 @@ export interface ToolDefinition<
   R,
   never
 > {
+  /** Model-facing text; declaration alone does not expose the tool. */
+  readonly description?: string | undefined;
   /** Original parameter schema, retained for admission and contract inspection. */
   readonly context: S;
   /** Capability declarations available to the body; implementations remain host-owned. */
