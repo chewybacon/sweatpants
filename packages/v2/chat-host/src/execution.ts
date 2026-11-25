@@ -37,12 +37,23 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
     throw new Error("Chat batch effect is not granted");
   }
   const contracts = new Map(options.tools.map((tool) => [tool.program, tool.contract]));
+  const answerTools = new Map<
+    string,
+    { readonly elicits: Readonly<Record<string, EffectDefinition>> }
+  >(programs);
+  for (const tool of options.descendantInteractionContracts ?? []) {
+    if (answerTools.has(tool.id)) {
+      throw new Error(`Conflicting interaction program: ${tool.id}`);
+    }
+    answerTools.set(tool.id, tool);
+    contracts.set(tool.id, tool);
+  }
   const reject = options.batch.rejectToolCall;
   const fallback = reject
     ? createRejectionBinding(runtime, options.program, options.recovery, options.matches)
     : undefined;
   if (fallback) {
-    if (programs.has(fallback.program)) {
+    if (answerTools.has(fallback.program)) {
       throw new Error("Chat rejection program conflicts with tool catalog");
     }
     contracts.set(fallback.program, fallback.contract);
@@ -149,7 +160,7 @@ export function createChatExecution<R, D extends Record<string, EffectDefinition
     *answer(target, outcome) {
       yield* verifyProgram();
       const child = yield* journal.openDescendantInteractions(target.execution);
-      const tool = programs.get(child.link.program);
+      const tool = answerTools.get(child.link.program);
       if (!tool) {
         throw new Error("Unknown interaction program");
       }

@@ -35,6 +35,8 @@ export function createSqliteJournalRig<R, Q, V, E, S = unknown, Y = never>(
   let current = connect();
   return {
     id,
+    /** File owned by this rig, for offline storage-compatibility fixtures. */
+    path,
     /** Fresh current-connection intent capability; reacquire after reopening. */
     get activations() {
       return current.store.activations;

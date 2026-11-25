@@ -89,6 +89,7 @@ export function defineChatProgram<R>(options: ChatProgramOptions<R>): ChatProgra
         program: id,
         journal: binding.journal,
         tools: binding.tools,
+        descendantInteractionContracts: binding.descendantInteractionContracts,
         recovery: binding.recovery,
         matches: binding.matches,
         effects: { sample, batch },

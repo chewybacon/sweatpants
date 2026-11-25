@@ -6,6 +6,8 @@ import {
   type ChatRecoveryFactory,
 } from "@sweatpan.ts/chat-host";
 import { createRecovery } from "@sweatpan.ts/durable";
+import { childHostingResult } from "@sweatpan.ts/hosting";
+import { createToolSession, installToolRouting, isAuthoredTool } from "@sweatpan.ts/tools";
 import type { Runtime } from "@sweatpan.ts/runtime";
 import type { AgentDefinition, AgentRun, AgentTool, BoundTool } from "./contracts.ts";
 
@@ -22,6 +24,7 @@ export function defineAgent({ tools }: { readonly tools: readonly AgentTool[] })
       .parse(z.toJSONSchema(tool.context, { io: "input" }));
     return {
       tool,
+      children: [...new Set(Object.values(tool.capabilities).filter(isAuthoredTool))],
       definition: { name: tool.id, description: tool.description ?? null, parameters },
     };
   });
@@ -35,16 +38,52 @@ export function defineAgent({ tools }: { readonly tools: readonly AgentTool[] })
       const recovery: ChatRecoveryFactory<Y> = (options) =>
         createRecovery(runtime.composition, options);
       const defaults = { recovery, matches: isDeepStrictEqual };
+      const identities = new Map<string, object>(catalog.map(({ tool }) => [tool.id, tool]));
+      const descendantInteractionContracts = new Map<
+        string,
+        (typeof catalog)[number]["children"][number]
+      >();
+      for (const { children } of catalog) {
+        for (const child of children) {
+          const existing = identities.get(child.id);
+          if (existing && existing !== child) {
+            throw new Error(`Conflicting authored tool: ${child.id}`);
+          }
+          identities.set(child.id, child);
+          if (!names.has(child.id)) {
+            descendantInteractionContracts.set(child.id, child);
+          }
+        }
+      }
       return program.bind(runtime, {
         ...run,
         ...defaults,
-        tools: catalog.map(({ tool, definition }) =>
+        descendantInteractionContracts: [...descendantInteractionContracts.values()],
+        tools: catalog.map(({ tool, children, definition }) =>
           // Keep the schema, body and grant declarations together across catalog
           // erasure. The existing binding owns admission before body acquisition.
           createChatToolBinding(runtime, tool as BoundTool, {
             definition,
             ...defaults,
-            *configure({ effects }) {
+            *configure({ effects, host, journal }) {
+              for (const child of children) {
+                yield* installToolRouting(runtime, host, journal, {
+                  tool: child,
+                  *run(owned) {
+                    const session = createToolSession(runtime, child, {
+                      journal: owned.journal,
+                      child: owned.link,
+                      ...defaults,
+                      *configure(context) {
+                        if (installEffects) {
+                          yield* installEffects(context.effects);
+                        }
+                      },
+                    });
+                    return childHostingResult(yield* session.run());
+                  },
+                });
+              }
               if (installEffects) {
                 yield* installEffects(effects);
               }

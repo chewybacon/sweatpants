@@ -80,7 +80,12 @@ export function* installToolRouting<
           return yield* next(pending);
         }
         const snapshot = yield* journal.read();
-        const links = snapshot.status === "running" ? snapshot.children : undefined;
+        // On reopen verify the backlink from the child record, not just the
+        // program ID on the parent's pending boundary.
+        const links =
+          snapshot.status === "running" && snapshot.children
+            ? yield* journal.readChildren(pending.id)
+            : undefined;
         const existing = links?.[0];
         if (links && (links.length !== 1 || existing?.program !== tool.id)) {
           throw new Error("Stored child does not match named tool route");
