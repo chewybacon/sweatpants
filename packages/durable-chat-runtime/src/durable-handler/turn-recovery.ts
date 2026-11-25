@@ -1,5 +1,8 @@
 import { EventType } from "@ag-ui/core";
-import type { ConversationStreamEvent as StreamEvent } from "@sweatpants/chat-core";
+import type {
+  ConversationStreamEvent as StreamEvent,
+  AgUiRunMetadata,
+} from "@sweatpants/chat-core";
 import { CrankError } from "@sweatpants/durable-execution";
 import type { ConversationHead } from "@sweatpants/history-store/contract";
 import { useConversationStore } from "@sweatpants/history-store/port";
@@ -119,14 +122,14 @@ export function recoveredPublicationEvents(recovery: RecoveredTurnPublication): 
 export interface LiveProgramActivation {
   readonly executionId: string;
   readonly taskReady: WithResolvers<string>;
-  readonly terminal: WithResolvers<void>;
+  readonly publication: WithResolvers<readonly StreamEvent[]>;
 }
 
 export function createLiveProgramActivation(executionId: string): LiveProgramActivation {
   return {
     executionId,
     taskReady: withResolvers(`live task ${executionId} ready`),
-    terminal: withResolvers(`live task ${executionId} terminal`),
+    publication: withResolvers(`live task ${executionId} publication`),
   };
 }
 
@@ -136,6 +139,7 @@ export function createLiveCancellationEngine(params: {
   conversationId: string;
   reason: string;
   commandId: string;
+  agUiRun: AgUiRunMetadata;
 }): ChatEngineSource {
   return resource(function* (provide) {
     let events: StreamEvent[] | null = null;
@@ -153,19 +157,24 @@ export function createLiveCancellationEngine(params: {
               params.commandId,
             ),
           );
-          // The original Host-owned activation performs unwind and terminal
-          // publication. Publish its resulting authority before this control
-          // response emits its terminal presentation event.
-          yield* params.activation.terminal.operation;
-          const head = yield* store.loadHead(params.conversationId);
-          events = [
-            conversationAuthorityFrame(params.conversationId, head),
-            {
-              type: EventType.RUN_ERROR,
-              code: "PROGRAM_CANCELLED",
-              message: params.reason,
-            },
-          ];
+          // The existing activation owns unwind and persists its next boundary.
+          // Reuse its cleanup publication, or report terminal cancellation.
+          const publication = yield* params.activation.publication.operation;
+          if (publication.length > 0) {
+            events = publication.map((event) =>
+              event.type === EventType.RUN_FINISHED ? { ...event, ...params.agUiRun } : event,
+            );
+          } else {
+            const head = yield* store.loadHead(params.conversationId);
+            events = [
+              conversationAuthorityFrame(params.conversationId, head),
+              {
+                type: EventType.RUN_ERROR,
+                code: "PROGRAM_CANCELLED",
+                message: params.reason,
+              },
+            ];
+          }
         }
         if (index >= events.length) {
           return { done: true, value: undefined };

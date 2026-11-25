@@ -2,6 +2,11 @@ import { Button, Card, Heading, Stack } from "../design-system/primitives.tsx";
 
 const examples = [
   {
+    title: "Play Rock, Paper, Scissors",
+    prompt:
+      "Play one round of rock, paper, scissors with me. Choose your move randomly before asking for mine, keep your choice hidden until I answer, and then show both moves and who won.",
+  },
+  {
     title: "Plan a get-together",
     prompt:
       "Help me collect RSVPs for Alex, Sam, and Jo. Ask me about one person at a time. If they're coming, ask what they'd like to eat; if not, move on. At the end, give me a guest list and the meal orders.",

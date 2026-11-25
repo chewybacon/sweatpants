@@ -28,6 +28,7 @@
     "@sweatpants/flowmode-compiler-scheme": "workspace:*",
     "@sweatpants/flowmode-runtime": "workspace:*",
     "@sweatpants/flowmode-runtime-lua": "workspace:*",
+    "@sweatpants/flowmode-runtime-monty": "workspace:*",
     "@sweatpants/flowmode-runtime-scheme": "workspace:*",
     "@sweatpants/foundation": "workspace:*",
     "@sweatpants/history-store": "workspace:*",

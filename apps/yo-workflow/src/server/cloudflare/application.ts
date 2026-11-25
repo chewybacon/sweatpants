@@ -1,4 +1,4 @@
-import type { WorkflowLanguage } from "../../workflow/language.ts";
+import { workflowLanguage } from "../../workflow/language.ts";
 import { documentEffectRegistration } from "../document-effect.ts";
 import {
   createDecisionEffectRegistration,
@@ -30,7 +30,6 @@ export function createCloudflareWorkflowApp(
   bindings: CloudflareBindings,
   model: ChatModel,
   decisionProvider?: DecisionProviderDriver,
-  language: WorkflowLanguage = "scheme",
 ) {
   if (!bindings.PROGRAM_DRIVER_CAPABILITY_SECRET) {
     throw new Error("PROGRAM_DRIVER_CAPABILITY_SECRET is required");
@@ -56,9 +55,27 @@ export function createCloudflareWorkflowApp(
           retentionPolicy: { mode: "retain_forever" },
         });
       },
-      chat: function* () {
+      chat: function* ({ request }) {
+        const language = workflowLanguage(request.headers.get("X-Workflow-Language"));
         yield* ToolExposurePolicyContext.set(createWorkflowExposure(language));
       },
     },
   });
+}
+
+/** One DurableObject owns one application's admission and live activation registry.
+ * Language is request-scoped exposure, never a separate execution/control owner.
+ */
+export function createWorkflowConversationHandler(
+  createApplication: () =>
+    | ReturnType<typeof createCloudflareWorkflowApp>
+    | Promise<ReturnType<typeof createCloudflareWorkflowApp>>,
+) {
+  let application: Promise<ReturnType<typeof createCloudflareWorkflowApp>> | undefined;
+  return async (request: Request): Promise<Response> => {
+    // Publish the shared initialization promise before invoking asynchronous setup.
+    // Concurrent first requests must enter the same admission/activation owner.
+    application ??= Promise.resolve().then(createApplication);
+    return (await application).handler(request);
+  };
 }

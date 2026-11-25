@@ -656,9 +656,9 @@ export function* executeChatTurn(
         liveActivation?.taskReady.resolve(taskId);
       },
       onLiveActivationSettled(error): void {
-        const failure = error ?? new Error("Live activation settled before terminal publication");
+        const failure = error ?? new Error("Live activation settled before publication");
         liveActivation?.taskReady.reject(failure);
-        liveActivation?.terminal.reject(failure);
+        liveActivation?.publication.reject(failure);
         if (liveProgramActivations.get(requestedConversationId) === liveActivation) {
           liveProgramActivations.delete(requestedConversationId);
         }
@@ -692,6 +692,7 @@ export function* executeChatTurn(
           conversationId: requestedConversationId,
           reason: liveCancellation.reason ?? "Program was cancelled",
           commandId: body.command?.commandId ?? agUiRunId,
+          agUiRun,
         })
       : recoveredPublication
         ? recoveredPublicationEvents(recoveredPublication)

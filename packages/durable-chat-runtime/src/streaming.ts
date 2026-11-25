@@ -192,9 +192,19 @@ export function createStreamingEndpoint<Input>(
 
       try {
         // Run setup in scope with context
-        const result = await scope.run(function* () {
-          return yield* setup(input, ctx);
+        const attempt = await scope.run(function* () {
+          // Request validation failure must not fail the parent application
+          // scope and cancel unrelated admitted live executions.
+          try {
+            return { ok: true as const, value: yield* setup(input, ctx) };
+          } catch (error) {
+            return { ok: false as const, error };
+          }
         });
+        if (!attempt.ok) {
+          throw attempt.error;
+        }
+        const result = attempt.value;
 
         // Normalize result
         if ("subscription" in result) {

@@ -1,3 +1,5 @@
+import { createMontyStack } from "./monty.mjs";
+import { loadMontyModule } from "@sweatpants/flowmode-runtime-monty/node";
 import { reviewDraft as schemeDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.artifact.mjs";
 import { reviewDraft as luaDraft } from "../../../experiments/workflow-kernel/tsdown-authoring/dist/review-draft.workflow.lua.artifact.mjs";
 import { invokeWasm } from "@sweatpants/flowmode-runtime-lua/node";
@@ -9,6 +11,7 @@ import { createHootProgram } from "@sweatpants/flowmode-runtime-scheme/execution
 import { executionServiceFactory } from "./service-core.mjs";
 export const { createExecutionService, validateCaller, languages, authoring } =
   executionServiceFactory([
+    createMontyStack(loadMontyModule),
     schemeStack(
       createHootAuthoring({
         loadMachine,

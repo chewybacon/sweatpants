@@ -27,7 +27,7 @@ import {
   ChatSchedulerPort,
 } from "@sweatpants/chat-client";
 import type { PipelineConfig } from "@sweatpants/frame-renderer";
-import type { Json } from "@sweatpants/foundation";
+import { uuidv4, type Json } from "@sweatpants/foundation";
 import type { ClientPlugin } from "@sweatpants/tool-session/mcp";
 import type { ReactElicitCapabilities } from "./plugin.ts";
 import { ReactInteractionRuntime } from "./react-interaction.ts";
@@ -203,7 +203,7 @@ interface PendingOwnedChat {
 }
 
 function createPendingOwnedChat(options: OwnedUseChatOptions): PendingOwnedChat {
-  const clientId = crypto.randomUUID();
+  const clientId = uuidv4();
   const pendingSnapshot: ChatUISnapshot<ReactChatUIMessage> = Object.freeze({
     messages: Object.freeze([]) as readonly ReactChatUIMessage[],
     history: Object.freeze({ hasOlder: false, loadingOlder: false, error: null }),
