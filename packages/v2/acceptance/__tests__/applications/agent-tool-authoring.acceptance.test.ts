@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+import { serialize, deserialize } from "node:v8";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -150,6 +152,273 @@ forEachRuntime(<Y>(runtime: Runtime<Y>) => {
     });
     onTestFinished(() => rig.close());
     return rig;
+  }
+  it(`${runtime.name}: reopen a private child review and decline the original claim`, async () => {
+    const manualReview = defineEffect({
+      key: "manualReview",
+      context: z.string(),
+      response: z.enum(["approved", "declined"]),
+    });
+    const claim = z.object({ id: z.string() });
+    const reviewClaim = defineTool("reviewClaim")
+      .parameters(claim.transform(({ id }) => ({ pattern: id.toUpperCase() })))
+      .capabilities({ predict: search })
+      .elicits({ manualReview })
+      .execute(function* (input, ctx) {
+        const risk = yield* ctx.capabilities.predict(input);
+        if (!risk.ok) {
+          throw new Error("Prediction failed");
+        }
+        const answer = yield* ctx.elicit("manualReview", risk.value);
+        if (!answer.ok) {
+          throw new Error("Review failed");
+        }
+        return answer.value;
+      });
+    const received: unknown[] = [];
+    const processClaim = defineTool("processClaim")
+      .parameters(claim)
+      .capabilities({ review: reviewClaim })
+      .execute(function* (input, ctx) {
+        const decision = yield* ctx.capabilities.review(input);
+        received.push(decision);
+        if (!decision.ok) {
+          throw new Error("Child failed");
+        }
+        return { id: input.id, decision: decision.value };
+      });
+    const claims = defineAgent({ tools: [processClaim] });
+    const peer = await serve(runtime, [{ name: "processClaim", args: { id: "oak" } }, null]);
+    const database = store();
+    let journal = database.open();
+    const predictions: string[] = [];
+    const bind = () =>
+      claims.bind(runtime, program, {
+        journal,
+        sampling: peer.sampling,
+        *installEffects(effects) {
+          yield* effects.install(search, function* ({ pattern }) {
+            predictions.push(pattern);
+            return { ok: true, value: "high" };
+          });
+        },
+      });
+    let chat = bind();
+    function question() {
+      return runtime.start(function* () {
+        const stream = yield* chat.interactions();
+        const item = yield* stream.next();
+        if (item.done) {
+          throw new Error("Missing review");
+        }
+        return item.value;
+      }).result;
+    }
+    await runtime.start(function* () {
+      yield* journal.admit(program.id, {});
+      return yield* chat.run();
+    }).result;
+    const first = await question();
+    expect(first.program).toBe(reviewClaim.id);
+    expect(peer.bodies[0]).toMatchObject({ tools: [{ function: { name: "processClaim" } }] });
+    // Exercise recovery from inconsistent storage, not a mocked read failure.
+    const parentLink = first.parent!;
+    const sql = new DatabaseSync(database.path);
+    try {
+      const keys = [database.id, parentLink.execution, parentLink.requestId];
+      const row = sql
+        .prepare(
+          "SELECT payload FROM sweatpants_requests WHERE tree=? AND execution=? AND request=?",
+        )
+        .get(...keys)!;
+      const original = row.payload as Uint8Array;
+      const boundary = deserialize(original);
+      expect(boundary.children[0].childId).toBe(first.execution);
+      const update = sql.prepare(
+        "UPDATE sweatpants_requests SET payload=? WHERE tree=? AND execution=? AND request=?",
+      );
+      for (const corrupt of [{ program: "wrong" }, { childId: parentLink.execution }]) {
+        update.run(
+          serialize({ ...boundary, children: [{ ...boundary.children[0], ...corrupt }] }),
+          ...keys,
+        );
+        journal = database.reopen();
+        await expect(runtime.start(() => bind().run()).result).rejects.toThrow(/child|ownership/i);
+        update.run(original, ...keys);
+      }
+    } finally {
+      sql.close();
+    }
+    journal = database.reopen();
+    chat = bind();
+    const target = await question();
+    expect(target.execution).toBe(first.execution);
+    expect(target.grant).toEqual(first.grant);
+    const withoutGrant = defineTool(processClaim.id)
+      .parameters(claim)
+      .execute(function* () {
+        throw new Error("Revoked parent ran");
+      });
+    const revoked = defineAgent({ tools: [withoutGrant] }).bind(runtime, program, {
+      journal,
+      sampling: peer.sampling,
+    });
+    await expect(runtime.start(() => revoked.run()).result).rejects.toThrow(/not granted/);
+    await expect(
+      runtime.start(() =>
+        chat.answer({ ...target, execution: journal.id }, { ok: true, value: "approved" }),
+      ).result,
+    ).rejects.toThrow();
+    await expect(
+      runtime.start(() => chat.answer(target, { ok: true, value: false })).result,
+    ).rejects.toThrow();
+    // The same program and elicit in another root do not identify this wait.
+    const otherJournal = store().open();
+    const otherPeer = await serve(runtime, [{ name: "processClaim", args: { id: "elm" } }, null]);
+    const other = claims.bind(runtime, program, {
+      journal: otherJournal,
+      sampling: otherPeer.sampling,
+      *installEffects(effects) {
+        yield* effects.install(search, function* () {
+          return { ok: true, value: "another high risk" };
+        });
+      },
+    });
+    const second = await runtime.start(function* () {
+      yield* otherJournal.admit(program.id, {});
+      yield* other.run();
+      const stream = yield* other.interactions();
+      const item = yield* stream.next();
+      if (item.done) {
+        throw new Error("Missing second review");
+      }
+      return item.value;
+    }).result;
+    await expect(
+      runtime.start(() => chat.answer(second, { ok: true, value: "approved" })).result,
+    ).rejects.toThrow();
+    await expect(
+      runtime.start(() =>
+        chat.answer({ ...target, grant: second.grant }, { ok: true, value: "approved" }),
+      ).result,
+    ).rejects.toThrow();
+    await runtime.start(() => chat.answer(target, { ok: true, value: "declined" })).result;
+    expect(received).toEqual([]);
+    expect(await runtime.start(() => chat.run()).result).toMatchObject({ state: "completed" });
+    expect(predictions).toEqual(["OAK"]);
+    expect(received).toEqual([{ ok: true, value: "declined" }]);
+    await expect(
+      runtime.start(() => chat.answer(target, { ok: true, value: "approved" })).result,
+    ).rejects.toThrow();
+    await runtime.start(() => other.answer(second, { ok: true, value: "approved" })).result;
+    expect(await runtime.start(() => other.run()).result).toMatchObject({ state: "completed" });
+    expect(received.at(-1)).toEqual({ ok: true, value: "approved" });
+    expect(peer.bodies[1]).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: "tool",
+          content: JSON.stringify({ id: "oak", decision: "declined" }),
+        }),
+      ]),
+    });
+  });
+  it(`${runtime.name}: aliases share a child recipe but distinct definitions cannot claim its ID`, async () => {
+    const makeParent = (name: string, alias: string, child: typeof rg) =>
+      defineTool(name)
+        .parameters(z.object({}))
+        .capabilities({ [alias]: child })
+        .execute(function* () {
+          return name;
+        });
+    const first = makeParent("one", "local", rg);
+    const peer = await serve(runtime, []);
+    const run = { journal: store().open(), sampling: peer.sampling };
+    expect(() =>
+      defineAgent({ tools: [first, makeParent("two", "other", rg)] }).bind(runtime, program, run),
+    ).not.toThrow();
+    const shadow = defineTool(rg.id)
+      .parameters(rg.context)
+      .capabilities(rg.capabilities)
+      .execute(rg.body);
+    expect(() =>
+      defineAgent({ tools: [first, makeParent("two", "local", shadow)] }).bind(
+        runtime,
+        program,
+        run,
+      ),
+    ).toThrow(/conflicting authored tool/i);
+  });
+  for (const mode of ["return", "missing", "hidden", "invalid", "ordinary", "ungranted"] as const) {
+    it(`${runtime.name}: child routing: ${mode}`, async () => {
+      const ordinary = Object.freeze({
+        ...defineEffect({ key: "ordinary", context: search.context, response: z.string() }),
+        body() {
+          throw new Error("Not an authored tool");
+        },
+      });
+      const parent = defineTool("parent")
+        .parameters(z.object({ term: z.string() }))
+        .capabilities({ child: rg, ordinary })
+        .execute(function* ({ term }, ctx) {
+          if (mode === "ungranted") {
+            return yield* search.call({ pattern: term });
+          }
+          if (mode === "ordinary") {
+            return yield* ctx.capabilities.ordinary({ pattern: term });
+          }
+          return yield* ctx.capabilities.child(
+            mode === "invalid" ? ({} as { term: string }) : { term },
+          );
+        });
+      const call = { name: mode === "hidden" ? rg.id : parent.id, args: { term: "oak" } };
+      const fails = mode === "missing" || mode === "invalid" || mode === "ungranted";
+      const peer = await serve(runtime, fails ? [call] : [call, null]);
+      const journal = store().open();
+      const seen: string[] = [];
+      const task = runtime.start(function* () {
+        yield* journal.admit(program.id, {});
+        return yield* defineAgent({ tools: [parent] })
+          .bind(runtime, program, {
+            journal,
+            sampling: peer.sampling,
+            *installEffects(effects) {
+              if (mode !== "missing") {
+                yield* effects.install(
+                  mode === "ordinary" ? ordinary : search,
+                  function* ({ pattern }) {
+                    seen.push(pattern);
+                    return { ok: true, value: "hit" };
+                  },
+                );
+              }
+            },
+          })
+          .run();
+      });
+      if (fails) {
+        await expect(task.result).rejects.toThrow(
+          mode === "missing"
+            ? /handler is not installed/
+            : mode === "ungranted"
+              ? /not granted/
+              : /input|schema/i,
+        );
+      } else {
+        expect(await task.result).toMatchObject({ state: "completed" });
+        const value =
+          mode === "hidden"
+            ? "unknown-tool"
+            : mode === "ordinary"
+              ? { ok: true, value: "hit" }
+              : { ok: true, value: { ok: true, value: "hit" } };
+        expect(peer.bodies[1]).toMatchObject({
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "tool", content: JSON.stringify(value) }),
+          ]),
+        });
+      }
+      expect(seen).toEqual(mode === "ordinary" || mode === "return" ? ["oak"] : []);
+    });
   }
   it(`${runtime.name}: replay accepted search before chat consumes it`, async () => {
     const peer = await serve(runtime, [{ name: "rg", args: { term: "oak" } }, null]);

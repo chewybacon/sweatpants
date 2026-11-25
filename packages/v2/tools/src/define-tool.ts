@@ -3,6 +3,20 @@ import type { Operation, Outcome } from "@standard-durability/core";
 import { defineEffect, type EffectDefinition } from "@sweatpan.ts/core";
 import type { ToolBuilder, ToolDefinition } from "./contracts.ts";
 
+const authoredTools = new WeakSet<object>();
+
+type AuthoredTool = ToolDefinition<
+  StandardSchemaV1,
+  Record<string, EffectDefinition>,
+  Record<string, EffectDefinition>,
+  unknown
+>;
+
+/** Recognize definitions produced by defineTool, not arbitrary effect properties. */
+export function isAuthoredTool(effect: EffectDefinition): effect is AuthoredTool {
+  return authoredTools.has(effect);
+}
+
 /**
  * Declare a callable tool and infer its result from an evaluator-owned body.
  * This creates no runtime or grant. Definitions retain schemas and executable
@@ -56,7 +70,7 @@ function builder<
       > {
         throw new Error("Tool body requires Guest acquisition");
       });
-      return Object.freeze({
+      const tool = Object.freeze({
         id: effect.id,
         description,
         context: schema,
@@ -65,6 +79,8 @@ function builder<
         elicits,
         body,
       });
+      authoredTools.add(tool);
+      return tool;
     },
   });
 }

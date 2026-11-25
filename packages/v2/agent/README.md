@@ -1,5 +1,14 @@
 # Agent tool authoring
 
+To call a private authored tool, grant the definition to its parent with
+`.capabilities({ review: reviewClaim })`. In the parent generator, use
+`yield* ctx.capabilities.review(claim)`. The standard recorded-chat binding
+runs the direct child on its own journal and installs run effects in its scope.
+Only tools in `defineAgent({ tools })` are published to the model. A child’s
+pending elicit is discoverable through the chat’s normal interaction stream;
+answer its execution and grant, then drive the chat again. The parent does not
+forward answers. Use explicit tool routing for custom placement.
+
 Use `defineAgent` to select an inventory for v2 recorded chat. It does not start a server, choose a workspace or install effects.
 
 ```ts

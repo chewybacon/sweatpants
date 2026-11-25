@@ -55,6 +55,13 @@ export interface ChatProgramOptions<R> {
 export interface ChatProgramBinding<R, Y> {
   readonly journal: OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>;
   readonly tools: readonly ChatToolBinding<Y>[];
+  /** Private descendant contracts for discovery and answer validation, not model calls. */
+  readonly descendantInteractionContracts?:
+    | readonly {
+        readonly id: string;
+        readonly elicits: Readonly<Record<string, EffectDefinition>>;
+      }[]
+    | undefined;
   readonly recovery: ChatRecoveryFactory<Y>;
   readonly sampling: ChatSampling<Y>;
   /** Prefix the projected history with immutable messages referenced by admission. */
@@ -111,7 +118,7 @@ export interface ChatToolBindingOptions<R, Y, Input = unknown> {
   configure?(
     context: Pick<
       ToolSession<unknown, Input, R, Y>,
-      "host" | "effects" | "recovery" | "acquisition"
+      "host" | "effects" | "recovery" | "acquisition" | "journal"
     >,
   ): Operation<void, Y>;
 }
@@ -139,6 +146,13 @@ export interface ChatExecutionOptions<R, D extends Record<string, EffectDefiniti
   readonly journal: OwnedJournal<R, CapabilityRequest, unknown, string, unknown, Y>;
   readonly effects: D;
   readonly tools: readonly ChatToolBinding<Y>[];
+  /** Private descendant contracts for discovery and answer validation, not model calls. */
+  readonly descendantInteractionContracts?:
+    | readonly {
+        readonly id: string;
+        readonly elicits: Readonly<Record<string, EffectDefinition>>;
+      }[]
+    | undefined;
   readonly recovery: ChatRecoveryFactory<Y>;
   readonly matches: (actual: CapabilityRequest, accepted: CapabilityRequest) => boolean;
   /** Called lazily through recovery; only domain operations may enter the Guest. */

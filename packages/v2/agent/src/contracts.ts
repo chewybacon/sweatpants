@@ -19,7 +19,10 @@ export type AgentTool = Omit<BoundTool, "body"> & {
   readonly body: (...args: never[]) => ReturnType<BoundTool["body"]>;
 };
 
-export type AgentRun<R, Y> = Omit<ChatProgramBinding<R, Y>, "tools" | "recovery" | "matches"> & {
+export type AgentRun<R, Y> = Omit<
+  ChatProgramBinding<R, Y>,
+  "tools" | "descendantInteractionContracts" | "recovery" | "matches"
+> & {
   /** Called in each child host scope, never during model inventory construction. */
   readonly installEffects?: (effects: EffectCapabilities<Y>) => Operation<void, Y>;
 };

@@ -1,4 +1,4 @@
-export { defineTool } from "./define-tool.ts";
+export { defineTool, isAuthoredTool } from "./define-tool.ts";
 export type { ToolBuilder, ToolContext, ToolDefinition, ElicitHandlers } from "./contracts.ts";
 export { admitTool } from "./admission.ts";
 export { installElicitHandlers } from "./middleware.ts";
